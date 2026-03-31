@@ -1,0 +1,11 @@
+name = "pdbfe-sync"
+main = "sync/index.js"
+compatibility_date = "2026-03-18"
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "placeholder-create-via-wrangler-d1-create"
+
+[triggers]
+crons = ["*/15 * * * *"]

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": true,
+    "strictNullChecks": false,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "types": ["@cloudflare/workers-types"],
+    "resolveJsonModule": true
+  },
+  "include": [
+    "core/**/*.js",
+    "api/**/*.js",
+    "sync/**/*.js",
+    "types.d.ts"
+  ],
+  "exclude": [
+    "tests/**",
+    "node_modules"
+  ]
+}
