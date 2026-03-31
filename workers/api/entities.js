@@ -25,10 +25,12 @@ export const ENTITIES = {
             "info_traffic", "info_ratio", "info_scope",
             "info_unicast", "info_multicast", "info_ipv6",
             "info_never_via_route_servers",
+            "ix_count", "fac_count",
+            "notes", "netixlan_updated", "netfac_updated", "poc_updated",
             "policy_url", "policy_general", "policy_locations",
-            "policy_ratio", "policy_contracts",
+            "policy_ratio", "policy_contracts", "allow_ixp_update",
             "status_dashboard", "rir_status", "rir_status_updated",
-            "notes", "notes_private",
+            "logo",
             "created", "updated", "status"
         ],
         filters: {
@@ -55,8 +57,9 @@ export const ENTITIES = {
         table: "peeringdb_organization",
         columns: [
             "id", "name", "aka", "name_long", "website", "social_media",
-            "notes", "address1", "address2", "city", "state", "zipcode",
-            "country", "latitude", "longitude", "floor", "suite",
+            "notes", "logo", "address1", "address2", "city", "country",
+            "state", "zipcode", "floor", "suite",
+            "latitude", "longitude",
             "created", "updated", "status"
         ],
         filters: {
@@ -77,14 +80,16 @@ export const ENTITIES = {
         tag: "fac",
         table: "peeringdb_facility",
         columns: [
-            "id", "org_id", "name", "aka", "name_long", "website", "social_media",
-            "address1", "address2", "city", "state", "zipcode", "country",
-            "latitude", "longitude", "floor", "suite",
+            "id", "org_id", "org_name", "campus_id",
+            "name", "aka", "name_long", "website", "social_media",
             "clli", "rencode", "npanxx", "notes",
+            "net_count", "ix_count", "carrier_count",
             "sales_email", "sales_phone", "tech_email", "tech_phone",
             "available_voltage_services", "diverse_serving_substations",
-            "property", "region_continent", "status_dashboard", "campus_id",
-            "created", "updated", "status"
+            "property", "region_continent", "status_dashboard", "logo",
+            "created", "updated", "status",
+            "address1", "address2", "city", "country", "state", "zipcode",
+            "floor", "suite", "latitude", "longitude"
         ],
         filters: {
             id: "number", org_id: "number", campus_id: "number",
@@ -105,13 +110,14 @@ export const ENTITIES = {
         columns: [
             "id", "org_id", "name", "aka", "name_long",
             "city", "country", "region_continent", "media",
-            "notes", "website", "social_media",
+            "notes", "proto_unicast", "proto_multicast", "proto_ipv6",
+            "website", "social_media",
             "url_stats", "tech_email", "tech_phone",
             "policy_email", "policy_phone",
-            "sales_email", "sales_phone",
-            "proto_unicast", "proto_multicast", "proto_ipv6",
-            "ixf_last_import", "ixf_net_count",
-            "service_level", "terms", "status_dashboard",
+            "sales_phone", "sales_email",
+            "net_count", "fac_count", "ixf_net_count",
+            "ixf_last_import", "ixf_import_request", "ixf_import_request_status",
+            "service_level", "terms", "status_dashboard", "logo",
             "created", "updated", "status"
         ],
         filters: {
@@ -132,8 +138,8 @@ export const ENTITIES = {
         table: "peeringdb_ixlan",
         columns: [
             "id", "ix_id", "name", "descr", "mtu",
-            "vlan", "dot1q_support", "rs_asn", "arp_sponge",
-            "ixf_ixp_member_list_url", "ixf_ixp_member_list_url_visible",
+            "dot1q_support", "rs_asn", "arp_sponge",
+            "ixf_ixp_member_list_url_visible", "ixf_ixp_import_enabled",
             "created", "updated", "status"
         ],
         filters: {
@@ -168,8 +174,8 @@ export const ENTITIES = {
         tag: "netfac",
         table: "peeringdb_network_facility",
         columns: [
-            "id", "net_id", "fac_id",
-            "avail_sonet", "avail_ethernet", "avail_atm",
+            "id", "name", "city", "country",
+            "net_id", "fac_id", "local_asn",
             "created", "updated", "status"
         ],
         filters: {
@@ -183,9 +189,10 @@ export const ENTITIES = {
         tag: "netixlan",
         table: "peeringdb_network_ixlan",
         columns: [
-            "id", "net_id", "ixlan_id", "asn",
+            "id", "net_id", "ix_id", "name", "ixlan_id",
+            "notes", "speed", "asn",
             "ipaddr4", "ipaddr6", "is_rs_peer",
-            "notes", "speed", "operational", "bfd_support",
+            "bfd_support", "operational",
             "net_side_id", "ix_side_id",
             "created", "updated", "status"
         ],
@@ -219,8 +226,9 @@ export const ENTITIES = {
         tag: "carrier",
         table: "peeringdb_carrier",
         columns: [
-            "id", "org_id", "name", "aka", "name_long",
+            "id", "org_id", "org_name", "name", "aka", "name_long",
             "website", "social_media", "notes",
+            "fac_count", "logo",
             "created", "updated", "status"
         ],
         filters: {
@@ -237,7 +245,7 @@ export const ENTITIES = {
         tag: "carrierfac",
         table: "peeringdb_ix_carrier_facility",
         columns: [
-            "id", "carrier_id", "fac_id",
+            "id", "name", "carrier_id", "fac_id",
             "created", "updated", "status"
         ],
         filters: {
@@ -251,7 +259,8 @@ export const ENTITIES = {
         tag: "ixfac",
         table: "peeringdb_ix_facility",
         columns: [
-            "id", "ix_id", "fac_id",
+            "id", "name", "city", "country",
+            "ix_id", "fac_id",
             "created", "updated", "status"
         ],
         filters: {
@@ -265,9 +274,11 @@ export const ENTITIES = {
         tag: "campus",
         table: "peeringdb_campus",
         columns: [
-            "id", "org_id", "name", "aka", "name_long",
-            "website", "social_media", "notes",
-            "created", "updated", "status"
+            "id", "org_id", "org_name", "status",
+            "created", "updated",
+            "name", "name_long", "notes", "aka",
+            "website", "social_media",
+            "country", "city", "zipcode", "state", "logo"
         ],
         filters: {
             id: "number", org_id: "number",
