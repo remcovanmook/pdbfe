@@ -12,18 +12,40 @@ import handler from '../api/index.js';
 
 /**
  * Creates a mock D1 database that returns configurable results.
+ * Detects JSON-envelope queries (containing 'AS payload') and wraps
+ * the rows in a pre-formatted JSON string, matching the behaviour
+ * of buildJsonQuery's json_group_array/json_object SQL.
  *
  * @param {any[]} [rows=[]] - Rows to return from .all().
  * @returns {D1Database} Mock D1 binding.
  */
 function mockD1(rows = []) {
     return /** @type {any} */({
-        prepare: (/** @type {string} */ _sql) => ({
-            bind: (/** @type {any[]} */..._args) => ({
-                all: async () => ({ results: rows, success: true }),
-                first: async () => rows[0] || null
-            }),
-            first: async () => rows[0] || null,
+        prepare: (/** @type {string} */ sql) => ({
+            bind: (/** @type {any[]} */..._args) => {
+                const isJsonEnvelope = sql.includes('AS payload');
+                return {
+                    all: async () => ({ results: rows, success: true }),
+                    first: async () => {
+                        if (isJsonEnvelope) {
+                            // Simulate D1 returning the full JSON envelope as a string
+                            return rows.length > 0
+                                ? { payload: JSON.stringify({ data: rows, meta: {} }) }
+                                : null;
+                        }
+                        return rows[0] || null;
+                    }
+                };
+            },
+            first: async () => {
+                const isJsonEnvelope = sql.includes('AS payload');
+                if (isJsonEnvelope) {
+                    return rows.length > 0
+                        ? { payload: JSON.stringify({ data: rows, meta: {} }) }
+                        : null;
+                }
+                return rows[0] || null;
+            },
             all: async () => ({ results: rows, success: true })
         })
     });
