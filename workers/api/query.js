@@ -93,9 +93,114 @@ function coerceValue(value, fieldType) {
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
-export function buildQuery(entity, filters, opts, singleId = null) {
-    const { limit, skip, since } = opts;
+/**
+ * Columns that store JSON arrays/objects as TEXT in D1.
+ * Must be unwrapped with SQLite's json() function when building
+ * json_object() payloads, otherwise the JSON gets double-escaped.
+ *
+ * @type {Set<string>}
+ */
+const JSON_STORED_COLS = new Set([
+    "social_media", "info_types", "available_voltage_services"
+]);
+
+/**
+ * Builds the per-column argument list for SQLite's json_object().
+ * JSON-stored columns are wrapped in json() to inline them as native
+ * JSON arrays without double-escaping. Regular columns are passed as-is.
+ *
+ * @param {string[]} columns - Column names.
+ * @returns {string} Comma-separated json_object argument pairs.
+ */
+function jsonObjectArgs(columns) {
+    const parts = [];
+    for (let i = 0; i < columns.length; i++) {
+        const c = columns[i];
+        if (JSON_STORED_COLS.has(c)) {
+            parts.push(`'${c}', json("${c}")`);
+        } else {
+            parts.push(`'${c}', "${c}"`);
+        }
+    }
+    return parts.join(", ");
+}
+
+/**
+ * Builds a query that returns the complete JSON response envelope
+ * as a single string from SQLite, using json_group_array and json_object.
+ *
+ * This eliminates all V8-side JSON.parse/JSON.stringify overhead:
+ * the worker receives a pre-formatted payload string, encodes it to
+ * Uint8Array, and serves it directly. Zero V8 object allocations per row.
+ *
+ * Only used for depth=0 queries. Depth>0 requires row-level expansion
+ * in V8 and falls back to buildRowQuery.
+ *
+ * @param {EntityMeta} entity - Entity metadata from the registry.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
+ * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
+ */
+export function buildJsonQuery(entity, filters, opts, singleId = null) {
+    const { clauses, params, pagination } = buildWherePagination(entity, filters, opts, singleId);
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const jsonCols = jsonObjectArgs(entity.columns);
+
+    const sql =
+        `SELECT json_object('data',json_group_array(json_object(${jsonCols})),'meta',json_object()) AS payload` +
+        ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination})`;
+
+    return { sql, params };
+}
+
+/**
+ * Builds a traditional SELECT query returning individual rows.
+ * Used when depth>0 (rows need V8-side expansion with relationship sets)
+ * and by the sync worker for row-level processing.
+ *
+ * @param {EntityMeta} entity - Entity metadata from the registry.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
+ * @returns {BuiltQuery} Parameterised SQL and bind values.
+ */
+export function buildRowQuery(entity, filters, opts, singleId = null) {
+    const { clauses, params, pagination } = buildWherePagination(entity, filters, opts, singleId);
     const cols = entity.columns.map(c => `"${c}"`).join(", ");
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+
+    const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination}`;
+    return { sql, params };
+}
+
+/**
+ * Backwards-compatible alias. Delegates to buildRowQuery.
+ * Retained for existing callsites (depth expansion, sync worker, tests).
+ *
+ * @param {EntityMeta} entity - Entity metadata from the registry.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
+ * @returns {BuiltQuery} Parameterised SQL and bind values.
+ */
+export function buildQuery(entity, filters, opts, singleId = null) {
+    return buildRowQuery(entity, filters, opts, singleId);
+}
+
+/**
+ * Common WHERE/LIMIT/OFFSET construction shared by both query builders.
+ * Validates filters against the entity's allowed fields, applies the since
+ * parameter, and builds pagination clauses.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {number|null} singleId - Single-row ID or null.
+ * @returns {{ clauses: string[], params: (string|number)[], pagination: string }}
+ */
+function buildWherePagination(entity, filters, opts, singleId) {
+    const { limit, skip, since } = opts;
     /** @type {string[]} */
     const clauses = [];
     /** @type {(string|number)[]} */
@@ -136,8 +241,6 @@ export function buildQuery(entity, filters, opts, singleId = null) {
         }
     }
 
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
-
     // Pagination: cap at 250 when depth > 0 (matching upstream behaviour)
     let effectiveLimit = limit || 0;
     if (opts.depth > 0 && (effectiveLimit === 0 || effectiveLimit > 250)) {
@@ -158,8 +261,7 @@ export function buildQuery(entity, filters, opts, singleId = null) {
         params.push(skip);
     }
 
-    const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination}`;
-    return { sql, params };
+    return { clauses, params, pagination };
 }
 
 /**
