@@ -26,11 +26,12 @@ Creating intermediate arrays via `.map()`, `.filter()`, or spreading `[...a, ...
 *  **Use:** Standard imperative `for` loops pushing to a pre-allocated array.
 *  *Exception:* `.map()` in cold-boot entity metadata construction (e.g. `entities.js`) is acceptable.
 
-### 4. Dynamic JSON on the Hot Path
-`JSON.parse` and `JSON.stringify` on response data should happen *exactly once* per cache miss.
+### 4. V8-side JSON Serialisation on the Hot Path
+For `depth=0` queries, D1 constructs the full JSON envelope via `json_group_array(json_object(...))`. The worker receives a single string and calls `TextEncoder.encode()`. There is no `JSON.parse` and no `JSON.stringify` anywhere on this path.
 
-*  **Forbidden:** Parsing or serialising inside a cache-hit code path.
-*  **Architecture:** `encodeJSON()` encodes once to `Uint8Array`. Cache hits serve the stored bytes directly. The only `JSON.parse` on the hot path is `parseSocialMedia()` which handles a pre-stored TEXT column — this is unavoidable but scoped to individual column values, not full response bodies.
+*  **Forbidden:** `JSON.parse` or `JSON.stringify` in the depth=0 handler path.
+*  **Forbidden:** `try/catch` inside a loop on the hot path (V8 de-optimiser).
+*  **Architecture:** `buildJsonQuery()` returns the pre-formatted envelope. JSON-stored TEXT columns are unwrapped with SQLite `json()`. The cold path (depth>0) may use `JSON.parse` on individual column values (`parseJsonFields`) and one final `encodeJSON()` — this is acceptable because depth>0 is inherently expensive and rare.
 
 ### 5. Dynamic Object Keys (Dictionary Mode)
 Adding random keys to an object at runtime forces V8 to abandon its optimized Hidden Classes.
@@ -49,11 +50,11 @@ The L1 cache lookup (`cache.get(key)`) is synchronous. Wrapping it in `async` ad
    ```
 *  **Use:** Keep the L1 read path synchronous. Only introduce `async` at the point where you actually need to `await` a D1 query.
 
-### 7. Bypassing the Pending Map
-The `cache.pending` map prevents cache stampedes. If you skip the pending check, concurrent requests for the same uncached query will all hit D1 independently.
+### 7. Bypassing the Pending Map (Cache Stampede)
+The `cache.pending` map prevents thundering herd / cache stampede. All three handler entry points (list, detail, as_set) check for an in-flight Promise before creating a new D1 query. If you bypass this, N concurrent requests for the same expired key will spawn N identical D1 queries.
 
 *  **Forbidden:** Querying D1 without checking `cache.pending.has(key)` first.
-*  **Use:** Check pending → await if in-flight → check cache again → only then query D1.
+*  **Required flow:** L1 cache check → pending check → if pending exists, `await` it → if not, create fetch Promise, store in `cache.pending`, clean up via `.finally()`.
 
 ### 8. Mutating Cached Buffers
 The `Uint8Array` stored in the LRU cache is the *same reference* served to every client. Mutating it corrupts all future cache hits.
