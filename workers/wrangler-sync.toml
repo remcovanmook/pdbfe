@@ -5,7 +5,7 @@ compatibility_date = "2026-03-18"
 [[d1_databases]]
 binding = "PDB"
 database_name = "peeringdb"
-database_id = "placeholder-create-via-wrangler-d1-create"
+database_id = "cb04e911-4ce9-4158-b096-1894055fd157"
 
 [triggers]
 crons = ["*/15 * * * *"]

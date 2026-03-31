@@ -1,4 +1,8 @@
+.env
 node_modules/
 .npm-cache/
 .wrangler/
 .d1-migration-tmp/
+debthin_workers/
+database/*.sqlite
+database/*.json

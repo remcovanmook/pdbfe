@@ -1,37 +1,53 @@
 #!/usr/bin/env bash
-# migrate-to-d1.sh — Populate a Cloudflare D1 database from the local PeeringDB SQLite snapshot.
+# migrate-to-d1.sh — Populate a Cloudflare D1 database from PeeringDB JSON dumps.
+#
+# Reads entity JSON files from database/ (downloaded from the PeeringDB API),
+# converts them to INSERT statements via json_to_sql.py, and bulk-loads into D1.
 #
 # Prerequisites:
 #   - wrangler CLI installed and authenticated
-#   - database/peeringdb.sqlite3 present (via peeringdb-py)
 #   - D1 database already created (wrangler d1 create peeringdb)
+#   - python3 available
+#   - JSON files in database/ (download with --fetch, or manually via curl)
 #
 # Usage:
-#   ./database/migrate-to-d1.sh [--remote]
+#   ./database/migrate-to-d1.sh [--remote] [--fetch]
 #
-# Without --remote, operates against the local D1 dev database.
-# With --remote, pushes to the production D1 database.
+# --remote   Push to production D1 (default: local dev database)
+# --fetch    Download fresh JSON from the PeeringDB API before importing.
+#            Requires PEERINGDB_API_KEY in .env or environment.
 
 set -euo pipefail
 
+# Work around root-owned files in ~/.npm by using a local cache
+export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$(cd "$(dirname "$0")/.." && pwd)/workers/.npm-cache}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SQLITE_DB="$SCRIPT_DIR/peeringdb.sqlite3"
+
+# Source .env from repo root if present (contains PEERINGDB_API_KEY)
+if [[ -f "$REPO_ROOT/.env" ]]; then
+    set -a; source "$REPO_ROOT/.env"; set +a
+fi
 SCHEMA_SQL="$SCRIPT_DIR/schema.sql"
 WRANGLER_CONFIG="$REPO_ROOT/workers/wrangler.toml"
+API_BASE="https://www.peeringdb.com/api"
+JSON_TO_SQL="$SCRIPT_DIR/json_to_sql.py"
 
+# Parse flags
 REMOTE_FLAG=""
-if [[ "${1:-}" == "--remote" ]]; then
-    REMOTE_FLAG="--remote"
+DO_FETCH=false
+for arg in "$@"; do
+    case "$arg" in
+        --remote) REMOTE_FLAG="--remote" ;;
+        --fetch)  DO_FETCH=true ;;
+    esac
+done
+
+if [[ -n "$REMOTE_FLAG" ]]; then
     echo "==> Operating against PRODUCTION D1 database"
 else
     echo "==> Operating against LOCAL D1 dev database"
-fi
-
-if [[ ! -f "$SQLITE_DB" ]]; then
-    echo "ERROR: SQLite database not found at $SQLITE_DB"
-    echo "Run 'peeringdb update' first to create the local snapshot."
-    exit 1
 fi
 
 if [[ ! -f "$WRANGLER_CONFIG" ]]; then
@@ -39,22 +55,22 @@ if [[ ! -f "$WRANGLER_CONFIG" ]]; then
     exit 1
 fi
 
-# Tables to export, ordered by foreign key dependencies (parents first).
-TABLES=(
-    peeringdb_organization
-    peeringdb_campus
-    peeringdb_facility
-    peeringdb_carrier
-    peeringdb_ix
-    peeringdb_ixlan
-    peeringdb_ixlan_prefix
-    peeringdb_network
-    peeringdb_network_contact
-    peeringdb_network_facility
-    peeringdb_network_ixlan
-    peeringdb_ix_facility
-    peeringdb_ix_carrier_facility
-)
+TMPDIR_EXPORT="$REPO_ROOT/.d1-migration-tmp"
+mkdir -p "$TMPDIR_EXPORT"
+trap 'rm -rf "$TMPDIR_EXPORT"' EXIT
+
+# ── API auth ──────────────────────────────────────────────────────────────────
+
+if [[ -z "${PEERINGDB_API_KEY:-}" ]]; then
+    CURL_AUTH=()
+    if $DO_FETCH; then
+        echo "WARNING: PEERINGDB_API_KEY not set. Downloads may be rate-limited." >&2
+    fi
+else
+    CURL_AUTH=(-H "Authorization: Api-Key ${PEERINGDB_API_KEY}")
+fi
+
+# ── Apply schema ──────────────────────────────────────────────────────────────
 
 echo "==> Applying schema..."
 npx wrangler d1 execute peeringdb \
@@ -62,20 +78,49 @@ npx wrangler d1 execute peeringdb \
     $REMOTE_FLAG \
     --file "$SCHEMA_SQL"
 
-# Export and import each table. sqlite3 .dump produces INSERT statements
-# but also includes CREATE TABLE which we skip (schema already applied).
-# We use .mode insert to get pure INSERT statements.
-TMPDIR_EXPORT="$REPO_ROOT/.d1-migration-tmp"
-mkdir -p "$TMPDIR_EXPORT"
-trap 'rm -rf "$TMPDIR_EXPORT"' EXIT
+# ── Entity definitions ────────────────────────────────────────────────────────
+# tag:table — columns are auto-detected from the JSON file by json_to_sql.py
 
-for TABLE in "${TABLES[@]}"; do
-    echo "==> Exporting $TABLE..."
+ENTITIES=(
+    "org:peeringdb_organization"
+    "campus:peeringdb_campus"
+    "fac:peeringdb_facility"
+    "carrier:peeringdb_carrier"
+    "ix:peeringdb_ix"
+    "ixlan:peeringdb_ixlan"
+    "ixpfx:peeringdb_ixlan_prefix"
+    "net:peeringdb_network"
+    "poc:peeringdb_network_contact"
+    "netfac:peeringdb_network_facility"
+    "netixlan:peeringdb_network_ixlan"
+    "ixfac:peeringdb_ix_facility"
+    "carrierfac:peeringdb_ix_carrier_facility"
+)
+
+# ── Download and import each entity ──────────────────────────────────────────
+
+for ENTITY_DEF in "${ENTITIES[@]}"; do
+    IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
+
+    JSON_FILE="$SCRIPT_DIR/${TAG}.json"
+
+    # Optionally fetch fresh data from the API
+    if $DO_FETCH; then
+        echo "==> Fetching $TAG from API..."
+        curl -sf --retry 3 --retry-delay 5 --max-time 120 \
+            "${CURL_AUTH[@]}" \
+            "${API_BASE}/${TAG}?depth=0" -o "$JSON_FILE"
+    fi
+
+    if [[ ! -f "$JSON_FILE" ]]; then
+        echo "ERROR: $JSON_FILE not found. Run with --fetch or download manually."
+        exit 1
+    fi
+
     EXPORT_FILE="$TMPDIR_EXPORT/${TABLE}.sql"
 
-    # Use sqlite3 to generate INSERT statements.
-    # Split into batches of 500 rows to stay within D1 statement limits.
-    sqlite3 "$SQLITE_DB" ".mode insert $TABLE" "SELECT * FROM $TABLE;" > "$EXPORT_FILE"
+    echo "==> Importing $TAG..."
+    python3 "$JSON_TO_SQL" "$JSON_FILE" "$TABLE" > "$EXPORT_FILE"
 
     ROW_COUNT=$(wc -l < "$EXPORT_FILE" | tr -d ' ')
     echo "    $ROW_COUNT rows"
@@ -85,7 +130,7 @@ for TABLE in "${TABLES[@]}"; do
         continue
     fi
 
-    # Split into batches of 500 lines
+    # Split into batches of 500 lines and import
     BATCH_DIR="$TMPDIR_EXPORT/${TABLE}_batches"
     mkdir -p "$BATCH_DIR"
     split -l 500 "$EXPORT_FILE" "$BATCH_DIR/batch_"
@@ -101,22 +146,22 @@ for TABLE in "${TABLES[@]}"; do
     done
 done
 
-# Populate _sync_meta with current timestamps
+# ── Populate _sync_meta ──────────────────────────────────────────────────────
+
 echo "==> Populating _sync_meta..."
-SYNC_TS=$(date +%s)
-SYNC_SQL=""
-for TABLE in "${TABLES[@]}"; do
-    # Map table name to API entity tag
-    ENTITY="${TABLE#peeringdb_}"
-    ROW_COUNT=$(sqlite3 "$SQLITE_DB" "SELECT COUNT(*) FROM $TABLE;")
-    SYNC_SQL="${SYNC_SQL}INSERT OR REPLACE INTO _sync_meta (entity, last_sync, row_count, updated_at) VALUES ('${ENTITY}', ${SYNC_TS}, ${ROW_COUNT}, datetime('now'));
-"
+SYNC_FILE="$TMPDIR_EXPORT/sync_meta.sql"
+> "$SYNC_FILE"
+
+for ENTITY_DEF in "${ENTITIES[@]}"; do
+    IFS=':' read -r TAG TABLE _ <<< "$ENTITY_DEF"
+    JSON_FILE="$SCRIPT_DIR/${TAG}.json"
+    ROW_COUNT=$(python3 -c "import json; print(len(json.load(open('$JSON_FILE')).get('data',[])))")
+    echo "INSERT OR REPLACE INTO _sync_meta (entity, last_sync, row_count, updated_at) VALUES ('${TAG}', strftime('%s','now'), ${ROW_COUNT}, datetime('now'));" >> "$SYNC_FILE"
 done
 
-echo "$SYNC_SQL" > "$TMPDIR_EXPORT/sync_meta.sql"
 npx wrangler d1 execute peeringdb \
     --config "$WRANGLER_CONFIG" \
     $REMOTE_FLAG \
-    --file "$TMPDIR_EXPORT/sync_meta.sql"
+    --file "$SYNC_FILE"
 
 echo "==> Migration complete."
