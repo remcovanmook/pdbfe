@@ -7,6 +7,12 @@
  *           Uint8Array and serves — zero V8 object allocations per row.
  *   depth>0 (cold path): D1 returns individual rows, expanded with
  *           relationship sets in V8, then JSON.stringify'd and cached.
+ *
+ * Cache stampede prevention:
+ *   All three handlers (list, detail, as_set) coalesce concurrent cache-miss
+ *   requests for the same cache key via cache.pending. The first request
+ *   creates the D1 fetch Promise; subsequent requests await the same Promise.
+ *   This prevents N identical D1 queries when a popular key expires.
  */
 
 import { ENTITIES } from '../entities.js';
@@ -18,11 +24,13 @@ import { normaliseCacheKey } from '../../core/utils.js';
 
 const _encoder = new TextEncoder();
 
+/** @type {Uint8Array} */
+const EMPTY_ENVELOPE = _encoder.encode('{"data":[],"meta":{}}');
+
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
- * Checks the per-entity LRU cache first. On miss, dispatches to
- * either the zero-allocation JSON path (depth=0) or the row-expansion
- * path (depth>0).
+ * Checks the per-entity LRU cache first. On miss, coalesces concurrent
+ * requests for the same key before dispatching to D1.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
@@ -42,46 +50,53 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const now = Date.now();
 
-    // Check cache
+    // L1 cache check
     const cached = cache.get(cacheKey);
     if (cached && (now - cached.addedAt) < LIST_TTL) {
         return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
     }
 
-    /** @type {Uint8Array} */
-    let buf;
-    /** @type {number} */
-    let rowCount = 0;
+    // Coalesce concurrent misses for the same key
+    let fetchPromise = cache.pending.get(cacheKey);
 
-    if (opts.depth > 0) {
-        // Cold path: row-level query → V8 expansion → JSON.stringify
-        const { sql, params } = buildRowQuery(entity, filters, opts);
-        const result = await env.PDB.prepare(sql).bind(...params).all();
-        const rows = result.results || [];
-        rowCount = rows.length;
+    if (!fetchPromise) {
+        fetchPromise = (async () => {
+            /** @type {Uint8Array} */
+            let buf;
+            let rowCount = 0;
 
-        for (const row of rows) { parseJsonFields(row); }
-        await expandDepth(env.PDB, entity, rows, opts.depth);
+            if (opts.depth > 0) {
+                // Cold path: row-level query → V8 expansion → JSON.stringify
+                const { sql, params } = buildRowQuery(entity, filters, opts);
+                const result = await env.PDB.prepare(sql).bind(...params).all();
+                const rows = result.results || [];
+                rowCount = rows.length;
 
-        buf = encodeJSON({ data: rows, meta: {} });
-    } else {
-        // Hot path: D1 returns the full JSON envelope as a single string.
-        // No JSON.parse, no row iteration, no JSON.stringify.
-        const { sql, params } = buildJsonQuery(entity, filters, opts);
-        const result = await env.PDB.prepare(sql).bind(...params).first();
+                for (const row of rows) { parseJsonFields(row); }
+                await expandDepth(env.PDB, entity, rows, opts.depth);
+                buf = encodeJSON({ data: rows, meta: {} });
+            } else {
+                // Hot path: D1 returns the full JSON envelope as a single string
+                const { sql, params } = buildJsonQuery(entity, filters, opts);
+                const result = await env.PDB.prepare(sql).bind(...params).first();
 
-        if (!result || !result.payload) {
-            buf = _encoder.encode('{"data":[],"meta":{}}');
-        } else {
-            buf = _encoder.encode(/** @type {string} */(result.payload));
-            // Estimate row count from payload for pre-fetch decision.
-            // Counting commas between }{ is cheaper than JSON.parse.
-            rowCount = countRows(/** @type {string} */(result.payload));
-        }
+                if (!result || !result.payload) {
+                    buf = EMPTY_ENVELOPE;
+                } else {
+                    buf = _encoder.encode(/** @type {string} */(result.payload));
+                    rowCount = countRows(/** @type {string} */(result.payload));
+                }
+            }
+
+            cache.add(cacheKey, buf, { entityTag }, Date.now());
+            return { buf, rowCount };
+        })();
+
+        cache.pending.set(cacheKey, fetchPromise);
+        fetchPromise.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
 
-    // Store in cache
-    cache.add(cacheKey, buf, { entityTag }, now);
+    const { buf, rowCount } = await fetchPromise;
 
     // Pre-fetch next page in background if paginated
     if (rowCount > 0) {
@@ -90,9 +105,9 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
             const nextOpts = { ...opts, limit: nextPage.limit, skip: nextPage.skip };
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
-                const prefetchPromise = prefetchPage(env, entity, entityTag, filters, nextOpts, nextCacheKey, cache, opts.depth > 0);
-                cache.pending.set(nextCacheKey, prefetchPromise);
-                ctx.waitUntil(prefetchPromise.finally(() => cache.pending.delete(nextCacheKey)));
+                const pfPromise = prefetchPage(env, entity, entityTag, filters, nextOpts, nextCacheKey, cache, opts.depth > 0);
+                cache.pending.set(nextCacheKey, pfPromise);
+                ctx.waitUntil(pfPromise.finally(() => cache.pending.delete(nextCacheKey)));
             }
         }
     }
@@ -103,6 +118,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
 /**
  * Handles a detail request for a single entity (GET /api/{entity}/{id}).
  * Uses the zero-allocation path for depth=0, row expansion for depth>0.
+ * Coalesces concurrent misses for the same key.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
@@ -123,46 +139,61 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const now = Date.now();
 
-    // Check cache
+    // L1 cache check
     const cached = cache.get(cacheKey);
     if (cached && (now - cached.addedAt) < DETAIL_TTL) {
         return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
     }
 
-    /** @type {Uint8Array} */
-    let buf;
+    // Coalesce concurrent misses
+    let fetchPromise = cache.pending.get(cacheKey);
 
-    if (opts.depth > 0) {
-        const { sql, params } = buildRowQuery(entity, filters, opts, id);
-        const result = await env.PDB.prepare(sql).bind(...params).all();
-        const rows = result.results || [];
+    if (!fetchPromise) {
+        fetchPromise = (async () => {
+            /** @type {Uint8Array|null} */
+            let buf = null;
 
-        if (rows.length === 0) {
-            return jsonError(404, `${entityTag} with id ${id} not found`);
-        }
+            if (opts.depth > 0) {
+                const { sql, params } = buildRowQuery(entity, filters, opts, id);
+                const result = await env.PDB.prepare(sql).bind(...params).all();
+                const rows = result.results || [];
 
-        for (const row of rows) { parseJsonFields(row); }
-        await expandDepth(env.PDB, entity, rows, opts.depth);
+                if (rows.length === 0) return { buf: null, rowCount: 0 };
 
-        buf = encodeJSON({ data: rows, meta: {} });
-    } else {
-        const { sql, params } = buildJsonQuery(entity, filters, opts, id);
-        const result = await env.PDB.prepare(sql).bind(...params).first();
+                for (const row of rows) { parseJsonFields(row); }
+                await expandDepth(env.PDB, entity, rows, opts.depth);
+                buf = encodeJSON({ data: rows, meta: {} });
+            } else {
+                const { sql, params } = buildJsonQuery(entity, filters, opts, id);
+                const result = await env.PDB.prepare(sql).bind(...params).first();
 
-        if (!result || !result.payload || result.payload === '{"data":[],"meta":{}}') {
-            return jsonError(404, `${entityTag} with id ${id} not found`);
-        }
+                if (!result || !result.payload || result.payload === '{"data":[],"meta":{}}') {
+                    return { buf: null, rowCount: 0 };
+                }
+                buf = _encoder.encode(/** @type {string} */(result.payload));
+            }
 
-        buf = _encoder.encode(/** @type {string} */(result.payload));
+            cache.add(cacheKey, buf, { entityTag }, Date.now());
+            return { buf, rowCount: 1 };
+        })();
+
+        cache.pending.set(cacheKey, fetchPromise);
+        fetchPromise.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
 
-    cache.add(cacheKey, buf, { entityTag }, now);
+    const { buf } = await fetchPromise;
+
+    if (!buf) {
+        return jsonError(404, `${entityTag} with id ${id} not found`);
+    }
+
     return serveJSON(request, buf, { isCached: false, hits: 0 });
 }
 
 /**
  * Handles the special /api/as_set/{asn} endpoint.
  * Looks up a network by ASN and returns its irr_as_set field.
+ * Coalesces concurrent misses for the same ASN.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
@@ -179,17 +210,33 @@ export async function handleAsSet(request, env, asn) {
         return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
     }
 
-    // Use json_object for the as_set endpoint too — single-row, no array needed
-    const result = await env.PDB.prepare(
-        `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
-    ).bind(asn).first();
+    // Coalesce concurrent misses
+    let fetchPromise = cache.pending.get(cacheKey);
 
-    if (!result || !result.payload) {
-        return jsonError(404, `No network found for ASN ${asn}`);
+    if (!fetchPromise) {
+        fetchPromise = (async () => {
+            const result = await env.PDB.prepare(
+                `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
+            ).bind(asn).first();
+
+            if (!result || !result.payload) {
+                return { buf: null };
+            }
+
+            const buf = _encoder.encode(/** @type {string} */(result.payload));
+            cache.add(cacheKey, buf, { entityTag: "as_set" }, Date.now());
+            return { buf };
+        })();
+
+        cache.pending.set(cacheKey, fetchPromise);
+        fetchPromise.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
 
-    const buf = _encoder.encode(/** @type {string} */(result.payload));
-    cache.add(cacheKey, buf, { entityTag: "as_set" }, now);
+    const { buf } = await fetchPromise;
+
+    if (!buf) {
+        return jsonError(404, `No network found for ASN ${asn}`);
+    }
 
     return serveJSON(request, buf, { isCached: false, hits: 0 });
 }
@@ -235,7 +282,6 @@ function parseJsonFields(row) {
  * @returns {number} Estimated row count.
  */
 function countRows(payload) {
-    // Find the opening [ of the data array
     const start = payload.indexOf('[');
     const end = payload.lastIndexOf(']');
     if (start === -1 || end === -1 || end <= start + 1) return 0;
@@ -285,7 +331,7 @@ async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cac
             const result = await env.PDB.prepare(sql).bind(...params).first();
 
             if (!result || !result.payload) {
-                buf = _encoder.encode('{"data":[],"meta":{}}');
+                buf = EMPTY_ENVELOPE;
             } else {
                 buf = _encoder.encode(/** @type {string} */(result.payload));
             }
