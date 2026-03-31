@@ -142,4 +142,89 @@ describe("expandDepth", () => {
         assert.deepEqual(rows[1].netfac_set, []);
         assert.deepEqual(rows[2].netfac_set, [20]);
     });
+
+    it("should expand depth=2 with full child objects", async () => {
+        const { db } = mockD1({
+            peeringdb_network_facility: [
+                { id: 100, net_id: 1, name: "Equinix DC1", city: "Ashburn", fac_id: 55, local_asn: 13335, created: "2024-01-01", updated: "2024-01-01", status: "ok" },
+                { id: 101, net_id: 1, name: "Equinix DC2", city: "Chicago", fac_id: 56, local_asn: 13335, created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+            ],
+            peeringdb_network_contact: [
+                { id: 200, net_id: 1, role: "Abuse", visible: "Users", name: "NOC", phone: "+1", email: "noc@test.net", url: "", created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+            ]
+        });
+
+        const rows = [{ id: 1, name: "Test Net" }];
+        await expandDepth(db, NET_ENTITY, rows, 2);
+
+        // Should have full objects, not just IDs
+        assert.equal(rows[0].netfac_set.length, 2);
+        assert.equal(typeof rows[0].netfac_set[0], "object");
+        assert.equal(rows[0].netfac_set[0].id, 100);
+        assert.equal(rows[0].netfac_set[0].name, "Equinix DC1");
+        assert.equal(rows[0].netfac_set[0].city, "Ashburn");
+
+        // FK column (net_id) should be excluded from child objects
+        assert.equal(rows[0].netfac_set[0].net_id, undefined);
+        assert.equal(rows[0].netfac_set[1].net_id, undefined);
+
+        // poc_set should have full objects too
+        assert.equal(rows[0].poc_set.length, 1);
+        assert.equal(rows[0].poc_set[0].role, "Abuse");
+        assert.equal(rows[0].poc_set[0].net_id, undefined);
+    });
+
+    it("depth=2 should parse JSON-stored TEXT columns in children", async () => {
+        const { db } = mockD1({
+            peeringdb_network_facility: [
+                { id: 100, net_id: 1, name: "DC1", social_media: '[{"service":"website","identifier":"https://dc1.example"}]', created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+            ],
+            peeringdb_network_contact: []
+        });
+
+        const rows = [{ id: 1, name: "Test Net" }];
+        await expandDepth(db, NET_ENTITY, rows, 2);
+
+        // social_media should be parsed from JSON string to array
+        const fac = rows[0].netfac_set[0];
+        assert.ok(Array.isArray(fac.social_media), "social_media should be parsed to array");
+        assert.equal(fac.social_media[0].service, "website");
+    });
+
+    it("depth=2 should return empty arrays when no children", async () => {
+        const { db } = mockD1({
+            peeringdb_network_facility: [],
+            peeringdb_network_contact: []
+        });
+
+        const rows = [{ id: 1, name: "Test Net" }];
+        await expandDepth(db, NET_ENTITY, rows, 2);
+
+        assert.deepEqual(rows[0].netfac_set, []);
+        assert.deepEqual(rows[0].poc_set, []);
+    });
+
+    it("depth=2 should handle multiple parents correctly", async () => {
+        const { db } = mockD1({
+            peeringdb_network_facility: [
+                { id: 10, net_id: 1, name: "DC-A", status: "ok" },
+                { id: 20, net_id: 3, name: "DC-B", status: "ok" }
+            ],
+            peeringdb_network_contact: []
+        });
+
+        const rows = [
+            { id: 1, name: "A" },
+            { id: 2, name: "B" },
+            { id: 3, name: "C" }
+        ];
+
+        await expandDepth(db, NET_ENTITY, rows, 2);
+
+        assert.equal(rows[0].netfac_set.length, 1);
+        assert.equal(rows[0].netfac_set[0].name, "DC-A");
+        assert.deepEqual(rows[1].netfac_set, []);
+        assert.equal(rows[2].netfac_set.length, 1);
+        assert.equal(rows[2].netfac_set[0].name, "DC-B");
+    });
 });
