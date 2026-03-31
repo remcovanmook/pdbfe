@@ -1,0 +1,131 @@
+/**
+ * @fileoverview History API router for the PeeringDB frontend SPA.
+ * Intercepts link clicks with [data-link] attributes and dispatches
+ * to the appropriate page renderer via registered route patterns.
+ */
+
+/**
+ * @typedef {Object} Route
+ * @property {RegExp} pattern - URL pattern to match.
+ * @property {function(Record<string, string>): Promise<void>} handler - Page renderer.
+ */
+
+/** @type {Route[]} */
+const _routes = [];
+
+/** @type {HTMLElement|null} */
+let _appContainer = null;
+
+/**
+ * Registers a route pattern and its handler.
+ *
+ * Pattern uses named groups: e.g. "/net/:id" becomes /^\/net\/(?<id>[^/]+)\/?$/
+ *
+ * @param {string} pattern - URL pattern with :param placeholders.
+ * @param {function(Record<string, string>): Promise<void>} handler - Async page renderer.
+ */
+export function addRoute(pattern, handler) {
+    // Convert "/net/:id" to regex with named capture groups
+    const regexStr = pattern
+        .replace(/:[a-zA-Z]+/g, (match) => {
+            const name = match.slice(1);
+            return `(?<${name}>[^/]+)`;
+        });
+    _routes.push({
+        pattern: new RegExp(`^${regexStr}\\/?$`),
+        handler
+    });
+}
+
+/**
+ * Initialises the router. Attaches popstate and click listeners,
+ * then renders the current URL.
+ *
+ * @param {HTMLElement} appContainer - The DOM element to render pages into.
+ */
+export function initRouter(appContainer) {
+    _appContainer = appContainer;
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', () => {
+        dispatch(window.location.pathname + window.location.search);
+    });
+
+    // Intercept clicks on [data-link] anchors for SPA navigation
+    document.addEventListener('click', (e) => {
+        const link = /** @type {HTMLElement|null} */ (e.target)?.closest('[data-link]');
+        if (!link) return;
+
+        e.preventDefault();
+        const href = link.getAttribute('href');
+        if (href && href !== window.location.pathname) {
+            navigate(href);
+        }
+    });
+
+    // Render current URL on load
+    dispatch(window.location.pathname + window.location.search);
+}
+
+/**
+ * Navigates to a new path, pushing it to the browser history.
+ *
+ * @param {string} path - The URL path to navigate to.
+ */
+export function navigate(path) {
+    window.history.pushState(null, '', path);
+    dispatch(path);
+}
+
+/**
+ * Matches the given path against registered routes and calls the
+ * appropriate handler. Shows a 404 message for unmatched routes.
+ *
+ * @param {string} fullPath - The URL path + search string.
+ */
+async function dispatch(fullPath) {
+    if (!_appContainer) return;
+
+    const [path, search] = fullPath.split('?');
+
+    // Parse search params into a plain object
+    /** @type {Record<string, string>} */
+    const queryParams = {};
+    if (search) {
+        for (const [k, v] of new URLSearchParams(search)) {
+            queryParams[k] = v;
+        }
+    }
+
+    for (const route of _routes) {
+        const match = path.match(route.pattern);
+        if (match) {
+            // Merge named groups and query params
+            const params = { ...match.groups, ...queryParams };
+
+            // Page transition
+            _appContainer.classList.remove('page-active');
+            _appContainer.classList.add('page-enter');
+
+            window.scrollTo(0, 0);
+
+            try {
+                await route.handler(params);
+            } catch (err) {
+                console.error('Route handler error:', err);
+                _appContainer.innerHTML = `<div class="error-message">Failed to load page: ${err.message}</div>`;
+            }
+
+            // Trigger enter transition
+            requestAnimationFrame(() => {
+                _appContainer.classList.remove('page-enter');
+                _appContainer.classList.add('page-active');
+            });
+            return;
+        }
+    }
+
+    // No route matched
+    _appContainer.innerHTML = `<div class="empty-state">Page not found</div>`;
+    document.title = 'Not Found — PeeringDB';
+}
