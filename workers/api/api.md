@@ -26,7 +26,7 @@ api/index.js (router)
 ├── core/http.js          (serveJSON, handlePreflight, jsonError, encodeJSON)
 ├── core/utils.js         (parseURL, parseQueryFilters, normaliseCacheKey)
 ├── api/handlers/index.js (handleList, handleDetail, handleAsSet, handleNotImplemented)
-│   ├── api/query.js      (buildQuery, nextPageParams)
+│   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
 │   ├── api/depth.js      (expandDepth)
 │   ├── api/cache.js      (getEntityCache, getCacheStats, purgeAllCaches)
 │   └── api/entities.js   (ENTITIES, ENTITY_TAGS, WRITABLE_TAGS)
@@ -49,9 +49,17 @@ Each entity type gets its own LRU cache instance. This prevents heavy traffic on
 
 Total: 76 MB. Remaining ~52 MB is available for working memory and a future pre-cooked answer cache.
 
-### Raw JSON Byte Forwarding
+### Raw JSON Byte Forwarding (Zero-Allocation Hot Path)
 
-D1 query results are JSON-encoded **once** into a `Uint8Array` via `encodeJSON()`, then stored in the LRU cache. On cache hits, the stored bytes are forwarded directly to the client as the `Response` body — no `JSON.parse` / `JSON.stringify` round-trip.
+For `depth=0` queries (the common case), JSON construction is pushed down to SQLite. `buildJsonQuery` wraps the SELECT in `json_group_array(json_object(...))`, making D1 return the complete `{"data":[...],"meta":{}}` envelope as a single string. The worker calls `TextEncoder.encode()` on this string and caches the resulting `Uint8Array`. No `JSON.parse`, no row iteration, no `JSON.stringify` — zero transient V8 heap objects per row.
+
+JSON-stored TEXT columns (`social_media`, `info_types`, `available_voltage_services`) are unwrapped with SQLite's `json()` function to prevent double-escaping.
+
+For `depth>0` queries, the handler falls back to `buildRowQuery` (traditional row-level SELECT), expands relationship sets in V8, then calls `encodeJSON()` (one-time `JSON.stringify`). This cold path is cached identically.
+
+### Cache Stampede Protection
+
+All three handlers coalesce concurrent cache-miss requests via the `cache.pending` map. When a popular key expires and N requests arrive before the D1 query resolves, only the first request creates the fetch Promise — the remaining N-1 await the same Promise. The pending entry is cleaned up via `.finally()` regardless of success or failure.
 
 ### SWR Pre-fetch
 
@@ -67,8 +75,15 @@ Every response gets a weak ETag generated via DJB2 hash of the payload bytes. Cl
 
 ## Query Builder
 
-`api/query.js` translates PeeringDB filter syntax to parameterised D1 SQL:
+`api/query.js` provides two query paths sharing common filter/pagination logic:
 
+### `buildJsonQuery()` (depth=0)
+Wraps the SELECT in `json_group_array(json_object(...))` returning a single string. Used on the hot path where no V8-side row processing is needed.
+
+### `buildRowQuery()` (depth>0)
+Traditional SELECT returning individual rows for V8-side depth expansion.
+
+### Shared filter logic (`buildWherePagination()`)
 - All user input goes through prepared statement `?` bindings
 - Filters are validated against the entity's declared filter fields (whitelisted from the OpenAPI spec)
 - Unknown fields and operators are silently ignored (matching upstream PeeringDB behaviour)
@@ -80,9 +95,8 @@ Every response gets a weak ETag generated via DJB2 hash of the payload bytes. Cl
 
 `api/depth.js` handles the `_set` field expansion:
 
-- **depth=0**: Sets omitted (cheapest, default)
-- **depth=1**: Each `_set` field contains an array of child IDs. Uses a single batched `IN` query per relationship across all parent rows (not per row).
-- **depth=2**: (Phase 2) Full child objects.
+- **depth=0**: No expansion (hot path, D1 returns complete JSON envelope)
+- **depth=1**: Each `_set` field contains an array of child IDs. Uses a single batched `IN` query per relationship across all parent rows (falls back to `buildRowQuery` path).
 
 ## CORS
 

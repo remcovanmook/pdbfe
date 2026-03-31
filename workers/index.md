@@ -17,18 +17,24 @@ The foundation layer. Contains generic, reusable components that have zero knowl
 The primary traffic handler serving read-only PeeringDB API responses.
 
 - **`index.js`**: Top-level router. Validates requests, dispatches to admin endpoints, CORS preflight, entity handlers, or returns 501 for write methods.
-- **`handlers/index.js`**: Route handlers for list, detail, AS set, and 501 Not Implemented responses. Implements the L1 cache → pending check → D1 query → encode → cache → serve flow. Fires SWR pre-fetch for paginated next pages via `ctx.waitUntil()`.
+- **`handlers/index.js`**: Route handlers for list, detail, AS set, and 501 Not Implemented. Two code paths based on depth:
+  - **depth=0 (hot)**: `buildJsonQuery` → D1 returns pre-formatted JSON envelope string → `TextEncoder.encode()` → cache → serve. Zero V8 object allocations per row.
+  - **depth>0 (cold)**: `buildRowQuery` → V8 row expansion → `JSON.stringify` → cache → serve.
+  - **Stampede protection**: All handlers coalesce concurrent cache-miss requests via `cache.pending`. N requests for the same expired key = 1 D1 query.
+  - **SWR pre-fetch**: Paginated next pages fetched in background via `ctx.waitUntil()`.
 - **`entities.js`**: Single source of truth for all 13 PeeringDB entity types. Maps API tags to D1 table names, column lists, allowed filter fields, and relationship definitions for depth expansion.
-- **`query.js`**: SQL query builder translating `__lt`, `__gt`, `__contains`, `__startswith`, `__in` filter syntax to parameterised D1 queries. Validates against entity whitelists.
-- **`depth.js`**: Depth expansion for `_set` fields. depth=0 is a no-op 1 returns child IDs via batched IN queries. depth=2 is Phase 2.
+- **`query.js`**: Dual query builder:
+  - `buildJsonQuery()` — wraps SELECT in `json_group_array(json_object(...))` returning the full JSON envelope as a single D1 string. JSON-stored columns (`social_media`, `info_types`, `available_voltage_services`) are unwrapped with SQLite `json()` to prevent double-escaping.
+  - `buildRowQuery()` — traditional SELECT returning individual rows (for depth>0 expansion).
+  - Both share `buildWherePagination()` for filter/pagination SQL construction.
+- **`depth.js`**: Depth expansion for `_set` fields. depth=0 is a no-op; depth=1 returns child IDs via batched IN queries.
 - **`cache.js`**: Creates and configures 14 per-entity LRU cache instances across three tiers (1024/256/128 slots). Exposes `getCacheStats()`, `purgeAllCaches()`, `purgeEntityCache()`.
 
-## 3. Sync Domain (`workers/sync/`) — Phase 2
-Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger.
+## 3. Sync Domain (`workers/sync/`)
+Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min). Deployed at `https://pdbfe-sync.remco-vanmook.workers.dev`.
 
-- **`index.js`**: Exports `{ scheduled }` handler. Reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>` per entity, UPSERTs into D1.
-- **`entities.js`**: Entity-to-table mapping with UPSERT SQL generation and type coercion.
-- **`sync.md`**: Architecture documentation for the delta sync strategy.
+- **`index.js`**: Exports `{ scheduled, fetch }` handlers. Cron reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>&depth=0` per entity, UPSERTs active rows via `INSERT OR REPLACE`, deletes rows with `status='deleted'`. Batches in groups of 50 to stay within D1 limits. HTTP endpoints for manual control (`GET /sync/status`, `POST /sync/trigger`).
+- **`entities.js`**: Re-exports entity definitions from `api/entities.js` (no duplication).
 
 ## 4. Tests (`workers/tests/`)
 
