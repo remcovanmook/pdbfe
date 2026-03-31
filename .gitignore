@@ -1,0 +1,4 @@
+node_modules/
+.npm-cache/
+.wrangler/
+.d1-migration-tmp/

@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/unit/*.test.js",
+    "test:integration": "node --test tests/test_api.js"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260318.0",
+    "typescript": "^5.8.2"
+  }
+}
