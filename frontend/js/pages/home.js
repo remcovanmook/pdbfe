@@ -7,6 +7,7 @@
 
 import { fetchList, fetchCount } from '../api.js';
 import { linkEntity, formatDate, escapeHTML, renderLoading } from '../render.js';
+import { attachTypeahead } from '../typeahead.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -50,14 +51,9 @@ export async function renderHome(_params) {
         <div id="global-stats"></div>
     `;
 
-    // Homepage search triggers navigation
+    // Homepage search: typeahead with Enter fallback to /search
     const input = /** @type {HTMLInputElement} */ (document.getElementById('home-search-input'));
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && input.value.trim()) {
-            const { navigate } = /** @type {any} */ (window).__router;
-            navigate(`/search?q=${encodeURIComponent(input.value.trim())}`);
-        }
-    });
+    attachTypeahead(input);
 
     // Fetch recent updates and stats in parallel
     await Promise.all([

@@ -8,7 +8,7 @@ import { fetchEntity } from '../api.js';
 import {
     renderField, renderFieldGroup, renderTableCard,
     renderLoading, renderError, renderBool,
-    linkEntity, formatSpeed, escapeHTML,
+    linkEntity, formatSpeed, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
@@ -32,6 +32,10 @@ export async function renderNet(params) {
         }
 
         document.title = `${net.name} (AS${net.asn}) — PeeringDB`;
+        setOGTags(
+            `${net.name} (AS${net.asn})`,
+            `${net.info_type || 'Network'} — ${net.policy_general || 'Peering policy not listed'}`
+        );
 
         const sidebar = buildSidebar(net);
         const tables = buildTables(net);

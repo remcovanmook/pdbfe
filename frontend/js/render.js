@@ -251,6 +251,39 @@ export function escapeHTML(str) {
 }
 
 /**
+ * Updates the OpenGraph meta tags in the document head.
+ * Creates tags if they don't exist. This only affects client-side
+ * rendering — bots that don't execute JS won't see these.
+ *
+ * @param {string} title - Page title for og:title.
+ * @param {string} description - Page description for og:description.
+ */
+export function setOGTags(title, description) {
+    setMetaProperty('og:title', title);
+    setMetaProperty('og:description', description);
+    setMetaProperty('og:url', window.location.href);
+}
+
+/**
+ * Sets a single `<meta property="...">` tag's content attribute.
+ * Creates the tag if it doesn't exist.
+ *
+ * @param {string} property - The meta property name (e.g. "og:title").
+ * @param {string} content - The content value.
+ */
+function setMetaProperty(property, content) {
+    let meta = /** @type {HTMLMetaElement|null} */ (
+        document.querySelector(`meta[property="${property}"]`)
+    );
+    if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute('property', property);
+        document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', content);
+}
+
+/**
  * Sorts a table body by the given column index and direction.
  * Used by both the initial default sort and click-triggered sorts.
  *
