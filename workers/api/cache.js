@@ -134,3 +134,18 @@ export function purgeEntityCache(tag) {
         caches[tag].purge();
     }
 }
+
+/**
+ * Normalises a cache key from a URL path and query string.
+ * Sorts query parameters alphabetically to ensure that identical
+ * queries with different parameter orderings hit the same cache slot.
+ *
+ * @param {string} path - The URL path (e.g. "api/net").
+ * @param {string} queryString - Raw query string without leading '?'.
+ * @returns {string} Normalised cache key.
+ */
+export function normaliseCacheKey(path, queryString) {
+    if (!queryString) return path;
+    const sorted = queryString.split("&").sort().join("&");
+    return `${path}?${sorted}`;
+}

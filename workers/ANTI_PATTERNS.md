@@ -62,12 +62,13 @@ The `Uint8Array` stored in the LRU cache is the *same reference* served to every
 *  **Forbidden:** Modifying the buffer returned by `cache.get(key).buf`.
 *  **Use:** If you need to modify response data, create a new buffer.
 
-### 9. Bypassing the D1 Semaphore
-All D1 queries must go through `dbSemaphore.acquire()` / `release()`. The semaphore limits concurrent D1 queries to 4 per isolate to prevent SQLite lock contention when multiple unique-key cache misses arrive simultaneously.
+### 9. Querying D1 Outside `cachedQuery()`
+All D1 queries in handlers must flow through `cachedQuery()` (pipeline.js), which owns both promise coalescing (cache stampede prevention) and the semaphore `acquire()`/`release()` lifecycle within a single `try/finally`.
 
-*  **Forbidden:** Calling `env.PDB.prepare(...).bind(...).all()` without wrapping in `acquire()`/`release()`.
-*  **Required flow:** `await dbSemaphore.acquire()` → `try { D1 query } finally { dbSemaphore.release() }`.
-*  **Danger:** Forgetting `finally` creates a deadlock — the slot is never released and all future queries on that isolate hang.
+*  **Forbidden:** Calling `env.PDB.prepare(...).bind(...).all()` directly in handler code without going through `cachedQuery()`.
+*  **Forbidden:** Manually manipulating `cache.pending` (`.get()`, `.set()`, `.delete()`). Coalescing is internal to `cachedQuery()`.
+*  **Required flow:** Pass a `queryFn` closure to `cachedQuery()`. The closure runs inside the semaphore — do not acquire additional slots within it (nested acquisition risks deadlock).
+*  **Exception:** `depth.js` child-set queries run inside a `queryFn` closure and share the parent's semaphore slot. This is correct — do not add a second `acquire()` call inside `expandDepth`.
 
 ### 10. Awaiting L2 Cache Writes
 `putL2()` writes to the per-PoP Cache API. These writes are fire-and-forget — the response should not block on them.

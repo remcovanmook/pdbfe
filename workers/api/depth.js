@@ -7,7 +7,7 @@
  * to avoid N+1 patterns.
  */
 
-import { ENTITIES } from './entities.js';
+import { ENTITIES, JSON_STORED_COLUMNS } from './entities.js';
 
 /**
  * Reverse lookup: maps a D1 table name to the EntityMeta tag.
@@ -21,13 +21,6 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
     TABLE_TO_TAG.set(meta.table, tag);
 }
 
-/**
- * Columns that store JSON arrays/objects as TEXT in D1.
- * Must be JSON.parse'd when returning full child objects at depth=2.
- *
- * @type {Set<string>}
- */
-const JSON_COLS = new Set(["social_media", "info_types", "available_voltage_services"]);
 
 /**
  * Expands _set fields on an array of result rows based on the
@@ -204,7 +197,7 @@ async function expandDepthTwo(db, entity, rows) {
                 delete child[rel.fk];
 
                 // Parse JSON-stored TEXT columns
-                for (const col of JSON_COLS) {
+                for (const col of JSON_STORED_COLUMNS) {
                     if (typeof child[col] === "string" && child[col]) {
                         try { child[col] = JSON.parse(child[col]); } catch { /* keep as string */ }
                     }
