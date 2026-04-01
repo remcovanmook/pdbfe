@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildQuery, nextPageParams } from '../../api/query.js';
+import { buildQuery, buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../api/query.js';
 
 // Minimal entity metadata for testing
 const NET_ENTITY = {
@@ -179,5 +179,94 @@ describe("nextPageParams", () => {
     it("should use 250 as effective limit when depth > 0 and no explicit limit", () => {
         const result = nextPageParams([], { depth: 1, limit: 0, skip: 0, since: 0 }, 250);
         assert.deepEqual(result, { limit: 250, skip: 250 });
+    });
+});
+
+// Entity with joinColumns for testing JOIN query generation
+const NETIXLAN_ENTITY = {
+    tag: "netixlan",
+    table: "peeringdb_network_ixlan",
+    columns: ["id", "net_id", "ix_id", "name", "asn", "speed", "status"],
+    joinColumns: [{
+        table: "peeringdb_network",
+        localFk: "net_id",
+        columns: { name: "net_name" }
+    }],
+    filters: {
+        id: "number",
+        net_id: "number",
+        ix_id: "number",
+        asn: "number",
+        status: "string"
+    },
+    relationships: []
+};
+
+describe("buildRowQuery with joinColumns", () => {
+    it("should generate LEFT JOIN and aliased SELECT columns", () => {
+        const result = buildRowQuery(NETIXLAN_ENTITY, [], { depth: 0, limit: 10, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('LEFT JOIN "peeringdb_network" AS j0'));
+        assert.ok(result.sql.includes('ON t."net_id" = j0."id"'));
+        assert.ok(result.sql.includes('j0."name" AS "net_name"'));
+        assert.ok(result.sql.includes('FROM "peeringdb_network_ixlan" AS t'));
+        assert.ok(result.sql.includes('ORDER BY t."id" ASC'));
+    });
+
+    it("should qualify WHERE filters with table alias", () => {
+        const filters = [{ field: "ix_id", op: "eq", value: "26" }];
+        const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('t."ix_id" = ?'));
+        assert.deepEqual(result.params, [26]);
+    });
+
+    it("should qualify single ID fetch with table alias", () => {
+        const result = buildRowQuery(NETIXLAN_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 }, 42);
+        assert.ok(result.sql.includes('t."id" = ?'));
+        assert.deepEqual(result.params, [42]);
+    });
+
+    it("should qualify IN filter with table alias", () => {
+        const filters = [{ field: "asn", op: "in", value: "13335,8075" }];
+        const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('t."asn" IN (?, ?)'));
+        assert.deepEqual(result.params, [13335, 8075]);
+    });
+});
+
+describe("buildJsonQuery with joinColumns", () => {
+    it("should generate subquery with JOIN and outer json_object", () => {
+        const result = buildJsonQuery(NETIXLAN_ENTITY, [], { depth: 0, limit: 5, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('json_group_array'));
+        assert.ok(result.sql.includes('json_object'));
+        assert.ok(result.sql.includes('LEFT JOIN "peeringdb_network"'));
+        assert.ok(result.sql.includes('"net_name"'));
+        assert.ok(result.sql.includes('AS payload'));
+    });
+});
+
+describe("buildCountQuery", () => {
+    it("should generate COUNT(*) query without pagination", () => {
+        const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.equal(result.sql, 'SELECT COUNT(*) AS cnt FROM "peeringdb_network"');
+        assert.deepEqual(result.params, []);
+    });
+
+    it("should apply filters to COUNT query", () => {
+        const filters = [{ field: "status", op: "eq", value: "ok" }];
+        const result = buildCountQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('WHERE "status" = ?'));
+        assert.deepEqual(result.params, ["ok"]);
+    });
+
+    it("should apply since filter to COUNT query", () => {
+        const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 1700000000 });
+        assert.ok(result.sql.includes('"updated" >= datetime(?,'));
+        assert.deepEqual(result.params, [1700000000]);
+    });
+
+    it("should ignore pagination in COUNT query", () => {
+        const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 50, skip: 10, since: 0 });
+        assert.ok(!result.sql.includes('LIMIT'));
+        assert.ok(!result.sql.includes('OFFSET'));
     });
 });

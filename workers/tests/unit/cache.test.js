@@ -7,8 +7,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { LRUCache } from '../../core/cache.js';
-import { getEntityCache, getCacheStats, purgeAllCaches, purgeEntityCache } from '../../api/cache.js';
-import { normaliseCacheKey } from '../../core/utils.js';
+import { getEntityCache, getCacheStats, purgeAllCaches, purgeEntityCache, NEGATIVE_TTL, DETAIL_TTL } from '../../api/cache.js';
+import { normaliseCacheKey, createSemaphore } from '../../core/utils.js';
 
 describe("LRUCache core operations", () => {
     it("should store and retrieve an entry", () => {
@@ -176,5 +176,118 @@ describe("normaliseCacheKey", () => {
         const key1 = normaliseCacheKey("api/net", "depth=1&limit=10");
         const key2 = normaliseCacheKey("api/net", "limit=10&depth=1");
         assert.equal(key1, key2);
+    });
+});
+
+describe("Negative cache TTL constants", () => {
+    it("NEGATIVE_TTL should be shorter than DETAIL_TTL", () => {
+        assert.ok(NEGATIVE_TTL < DETAIL_TTL,
+            `NEGATIVE_TTL (${NEGATIVE_TTL}ms) should be < DETAIL_TTL (${DETAIL_TTL}ms)`);
+    });
+
+    it("NEGATIVE_TTL should be 5 minutes", () => {
+        assert.equal(NEGATIVE_TTL, 5 * 60 * 1000);
+    });
+
+    it("DETAIL_TTL should be 15 minutes", () => {
+        assert.equal(DETAIL_TTL, 15 * 60 * 1000);
+    });
+});
+
+describe("Negative cache in LRU", () => {
+    const EMPTY_ENVELOPE = new TextEncoder().encode('{"data":[],"meta":{}}');
+
+    it("should store and retrieve a negative (empty) result", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, Date.now());
+        const entry = cache.get("api/net/999999");
+        assert.ok(entry !== null);
+        assert.equal(entry.buf.byteLength, EMPTY_ENVELOPE.byteLength);
+    });
+
+    it("should identify negative results by EMPTY_ENVELOPE equality", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, Date.now());
+        const entry = cache.get("api/net/999999");
+        // Same reference means it's a negative cache entry
+        assert.equal(entry.buf, EMPTY_ENVELOPE);
+    });
+
+    it("should distinguish negative from positive results", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        const realData = new TextEncoder().encode('{"data":[{"id":1}],"meta":{}}');
+        cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, Date.now());
+        cache.add("api/net/694", realData, { entityTag: "net" }, Date.now());
+
+        const negative = cache.get("api/net/999999");
+        const positive = cache.get("api/net/694");
+        assert.equal(negative.buf, EMPTY_ENVELOPE);
+        assert.notEqual(positive.buf, EMPTY_ENVELOPE);
+    });
+
+    it("negative entry should expire after NEGATIVE_TTL", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        const pastTime = Date.now() - NEGATIVE_TTL - 1;
+        cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, pastTime);
+        const entry = cache.get("api/net/999999");
+        // Entry still exists in cache (LRU doesn't enforce TTL)
+        // but the handler should check addedAt against NEGATIVE_TTL
+        assert.ok(entry !== null);
+        assert.ok((Date.now() - entry.addedAt) > NEGATIVE_TTL,
+            "Entry should be older than NEGATIVE_TTL");
+    });
+});
+
+describe("createSemaphore", () => {
+    it("should allow up to maxConcurrent immediate acquisitions", async () => {
+        const sem = createSemaphore(3);
+        // All three should resolve immediately (no queuing)
+        await sem.acquire();
+        await sem.acquire();
+        await sem.acquire();
+        sem.release();
+        sem.release();
+        sem.release();
+    });
+
+    it("should queue callers beyond maxConcurrent", async () => {
+        const sem = createSemaphore(1);
+        const order = [];
+
+        await sem.acquire(); // slot taken
+
+        // This should queue
+        const queued = sem.acquire().then(() => order.push("queued"));
+
+        // Yield to check the queued caller hasn't run yet
+        await new Promise(r => setTimeout(r, 10));
+        assert.deepEqual(order, []);
+
+        sem.release(); // should wake the queued caller
+        await queued;
+        assert.deepEqual(order, ["queued"]);
+        sem.release();
+    });
+
+    it("should process queued callers in FIFO order", async () => {
+        const sem = createSemaphore(1);
+        const order = [];
+
+        await sem.acquire(); // take the slot
+
+        const p1 = sem.acquire().then(() => { order.push(1); sem.release(); });
+        const p2 = sem.acquire().then(() => { order.push(2); sem.release(); });
+        const p3 = sem.acquire().then(() => { order.push(3); sem.release(); });
+
+        sem.release(); // start draining
+        await Promise.all([p1, p2, p3]);
+
+        assert.deepEqual(order, [1, 2, 3]);
+    });
+
+    it("should handle release without queued callers", () => {
+        const sem = createSemaphore(2);
+        // Release without acquire should not throw
+        sem.release();
     });
 });

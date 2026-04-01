@@ -31,6 +31,22 @@ export const LIST_TTL = 5 * 60 * 1000;
 export const DETAIL_TTL = 15 * 60 * 1000;
 
 /**
+ * TTL for count responses (15 minutes).
+ * Counts are eventually consistent — they change slowly enough
+ * that a longer TTL is acceptable.
+ * @type {number}
+ */
+export const COUNT_TTL = 15 * 60 * 1000;
+
+/**
+ * TTL for negative (404) responses (5 minutes).
+ * Shorter than detail TTL since entities can be created at any time.
+ * Prevents repeated D1 queries for the same non-existent ID.
+ * @type {number}
+ */
+export const NEGATIVE_TTL = 5 * 60 * 1000;
+
+/**
  * Cache tier configuration. Entities not listed here default to the
  * light tier (128 slots, 2 MB).
  *
