@@ -16,9 +16,9 @@
  */
 
 import { ENTITIES } from '../entities.js';
-import { buildJsonQuery, buildRowQuery, nextPageParams } from '../query.js';
+import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { getEntityCache, LIST_TTL, DETAIL_TTL } from '../cache.js';
+import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL } from '../cache.js';
 import { encodeJSON, serveJSON, jsonError } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/utils.js';
 
@@ -45,6 +45,11 @@ const EMPTY_ENVELOPE = _encoder.encode('{"data":[],"meta":{}}');
 export async function handleList(request, env, ctx, entityTag, filters, opts, rawPath, queryString) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
+
+    // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
+    if (opts.limit === 0 && opts.skip === 0) {
+        return handleCount(request, env, entity, entityTag, filters, opts, rawPath, queryString);
+    }
 
     const cache = getEntityCache(entityTag);
     const cacheKey = normaliseCacheKey(rawPath, queryString);
@@ -253,6 +258,60 @@ export function handleNotImplemented(method, path) {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Handles count requests (limit=0, skip=0).
+ * Tries to derive count from a cached unfiltered list response first.
+ * Falls back to SELECT COUNT(*) with any applied filters.
+ * Caches the count envelope with COUNT_TTL (15 min).
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {string} entityTag - Entity tag.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Query options.
+ * @param {string} rawPath - Original URL path.
+ * @param {string} queryString - Original query string.
+ * @returns {Promise<Response>} JSON response with count in meta.
+ */
+async function handleCount(request, env, entity, entityTag, filters, opts, rawPath, queryString) {
+    const cache = getEntityCache(entityTag);
+    const cacheKey = normaliseCacheKey(rawPath, queryString);
+    const now = Date.now();
+
+    // Check if the count itself is cached
+    const cached = cache.get(cacheKey);
+    if (cached && (now - cached.addedAt) < COUNT_TTL) {
+        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+    }
+
+    // Try to derive count from a cached unfiltered list for this entity.
+    // Only possible when there are no user-supplied filters and no since param.
+    let count = -1;
+    if (filters.length === 0 && opts.since === 0) {
+        const listKey = normaliseCacheKey(rawPath, '');
+        const listCached = cache.get(listKey);
+        if (listCached && listCached.buf) {
+            // Decode the cached Uint8Array to string and scan for row count
+            const payload = new TextDecoder().decode(/** @type {Uint8Array} */(/** @type {unknown} */(listCached.buf)));
+            count = countRows(payload);
+        }
+    }
+
+    // Fall back to COUNT(*) query
+    if (count < 0) {
+        const { sql, params } = buildCountQuery(entity, filters, opts);
+        const result = await env.PDB.prepare(sql).bind(...params).first();
+        count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
+    }
+
+    const buf = _encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
+    cache.add(cacheKey, buf, { entityTag }, Date.now());
+
+    return serveJSON(request, buf, { isCached: false, hits: 0 });
+}
+
 
 /**
  * Parses JSON-stored TEXT columns back to native arrays/objects.

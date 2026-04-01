@@ -383,27 +383,37 @@ a:hover {
 .stats-bar {
     display: flex;
     gap: var(--space-lg);
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-lg);
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    margin-bottom: var(--space-lg);
+    margin-top: var(--space-xl);
+    justify-content: center;
 }
 
-.stats-bar__item {
+.stat-card {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 4px;
+    min-width: 120px;
+    padding: var(--space-sm) var(--space-lg);
 }
 
-.stats-bar__value {
+.stat-card__icon {
     font-size: 1.25rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.stat-card__value {
+    font-size: 1.375rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--accent);
 }
 
-.stats-bar__label {
+.stat-card__label {
     font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -525,6 +535,43 @@ a:hover {
     border-color: var(--accent);
 }
 
+/* ── Table pagination ─────────────────────────────────────────── */
+
+.table-paging {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-lg);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.table-paging__btn {
+    padding: var(--space-xs) var(--space-md);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.table-paging__btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.table-paging__btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.table-paging__info {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
 /* ── Homepage grid ─────────────────────────────────────────────── */
 
 .home-search {

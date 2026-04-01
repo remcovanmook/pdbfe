@@ -1,11 +1,19 @@
 /**
  * @fileoverview Entity metadata registry for all PeeringDB API entity types.
  * Maps API endpoint tags to D1 table names, column lists, allowed filter
- * fields, and relationship definitions for depth expansion.
+ * fields, relationship definitions for depth expansion, and JOIN
+ * definitions for cross-entity name resolution.
  *
  * This module is the single source of truth for what the API exposes.
  * Adding a new entity type means adding an entry here — the router,
  * query builder, and depth expander all consume this registry.
+ *
+ * JOIN columns (joinColumns) mirror the upstream Django ORM's
+ * select_related() annotations. They appear in two places:
+ *   - On entity definitions: applied by the query builder for direct
+ *     list/detail queries (e.g. GET /api/netixlan?ix_id=26).
+ *   - On relationship definitions: applied by the depth expander for
+ *     child set expansion (e.g. GET /api/fac/1?depth=2 → netfac_set).
  */
 
 /**
@@ -99,8 +107,26 @@ export const ENTITIES = {
             status: "string", created: "datetime", updated: "datetime"
         },
         relationships: [
-            { field: "netfac_set", table: "peeringdb_network_facility", fk: "fac_id" },
-            { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "fac_id" }
+            {
+                field: "netfac_set",
+                table: "peeringdb_network_facility",
+                fk: "fac_id",
+                joinColumns: [{
+                    table: "peeringdb_network",
+                    localFk: "net_id",
+                    columns: { name: "net_name", asn: "net_asn" }
+                }]
+            },
+            {
+                field: "ixfac_set",
+                table: "peeringdb_ix_facility",
+                fk: "fac_id",
+                joinColumns: [{
+                    table: "peeringdb_ix",
+                    localFk: "ix_id",
+                    columns: { name: "ix_name" }
+                }]
+            }
         ]
     },
 
@@ -178,6 +204,12 @@ export const ENTITIES = {
             "net_id", "fac_id", "local_asn",
             "created", "updated", "status"
         ],
+        /** Resolve network name/ASN for netfac records queried directly. */
+        joinColumns: [{
+            table: "peeringdb_network",
+            localFk: "net_id",
+            columns: { name: "net_name", asn: "net_asn" }
+        }],
         filters: {
             id: "number", net_id: "number", fac_id: "number",
             status: "string", created: "datetime", updated: "datetime"
@@ -196,9 +228,15 @@ export const ENTITIES = {
             "net_side_id", "ix_side_id",
             "created", "updated", "status"
         ],
+        /** Resolve network name for netixlan records queried directly (e.g. IX peer table). */
+        joinColumns: [{
+            table: "peeringdb_network",
+            localFk: "net_id",
+            columns: { name: "net_name" }
+        }],
         filters: {
             id: "number", net_id: "number", ixlan_id: "number",
-            asn: "number", speed: "number",
+            ix_id: "number", asn: "number", speed: "number",
             ipaddr4: "string", ipaddr6: "string",
             is_rs_peer: "boolean", operational: "boolean",
             status: "string", created: "datetime", updated: "datetime"
@@ -263,6 +301,12 @@ export const ENTITIES = {
             "ix_id", "fac_id",
             "created", "updated", "status"
         ],
+        /** Resolve IX name for ixfac records queried directly. */
+        joinColumns: [{
+            table: "peeringdb_ix",
+            localFk: "ix_id",
+            columns: { name: "ix_name" }
+        }],
         filters: {
             id: "number", ix_id: "number", fac_id: "number",
             status: "string", created: "datetime", updated: "datetime"

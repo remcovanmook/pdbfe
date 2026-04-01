@@ -58,6 +58,19 @@ interface LocalCache {
 // ── Entity Metadata Types ────────────────────────────────────────────────────
 
 /**
+ * Defines a LEFT JOIN for resolving cross-entity names on junction
+ * table records. Mirrors the upstream Django ORM's select_related().
+ */
+interface JoinColumnDef {
+    /** D1 table name to JOIN (e.g. "peeringdb_network"). */
+    table: string;
+    /** FK column on the source table that points to the JOINed table's id. */
+    localFk: string;
+    /** Map of source column → alias in the output (e.g. { name: "net_name" }). */
+    columns: Record<string, string>;
+}
+
+/**
  * Describes a relationship between a parent entity and a child set.
  * Used for depth expansion (depth=1 returns IDs, depth=2 returns objects).
  */
@@ -68,6 +81,8 @@ interface EntityRelationship {
     table: string;
     /** The foreign key column in the child table pointing back to the parent. */
     fk: string;
+    /** Optional JOIN definitions for cross-entity name resolution in depth=2. */
+    joinColumns?: JoinColumnDef[];
 }
 
 /**
@@ -84,7 +99,10 @@ interface EntityMeta {
     filters: Record<string, 'string' | 'number' | 'boolean' | 'datetime'>;
     /** Relationship definitions for depth expansion. */
     relationships: EntityRelationship[];
+    /** Optional JOIN definitions for direct list/detail queries. */
+    joinColumns?: JoinColumnDef[];
 }
+
 
 // ── Query Builder Types ──────────────────────────────────────────────────────
 

@@ -4,6 +4,8 @@
  * states, and formatting values commonly found in PeeringDB data.
  */
 
+import { renderMarkdown } from './markdown.js';
+
 /**
  * Creates an internal SPA link element.
  *
@@ -27,6 +29,7 @@ export function linkEntity(type, id, label) {
  * @param {boolean} [opts.external] - Open link in new tab.
  * @param {string} [opts.linkType] - Entity type for SPA link.
  * @param {number|string} [opts.linkId] - Entity ID for SPA link.
+ * @param {boolean} [opts.markdown] - Render value as markdown.
  * @returns {string} HTML string.
  */
 export function renderField(label, value, opts = {}) {
@@ -34,7 +37,13 @@ export function renderField(label, value, opts = {}) {
         return '';
     }
 
-    let valueHTML = escapeHTML(String(value));
+    let valueHTML;
+
+    if (opts.markdown) {
+        valueHTML = renderMarkdown(String(value));
+    } else {
+        valueHTML = escapeHTML(String(value));
+    }
 
     if (opts.linkType && opts.linkId) {
         valueHTML = linkEntity(opts.linkType, opts.linkId, String(value));
@@ -67,7 +76,8 @@ export function renderFieldGroup(title, fields) {
 }
 
 /**
- * Renders a sortable data table inside a card container.
+ * Renders a sortable, paginated data table inside a card container.
+ * Tables with more than PAGE_SIZE rows get prev/next page controls.
  *
  * @param {Object} opts - Table options.
  * @param {string} opts.title - Card header title.
@@ -76,11 +86,14 @@ export function renderFieldGroup(title, fields) {
  * @param {function(any, {key: string}): string} opts.cellRenderer - Returns HTML for a cell.
  * @param {boolean} [opts.filterable] - Show a filter input.
  * @param {string} [opts.filterPlaceholder] - Placeholder text for filter input.
+ * @param {number} [opts.pageSize] - Rows per page (default: PAGE_SIZE).
  * @returns {string} HTML string for the table card.
  */
 export function renderTableCard(opts) {
     const { title, columns, rows, cellRenderer, filterable, filterPlaceholder } = opts;
     const count = rows.length;
+    const pageSize = opts.pageSize || PAGE_SIZE;
+    const needsPaging = count > pageSize;
 
     const filterHTML = filterable
         ? `<div class="table-filter">
@@ -99,6 +112,14 @@ export function renderTableCard(opts) {
         return `<tr>${cells}</tr>`;
     }).join('');
 
+    const pagingHTML = needsPaging
+        ? `<div class="table-paging" data-page-size="${pageSize}">
+               <button class="table-paging__btn" data-page-prev disabled>&larr; Prev</button>
+               <span class="table-paging__info">Page <span data-page-num>1</span> of <span data-page-total>${Math.ceil(count / pageSize)}</span></span>
+               <button class="table-paging__btn" data-page-next>Next &rarr;</button>
+           </div>`
+        : '';
+
     return `<div class="card">
         <div class="card__header">
             <span class="card__title">${escapeHTML(title)}</span>
@@ -113,8 +134,12 @@ export function renderTableCard(opts) {
                 <tbody>${bodyHTML}</tbody>
             </table>
         </div>
+        ${pagingHTML}
     </div>`;
 }
+
+/** Default number of rows per page in data tables. */
+const PAGE_SIZE = 50;
 
 /**
  * Renders a loading spinner.
@@ -219,8 +244,89 @@ export function escapeHTML(str) {
 }
 
 /**
+ * Sorts a table body by the given column index and direction.
+ * Used by both the initial default sort and click-triggered sorts.
+ *
+ * @param {HTMLElement} tbody - Table body element.
+ * @param {number} colIdx - Column index to sort by.
+ * @param {string} direction - "asc" or "desc".
+ */
+function sortTable(tbody, colIdx, direction) {
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+        const aVal = a.children[colIdx]?.textContent?.trim() || '';
+        const bVal = b.children[colIdx]?.textContent?.trim() || '';
+
+        const aNum = Number(aVal);
+        const bNum = Number(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return direction === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+
+        return direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+    });
+
+    for (const row of rows) {
+        tbody.appendChild(row);
+    }
+}
+
+/**
+ * Applies pagination visibility to table rows.
+ * Shows only the rows for the given page, hides the rest.
+ * Respects filter state — hidden-by-filter rows are skipped.
+ *
+ * @param {HTMLElement} card - Card element containing the table and paging controls.
+ * @param {number} page - 1-indexed page number.
+ */
+function applyPage(card, page) {
+    const tbody = card.querySelector('tbody');
+    const pagingDiv = card.querySelector('.table-paging');
+    if (!tbody || !pagingDiv) return;
+
+    const pageSize = parseInt(pagingDiv.getAttribute('data-page-size') || '50', 10);
+    const allRows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Only count visible (not filtered-out) rows
+    const visibleRows = allRows.filter(r =>
+        /** @type {HTMLElement} */ (r).style.display !== 'none' ||
+        /** @type {HTMLElement} */ (r).dataset.filteredOut !== '1'
+    );
+
+    const totalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+    const safePage = Math.max(1, Math.min(page, totalPages));
+    const start = (safePage - 1) * pageSize;
+    const end = start + pageSize;
+
+    // Show/hide based on page position
+    let visIdx = 0;
+    for (const row of allRows) {
+        const el = /** @type {HTMLElement} */ (row);
+        if (el.dataset.filteredOut === '1') continue;
+        el.style.display = (visIdx >= start && visIdx < end) ? '' : 'none';
+        visIdx++;
+    }
+
+    // Update controls
+    const numSpan = pagingDiv.querySelector('[data-page-num]');
+    const totalSpan = pagingDiv.querySelector('[data-page-total]');
+    const prevBtn = /** @type {HTMLButtonElement} */ (pagingDiv.querySelector('[data-page-prev]'));
+    const nextBtn = /** @type {HTMLButtonElement} */ (pagingDiv.querySelector('[data-page-next]'));
+
+    if (numSpan) numSpan.textContent = String(safePage);
+    if (totalSpan) totalSpan.textContent = String(totalPages);
+    if (prevBtn) prevBtn.disabled = safePage <= 1;
+    if (nextBtn) nextBtn.disabled = safePage >= totalPages;
+
+    pagingDiv.setAttribute('data-current-page', String(safePage));
+}
+
+/**
  * Attaches client-side sorting to all [data-sortable] tables within
  * a container element. Click a <th> to toggle asc/desc sort on that column.
+ * Automatically sorts the first column ascending on initial render.
  *
  * @param {HTMLElement} container - DOM element containing the tables.
  */
@@ -230,6 +336,8 @@ export function attachTableSort(container) {
         const tbody = table.querySelector('tbody');
         if (!thead || !tbody) continue;
 
+        const card = table.closest('.card');
+
         thead.addEventListener('click', (e) => {
             const th = /** @type {HTMLElement|null} */ (e.target)?.closest('th');
             if (!th) return;
@@ -238,32 +346,52 @@ export function attachTableSort(container) {
             const currentDir = th.getAttribute('data-sort-dir');
             const newDir = currentDir === 'asc' ? 'desc' : 'asc';
 
-            // Clear all sort indicators
             for (const h of thead.querySelectorAll('th')) {
                 h.removeAttribute('data-sort-dir');
             }
             th.setAttribute('data-sort-dir', newDir);
 
-            // Sort rows
-            const rows = Array.from(tbody.querySelectorAll('tr'));
-            rows.sort((a, b) => {
-                const aVal = a.children[idx]?.textContent?.trim() || '';
-                const bVal = b.children[idx]?.textContent?.trim() || '';
+            sortTable(/** @type {HTMLElement} */ (tbody), idx, newDir);
 
-                // Try numeric sort first
-                const aNum = Number(aVal);
-                const bNum = Number(bVal);
-                if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return newDir === 'asc' ? aNum - bNum : bNum - aNum;
-                }
+            // Reset to page 1 after re-sort
+            if (card?.querySelector('.table-paging')) {
+                applyPage(/** @type {HTMLElement} */ (card), 1);
+            }
+        });
 
-                return newDir === 'asc'
-                    ? aVal.localeCompare(bVal)
-                    : bVal.localeCompare(aVal);
-            });
+        // Default sort: first column ascending
+        const firstTh = thead.querySelector('th');
+        if (firstTh) {
+            firstTh.setAttribute('data-sort-dir', 'asc');
+            sortTable(/** @type {HTMLElement} */ (tbody), 0, 'asc');
+        }
 
-            for (const row of rows) {
-                tbody.appendChild(row);
+        // Apply initial pagination
+        if (card?.querySelector('.table-paging')) {
+            applyPage(/** @type {HTMLElement} */ (card), 1);
+        }
+    }
+}
+
+/**
+ * Attaches click handlers to pagination prev/next buttons.
+ *
+ * @param {HTMLElement} container - DOM element containing paging controls.
+ */
+export function attachTablePaging(container) {
+    for (const pagingDiv of container.querySelectorAll('.table-paging')) {
+        const card = /** @type {HTMLElement} */ (pagingDiv.closest('.card'));
+        if (!card) continue;
+
+        pagingDiv.addEventListener('click', (e) => {
+            const btn = /** @type {HTMLElement|null} */ (e.target)?.closest('button');
+            if (!btn) return;
+
+            const current = parseInt(pagingDiv.getAttribute('data-current-page') || '1', 10);
+            if (btn.hasAttribute('data-page-prev')) {
+                applyPage(card, current - 1);
+            } else if (btn.hasAttribute('data-page-next')) {
+                applyPage(card, current + 1);
             }
         });
     }

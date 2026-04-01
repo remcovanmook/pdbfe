@@ -125,6 +125,19 @@ export async function fetchIxPeers(ixId) {
 }
 
 /**
+ * Fetches the total count of entities for a given type.
+ * Uses the limit=0 API convention which returns
+ * { data: [], meta: { count: N } }.
+ *
+ * @param {string} type - Entity type (e.g. "net", "ix", "fac", "org").
+ * @returns {Promise<number>} Total entity count.
+ */
+export async function fetchCount(type) {
+    const result = await cachedFetch(`/api/${type}`, { limit: 0 });
+    return result?.meta?.count ?? 0;
+}
+
+/**
  * Clears the client-side response cache. Useful after navigation
  * to a page that may have stale data.
  */

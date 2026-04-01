@@ -63,6 +63,18 @@ export function initRouter(appContainer) {
         }
     });
 
+    // Ensure external links open in a new tab
+    document.addEventListener('click', (e) => {
+        const anchor = /** @type {HTMLAnchorElement|null} */ (e.target)?.closest('a');
+        if (!anchor || anchor.hasAttribute('data-link')) return;
+
+        const href = anchor.getAttribute('href') || '';
+        if (/^https?:\/\/|^mailto:/i.test(href) && !anchor.hasAttribute('target')) {
+            anchor.setAttribute('target', '_blank');
+            anchor.setAttribute('rel', 'noopener');
+        }
+    });
+
     // Render current URL on load
     dispatch(window.location.pathname + window.location.search);
 }

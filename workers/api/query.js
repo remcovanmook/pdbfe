@@ -60,6 +60,23 @@ const OPS = {
 };
 
 /**
+ * SQL clause generators for aliased column references.
+ * Unlike OPS, these accept a pre-quoted SQL column expression
+ * (e.g. t."ix_id") and a placeholder string.
+ *
+ * @type {Record<string, (col: string, ph: string) => string>}
+ */
+const OPS_SQL = {
+    eq: (col, ph) => `${col} = ${ph}`,
+    lt: (col, ph) => `${col} < ${ph}`,
+    gt: (col, ph) => `${col} > ${ph}`,
+    lte: (col, ph) => `${col} <= ${ph}`,
+    gte: (col, ph) => `${col} >= ${ph}`,
+    contains: (col, ph) => `${col} LIKE '%' || ${ph} || '%' COLLATE NOCASE`,
+    startswith: (col, ph) => `${col} LIKE ${ph} || '%' COLLATE NOCASE`,
+};
+
+/**
  * Coerces a string value to the appropriate D1 bind parameter type
  * based on the entity's declared field type. Prevents type mismatches
  * in prepared statements.
@@ -110,19 +127,59 @@ const JSON_STORED_COLS = new Set([
  * JSON arrays without double-escaping. Regular columns are passed as-is.
  *
  * @param {string[]} columns - Column names.
+ * @param {string} [prefix] - Optional table alias prefix (e.g. "t").
  * @returns {string} Comma-separated json_object argument pairs.
  */
-function jsonObjectArgs(columns) {
+function jsonObjectArgs(columns, prefix) {
+    const pfx = prefix ? `${prefix}.` : '';
     const parts = [];
     for (let i = 0; i < columns.length; i++) {
         const c = columns[i];
         if (JSON_STORED_COLS.has(c)) {
-            parts.push(`'${c}', json("${c}")`);
+            parts.push(`'${c}', json(${pfx}"${c}")`);
         } else {
-            parts.push(`'${c}', "${c}"`);
+            parts.push(`'${c}', ${pfx}"${c}"`);
         }
     }
     return parts.join(", ");
+}
+
+/**
+ * Builds LEFT JOIN clauses and SELECT column additions from
+ * joinColumns metadata. Used by both buildJsonQuery and buildRowQuery.
+ *
+ * Returns:
+ *   - joinSql: LEFT JOIN clauses
+ *   - selectCols: aliased SELECT columns (e.g. j0."name" AS "net_name")
+ *   - jsonArgs: json_object args with table-qualified refs (for flat queries)
+ *   - outerJsonArgs: json_object args with unqualified alias refs (for subquery wrappers)
+ *
+ * @param {JoinColumnDef[]} joinDefs - JOIN definitions from entity metadata.
+ * @returns {{ joinSql: string, selectCols: string[], jsonArgs: string[], outerJsonArgs: string[] }}
+ */
+function buildJoinFragments(joinDefs) {
+    const joinParts = [];
+    const selectCols = [];
+    const jsonArgs = [];
+    const outerJsonArgs = [];
+    for (let i = 0; i < joinDefs.length; i++) {
+        const j = joinDefs[i];
+        const alias = `j${i}`;
+        joinParts.push(
+            ` LEFT JOIN "${j.table}" AS ${alias} ON t."${j.localFk}" = ${alias}."id"`
+        );
+        for (const [srcCol, aliasName] of Object.entries(j.columns)) {
+            selectCols.push(`${alias}."${srcCol}" AS "${aliasName}"`);
+            jsonArgs.push(`'${aliasName}', ${alias}."${srcCol}"`);
+            outerJsonArgs.push(`'${aliasName}', "${aliasName}"`);
+        }
+    }
+    return {
+        joinSql: joinParts.join(''),
+        selectCols,
+        jsonArgs,
+        outerJsonArgs
+    };
 }
 
 /**
@@ -136,6 +193,9 @@ function jsonObjectArgs(columns) {
  * Only used for depth=0 queries. Depth>0 requires row-level expansion
  * in V8 and falls back to buildRowQuery.
  *
+ * When the entity has joinColumns, the query uses table aliasing and
+ * LEFT JOINs to resolve cross-entity names (e.g. network name on netixlan).
+ *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
@@ -143,10 +203,36 @@ function jsonObjectArgs(columns) {
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
-    const { clauses, params, pagination } = buildWherePagination(entity, filters, opts, singleId);
+    const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
+    const tableAlias = hasJoins ? 't' : '';
+    const { clauses, params, pagination } = buildWherePagination(
+        entity, filters, opts, singleId, tableAlias
+    );
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
-    const jsonCols = jsonObjectArgs(entity.columns);
 
+    if (hasJoins) {
+        const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
+            /** @type {JoinColumnDef[]} */ (entity.joinColumns)
+        );
+        // Inner subquery: SELECT base cols + joined cols with JOINs
+        const baseCols = entity.columns.map(c => `t."${c}"`).join(', ');
+        const allSelectCols = baseCols + ', ' + selectCols.join(', ');
+
+        // Outer wrapper: json_group_array wraps each row's json_object.
+        // Uses unqualified alias refs since the subquery flattens them.
+        const baseJsonArgs = jsonObjectArgs(entity.columns);
+        const allJsonArgs = baseJsonArgs + ', ' + outerJsonArgs.join(', ');
+
+        const sql =
+            `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +
+            ` FROM (SELECT ${allSelectCols}` +
+            ` FROM "${entity.table}" AS t${joinSql}${where}` +
+            ` ORDER BY t."id" ASC${pagination})`;
+
+        return { sql, params };
+    }
+
+    const jsonCols = jsonObjectArgs(entity.columns);
     const sql =
         `SELECT json_object('data',json_group_array(json_object(${jsonCols})),'meta',json_object()) AS payload` +
         ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination})`;
@@ -159,6 +245,9 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  * Used when depth>0 (rows need V8-side expansion with relationship sets)
  * and by the sync worker for row-level processing.
  *
+ * When the entity has joinColumns, the query uses table aliasing and
+ * LEFT JOINs to include cross-entity columns in the result set.
+ *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
@@ -166,10 +255,25 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
 export function buildRowQuery(entity, filters, opts, singleId = null) {
-    const { clauses, params, pagination } = buildWherePagination(entity, filters, opts, singleId);
-    const cols = entity.columns.map(c => `"${c}"`).join(", ");
+    const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
+    const tableAlias = hasJoins ? 't' : '';
+    const { clauses, params, pagination } = buildWherePagination(
+        entity, filters, opts, singleId, tableAlias
+    );
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
+    if (hasJoins) {
+        const { joinSql, selectCols } = buildJoinFragments(
+            /** @type {JoinColumnDef[]} */ (entity.joinColumns)
+        );
+        const baseCols = entity.columns.map(c => `t."${c}"`).join(", ");
+        const allCols = baseCols + ', ' + selectCols.join(', ');
+
+        const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY t."id" ASC${pagination}`;
+        return { sql, params };
+    }
+
+    const cols = entity.columns.map(c => `"${c}"`).join(", ");
     const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination}`;
     return { sql, params };
 }
@@ -189,18 +293,23 @@ export function buildQuery(entity, filters, opts, singleId = null) {
 }
 
 /**
- * Common WHERE/LIMIT/OFFSET construction shared by both query builders.
+ * Common WHERE/LIMIT/OFFSET construction shared by all query builders.
  * Validates filters against the entity's allowed fields, applies the since
  * parameter, and builds pagination clauses.
+ *
+ * When tableAlias is provided (e.g. "t"), all column references in WHERE
+ * clauses are prefixed with the alias to avoid ambiguity in JOIN queries.
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
  * @param {number|null} singleId - Single-row ID or null.
+ * @param {string} [tableAlias] - Optional table alias for column qualification.
  * @returns {{ clauses: string[], params: (string|number)[], pagination: string }}
  */
-function buildWherePagination(entity, filters, opts, singleId) {
+function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
     const { limit, skip, since } = opts;
+    const pfx = tableAlias ? `${tableAlias}.` : '';
     /** @type {string[]} */
     const clauses = [];
     /** @type {(string|number)[]} */
@@ -208,13 +317,13 @@ function buildWherePagination(entity, filters, opts, singleId) {
 
     // Single-row fetch by ID
     if (singleId !== null) {
-        clauses.push('"id" = ?');
+        clauses.push(`${pfx}"id" = ?`);
         params.push(singleId);
     }
 
     // Since filter (unix epoch seconds → ISO datetime comparison)
     if (since > 0) {
-        clauses.push('"updated" >= datetime(?, \'unixepoch\')');
+        clauses.push(`${pfx}"updated" >= datetime(?, 'unixepoch')`);
         params.push(since);
     }
 
@@ -226,18 +335,42 @@ function buildWherePagination(entity, filters, opts, singleId) {
         const opFn = OPS[f.op];
         if (!opFn) continue; // Unknown operator — ignore silently
 
+        // Qualify the column with the table alias for JOIN queries.
+        // OPS functions wrap the column in double quotes, so we pass
+        // the raw field name (OPS will produce "field") or the
+        // pre-qualified form that already includes proper quoting.
+        // When aliased: build t."field" directly, skipping OPS quoting.
+        const sqlCol = pfx ? `${pfx}"${f.field}"` : f.field;
+
         // For 'in' operator, coerce each comma-separated value
         if (f.op === "in") {
-            const result = opFn(f.field, f.value);
-            result.params = result.params.map(v => coerceValue(/** @type {string} */(v), fieldType));
-            clauses.push(result.clause);
-            params.push(...result.params);
+            if (pfx) {
+                // Build clause directly with proper quoting
+                const parts = f.value.split(",");
+                const placeholders = parts.map(() => "?").join(", ");
+                clauses.push(`${sqlCol} IN (${placeholders})`);
+                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), fieldType)));
+            } else {
+                const result = opFn(f.field, f.value);
+                result.params = result.params.map(v => coerceValue(/** @type {string} */(v), fieldType));
+                clauses.push(result.clause);
+                params.push(...result.params);
+            }
         } else {
             const coerced = coerceValue(f.value, fieldType);
-            const result = opFn(f.field, /** @type {string} */(coerced));
-            result.params = [coerced];
-            clauses.push(result.clause);
-            params.push(...result.params);
+            if (pfx) {
+                // Build clause directly with proper quoting
+                const opSql = OPS_SQL[f.op];
+                if (opSql) {
+                    clauses.push(opSql(sqlCol, '?'));
+                    params.push(coerced);
+                }
+            } else {
+                const result = opFn(f.field, /** @type {string} */(coerced));
+                result.params = [coerced];
+                clauses.push(result.clause);
+                params.push(...result.params);
+            }
         }
     }
 
@@ -262,6 +395,24 @@ function buildWherePagination(entity, filters, opts, singleId) {
     }
 
     return { clauses, params, pagination };
+}
+
+/**
+ * Builds a COUNT query for the given entity and filters.
+ * Returns the total number of matching rows without fetching data.
+ * Used when limit=0 is requested to provide entity counts.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {{depth: number, limit: number, skip: number, since: number}} opts - Only since is used.
+ * @returns {BuiltQuery} Parameterised SQL returning { cnt: number }.
+ */
+export function buildCountQuery(entity, filters, opts) {
+    // Count queries never use JOINs or pagination — just filter clauses
+    const { clauses, params } = buildWherePagination(entity, filters, opts, null);
+    const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const sql = `SELECT COUNT(*) AS cnt FROM "${entity.table}"${where}`;
+    return { sql, params };
 }
 
 /**

@@ -31,6 +31,14 @@ export const LIST_TTL = 5 * 60 * 1000;
 export const DETAIL_TTL = 15 * 60 * 1000;
 
 /**
+ * TTL for count responses (15 minutes).
+ * Counts are eventually consistent — they change slowly enough
+ * that a longer TTL is acceptable.
+ * @type {number}
+ */
+export const COUNT_TTL = 15 * 60 * 1000;
+
+/**
  * Cache tier configuration. Entities not listed here default to the
  * light tier (128 slots, 2 MB).
  *
