@@ -655,6 +655,7 @@ body[data-page="home"] .site-header__inner nav {
 }
 
 .home-search__input-wrapper {
+    position: relative;
     max-width: 600px;
     margin: 0 auto;
 }
