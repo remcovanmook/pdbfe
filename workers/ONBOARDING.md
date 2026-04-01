@@ -44,7 +44,7 @@ Before executing any D1 query for a cache miss, the system checks `cache.pending
 
 Coalescence only protects against N requests for the *same* key. When N requests arrive for N *different* keys simultaneously, N parallel D1 queries fire. SQLite can't handle arbitrary parallelism — it locks.
 
-The `dbSemaphore` (from `core/utils.js`) is an async semaphore that limits concurrent D1 queries to 4 per isolate. All D1 query sites in `handlers/index.js` are wrapped in `acquire()`/`release()` pairs with `try/finally` to prevent deadlocks on error. If all 4 slots are occupied, additional callers yield to the event loop until a slot opens.
+The `dbSemaphore` (defined in `api/pipeline.js`) is an async semaphore that limits concurrent D1 queries to 4 per isolate. It is managed exclusively inside `cachedQuery()` with a single `try/finally` block — handlers never touch it directly.
 
 ## 5. The Cache Architecture
 
@@ -99,12 +99,14 @@ We use `ctx.waitUntil()` for two purposes:
 Every API request follows this strict hierarchy:
 
 1. **L1 Warm (RAM):** Is it in the entity's LRU cache and not expired? → *Serve instantly (<1ms), raw bytes. For negative entries (EMPTY_ENVELOPE), return 404.*
-2. **Flight Check:** Is the same cache key in `cache.pending`? → *Await the in-flight promise, then re-check L1.*
-3. **L2 PoP Cache:** Is it in `caches.default` for this PoP? → *Populate L1 from L2, serve (~20ms).*
-4. **Semaphore Gate:** Acquire a `dbSemaphore` slot (max 4 per isolate). Callers beyond 4 yield.
-5. **Cold Path (D1):** Execute the parameterised SQL query against D1.
-6. **Encode & Cache:** JSON-encode once into `Uint8Array`, store in L1 + L2, release semaphore, serve.
-7. **Background:** If paginated, `waitUntil` to pre-fetch next page into cache.
+2. **`cachedQuery()` Pipeline** (pipeline.js): The handler calls `cachedQuery()` which handles everything below:
+   - **Coalesce:** Is the same cache key in `cache.pending`? → *Await the in-flight promise instead of issuing a duplicate query.*
+   - **L2 PoP Cache:** Is it in `caches.default` for this PoP? → *Populate L1 from L2, return (~20ms).*
+   - **Semaphore Gate:** Acquire a `dbSemaphore` slot (max 4 per isolate). Callers beyond 4 yield.
+   - **Cold Path (D1):** Execute the handler's `queryFn` closure against D1.
+   - **Cache Write-Back:** Store result in L1 + L2 (fire-and-forget), release semaphore, return.
+   - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
+3. **Background:** If paginated, `waitUntil` to pre-fetch next page via `cachedQuery()`.
 
 ## 7. Type Safety (The `tsc` Harness)
 

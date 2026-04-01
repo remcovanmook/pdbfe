@@ -1,7 +1,10 @@
 /**
- * @fileoverview Shared utility functions for URL parsing and query string
- * handling. Adapted from debthin core/utils.js with added query-filter
- * parsing for the PeeringDB filter syntax.
+ * @fileoverview Shared utility functions for URL parsing, query string
+ * handling, and concurrency primitives. Adapted from debthin core/utils.js
+ * with added query-filter parsing for the PeeringDB filter syntax.
+ *
+ * Cache-key normalisation lives in api/cache.js.
+ * The D1 semaphore instance lives in api/pipeline.js.
  */
 
 /**
@@ -104,29 +107,9 @@ export function parseQueryFilters(queryString) {
 }
 
 /**
- * Normalises a cache key from a URL path and query string.
- * Sorts query parameters alphabetically to ensure that identical
- * queries with different parameter orderings hit the same cache slot.
- *
- * @param {string} path - The URL path (e.g. "api/net").
- * @param {string} queryString - Raw query string without leading '?'.
- * @returns {string} Normalised cache key.
- */
-export function normaliseCacheKey(path, queryString) {
-    if (!queryString) return path;
-    const sorted = queryString.split("&").sort().join("&");
-    return `${path}?${sorted}`;
-}
-
-/**
  * Creates an asynchronous semaphore that limits the number of
  * concurrent executions. When the concurrency cap is reached,
  * callers await acquire() until a slot opens via release().
- *
- * This prevents overwhelming D1 (SQLite) with simultaneous
- * unique-key cache misses. Without it, N unique requests arriving
- * in the same tick bypass per-key coalescing and fire N parallel
- * D1 queries, causing lock contention.
  *
  * @param {number} maxConcurrent - Maximum parallel executions allowed.
  * @returns {{acquire: () => Promise<void>, release: () => void}} Semaphore handle.
@@ -165,10 +148,3 @@ export function createSemaphore(maxConcurrent) {
         }
     };
 }
-
-/**
- * Global per-isolate D1 concurrency limiter. Allows up to 4
- * concurrent D1 queries; additional callers yield to the event
- * loop until a slot opens. Shared across all handlers.
- */
-export const dbSemaphore = createSemaphore(4);
