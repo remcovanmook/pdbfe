@@ -50,12 +50,48 @@
 
     <!-- ── Footer ──────────────────────────────────────────────── -->
     <footer class="site-footer">
-        <p class="site-footer__text">
-            Data sourced from <a href="https://www.peeringdb.com" target="_blank" rel="noopener">PeeringDB</a>.
-            This is a read-only mirror.
-            <span class="site-footer__sep" aria-hidden="true">·</span>
-            <span id="sync-status" class="site-footer__sync"></span>
-        </p>
+        <div class="site-footer__grid">
+            <div class="site-footer__col">
+                <p class="site-footer__copyright">
+                    Data sourced from <a href="https://www.peeringdb.com" target="_blank" rel="noopener">PeeringDB</a>.
+                    This is a read-only mirror.
+                </p>
+                <p class="site-footer__copyright">
+                    All data is subject to the PeeringDB
+                    <a href="https://www.peeringdb.com/aup" target="_blank" rel="noopener">AUP</a>
+                    and
+                    <a href="https://docs.peeringdb.com/gov/misc/2017-04-02-PeeringDB_Privacy_Policy.pdf" target="_blank" rel="noopener">Privacy Policy</a>.
+                </p>
+                <p class="site-footer__sync-line">
+                    <span id="sync-status" class="site-footer__sync"></span>
+                </p>
+            </div>
+
+            <div class="site-footer__col">
+                <h4 class="site-footer__heading">Navigation</h4>
+                <ul class="site-footer__links">
+                    <li><a href="/about" data-link>About</a></li>
+                    <li><a href="/search?q=" data-link>Search</a></li>
+                </ul>
+            </div>
+
+            <div class="site-footer__col">
+                <h4 class="site-footer__heading">Resources</h4>
+                <ul class="site-footer__links">
+                    <li><a href="https://www.peeringdb.com/apidocs" target="_blank" rel="noopener">API Documentation</a></li>
+                    <li><a href="https://docs.peeringdb.com/faq/" target="_blank" rel="noopener">FAQ</a></li>
+                    <li><a href="https://docs.peeringdb.com/release_notes/" target="_blank" rel="noopener">Release Notes</a></li>
+                    <li><a href="https://status.peeringdb.com/" target="_blank" rel="noopener">PeeringDB Status</a></li>
+                </ul>
+            </div>
+
+            <div class="site-footer__col">
+                <h4 class="site-footer__heading">Contact</h4>
+                <ul class="site-footer__links">
+                    <li><a href="mailto:support@peeringdb.com">support@peeringdb.com</a></li>
+                </ul>
+            </div>
+        </div>
     </footer>
 
     <!-- ── Scripts ─────────────────────────────────────────────── -->

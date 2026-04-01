@@ -127,8 +127,8 @@ async function handleRequest(request, env, ctx) {
             return jsonError(404, `Unknown entity: ${entityTag}`);
         }
 
-        const { filters, depth, limit, skip, since } = parseQueryFilters(queryString);
-        return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since }, rawPath, queryString);
+        const { filters, depth, limit, skip, since, sort } = parseQueryFilters(queryString);
+        return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort }, rawPath, queryString);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -155,8 +155,8 @@ async function handleRequest(request, env, ctx) {
         return jsonError(400, `Invalid ID: ${idStr}`);
     }
 
-    const { filters, depth, limit, skip, since } = parseQueryFilters(queryString);
-    return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since }, rawPath, queryString);
+    const { filters, depth, limit, skip, since, sort } = parseQueryFilters(queryString);
+    return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort }, rawPath, queryString);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

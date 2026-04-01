@@ -1,7 +1,8 @@
 /**
  * @fileoverview Homepage renderer.
- * Shows the search box, recent updates grid (4 columns),
- * and global entity statistics.
+ * Shows the hero section with tagline and description, a search box,
+ * the 5 most recently updated entities per type (Exchanges, Networks,
+ * Facilities, Carriers), and global database statistics.
  */
 
 import { fetchList, fetchCount } from '../api.js';
@@ -20,17 +21,36 @@ export async function renderHome(_params) {
     document.title = 'PeeringDB';
 
     _app.innerHTML = `
+        <h1 class="home-heading">The Interconnection Database</h1>
         <div class="home-search">
-            <h1 class="home-search__title">Peering<span>DB</span></h1>
             <div class="home-search__input-wrapper">
                 <input type="text" class="home-search__input" placeholder="Search networks, exchanges, facilities..." id="home-search-input" autofocus>
             </div>
         </div>
-        <div id="recent-updates">${renderLoading('Loading recent updates')}</div>
+        <div class="home-top">
+            <div class="home-hero">
+                <h2 class="home-hero__tagline">Synced. Read Only. Fast.</h2>
+                <p class="home-hero__desc">
+                    This is a read-only mirror of the
+                    <a href="https://www.peeringdb.com" target="_blank" rel="noopener">PeeringDB</a>
+                    database. The data is synchronised periodically and served
+                    from edge locations for low-latency lookups. All data is
+                    subject to the PeeringDB
+                    <a href="https://www.peeringdb.com/aup" target="_blank" rel="noopener">Acceptable Use Policy</a>.
+                </p>
+                <p class="home-hero__desc">
+                    Learn more <a href="/about" data-link>about this mirror</a>.
+                </p>
+            </div>
+            <div class="home-recent">
+                <h2 class="home-recent__heading">Most Recent Updates</h2>
+                <div id="recent-updates">${renderLoading('Loading recent updates')}</div>
+            </div>
+        </div>
         <div id="global-stats"></div>
     `;
 
-    // Search triggers navigation
+    // Homepage search triggers navigation
     const input = /** @type {HTMLInputElement} */ (document.getElementById('home-search-input'));
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && input.value.trim()) {
@@ -48,34 +68,40 @@ export async function renderHome(_params) {
 
 /**
  * Fetches the 5 most recently updated entities per type and renders
- * them as a 4-column grid.
+ * them as a 4-column grid. Fetches a larger batch (100) and sorts
+ * client-side by `updated` descending to get genuinely recent entries,
+ * since the API returns results ordered by ID.
  */
 async function loadRecentUpdates() {
     const container = document.getElementById('recent-updates');
     if (!container) return;
 
     const types = [
-        { type: 'ix',  label: 'Exchanges' },
-        { type: 'net', label: 'Networks' },
-        { type: 'fac', label: 'Facilities' },
-        { type: 'org', label: 'Organizations' }
+        { type: 'ix',      label: 'Exchanges' },
+        { type: 'net',     label: 'Networks' },
+        { type: 'fac',     label: 'Facilities' },
+        { type: 'carrier', label: 'Carriers' }
     ];
 
     try {
+        // Match upstream Django query exactly:
+        //   Model.handleref.filter(status="ok").order_by("-updated")[:5]
+        // Our API now supports the sort parameter for server-side ordering.
         const results = await Promise.all(
-            types.map(t => fetchList(t.type, { limit: 5 }).catch(() => []))
+            types.map(t => fetchList(t.type, { sort: '-updated', limit: 5 }).catch(() => []))
         );
 
-        // Sort each by updated descending (API may not guarantee order)
-        for (const list of results) {
-            list.sort((a, b) => (b.updated || '').localeCompare(a.updated || ''));
-        }
-
         const columns = types.map((t, i) => {
-            const items = results[i].slice(0, 5).map(item => {
-                const name = item.name || item.org_name || `ID ${item.id}`;
+            const items = results[i].slice(0, 5).map(/** @param {any} item */ item => {
+                let displayName = item.name || item.org_name || `ID ${item.id}`;
+
+                // Show ASN in parentheses for networks
+                if (t.type === 'net' && item.asn) {
+                    displayName = `${displayName} (${item.asn})`;
+                }
+
                 return `<div class="recent-updates__item">
-                    ${linkEntity(t.type, item.id, name)}
+                    ${linkEntity(t.type, item.id, displayName)}
                     <span class="recent-updates__time">${formatDate(item.updated)}</span>
                 </div>`;
             }).join('');
@@ -93,18 +119,23 @@ async function loadRecentUpdates() {
 }
 
 /**
- * Fetches global entity counts and renders a stats bar.
- * Uses the limit=0 count endpoint for each entity type.
+ * Fetches global entity counts for all database-backed types and
+ * renders them as a statistics list matching the upstream
+ * "Global System Statistics" format.
  */
 async function loadGlobalStats() {
     const container = document.getElementById('global-stats');
     if (!container) return;
 
     const types = [
-        { type: 'net', label: 'Networks',      icon: '\u{1F310}' },
-        { type: 'ix',  label: 'Exchanges',     icon: '\u21C4' },
-        { type: 'fac', label: 'Facilities',    icon: '\u{1F3E2}' },
-        { type: 'org', label: 'Organizations', icon: '\u{1F3DB}' }
+        { type: 'ix',       label: 'Exchanges' },
+        { type: 'net',      label: 'Networks' },
+        { type: 'fac',      label: 'Facilities' },
+        { type: 'campus',   label: 'Campuses' },
+        { type: 'carrier',  label: 'Carriers' },
+        { type: 'netixlan', label: 'Connections to Exchanges' },
+        { type: 'netfac',   label: 'Connections to Facilities' },
+        { type: 'org',      label: 'Organizations' }
     ];
 
     try {
@@ -112,15 +143,18 @@ async function loadGlobalStats() {
             types.map(t => fetchCount(t.type).catch(() => 0))
         );
 
-        const cards = types.map((t, i) => `
-            <div class="stat-card">
-                <div class="stat-card__icon">${t.icon}</div>
-                <div class="stat-card__value">${counts[i].toLocaleString()}</div>
-                <div class="stat-card__label">${escapeHTML(t.label)}</div>
-            </div>
-        `).join('');
+        const items = types.map((t, i) =>
+            `<li class="global-stats__item">
+                <span class="global-stats__count">${counts[i].toLocaleString()}</span>
+                ${escapeHTML(t.label)}
+            </li>`
+        ).join('');
 
-        container.innerHTML = `<div class="stats-bar">${cards}</div>`;
+        container.innerHTML = `
+            <div class="global-stats">
+                <h3 class="global-stats__heading">Global System Statistics</h3>
+                <ul class="global-stats__list">${items}</ul>
+            </div>`;
     } catch (err) {
         // Stats are non-critical — fail silently
     }

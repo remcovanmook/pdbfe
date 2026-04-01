@@ -11,6 +11,9 @@ import { renderNet } from '/js/pages/net.js';
 import { renderIx } from '/js/pages/ix.js';
 import { renderFac } from '/js/pages/fac.js';
 import { renderOrg } from '/js/pages/org.js';
+import { renderCarrier } from '/js/pages/carrier.js';
+import { renderCampus } from '/js/pages/campus.js';
+import { renderAbout } from '/js/pages/about.js';
 import { fetchSyncStatus } from '/js/api.js';
 
 // Register routes
@@ -20,6 +23,9 @@ addRoute('/net/:id', renderNet);
 addRoute('/ix/:id', renderIx);
 addRoute('/fac/:id', renderFac);
 addRoute('/org/:id', renderOrg);
+addRoute('/carrier/:id', renderCarrier);
+addRoute('/campus/:id', renderCampus);
+addRoute('/about', renderAbout);
 
 // Expose navigate for the homepage search box
 window.__router = { navigate };
@@ -39,7 +45,14 @@ initRouter(document.getElementById('app'));
 fetchSyncStatus().then(sync => {
     const el = document.getElementById('sync-status');
     if (!el || !sync?.last_sync_at) return;
-    el.textContent = `Last synced ${formatRelativeTime(sync.last_sync_at)}`;
+
+    const then = new Date(sync.last_sync_at.replace(' ', 'T') + 'Z');
+    const diffMs = Date.now() - then.getTime();
+    const isStale = diffMs > 3 * 3600 * 1000; // >3 hours
+    const timeText = formatRelativeTime(sync.last_sync_at);
+    const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
+
+    el.innerHTML = `Last synced <span class="site-footer__sync-time${staleClass}">${timeText}</span>`;
     el.title = sync.last_sync_at;
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure
