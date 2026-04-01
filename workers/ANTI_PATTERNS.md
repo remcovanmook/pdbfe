@@ -61,3 +61,17 @@ The `Uint8Array` stored in the LRU cache is the *same reference* served to every
 
 *  **Forbidden:** Modifying the buffer returned by `cache.get(key).buf`.
 *  **Use:** If you need to modify response data, create a new buffer.
+
+### 9. Bypassing the D1 Semaphore
+All D1 queries must go through `dbSemaphore.acquire()` / `release()`. The semaphore limits concurrent D1 queries to 4 per isolate to prevent SQLite lock contention when multiple unique-key cache misses arrive simultaneously.
+
+*  **Forbidden:** Calling `env.PDB.prepare(...).bind(...).all()` without wrapping in `acquire()`/`release()`.
+*  **Required flow:** `await dbSemaphore.acquire()` → `try { D1 query } finally { dbSemaphore.release() }`.
+*  **Danger:** Forgetting `finally` creates a deadlock — the slot is never released and all future queries on that isolate hang.
+
+### 10. Awaiting L2 Cache Writes
+`putL2()` writes to the per-PoP Cache API. These writes are fire-and-forget — the response should not block on them.
+
+*  **Forbidden:** `await putL2(key, buf, ttl);` on the response path.
+*  **Use:** `putL2(key, buf, ttl);` — the returned Promise resolves in the background.
+*  *Exception:* Inside `ctx.waitUntil()` closures, awaiting is fine.

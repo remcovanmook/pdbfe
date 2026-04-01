@@ -48,7 +48,7 @@ export function parseQueryFilters(queryString) {
     /** @type {ParsedFilter[]} */
     const filters = [];
     let depth = 0;
-    let limit = 0;
+    let limit = -1;
     let skip = 0;
     let since = 0;
 
@@ -70,8 +70,8 @@ export function parseQueryFilters(queryString) {
             continue;
         }
         if (rawKey === "limit") {
-            limit = parseInt(rawValue, 10) || 0;
-            if (limit < 0) limit = 0;
+            const parsed = parseInt(rawValue, 10);
+            limit = isNaN(parsed) ? -1 : Math.max(parsed, 0);
             continue;
         }
         if (rawKey === "skip") {
@@ -117,3 +117,58 @@ export function normaliseCacheKey(path, queryString) {
     const sorted = queryString.split("&").sort().join("&");
     return `${path}?${sorted}`;
 }
+
+/**
+ * Creates an asynchronous semaphore that limits the number of
+ * concurrent executions. When the concurrency cap is reached,
+ * callers await acquire() until a slot opens via release().
+ *
+ * This prevents overwhelming D1 (SQLite) with simultaneous
+ * unique-key cache misses. Without it, N unique requests arriving
+ * in the same tick bypass per-key coalescing and fire N parallel
+ * D1 queries, causing lock contention.
+ *
+ * @param {number} maxConcurrent - Maximum parallel executions allowed.
+ * @returns {{acquire: () => Promise<void>, release: () => void}} Semaphore handle.
+ */
+export function createSemaphore(maxConcurrent) {
+    let active = 0;
+    /** @type {Array<() => void>} */
+    const queue = [];
+
+    return {
+        /**
+         * Acquires a slot. Resolves immediately if a slot is available,
+         * otherwise queues the caller until one is released.
+         *
+         * @returns {Promise<void>}
+         */
+        acquire: async () => {
+            if (active < maxConcurrent) {
+                active++;
+                return;
+            }
+            return new Promise(resolve => queue.push(resolve));
+        },
+
+        /**
+         * Releases a slot. If callers are queued, the next one is
+         * woken up immediately without decrementing the active count.
+         */
+        release: () => {
+            active--;
+            if (queue.length > 0) {
+                active++;
+                const next = queue.shift();
+                next();
+            }
+        }
+    };
+}
+
+/**
+ * Global per-isolate D1 concurrency limiter. Allows up to 4
+ * concurrent D1 queries; additional callers yield to the event
+ * loop until a slot opens. Shared across all handlers.
+ */
+export const dbSemaphore = createSemaphore(4);

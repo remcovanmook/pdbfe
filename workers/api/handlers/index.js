@@ -18,9 +18,10 @@
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL } from '../cache.js';
+import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, NEGATIVE_TTL } from '../cache.js';
+import { getL2, putL2 } from '../l2cache.js';
 import { encodeJSON, serveJSON, jsonError } from '../../core/http.js';
-import { normaliseCacheKey } from '../../core/utils.js';
+import { normaliseCacheKey, dbSemaphore } from '../../core/utils.js';
 
 const _encoder = new TextEncoder();
 
@@ -70,30 +71,43 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
             let buf;
             let rowCount = 0;
 
-            if (opts.depth > 0) {
-                // Cold path: row-level query → V8 expansion → JSON.stringify
-                const { sql, params } = buildRowQuery(entity, filters, opts);
-                const result = await env.PDB.prepare(sql).bind(...params).all();
-                const rows = result.results || [];
-                rowCount = rows.length;
+            // L2 per-PoP cache check
+            const l2Buf = await getL2(cacheKey);
+            if (l2Buf) {
+                cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
+                return { buf: l2Buf, rowCount: countRows(new TextDecoder().decode(l2Buf)) };
+            }
 
-                for (const row of rows) { parseJsonFields(row); }
-                await expandDepth(env.PDB, entity, rows, opts.depth);
-                buf = encodeJSON({ data: rows, meta: {} });
-            } else {
-                // Hot path: D1 returns the full JSON envelope as a single string
-                const { sql, params } = buildJsonQuery(entity, filters, opts);
-                const result = await env.PDB.prepare(sql).bind(...params).first();
+            await dbSemaphore.acquire();
+            try {
+                if (opts.depth > 0) {
+                    // Cold path: row-level query → V8 expansion → JSON.stringify
+                    const { sql, params } = buildRowQuery(entity, filters, opts);
+                    const result = await env.PDB.prepare(sql).bind(...params).all();
+                    const rows = result.results || [];
+                    rowCount = rows.length;
 
-                if (!result || !result.payload) {
-                    buf = EMPTY_ENVELOPE;
+                    for (const row of rows) { parseJsonFields(row); }
+                    await expandDepth(env.PDB, entity, rows, opts.depth);
+                    buf = encodeJSON({ data: rows, meta: {} });
                 } else {
-                    buf = _encoder.encode(/** @type {string} */(result.payload));
-                    rowCount = countRows(/** @type {string} */(result.payload));
+                    // Hot path: D1 returns the full JSON envelope as a single string
+                    const { sql, params } = buildJsonQuery(entity, filters, opts);
+                    const result = await env.PDB.prepare(sql).bind(...params).first();
+
+                    if (!result || !result.payload) {
+                        buf = EMPTY_ENVELOPE;
+                    } else {
+                        buf = _encoder.encode(/** @type {string} */(result.payload));
+                        rowCount = countRows(/** @type {string} */(result.payload));
+                    }
                 }
+            } finally {
+                dbSemaphore.release();
             }
 
             cache.add(cacheKey, buf, { entityTag }, Date.now());
+            putL2(cacheKey, buf, LIST_TTL / 1000);
             return { buf, rowCount };
         })();
 
@@ -146,8 +160,14 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
 
     // L1 cache check
     const cached = cache.get(cacheKey);
-    if (cached && (now - cached.addedAt) < DETAIL_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+    if (cached) {
+        const ttl = cached.buf === EMPTY_ENVELOPE ? NEGATIVE_TTL : DETAIL_TTL;
+        if ((now - cached.addedAt) < ttl) {
+            if (cached.buf === EMPTY_ENVELOPE) {
+                return jsonError(404, `${entityTag} with id ${id} not found`);
+            }
+            return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+        }
     }
 
     // Coalesce concurrent misses
@@ -158,27 +178,51 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
             /** @type {Uint8Array|null} */
             let buf = null;
 
-            if (opts.depth > 0) {
-                const { sql, params } = buildRowQuery(entity, filters, opts, id);
-                const result = await env.PDB.prepare(sql).bind(...params).all();
-                const rows = result.results || [];
-
-                if (rows.length === 0) return { buf: null, rowCount: 0 };
-
-                for (const row of rows) { parseJsonFields(row); }
-                await expandDepth(env.PDB, entity, rows, opts.depth);
-                buf = encodeJSON({ data: rows, meta: {} });
-            } else {
-                const { sql, params } = buildJsonQuery(entity, filters, opts, id);
-                const result = await env.PDB.prepare(sql).bind(...params).first();
-
-                if (!result || !result.payload || result.payload === '{"data":[],"meta":{}}') {
+            // L2 per-PoP cache check
+            const l2Buf = await getL2(cacheKey);
+            if (l2Buf) {
+                if (l2Buf.byteLength === EMPTY_ENVELOPE.byteLength
+                    && l2Buf.every((b, i) => b === EMPTY_ENVELOPE[i])) {
+                    cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
                     return { buf: null, rowCount: 0 };
                 }
-                buf = _encoder.encode(/** @type {string} */(result.payload));
+                cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
+                return { buf: l2Buf, rowCount: 1 };
+            }
+
+            await dbSemaphore.acquire();
+            try {
+                if (opts.depth > 0) {
+                    const { sql, params } = buildRowQuery(entity, filters, opts, id);
+                    const result = await env.PDB.prepare(sql).bind(...params).all();
+                    const rows = result.results || [];
+
+                    if (rows.length === 0) {
+                        cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
+                        putL2(cacheKey, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
+                        return { buf: null, rowCount: 0 };
+                    }
+
+                    for (const row of rows) { parseJsonFields(row); }
+                    await expandDepth(env.PDB, entity, rows, opts.depth);
+                    buf = encodeJSON({ data: rows, meta: {} });
+                } else {
+                    const { sql, params } = buildJsonQuery(entity, filters, opts, id);
+                    const result = await env.PDB.prepare(sql).bind(...params).first();
+
+                    if (!result || !result.payload || result.payload === '{"data":[],"meta":{}}') {
+                        cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
+                        putL2(cacheKey, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
+                        return { buf: null, rowCount: 0 };
+                    }
+                    buf = _encoder.encode(/** @type {string} */(result.payload));
+                }
+            } finally {
+                dbSemaphore.release();
             }
 
             cache.add(cacheKey, buf, { entityTag }, Date.now());
+            putL2(cacheKey, buf, DETAIL_TTL / 1000);
             return { buf, rowCount: 1 };
         })();
 
@@ -211,8 +255,14 @@ export async function handleAsSet(request, env, asn) {
     const now = Date.now();
 
     const cached = cache.get(cacheKey);
-    if (cached && (now - cached.addedAt) < DETAIL_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+    if (cached) {
+        const ttl = cached.buf === EMPTY_ENVELOPE ? NEGATIVE_TTL : DETAIL_TTL;
+        if ((now - cached.addedAt) < ttl) {
+            if (cached.buf === EMPTY_ENVELOPE) {
+                return jsonError(404, `No network found for ASN ${asn}`);
+            }
+            return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+        }
     }
 
     // Coalesce concurrent misses
@@ -220,16 +270,37 @@ export async function handleAsSet(request, env, asn) {
 
     if (!fetchPromise) {
         fetchPromise = (async () => {
-            const result = await env.PDB.prepare(
-                `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
-            ).bind(asn).first();
+            // L2 per-PoP cache check
+            const l2Buf = await getL2(cacheKey);
+            if (l2Buf) {
+                if (l2Buf.byteLength === EMPTY_ENVELOPE.byteLength
+                    && l2Buf.every((b, i) => b === EMPTY_ENVELOPE[i])) {
+                    cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag: "as_set" }, Date.now());
+                    return { buf: null };
+                }
+                cache.add(cacheKey, l2Buf, { entityTag: "as_set" }, Date.now());
+                return { buf: l2Buf };
+            }
+
+            await dbSemaphore.acquire();
+            let result;
+            try {
+                result = await env.PDB.prepare(
+                    `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
+                ).bind(asn).first();
+            } finally {
+                dbSemaphore.release();
+            }
 
             if (!result || !result.payload) {
+                cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag: "as_set" }, Date.now());
+                putL2(cacheKey, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
                 return { buf: null };
             }
 
             const buf = _encoder.encode(/** @type {string} */(result.payload));
             cache.add(cacheKey, buf, { entityTag: "as_set" }, Date.now());
+            putL2(cacheKey, buf, DETAIL_TTL / 1000);
             return { buf };
         })();
 
@@ -286,6 +357,13 @@ async function handleCount(request, env, entity, entityTag, filters, opts, rawPa
         return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
     }
 
+    // L2 per-PoP cache check for count
+    const l2Buf = await getL2(cacheKey);
+    if (l2Buf) {
+        cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
+        return serveJSON(request, l2Buf, { isCached: true, hits: 0 });
+    }
+
     // Try to derive count from a cached unfiltered list for this entity.
     // Only possible when there are no user-supplied filters and no since param.
     let count = -1;
@@ -302,12 +380,18 @@ async function handleCount(request, env, entity, entityTag, filters, opts, rawPa
     // Fall back to COUNT(*) query
     if (count < 0) {
         const { sql, params } = buildCountQuery(entity, filters, opts);
-        const result = await env.PDB.prepare(sql).bind(...params).first();
-        count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
+        await dbSemaphore.acquire();
+        try {
+            const result = await env.PDB.prepare(sql).bind(...params).first();
+            count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
+        } finally {
+            dbSemaphore.release();
+        }
     }
 
     const buf = _encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
     cache.add(cacheKey, buf, { entityTag }, Date.now());
+    putL2(cacheKey, buf, COUNT_TTL / 1000);
 
     return serveJSON(request, buf, { isCached: false, hits: 0 });
 }
@@ -372,31 +456,44 @@ function countRows(payload) {
  */
 async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cache, needsExpansion) {
     try {
+        // L2 per-PoP cache check
+        const l2Buf = await getL2(cacheKey);
+        if (l2Buf) {
+            cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
+            return;
+        }
+
         /** @type {Uint8Array} */
         let buf;
 
-        if (needsExpansion) {
-            const { sql, params } = buildRowQuery(entity, filters, opts);
-            const result = await env.PDB.prepare(sql).bind(...params).all();
-            const rows = result.results || [];
+        await dbSemaphore.acquire();
+        try {
+            if (needsExpansion) {
+                const { sql, params } = buildRowQuery(entity, filters, opts);
+                const result = await env.PDB.prepare(sql).bind(...params).all();
+                const rows = result.results || [];
 
-            for (const row of rows) { parseJsonFields(row); }
-            if (opts.depth > 0) {
-                await expandDepth(env.PDB, entity, rows, opts.depth);
-            }
-            buf = encodeJSON({ data: rows, meta: {} });
-        } else {
-            const { sql, params } = buildJsonQuery(entity, filters, opts);
-            const result = await env.PDB.prepare(sql).bind(...params).first();
-
-            if (!result || !result.payload) {
-                buf = EMPTY_ENVELOPE;
+                for (const row of rows) { parseJsonFields(row); }
+                if (opts.depth > 0) {
+                    await expandDepth(env.PDB, entity, rows, opts.depth);
+                }
+                buf = encodeJSON({ data: rows, meta: {} });
             } else {
-                buf = _encoder.encode(/** @type {string} */(result.payload));
+                const { sql, params } = buildJsonQuery(entity, filters, opts);
+                const result = await env.PDB.prepare(sql).bind(...params).first();
+
+                if (!result || !result.payload) {
+                    buf = EMPTY_ENVELOPE;
+                } else {
+                    buf = _encoder.encode(/** @type {string} */(result.payload));
+                }
             }
+        } finally {
+            dbSemaphore.release();
         }
 
         cache.add(cacheKey, buf, { entityTag }, Date.now());
+        putL2(cacheKey, buf, LIST_TTL / 1000);
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);
     }
