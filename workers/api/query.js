@@ -14,6 +14,7 @@
  *   in        → WHERE col IN (?, ?, ...)
  */
 
+import { JSON_STORED_COLUMNS } from './entities.js';
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).
@@ -110,16 +111,6 @@ function coerceValue(value, fieldType) {
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
-/**
- * Columns that store JSON arrays/objects as TEXT in D1.
- * Must be unwrapped with SQLite's json() function when building
- * json_object() payloads, otherwise the JSON gets double-escaped.
- *
- * @type {Set<string>}
- */
-const JSON_STORED_COLS = new Set([
-    "social_media", "info_types", "available_voltage_services"
-]);
 
 /**
  * Builds the per-column argument list for SQLite's json_object().
@@ -135,7 +126,7 @@ function jsonObjectArgs(columns, prefix) {
     const parts = [];
     for (let i = 0; i < columns.length; i++) {
         const c = columns[i];
-        if (JSON_STORED_COLS.has(c)) {
+        if (JSON_STORED_COLUMNS.has(c)) {
             parts.push(`'${c}', json(${pfx}"${c}")`);
         } else {
             parts.push(`'${c}', ${pfx}"${c}"`);
