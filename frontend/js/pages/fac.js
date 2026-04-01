@@ -8,7 +8,7 @@ import {
     renderField, renderFieldGroup, renderTableCard,
     renderLoading, renderError,
     linkEntity, escapeHTML,
-    attachTableSort, attachTableFilter
+    attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
 /**
@@ -48,6 +48,7 @@ export async function renderFac(params) {
 
         attachTableSort(app);
         attachTableFilter(app);
+        attachTablePaging(app);
     } catch (err) {
         app.innerHTML = renderError(`Failed to load facility: ${err.message}`);
     }
@@ -66,7 +67,7 @@ function buildSidebar(fac) {
         renderField('CLLI', fac.clli),
         renderField('Rencode', fac.rencode),
         renderField('NPA-NXX', fac.npanxx),
-        renderField('Notes', fac.notes),
+        renderField('Notes', fac.notes, { markdown: true }),
         renderField('Last Updated', fac.updated),
     ]);
 
@@ -103,15 +104,15 @@ function buildTables(fac) {
             ],
             rows: fac.netfac_set,
             cellRenderer: (row, col) => {
-                // netfac child objects don't carry the network name.
-                // Use AS{local_asn} as the display label.
+                // Use net_name from the API's JOIN response.
+                // Fall back to AS{local_asn} if not available.
                 if (col.key === 'network') {
-                    const label = `AS${row.local_asn || row.net_id}`;
+                    const label = row.net_name || `AS${row.local_asn || row.net_id}`;
                     return row.net_id
                         ? linkEntity('net', row.net_id, label)
                         : escapeHTML(label);
                 }
-                if (col.key === 'local_asn') return String(row.local_asn || '—');
+                if (col.key === 'local_asn') return String(row.net_asn || row.local_asn || '—');
                 return escapeHTML(String(row[col.key] ?? ''));
             }
         });
@@ -126,10 +127,10 @@ function buildTables(fac) {
             ],
             rows: fac.ixfac_set,
             cellRenderer: (row, col) => {
-                // ixfac child objects have the facility name, not the exchange name.
-                // Use IX ID as label and link to the exchange page.
+                // Use ix_name from the API's JOIN response.
+                // Fall back to IX ID if not available.
                 if (col.key === 'exchange') {
-                    const label = `IX ${row.ix_id}`;
+                    const label = row.ix_name || `IX ${row.ix_id}`;
                     return row.ix_id
                         ? linkEntity('ix', row.ix_id, label)
                         : escapeHTML(label);

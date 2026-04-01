@@ -8,7 +8,7 @@ import {
     renderField, renderFieldGroup, renderTableCard,
     renderLoading, renderError,
     linkEntity, escapeHTML,
-    attachTableSort, attachTableFilter
+    attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
 /**
@@ -47,6 +47,7 @@ export async function renderOrg(params) {
 
         attachTableSort(app);
         attachTableFilter(app);
+        attachTablePaging(app);
     } catch (err) {
         app.innerHTML = renderError(`Failed to load organization: ${err.message}`);
     }
@@ -63,7 +64,7 @@ function buildSidebar(org) {
         renderField('Also Known As', org.aka),
         renderField('Long Name', org.name_long),
         renderField('Website', org.website, { href: org.website, external: true }),
-        renderField('Notes', org.notes),
+        renderField('Notes', org.notes, { markdown: true }),
         renderField('Last Updated', org.updated),
     ]);
 

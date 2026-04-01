@@ -9,7 +9,7 @@ import {
     renderField, renderFieldGroup, renderTableCard, renderStatsBar,
     renderLoading, renderError, renderBool,
     linkEntity, formatSpeed, escapeHTML,
-    attachTableSort, attachTableFilter
+    attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
 /**
@@ -68,6 +68,7 @@ export async function renderIx(params) {
 
         attachTableSort(app);
         attachTableFilter(app);
+        attachTablePaging(app);
     } catch (err) {
         app.innerHTML = renderError(`Failed to load exchange: ${err.message}`);
     }
@@ -94,7 +95,7 @@ function buildSidebar(ix) {
         renderField('Tech Phone', ix.tech_phone),
         renderField('Policy Email', ix.policy_email),
         renderField('Policy Phone', ix.policy_phone),
-        renderField('Notes', ix.notes),
+        renderField('Notes', ix.notes, { markdown: true }),
         renderField('Last Updated', ix.updated),
     ]);
 
@@ -134,10 +135,10 @@ function buildTables(ix, peers) {
             rows: peers,
             cellRenderer: (row, col) => {
                 switch (col.key) {
-                    // netixlan.name is the IX name, not the network name.
-                    // Display as AS{asn} and link via net_id when available.
+                    // Use net_name from the API's JOIN response.
+                    // Fall back to AS{asn} if not available.
                     case 'name': {
-                        const label = `AS${row.asn}`;
+                        const label = row.net_name || `AS${row.asn}`;
                         return row.net_id
                             ? linkEntity('net', row.net_id, label)
                             : escapeHTML(label);

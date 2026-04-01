@@ -9,7 +9,7 @@ import {
     renderField, renderFieldGroup, renderTableCard,
     renderLoading, renderError, renderBool,
     linkEntity, formatSpeed, escapeHTML,
-    attachTableSort, attachTableFilter
+    attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
 /**
@@ -49,6 +49,7 @@ export async function renderNet(params) {
 
         attachTableSort(app);
         attachTableFilter(app);
+        attachTablePaging(app);
     } catch (err) {
         app.innerHTML = renderError(`Failed to load network: ${err.message}`);
     }

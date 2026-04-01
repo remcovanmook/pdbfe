@@ -4,7 +4,7 @@
  * and global entity statistics.
  */
 
-import { fetchList } from '../api.js';
+import { fetchList, fetchCount } from '../api.js';
 import { linkEntity, formatDate, escapeHTML, renderLoading } from '../render.js';
 
 /** @type {HTMLElement} */
@@ -93,10 +93,35 @@ async function loadRecentUpdates() {
 }
 
 /**
- * Placeholder for global stats. Requires a dedicated count endpoint
- * on the API worker to avoid downloading all rows, which is not
- * available yet. Skipped for now.
+ * Fetches global entity counts and renders a stats bar.
+ * Uses the limit=0 count endpoint for each entity type.
  */
 async function loadGlobalStats() {
-    // No-op until the API has a /api/{type}/count endpoint
+    const container = document.getElementById('global-stats');
+    if (!container) return;
+
+    const types = [
+        { type: 'net', label: 'Networks',      icon: '\u{1F310}' },
+        { type: 'ix',  label: 'Exchanges',     icon: '\u21C4' },
+        { type: 'fac', label: 'Facilities',    icon: '\u{1F3E2}' },
+        { type: 'org', label: 'Organizations', icon: '\u{1F3DB}' }
+    ];
+
+    try {
+        const counts = await Promise.all(
+            types.map(t => fetchCount(t.type).catch(() => 0))
+        );
+
+        const cards = types.map((t, i) => `
+            <div class="stat-card">
+                <div class="stat-card__icon">${t.icon}</div>
+                <div class="stat-card__value">${counts[i].toLocaleString()}</div>
+                <div class="stat-card__label">${escapeHTML(t.label)}</div>
+            </div>
+        `).join('');
+
+        container.innerHTML = `<div class="stats-bar">${cards}</div>`;
+    } catch (err) {
+        // Stats are non-critical — fail silently
+    }
 }
