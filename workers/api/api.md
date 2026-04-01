@@ -23,13 +23,14 @@ Client → wrapHandler (error trap + telemetry headers)
 ```
 api/index.js (router)
 ├── core/admin.js         (validateRequest, wrapHandler, routeAdminPath)
-├── core/http.js          (serveJSON, handlePreflight, jsonError, encodeJSON)
-├── core/utils.js         (parseURL, parseQueryFilters, normaliseCacheKey)
+├── core/http.js          (encoder, serveJSON, handlePreflight, jsonError, encodeJSON)
+├── core/utils.js         (parseURL, parseQueryFilters, createSemaphore)
 ├── api/handlers/index.js (handleList, handleDetail, handleAsSet, handleNotImplemented)
+│   ├── api/pipeline.js   (cachedQuery, EMPTY_ENVELOPE, isNegative — owns dbSemaphore)
 │   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
 │   ├── api/depth.js      (expandDepth)
-│   ├── api/cache.js      (getEntityCache, getCacheStats, purgeAllCaches)
-│   └── api/entities.js   (ENTITIES, ENTITY_TAGS, WRITABLE_TAGS)
+│   ├── api/cache.js      (getEntityCache, normaliseCacheKey, TTL constants)
+│   └── api/entities.js   (ENTITIES, ENTITY_TAGS, JSON_STORED_COLUMNS)
 └── core/cache.js         (LRUCache — instantiated 14 times by api/cache.js)
 ```
 

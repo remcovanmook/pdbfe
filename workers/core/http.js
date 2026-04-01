@@ -4,7 +4,12 @@
  * and raw Uint8Array forwarding for zero-serialisation cache hits.
  */
 
-const _encoder = new TextEncoder();
+/**
+ * Shared TextEncoder instance. Exported so modules that need to
+ * encode strings to Uint8Array don't each create their own copy.
+ * TextEncoder is stateless and reentrant.
+ */
+export const encoder = new TextEncoder();
 
 /**
  * Precompiled CORS headers applied to every API response.
@@ -97,7 +102,7 @@ export function isNotModified(requestHeaders, etag) {
  * @returns {Uint8Array} UTF-8 encoded JSON bytes.
  */
 export function encodeJSON(data) {
-    return _encoder.encode(JSON.stringify(data));
+    return encoder.encode(JSON.stringify(data));
 }
 
 /**

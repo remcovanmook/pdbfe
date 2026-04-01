@@ -350,3 +350,16 @@ export const WRITABLE_TAGS = new Set([
     "net", "org", "fac", "ix", "ixlan", "ixpfx",
     "netfac", "netixlan", "poc", "carrier", "carrierfac", "ixfac", "campus"
 ]);
+
+/**
+ * Columns that store JSON arrays/objects as TEXT in D1.
+ * These need special handling in three places:
+ *   - query.js: wrapped in SQLite json() to prevent double-escaping in json_object()
+ *   - depth.js: JSON.parse'd when returning full child objects at depth=2
+ *   - handlers: JSON.parse'd when building row-level responses at depth>0
+ *
+ * @type {Set<string>}
+ */
+export const JSON_STORED_COLUMNS = new Set([
+    "social_media", "info_types", "available_voltage_services"
+]);
