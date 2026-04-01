@@ -239,13 +239,19 @@ body[data-page="home"] .site-header__inner nav {
     transition: background var(--transition-fast);
 }
 
-.search-dropdown__item:hover {
+.search-dropdown__item:hover,
+.search-dropdown__item.is-active {
     background: var(--bg-hover);
+}
+
+.search-dropdown__item a {
+    color: inherit;
 }
 
 .search-dropdown__item-sub {
     color: var(--text-secondary);
     font-size: 0.75rem;
+    margin-left: auto;
 }
 
 /* ── Main content ──────────────────────────────────────────────── */
@@ -1021,6 +1027,29 @@ body[data-page="home"] .site-header__inner nav {
     .main-content {
         padding: var(--space-lg) var(--space-md);
     }
+
+    /* Constrain cards so tables don't push them off-screen */
+    .card {
+        max-width: calc(100vw - 2 * var(--space-md));
+        overflow: hidden;
+    }
+
+    /* Ensure table wrapper scrolls horizontally within the card */
+    .data-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        /* Scroll hint: fading gradient on the right edge */
+        mask-image: linear-gradient(to right, #000 90%, transparent);
+        -webkit-mask-image: linear-gradient(to right, #000 90%, transparent);
+    }
+
+    /* Remove scroll hint when user has scrolled (JS could toggle this,
+       but for now this CSS-only solution covers the common case) */
+    .data-table-wrapper:focus-within,
+    .data-table-wrapper:active {
+        mask-image: none;
+        -webkit-mask-image: none;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1043,4 +1072,30 @@ body[data-page="home"] .site-header__inner nav {
     .detail-header__title {
         font-size: 1.25rem;
     }
+
+    /* Compact table cells for very narrow screens */
+    .data-table td {
+        padding: var(--space-xs) var(--space-sm);
+        font-size: 0.75rem;
+    }
+
+    .data-table th {
+        padding: var(--space-xs) var(--space-sm);
+        font-size: 0.625rem;
+    }
+
+    .data-table td.td-mono {
+        font-size: 0.6875rem;
+    }
+
+    /* Stats bar items stack more tightly */
+    .stats-bar {
+        gap: var(--space-sm);
+        padding: var(--space-md);
+    }
+
+    .stats-bar__item {
+        min-width: 0;
+    }
 }
+

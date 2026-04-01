@@ -7,7 +7,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Minimal DOM mock: enough for getElementById and innerHTML assignment
+// Minimal DOM mock: enough for getElementById, createElement, and innerHTML
 function createMockDOM() {
     const elements = {};
     globalThis.document = /** @type {any} */ ({
@@ -15,10 +15,28 @@ function createMockDOM() {
         title: '',
         addEventListener: () => {},
         querySelectorAll: () => [],
+        querySelector: () => null,
+        createElement: (tag) => ({
+            tagName: tag.toUpperCase(),
+            className: '',
+            innerHTML: '',
+            setAttribute: () => {},
+            getAttribute: () => null,
+            addEventListener: () => {},
+            contains: () => false,
+            classList: { add: () => {}, remove: () => {}, contains: () => false },
+            querySelectorAll: () => [],
+            querySelector: () => null,
+            parentElement: null,
+            appendChild: () => {},
+        }),
+        head: { appendChild: () => {} },
+        activeElement: null,
     });
     globalThis.window = /** @type {any} */ ({
         __router: { navigate: () => {} },
         scrollTo: () => {},
+        location: { href: 'http://localhost/' },
     });
 
     /**
@@ -32,7 +50,11 @@ function createMockDOM() {
             innerHTML: '',
             value: '',
             addEventListener: () => {},
-            classList: { add: () => {}, remove: () => {} },
+            classList: { add: () => {}, remove: () => {}, contains: () => false },
+            querySelectorAll: () => [],
+            querySelector: () => null,
+            parentElement: null,
+            contains: () => false,
         };
         elements[id] = el;
         return el;

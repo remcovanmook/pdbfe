@@ -14,7 +14,9 @@ import { renderOrg } from '/js/pages/org.js';
 import { renderCarrier } from '/js/pages/carrier.js';
 import { renderCampus } from '/js/pages/campus.js';
 import { renderAbout } from '/js/pages/about.js';
+import { renderAsn } from '/js/pages/asn.js';
 import { fetchSyncStatus } from '/js/api.js';
+import { attachTypeahead } from '/js/typeahead.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -25,18 +27,15 @@ addRoute('/fac/:id', renderFac);
 addRoute('/org/:id', renderOrg);
 addRoute('/carrier/:id', renderCarrier);
 addRoute('/campus/:id', renderCampus);
+addRoute('/asn/:asn', renderAsn);
 addRoute('/about', renderAbout);
 
 // Expose navigate for the homepage search box
 window.__router = { navigate };
 
-// Header search: Enter triggers navigation to /search?q=...
-const headerSearch = document.getElementById('header-search');
-headerSearch.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && headerSearch.value.trim()) {
-        navigate(`/search?q=${encodeURIComponent(headerSearch.value.trim())}`);
-    }
-});
+// Header search: typeahead with fallback Enter-to-navigate
+const headerSearch = /** @type {HTMLInputElement} */ (document.getElementById('header-search'));
+attachTypeahead(headerSearch);
 
 // Boot the router
 initRouter(document.getElementById('app'));
