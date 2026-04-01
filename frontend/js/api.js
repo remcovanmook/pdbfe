@@ -127,6 +127,18 @@ export async function fetchIxPeers(ixId) {
 }
 
 /**
+ * Looks up a network by its ASN number. Returns the first matching
+ * network object, or null if no network has that ASN.
+ *
+ * @param {number|string} asn - Autonomous System Number to look up.
+ * @returns {Promise<any|null>} The matching network object, or null.
+ */
+export async function fetchByAsn(asn) {
+    const results = await fetchList('net', { asn, limit: 1 });
+    return results[0] || null;
+}
+
+/**
  * Fetches the total count of entities for a given type.
  * Uses the limit=0 API convention which returns
  * { data: [], meta: { count: N } }.

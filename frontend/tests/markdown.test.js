@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for the lightweight markdown renderer.
  * Tests covering inline formatting, links, lists, XSS prevention,
- * and URL sanitisation.
+ * URL sanitisation, and HTML sanitisation for PeeringDB notes fields.
  */
 
 import { describe, it } from 'node:test';
@@ -58,7 +58,7 @@ describe("renderMarkdown", () => {
     it("should escape HTML tags to prevent XSS", () => {
         const result = renderMarkdown("<script>alert('xss')</script>");
         assert.ok(!result.includes('<script>'));
-        assert.ok(result.includes('&lt;script&gt;'));
+        assert.ok(result.includes('alert'));
     });
 
     it("should reject javascript: URLs", () => {
@@ -77,3 +77,109 @@ describe("renderMarkdown", () => {
         assert.ok(result.includes('<br>'));
     });
 });
+
+describe("renderMarkdown — HTML sanitisation", () => {
+    it("should render <a href> tags as clickable links", () => {
+        const input = '<a href="https://www.cloudflare.com">Cloudflare</a>';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="https://www.cloudflare.com"'));
+        assert.ok(result.includes('>Cloudflare</a>'));
+    });
+
+    it("should force target and rel on anchor tags", () => {
+        const input = '<a href="https://example.com">link</a>';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('target="_blank"'), 'should have target="_blank"');
+        assert.ok(result.includes('rel="noopener noreferrer"'), 'should have rel="noopener noreferrer"');
+    });
+
+    it("should strip target, rel, class, and other attributes from anchors", () => {
+        const input = '<a href="https://example.com" target="_blank" rel="noopener noreferrer" class="fancy">text</a>';
+        const result = renderMarkdown(input);
+        // Should have the link with forced attributes
+        assert.ok(result.includes('href="https://example.com"'));
+        assert.ok(result.includes('>text</a>'));
+        // Should NOT leak attribute text like target="_blank" as visible content
+        assert.ok(!result.includes('class='));
+        assert.ok(!result.includes('fancy'));
+        // Count occurrences of target="_blank" — should appear once (in our harness)
+        const targets = result.match(/target="_blank"/g) || [];
+        assert.equal(targets.length, 1, 'target="_blank" should appear exactly once');
+    });
+
+    it("should not leak escaped attribute text as visible content", () => {
+        // This is the actual bug from the review: the original code would show
+        // target=&quot;_blank&quot; as visible text
+        const input = '<a href="https://www.cloudflare.com" target="_blank" rel="noopener noreferrer">Cloudflare Website</a>';
+        const result = renderMarkdown(input);
+        assert.ok(!result.includes('&quot;'), 'should not contain &quot; as visible text');
+        // Strip all HTML tags to get visible text only
+        const visibleText = result.replace(/<[^>]+>/g, '');
+        assert.ok(!visibleText.includes('_blank'), 'visible text should not contain _blank');
+        assert.ok(!visibleText.includes('noopener'), 'visible text should not contain noopener');
+        // The actual content should be the link
+        assert.ok(result.includes('>Cloudflare Website</a>'));
+    });
+
+    it("should strip anchors with javascript: URLs", () => {
+        const input = '<a href="javascript:alert(1)">evil</a>';
+        const result = renderMarkdown(input);
+        assert.ok(!result.includes('javascript:'));
+        assert.ok(!result.includes('href'));
+        assert.ok(result.includes('evil'), 'text content should be preserved');
+    });
+
+    it("should strip anchors with no href", () => {
+        const input = '<a name="anchor">text</a>';
+        const result = renderMarkdown(input);
+        assert.ok(!result.includes('<a '));
+        assert.ok(result.includes('text'));
+    });
+
+    it("should preserve safe HTML tags", () => {
+        const input = 'This is <strong>bold</strong> and <em>italic</em>';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<strong>bold</strong>'));
+        assert.ok(result.includes('<em>italic</em>'));
+    });
+
+    it("should strip unsafe HTML tags but keep content", () => {
+        const input = '<div class="container"><span style="color:red">text</span></div>';
+        const result = renderMarkdown(input);
+        assert.ok(!result.includes('<div'));
+        assert.ok(!result.includes('<span'));
+        assert.ok(!result.includes('style='));
+        assert.ok(result.includes('text'));
+    });
+
+    it("should handle mixed HTML and markdown", () => {
+        const input = '**Bold** and <a href="https://example.com">HTML link</a> and [md link](https://other.com)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<strong>Bold</strong>'));
+        assert.ok(result.includes('href="https://example.com"'));
+        assert.ok(result.includes('>HTML link</a>'));
+        assert.ok(result.includes('href="https://other.com"'));
+        assert.ok(result.includes('>md link</a>'));
+    });
+
+    it("should handle anchor tags with single-quoted hrefs", () => {
+        const input = "<a href='https://example.com'>link</a>";
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="https://example.com"'));
+    });
+
+    it("should handle <br> tags", () => {
+        const input = 'line one<br>line two';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<br>'));
+        assert.ok(result.includes('line one'));
+        assert.ok(result.includes('line two'));
+    });
+
+    it("should handle self-closing <br /> tags", () => {
+        const input = 'line one<br />line two';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<br>'));
+    });
+});
+

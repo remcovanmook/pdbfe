@@ -1,11 +1,21 @@
 /**
  * @fileoverview Search results page renderer.
- * Queries the four core entity types in parallel and groups
+ * Queries the six navigable entity types in parallel and groups
  * results by type with count badges and click-through links.
+ *
+ * ASN-aware: if the query looks like an ASN (bare number or AS-prefixed),
+ * an additional lookup by ASN is fired in parallel and the exact match
+ * is surfaced at the top of the Networks section.
  */
 
-import { searchAll } from '../api.js';
+import { searchAll, fetchByAsn } from '../api.js';
 import { linkEntity, escapeHTML, renderLoading } from '../render.js';
+
+/**
+ * Pattern matching ASN-shaped queries: bare digits or "AS" prefix + digits.
+ * @type {RegExp}
+ */
+const ASN_PATTERN = /^(?:as)?(\d+)$/i;
 
 /**
  * Renders the search results page.
@@ -35,7 +45,31 @@ export async function renderSearch(params) {
     if (headerInput) headerInput.value = query;
 
     try {
-        const results = await searchAll(query);
+        // Detect ASN-shaped queries for direct lookup
+        const asnMatch = query.trim().match(ASN_PATTERN);
+        const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
+
+        // Fire name-based search and optional ASN lookup in parallel
+        const [results, asnNet] = await Promise.all([
+            searchAll(query),
+            isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
+        ]);
+
+        // If we got an ASN match, inject it at the top of the networks list
+        // (deduplicate if it's already in the name search results)
+        if (asnNet) {
+            const existingIds = new Set(results.net.map(n => n.id));
+            if (!existingIds.has(asnNet.id)) {
+                results.net.unshift(asnNet);
+            } else {
+                // Move the match to the top
+                results.net = [
+                    asnNet,
+                    ...results.net.filter(n => n.id !== asnNet.id)
+                ];
+            }
+        }
+
         const body = /** @type {HTMLElement} */ (document.getElementById('search-body'));
 
         const sections = [
@@ -87,3 +121,4 @@ export async function renderSearch(params) {
         }
     }
 }
+

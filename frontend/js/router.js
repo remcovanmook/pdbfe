@@ -46,6 +46,11 @@ export function addRoute(pattern, handler) {
 export function initRouter(appContainer) {
     _appContainer = appContainer;
 
+    // Prevent the browser from restoring scroll position on navigation
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
+
     // Handle browser back/forward
     window.addEventListener('popstate', () => {
         dispatch(window.location.pathname + window.location.search);
@@ -119,8 +124,6 @@ async function dispatch(fullPath) {
             _appContainer.classList.remove('page-active');
             _appContainer.classList.add('page-enter');
 
-            window.scrollTo(0, 0);
-
             // Flag the body so CSS can adapt header appearance per page.
             // Homepage gets a larger logo and no header search bar.
             document.body.dataset.page = (path === '/' || path === '') ? 'home' : 'detail';
@@ -131,6 +134,9 @@ async function dispatch(fullPath) {
                 console.error('Route handler error:', err);
                 _appContainer.innerHTML = `<div class="error-message">Failed to load page: ${err.message}</div>`;
             }
+
+            // Reset scroll after content is rendered
+            window.scrollTo(0, 0);
 
             // Trigger enter transition
             requestAnimationFrame(() => {
