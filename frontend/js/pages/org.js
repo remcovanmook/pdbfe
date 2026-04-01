@@ -7,7 +7,7 @@ import { fetchEntity } from '../api.js';
 import {
     renderField, renderFieldGroup, renderTableCard,
     renderLoading, renderError,
-    linkEntity, escapeHTML,
+    linkEntity, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
@@ -31,6 +31,7 @@ export async function renderOrg(params) {
         }
 
         document.title = `${org.name} — PeeringDB`;
+        setOGTags(org.name, `Organization — PeeringDB`);
 
         const sidebar = buildSidebar(org);
         const tables = buildTables(org);

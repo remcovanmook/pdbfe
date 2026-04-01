@@ -3,13 +3,34 @@
  * Handles the subset of markdown commonly used in PeeringDB: bold, italic,
  * links, line breaks, basic lists, and code spans.
  *
- * All input HTML is escaped first to prevent XSS. Link URLs are sanitised
- * to only allow http:, https:, and mailto: protocols.
+ * PeeringDB notes often contain raw HTML (especially anchor tags). The
+ * renderer sanitises HTML first — allowing `<a href>` through a strict
+ * harness — then escapes the remainder before applying markdown transforms.
+ *
+ * Link URLs are validated to only allow http:, https:, and mailto: protocols.
  */
 
 /**
+ * Sentinel strings used to protect sanitised HTML tags from the
+ * escape pass. These are chosen to be unlikely to appear in real input.
+ * @type {string}
+ */
+const LINK_OPEN = '\x00LINK_OPEN\x00';
+const LINK_CLOSE = '\x00LINK_CLOSE\x00';
+const TAG_OPEN = '\x00TAG_OPEN\x00';
+const TAG_CLOSE = '\x00TAG_CLOSE\x00';
+
+/**
+ * Set of HTML tag names that are allowed through the sanitiser unchanged
+ * (aside from `<a>`, which gets special handling).
+ * @type {Set<string>}
+ */
+const SAFE_TAGS = new Set(['br', 'p', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li']);
+
+/**
  * Escapes HTML special characters to prevent XSS when injecting
- * into innerHTML. Applied before any markdown processing.
+ * into innerHTML. Applied after sanitisation so that only non-safe
+ * content is escaped.
  *
  * @param {string} str - Raw input string.
  * @returns {string} HTML-escaped string.
@@ -38,44 +59,147 @@ function sanitiseURL(url) {
 }
 
 /**
- * Converts a markdown-formatted string to sanitised HTML.
- * Processes: bold, italic, code spans, links, lists, line breaks.
+ * Escapes characters that have special meaning inside an HTML attribute
+ * value (double-quoted). Used for href values in sanitised anchor tags.
  *
- * @param {string} text - Raw markdown text.
- * @returns {string} Sanitised HTML string.
+ * @param {string} str - Raw attribute value.
+ * @returns {string} Escaped string safe for use inside `href="..."`.
+ */
+function escapeAttr(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+/**
+ * Sanitises HTML in PeeringDB notes fields. Processes the raw input and:
+ *
+ * - Converts `<a href="...">text</a>` to placeholder-wrapped safe links.
+ *   Only `href` is kept; `target` and `rel` are forced to safe values.
+ *   All other attributes are stripped.
+ * - Preserves other safe tags (br, p, strong, em, b, i, ul, ol, li) as-is.
+ * - Strips all other HTML tags, keeping their text content.
+ *
+ * Anchor tags are wrapped in sentinel placeholders so they survive the
+ * subsequent `escapeForMarkdown()` pass. Call `restoreLinks()` after
+ * escaping to convert placeholders back to real `<a>` tags.
+ *
+ * @param {string} input - Raw notes text potentially containing HTML.
+ * @returns {string} Sanitised text with link placeholders.
+ */
+function sanitiseHTML(input) {
+    // Process all HTML tags in the input
+    return input.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g,
+        (fullMatch, tagName, attrs) => {
+            const tag = tagName.toLowerCase();
+            const isClosing = fullMatch.startsWith('</');
+
+            // Anchor tags get special handling with a strict harness
+            if (tag === 'a') {
+                if (isClosing) {
+                    return LINK_CLOSE;
+                }
+                // Extract href from attributes, ignore everything else
+                const hrefMatch = attrs.match(/href\s*=\s*"([^"]*)"/i)
+                    || attrs.match(/href\s*=\s*'([^']*)'/i)
+                    || attrs.match(/href\s*=\s*([^\s>]+)/i);
+
+                if (hrefMatch) {
+                    const url = sanitiseURL(hrefMatch[1]);
+                    if (url) {
+                        return `${LINK_OPEN}<a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">`;
+                    }
+                }
+                // No valid href — strip the tag, keep content
+                return '';
+            }
+
+            // Safe tags are wrapped in sentinels to survive the escape pass
+            if (SAFE_TAGS.has(tag)) {
+                return isClosing
+                    ? `${TAG_OPEN}</${tag}>${TAG_CLOSE}`
+                    : `${TAG_OPEN}<${tag}>${TAG_CLOSE}`;
+            }
+
+            // Everything else is stripped (content kept)
+            return '';
+        }
+    );
+}
+
+/**
+ * Restores tag placeholders back to real HTML after the escape pass.
+ * Handles both sanitised `<a>` tags (with sentinel-wrapped attributes)
+ * and safe tags (br, strong, em, etc.).
+ *
+ * @param {string} html - Escaped HTML containing sentinels.
+ * @returns {string} HTML with restored tags.
+ */
+function restoreTags(html) {
+    return html
+        // Restore anchor tags: sentinel wraps the escaped <a> tag
+        .replace(
+            /\x00LINK_OPEN\x00&lt;a href=&quot;([^&]*)&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;/g,
+            '<a href="$1" target="_blank" rel="noopener noreferrer">'
+        )
+        .replace(/\x00LINK_CLOSE\x00/g, '</a>')
+        // Restore safe tags: sentinel wraps the escaped tag
+        .replace(/\x00TAG_OPEN\x00&lt;(\/?[a-z]+)&gt;\x00TAG_CLOSE\x00/g, '<$1>');
+}
+
+/**
+ * Converts a markdown-formatted string to sanitised HTML.
+ * Handles both markdown formatting and raw HTML from PeeringDB notes.
+ *
+ * Processing order:
+ * 1. Sanitise HTML (allow safe `<a href>`, preserve safe tags, strip rest)
+ * 2. Escape remaining HTML special characters
+ * 3. Restore sanitised link placeholders
+ * 4. Apply markdown transforms (bold, italic, code, links, lists)
+ *
+ * @param {string} text - Raw markdown/HTML text from PeeringDB notes.
+ * @returns {string} Sanitised HTML string ready for innerHTML.
  */
 export function renderMarkdown(text) {
     if (!text || typeof text !== 'string') return '';
 
-    // Step 1: Escape all HTML
-    let html = escapeForMarkdown(text);
+    // Step 1: Sanitise HTML — allow safe <a href>, strip unsafe tags
+    let html = sanitiseHTML(text);
 
-    // Step 2: Code spans (before other inline processing)
+    // Step 2: Escape remaining HTML special characters
+    html = escapeForMarkdown(html);
+
+    // Step 3: Restore sanitised tags from placeholders
+    html = restoreTags(html);
+
+    // Step 4: Code spans (before other inline processing)
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // Step 3: Bold (**text** or __text__)
+    // Step 5: Bold (**text** or __text__)
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
 
-    // Step 4: Italic (*text* or _text_)
+    // Step 6: Italic (*text* or _text_)
     // Negative lookbehind for word chars prevents matching mid-word underscores
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     html = html.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
 
-    // Step 5: Links [text](url)
+    // Step 7: Markdown links [text](url) — only if not already inside an <a> tag
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;
-        return `<a href="${escapeForMarkdown(safeUrl)}" rel="noopener noreferrer" target="_blank">${label}</a>`;
+        return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${label}</a>`;
     });
 
-    // Step 6: Bare URLs (http/https only, not already in an <a> tag)
+    // Step 8: Bare URLs (http/https only, not already in an href or <a> tag)
     html = html.replace(
-        /(?<!href=&quot;)(https?:\/\/[^\s<&]+)/g,
+        /(?<!href=")(https?:\/\/[^\s<&]+)/g,
         '<a href="$1" rel="noopener noreferrer" target="_blank">$1</a>'
     );
 
-    // Step 7: Process line-by-line for lists and line breaks
+    // Step 9: Process line-by-line for lists and line breaks
     const lines = html.split('\n');
     const result = [];
     let inList = false;

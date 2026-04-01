@@ -8,7 +8,7 @@ import { fetchEntity, fetchIxPeers } from '../api.js';
 import {
     renderField, renderFieldGroup, renderTableCard, renderStatsBar,
     renderLoading, renderError, renderBool,
-    linkEntity, formatSpeed, escapeHTML,
+    linkEntity, formatSpeed, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
 
@@ -43,6 +43,11 @@ export async function renderIx(params) {
         const totalConnections = peers.length;
         const totalSpeed = peers.reduce((sum, p) => sum + (p.speed || 0), 0);
         const openPeers = new Set(peers.filter(p => p.operational).map(p => p.asn)).size;
+
+        setOGTags(
+            ix.name,
+            `${ix.city || ''}${ix.country ? `, ${ix.country}` : ''} — ${totalPeers.toLocaleString()} Peers, ${formatSpeed(totalSpeed)} Total Speed`
+        );
 
         const statsBar = renderStatsBar([
             { label: 'Peers', value: totalPeers.toLocaleString() },
