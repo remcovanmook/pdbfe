@@ -69,7 +69,10 @@ async function syncEntity(db, tag, meta, apiKey) {
 
         // Fetch updates since last sync
         /** @type {Record<string, string>} */
-        const headers = { 'Accept': 'application/json' };
+        const headers = {
+            'Accept': 'application/json',
+            'User-Agent': 'pdbfe-sync/1.0',
+        };
         if (apiKey) {
             headers['Authorization'] = `Api-Key ${apiKey}`;
         }
