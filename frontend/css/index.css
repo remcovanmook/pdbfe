@@ -123,10 +123,30 @@ a:hover {
     color: var(--text-primary);
     white-space: nowrap;
     letter-spacing: -0.02em;
+    transform: scaleX(-1);
 }
 
 .site-logo span {
     color: var(--accent);
+}
+
+/* Homepage header: larger centered logo, no search bar */
+body[data-page="home"] .search-wrapper {
+    display: none;
+}
+
+body[data-page="home"] .site-header__inner {
+    justify-content: center;
+    position: relative;
+}
+
+body[data-page="home"] .site-logo {
+    font-size: 1.5rem;
+}
+
+body[data-page="home"] .site-header__inner nav {
+    position: absolute;
+    right: 0;
 }
 
 /* ── Search ────────────────────────────────────────────────────── */
@@ -572,18 +592,60 @@ a:hover {
     font-size: 0.75rem;
     color: var(--text-muted);
 }
-/* ── Homepage grid ─────────────────────────────────────────────── */
+/* ── Homepage layout ───────────────────────────────────────────── */
+
+.home-heading {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-align: center;
+    padding: var(--space-lg) 0 var(--space-md);
+    color: var(--text-primary);
+}
+
+.home-top {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: var(--space-2xl);
+    margin-bottom: var(--space-xl);
+}
+
+/* ── Hero section (left pane) ──────────────────────────────────── */
+
+.home-hero__tagline {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: var(--space-md);
+    color: var(--text-primary);
+}
+
+.home-hero__desc {
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-md);
+}
+
+.home-hero__desc:last-child {
+    margin-bottom: 0;
+}
+
+/* ── Recent updates (right pane) ───────────────────────────────── */
+
+.home-recent__heading {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: var(--space-lg);
+    color: var(--text-primary);
+}
+
+/* ── Homepage search ───────────────────────────────────────────── */
 
 .home-search {
     text-align: center;
-    padding: var(--space-2xl) 0;
-}
-
-.home-search__title {
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    margin-bottom: var(--space-lg);
+    padding: var(--space-xl) 0;
 }
 
 .home-search__input-wrapper {
@@ -610,11 +672,12 @@ a:hover {
     box-shadow: 0 0 0 3px var(--accent-muted);
 }
 
+/* ── Recent updates grid ───────────────────────────────────────── */
+
 .recent-updates {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-lg);
-    margin-top: var(--space-2xl);
 }
 
 .recent-updates__column {
@@ -635,8 +698,8 @@ a:hover {
 
 .recent-updates__item {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
+    flex-direction: column;
+    gap: 2px;
     padding: var(--space-xs) 0;
     font-size: 0.8125rem;
     border-bottom: 1px solid var(--border-subtle);
@@ -650,36 +713,45 @@ a:hover {
     font-size: 0.6875rem;
     color: var(--text-muted);
     white-space: nowrap;
-    margin-left: var(--space-sm);
 }
 
-/* ── Global stats ──────────────────────────────────────────────── */
+/* ── Global System Statistics ──────────────────────────────────── */
 
 .global-stats {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-xl);
-    padding: var(--space-lg) 0;
     margin-top: var(--space-xl);
-    border-top: 1px solid var(--border-subtle);
+    padding: var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.global-stats__heading {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+}
+
+.global-stats__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-sm) var(--space-lg);
 }
 
 .global-stats__item {
-    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
 }
 
 .global-stats__count {
-    font-size: 1.375rem;
     font-weight: 700;
     color: var(--text-primary);
-    letter-spacing: -0.02em;
-}
-
-.global-stats__label {
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
+    margin-right: var(--space-xs);
 }
 
 /* ── Search results page ───────────────────────────────────────── */
@@ -720,26 +792,131 @@ a:hover {
 /* ── Footer ────────────────────────────────────────────────────── */
 
 .site-footer {
-    padding: var(--space-lg);
+    padding: var(--space-xl) var(--space-lg);
     border-top: 1px solid var(--border-subtle);
-    text-align: center;
+    background: var(--bg-surface);
 }
 
-.site-footer__text {
+.site-footer__grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: var(--space-xl);
+    max-width: var(--content-max);
+    margin: 0 auto;
+}
+
+.site-footer__col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.site-footer__copyright {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.site-footer__copyright a {
+    color: var(--text-secondary);
+}
+
+.site-footer__sync-line {
+    margin-top: var(--space-sm);
+}
+
+.site-footer__sync {
     font-size: 0.75rem;
     color: var(--text-muted);
 }
 
-.site-footer a {
-    color: var(--text-secondary);
+.site-footer__sync-time {
+    color: var(--accent);
 }
 
-.site-footer__sep {
-    margin: 0 var(--space-xs);
+.site-footer__sync-time--stale {
+    color: #e74c3c;
 }
 
-.site-footer__sync {
+.site-footer__heading {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.site-footer__links {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.site-footer__links li {
+    padding: 2px 0;
+}
+
+.site-footer__links a {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    transition: color var(--transition-fast);
+}
+
+.site-footer__links a:hover {
+    color: var(--accent-hover);
+}
+
+/* ── About page ────────────────────────────────────────────────── */
+
+.about-page {
+    max-width: 720px;
+}
+
+.about-page__title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-xl);
+}
+
+.about-page__section {
+    margin-bottom: var(--space-xl);
+}
+
+.about-page__section h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: var(--space-sm);
+    color: var(--text-primary);
+}
+
+.about-page__section p {
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-md);
+}
+
+.about-page__section p:last-child {
+    margin-bottom: 0;
+}
+
+.about-page__code {
+    display: block;
+    padding: var(--space-md);
+    background: var(--bg-body);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.8125rem;
+    color: var(--accent);
+    overflow-x: auto;
+    margin-bottom: var(--space-md);
+}
+
+.about-page__code code {
+    font-family: inherit;
 }
 
 /* ── Loading / error states ────────────────────────────────────── */
@@ -817,7 +994,15 @@ a:hover {
         grid-template-columns: 1fr;
     }
 
+    .home-top {
+        grid-template-columns: 1fr;
+    }
+
     .recent-updates {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .global-stats__list {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -825,9 +1010,8 @@ a:hover {
         flex-wrap: wrap;
     }
 
-    .global-stats {
-        flex-wrap: wrap;
-        gap: var(--space-lg);
+    .site-footer__grid {
+        grid-template-columns: 1fr 1fr;
     }
 
     .site-header {
@@ -844,8 +1028,16 @@ a:hover {
         grid-template-columns: 1fr;
     }
 
-    .home-search__title {
-        font-size: 1.5rem;
+    .global-stats__list {
+        grid-template-columns: 1fr;
+    }
+
+    .home-heading {
+        font-size: 1.25rem;
+    }
+
+    .site-footer__grid {
+        grid-template-columns: 1fr;
     }
 
     .detail-header__title {
