@@ -40,7 +40,17 @@ If 50 requests ask for the same D1 query simultaneously, and you do not coordina
 
 Before executing any D1 query for a cache miss, the system checks `cache.pending.has(key)`. If true, it `await`s the shared Promise. **Never bypass this coalescence lock.** The SWR pre-fetch for paginated next-page queries uses this same mechanism.
 
-## 4. The L1 Memory Architecture
+### D1 Semaphore
+
+Coalescence only protects against N requests for the *same* key. When N requests arrive for N *different* keys simultaneously, N parallel D1 queries fire. SQLite can't handle arbitrary parallelism — it locks.
+
+The `dbSemaphore` (from `core/utils.js`) is an async semaphore that limits concurrent D1 queries to 4 per isolate. All D1 query sites in `handlers/index.js` are wrapped in `acquire()`/`release()` pairs with `try/finally` to prevent deadlocks on error. If all 4 slots are occupied, additional callers yield to the event loop until a slot opens.
+
+## 5. The Cache Architecture
+
+The API uses a three-tier cache hierarchy:
+
+### L1: Per-Isolate LRU (RAM)
 
 Our `LRUCache` (`core/cache.js`) bypasses traditional doubly-linked list implementations. Wrapper objects cause GC pauses. Instead, we use contiguous C-style memory blocks: `Uint32Array`, `Float64Array`, and `Int32Array`.
 
@@ -56,6 +66,25 @@ Total: 76 MB. Remaining ~52 MB is for working memory and future pre-cooked answe
 
 **Zero-serialisation serving:** D1 results are JSON-encoded *once* into a `Uint8Array` via `encodeJSON()`, then stored in the LRU cache. On cache hits, the bytes are forwarded directly as the `Response` body — no `JSON.parse` or `JSON.stringify` round-trip. This is the critical performance guarantee.
 
+**TTLs:** `LIST_TTL` = 5 min, `DETAIL_TTL` = 15 min, `COUNT_TTL` = 15 min, `NEGATIVE_TTL` = 5 min.
+
+### L2: Per-PoP Cache API (`caches.default`)
+
+`l2cache.js` stores `Uint8Array` payloads in Cloudflare's per-PoP `caches.default` Cache API. Multiple isolates at the same PoP share this cache, so a cold isolate can skip D1 if another isolate at the same PoP already fetched the same key.
+
+- Keys are synthetic URLs under `https://pdbfe-l2.internal/`
+- TTL is set via `Cache-Control` headers on stored `Response` objects
+- Errors silently degrade to D1 fallback (L2 is best-effort)
+- Typical L2 hit latency: ~20ms (vs D1 at ~15-40ms for simple queries, much higher for complex ones)
+
+### L3: D1 (Global)
+
+SQLite-backed Cloudflare D1. The source of truth. Queries are rate-limited by `dbSemaphore` (4 concurrent per isolate).
+
+### Negative Caching
+
+Non-existent entity IDs (404s) are cached at both L1 and L2 using `EMPTY_ENVELOPE` as a sentinel value. On L1 hit, the handler checks `cached.buf === EMPTY_ENVELOPE` to serve a 404 without touching D1 or L2. Negative TTL is 5 minutes (shorter than detail TTL since entities can be created).
+
 ## 5. The `ctx.waitUntil()` Pattern
 
 We use `ctx.waitUntil()` for two purposes:
@@ -69,11 +98,13 @@ We use `ctx.waitUntil()` for two purposes:
 
 Every API request follows this strict hierarchy:
 
-1. **L1 Warm (RAM):** Is it in the entity's LRU cache and not expired? → *Serve instantly (<1ms), raw bytes.*
+1. **L1 Warm (RAM):** Is it in the entity's LRU cache and not expired? → *Serve instantly (<1ms), raw bytes. For negative entries (EMPTY_ENVELOPE), return 404.*
 2. **Flight Check:** Is the same cache key in `cache.pending`? → *Await the in-flight promise, then re-check L1.*
-3. **Cold Path (D1):** Execute the parameterised SQL query against D1.
-4. **Encode & Cache:** JSON-encode once into `Uint8Array`, store in entity cache, serve.
-5. **Background:** If paginated, `waitUntil` to pre-fetch next page into cache.
+3. **L2 PoP Cache:** Is it in `caches.default` for this PoP? → *Populate L1 from L2, serve (~20ms).*
+4. **Semaphore Gate:** Acquire a `dbSemaphore` slot (max 4 per isolate). Callers beyond 4 yield.
+5. **Cold Path (D1):** Execute the parameterised SQL query against D1.
+6. **Encode & Cache:** JSON-encode once into `Uint8Array`, store in L1 + L2, release semaphore, serve.
+7. **Background:** If paginated, `waitUntil` to pre-fetch next page into cache.
 
 ## 7. Type Safety (The `tsc` Harness)
 

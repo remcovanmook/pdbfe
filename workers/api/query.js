@@ -374,8 +374,9 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         }
     }
 
-    // Pagination: cap at 250 when depth > 0 (matching upstream behaviour)
-    let effectiveLimit = limit || 0;
+    // Pagination: limit=-1 means no limit was specified by the user.
+    // depth>0 caps at 250 (matching upstream); depth=0 returns all rows.
+    let effectiveLimit = limit < 0 ? 0 : limit;
     if (opts.depth > 0 && (effectiveLimit === 0 || effectiveLimit > 250)) {
         effectiveLimit = 250;
     }
@@ -426,7 +427,7 @@ export function buildCountQuery(entity, filters, opts) {
  * @returns {{limit: number, skip: number}|null} Next-page pagination, or null.
  */
 export function nextPageParams(filters, opts, resultCount) {
-    const effectiveLimit = opts.limit || (opts.depth > 0 ? 250 : 0);
+    const effectiveLimit = opts.limit > 0 ? opts.limit : (opts.depth > 0 ? 250 : 0);
     if (effectiveLimit === 0) return null;
     if (resultCount < effectiveLimit) return null; // Last page
     return { limit: effectiveLimit, skip: (opts.skip || 0) + effectiveLimit };
