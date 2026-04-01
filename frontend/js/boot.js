@@ -1,0 +1,71 @@
+/**
+ * @fileoverview Application bootstrap module.
+ * Registers SPA routes, wires up the header search bar,
+ * initialises the router, and fetches sync status for the footer.
+ */
+
+import { addRoute, initRouter, navigate } from '/js/router.js';
+import { renderHome } from '/js/pages/home.js';
+import { renderSearch } from '/js/pages/search.js';
+import { renderNet } from '/js/pages/net.js';
+import { renderIx } from '/js/pages/ix.js';
+import { renderFac } from '/js/pages/fac.js';
+import { renderOrg } from '/js/pages/org.js';
+import { fetchSyncStatus } from '/js/api.js';
+
+// Register routes
+addRoute('/', renderHome);
+addRoute('/search', renderSearch);
+addRoute('/net/:id', renderNet);
+addRoute('/ix/:id', renderIx);
+addRoute('/fac/:id', renderFac);
+addRoute('/org/:id', renderOrg);
+
+// Expose navigate for the homepage search box
+window.__router = { navigate };
+
+// Header search: Enter triggers navigation to /search?q=...
+const headerSearch = document.getElementById('header-search');
+headerSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && headerSearch.value.trim()) {
+        navigate(`/search?q=${encodeURIComponent(headerSearch.value.trim())}`);
+    }
+});
+
+// Boot the router
+initRouter(document.getElementById('app'));
+
+// Fetch and display sync status in the footer
+fetchSyncStatus().then(sync => {
+    const el = document.getElementById('sync-status');
+    if (!el || !sync?.last_sync_at) return;
+    el.textContent = `Last synced ${formatRelativeTime(sync.last_sync_at)}`;
+    el.title = sync.last_sync_at;
+}).catch(() => {
+    // Non-critical — leave the sync status empty on failure
+});
+
+/**
+ * Formats a UTC datetime string (e.g. "2026-04-01 14:30:00")
+ * into a human-readable relative time like "12 minutes ago".
+ *
+ * @param {string} utcDateStr - UTC datetime from the _sync_meta table.
+ * @returns {string} Relative time string.
+ */
+function formatRelativeTime(utcDateStr) {
+    const then = new Date(utcDateStr.replace(' ', 'T') + 'Z');
+    const diffMs = Date.now() - then.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+
+    if (diffSec < 60)  return 'just now';
+    if (diffSec < 3600) {
+        const m = Math.floor(diffSec / 60);
+        return `${m} minute${m !== 1 ? 's' : ''} ago`;
+    }
+    if (diffSec < 86400) {
+        const h = Math.floor(diffSec / 3600);
+        return `${h} hour${h !== 1 ? 's' : ''} ago`;
+    }
+    const d = Math.floor(diffSec / 86400);
+    return `${d} day${d !== 1 ? 's' : ''} ago`;
+}
