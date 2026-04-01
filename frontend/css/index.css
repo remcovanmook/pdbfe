@@ -734,6 +734,14 @@ a:hover {
     color: var(--text-secondary);
 }
 
+.site-footer__sep {
+    margin: 0 var(--space-xs);
+}
+
+.site-footer__sync {
+    color: var(--text-muted);
+}
+
 /* ── Loading / error states ────────────────────────────────────── */
 
 .loading {

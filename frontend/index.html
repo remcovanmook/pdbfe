@@ -7,10 +7,8 @@
     <meta name="description" content="PeeringDB — The interconnection database for networks, exchanges, and facilities.">
     <meta name="robots" content="index, follow">
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Fonts (self-hosted) -->
+    <link rel="stylesheet" href="/third_party/inter/inter.css">
 
     <!-- Styles -->
     <link rel="stylesheet" href="/css/index.css">
@@ -55,6 +53,8 @@
         <p class="site-footer__text">
             Data sourced from <a href="https://www.peeringdb.com" target="_blank" rel="noopener">PeeringDB</a>.
             This is a read-only mirror.
+            <span class="site-footer__sep" aria-hidden="true">·</span>
+            <span id="sync-status" class="site-footer__sync"></span>
         </p>
     </footer>
 
@@ -67,6 +67,7 @@
         import { renderIx } from '/js/pages/ix.js';
         import { renderFac } from '/js/pages/fac.js';
         import { renderOrg } from '/js/pages/org.js';
+        import { fetchSyncStatus } from '/js/api.js';
 
         // Register routes
         addRoute('/', renderHome);
@@ -89,6 +90,41 @@
 
         // Boot the router
         initRouter(document.getElementById('app'));
+
+        // Fetch and display sync status in the footer
+        fetchSyncStatus().then(sync => {
+            const el = document.getElementById('sync-status');
+            if (!el || !sync?.last_sync_at) return;
+            el.textContent = `Last synced ${formatRelativeTime(sync.last_sync_at)}`;
+            el.title = sync.last_sync_at;
+        }).catch(() => {
+            // Non-critical — leave the sync status empty on failure
+        });
+
+        /**
+         * Formats a UTC datetime string (e.g. "2026-04-01 14:30:00")
+         * into a human-readable relative time like "12 minutes ago".
+         *
+         * @param {string} utcDateStr - UTC datetime from the _sync_meta table.
+         * @returns {string} Relative time string.
+         */
+        function formatRelativeTime(utcDateStr) {
+            const then = new Date(utcDateStr.replace(' ', 'T') + 'Z');
+            const diffMs = Date.now() - then.getTime();
+            const diffSec = Math.floor(diffMs / 1000);
+
+            if (diffSec < 60)  return 'just now';
+            if (diffSec < 3600) {
+                const m = Math.floor(diffSec / 60);
+                return `${m} minute${m !== 1 ? 's' : ''} ago`;
+            }
+            if (diffSec < 86400) {
+                const h = Math.floor(diffSec / 3600);
+                return `${h} hour${h !== 1 ? 's' : ''} ago`;
+            }
+            const d = Math.floor(diffSec / 86400);
+            return `${d} day${d !== 1 ? 's' : ''} ago`;
+        }
     </script>
 
 </body>

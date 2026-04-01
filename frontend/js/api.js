@@ -138,6 +138,19 @@ export async function fetchCount(type) {
 }
 
 /**
+ * Fetches the database sync status from the /status endpoint.
+ * Returns an object with the most recent sync timestamp and
+ * per-entity sync metadata.
+ *
+ * @returns {Promise<{last_sync_at: string, entities: Record<string, {last_sync: number, row_count: number, updated_at: string}>}>}
+ *     The sync metadata, or null on failure.
+ */
+export async function fetchSyncStatus() {
+    const result = await cachedFetch('/status');
+    return result?.sync || null;
+}
+
+/**
  * Clears the client-side response cache. Useful after navigation
  * to a page that may have stale data.
  */
