@@ -176,11 +176,11 @@ export function formatSpeed(mbps) {
 }
 
 /**
- * Formats an ISO date string to a relative time for recent dates
- * or a short date for older ones.
+ * Formats an ISO date string as a relative time string.
+ * Always returns a relative format (minutes, hours, days, months, years).
  *
  * @param {string|null|undefined} iso - ISO 8601 date string.
- * @returns {string} Formatted time string.
+ * @returns {string} Relative time string (e.g. "5 minutes ago", "3 days ago").
  */
 export function formatDate(iso) {
     if (!iso) return '—';
@@ -190,13 +190,20 @@ export function formatDate(iso) {
     const diffMin = Math.floor(diffMs / 60_000);
 
     if (diffMin < 1) return 'just now';
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin === 1) return '1 minute ago';
+    if (diffMin < 60) return `${diffMin} minutes ago`;
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffHr === 1) return '1 hour ago';
+    if (diffHr < 24) return `${diffHr} hours ago`;
     const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 30) return `${diffDay}d ago`;
-
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (diffDay === 1) return '1 day ago';
+    if (diffDay < 30) return `${diffDay} days ago`;
+    const diffMonth = Math.floor(diffDay / 30);
+    if (diffMonth === 1) return '1 month ago';
+    if (diffMonth < 12) return `${diffMonth} months ago`;
+    const diffYear = Math.floor(diffDay / 365);
+    if (diffYear === 1) return '1 year ago';
+    return `${diffYear} years ago`;
 }
 
 /**

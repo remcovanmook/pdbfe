@@ -41,11 +41,11 @@ export function parseURL(request) {
  * __contains, __startswith, __in. Parameters without a suffix are
  * treated as exact-match equality filters.
  *
- * Reserved parameters (depth, limit, skip, since) are separated out
+ * Reserved parameters (depth, limit, skip, since, sort) are separated out
  * and returned in the `pagination` and `meta` objects.
  *
  * @param {string} queryString - Raw query string without the leading '?'.
- * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number}} Parsed query components.
+ * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string}} Parsed query components.
  */
 export function parseQueryFilters(queryString) {
     /** @type {ParsedFilter[]} */
@@ -54,8 +54,9 @@ export function parseQueryFilters(queryString) {
     let limit = -1;
     let skip = 0;
     let since = 0;
+    let sort = '';
 
-    if (!queryString) return { filters, depth, limit, skip, since };
+    if (!queryString) return { filters, depth, limit, skip, since, sort };
 
     const pairs = queryString.split("&");
     for (let i = 0; i < pairs.length; i++) {
@@ -86,6 +87,10 @@ export function parseQueryFilters(queryString) {
             since = parseInt(rawValue, 10) || 0;
             continue;
         }
+        if (rawKey === "sort") {
+            sort = rawValue;
+            continue;
+        }
 
         // Parse filter suffix from the field name
         const suffixes = ["__lte", "__gte", "__lt", "__gt", "__contains", "__startswith", "__in"];
@@ -103,7 +108,7 @@ export function parseQueryFilters(queryString) {
         filters.push({ field, op, value: rawValue });
     }
 
-    return { filters, depth, limit, skip, since };
+    return { filters, depth, limit, skip, since, sort };
 }
 
 /**

@@ -32,7 +32,7 @@ import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {string} entityTag - Entity tag (e.g. "net").
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
@@ -90,7 +90,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
  * @param {string} entityTag - Entity tag.
  * @param {number} id - Entity ID.
  * @param {ParsedFilter[]} filters - Parsed query filters (only depth is relevant here).
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Depth option.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Depth option.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
@@ -193,7 +193,7 @@ export function handleNotImplemented(method, path) {
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for empty result.
  *          Note: empty lists return EMPTY_ENVELOPE (not null) since an empty
  *          list is valid data, not a 404.
@@ -225,7 +225,7 @@ async function executeListQuery(env, entity, filters, opts) {
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
  * @param {number} id - Entity ID.
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for 404.
  */
@@ -264,7 +264,7 @@ async function executeDetailQuery(env, entity, filters, opts, id) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
  * @param {string} rawPath - Original URL path.
  * @param {string} queryString - Original query string.
  * @returns {Promise<Response>} JSON response with count in meta.
@@ -360,7 +360,7 @@ function countRows(payload) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {ParsedFilter[]} filters - Query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} needsExpansion - Whether depth>0 expansion is required.
@@ -401,7 +401,7 @@ async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cac
  * Used to build the cache key for the pre-fetched next page.
  *
  * @param {ParsedFilter[]} filters - The current query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
  * @returns {string} Sorted query string.
  */
 function buildSortedQS(filters, opts) {
@@ -415,5 +415,6 @@ function buildSortedQS(filters, opts) {
     if (opts.limit > 0) parts.push(`limit=${opts.limit}`);
     if (opts.skip > 0) parts.push(`skip=${opts.skip}`);
     if (opts.since > 0) parts.push(`since=${opts.since}`);
+    if (opts.sort) parts.push(`sort=${encodeURIComponent(opts.sort)}`);
     return parts.sort().join("&");
 }

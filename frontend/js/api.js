@@ -90,14 +90,14 @@ export async function fetchList(type, filters = {}) {
 }
 
 /**
- * Searches across the four core entity types in parallel.
+ * Searches across all navigable entity types in parallel.
  * Returns results grouped by type.
  *
  * @param {string} query - Search term (matched via name__contains).
- * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[]}>}
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
 export async function searchAll(query) {
-    const types = ['net', 'ix', 'fac', 'org'];
+    const types = ['net', 'ix', 'fac', 'org', 'carrier', 'campus'];
     const params = { name__contains: query, limit: 20 };
 
     const results = await Promise.all(
@@ -105,10 +105,12 @@ export async function searchAll(query) {
     );
 
     return {
-        net: results[0],
-        ix:  results[1],
-        fac: results[2],
-        org: results[3]
+        net:     results[0],
+        ix:      results[1],
+        fac:     results[2],
+        org:     results[3],
+        carrier: results[4],
+        campus:  results[5]
     };
 }
 
