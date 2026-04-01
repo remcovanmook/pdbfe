@@ -53,6 +53,12 @@ export const ENTITIES = {
             policy_ratio: "boolean", policy_contracts: "string",
             status: "string", created: "datetime", updated: "datetime"
         },
+        /** Resolve organization name for network records. */
+        joinColumns: [{
+            table: "peeringdb_organization",
+            localFk: "org_id",
+            columns: { name: "org_name" }
+        }],
         relationships: [
             { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id" },
             { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" },
@@ -153,6 +159,12 @@ export const ENTITIES = {
             proto_unicast: "boolean", proto_multicast: "boolean", proto_ipv6: "boolean",
             status: "string", created: "datetime", updated: "datetime"
         },
+        /** Resolve organization name for exchange records. */
+        joinColumns: [{
+            table: "peeringdb_organization",
+            localFk: "org_id",
+            columns: { name: "org_name" }
+        }],
         relationships: [
             { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" },
             { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id" }

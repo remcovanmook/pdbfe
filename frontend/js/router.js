@@ -121,6 +121,10 @@ async function dispatch(fullPath) {
 
             window.scrollTo(0, 0);
 
+            // Flag the body so CSS can adapt header appearance per page.
+            // Homepage gets a larger logo and no header search bar.
+            document.body.dataset.page = (path === '/' || path === '') ? 'home' : 'detail';
+
             try {
                 await route.handler(params);
             } catch (err) {

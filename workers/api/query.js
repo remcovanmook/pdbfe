@@ -189,14 +189,14 @@ function buildJoinFragments(joinDefs) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
-    const { clauses, params, pagination } = buildWherePagination(
+    const { clauses, params, pagination, orderBy } = buildWherePagination(
         entity, filters, opts, singleId, tableAlias
     );
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
@@ -218,7 +218,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
             `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +
             ` FROM (SELECT ${allSelectCols}` +
             ` FROM "${entity.table}" AS t${joinSql}${where}` +
-            ` ORDER BY t."id" ASC${pagination})`;
+            ` ORDER BY ${orderBy}${pagination})`;
 
         return { sql, params };
     }
@@ -226,7 +226,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const jsonCols = jsonObjectArgs(entity.columns);
     const sql =
         `SELECT json_object('data',json_group_array(json_object(${jsonCols})),'meta',json_object()) AS payload` +
-        ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination})`;
+        ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
 
     return { sql, params };
 }
@@ -241,14 +241,14 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
 export function buildRowQuery(entity, filters, opts, singleId = null) {
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
-    const { clauses, params, pagination } = buildWherePagination(
+    const { clauses, params, pagination, orderBy } = buildWherePagination(
         entity, filters, opts, singleId, tableAlias
     );
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
@@ -260,12 +260,12 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         const baseCols = entity.columns.map(c => `t."${c}"`).join(", ");
         const allCols = baseCols + ', ' + selectCols.join(', ');
 
-        const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY t."id" ASC${pagination}`;
+        const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY ${orderBy}${pagination}`;
         return { sql, params };
     }
 
     const cols = entity.columns.map(c => `"${c}"`).join(", ");
-    const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY "id" ASC${pagination}`;
+    const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination}`;
     return { sql, params };
 }
 
@@ -275,7 +275,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
@@ -293,13 +293,13 @@ export function buildQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
  * @param {number|null} singleId - Single-row ID or null.
  * @param {string} [tableAlias] - Optional table alias for column qualification.
- * @returns {{ clauses: string[], params: (string|number)[], pagination: string }}
+ * @returns {{ clauses: string[], params: (string|number)[], pagination: string, orderBy: string }}
  */
 function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
-    const { limit, skip, since } = opts;
+    const { limit, skip, since, sort } = opts;
     const pfx = tableAlias ? `${tableAlias}.` : '';
     /** @type {string[]} */
     const clauses = [];
@@ -386,7 +386,18 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         params.push(skip);
     }
 
-    return { clauses, params, pagination };
+    // Sort: parse Django-style sort parameter (e.g. "-updated" → DESC).
+    // Only columns that exist on the entity are allowed (prevents injection).
+    let orderBy = `${pfx}"id" ASC`;
+    if (sort) {
+        const desc = sort.startsWith('-');
+        const col = desc ? sort.slice(1) : sort;
+        if (entity.columns.includes(col)) {
+            orderBy = `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}`;
+        }
+    }
+
+    return { clauses, params, pagination, orderBy };
 }
 
 /**
@@ -396,7 +407,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Only since is used.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Only since is used.
  * @returns {BuiltQuery} Parameterised SQL returning { cnt: number }.
  */
 export function buildCountQuery(entity, filters, opts) {
