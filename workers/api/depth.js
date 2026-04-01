@@ -143,20 +143,56 @@ async function expandDepthTwo(db, entity, rows) {
         const childEntity = childTag ? ENTITIES[childTag] : null;
 
         // Build column list, excluding the FK back to the parent
-        let colExpr;
         /** @type {string[]} */
         let childColumns;
         if (childEntity) {
             childColumns = childEntity.columns.filter(c => c !== rel.fk);
-            colExpr = childColumns.map(c => `"${c}"`).join(", ");
         } else {
             childColumns = [];
-            colExpr = "*";
         }
 
         const placeholders = parentIds.map(() => "?").join(", ");
-        // Include FK in the SELECT for grouping, even though we strip it from the output
-        const sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted' ORDER BY "id" ASC`;
+        let sql;
+
+        if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
+            // JOIN path: alias the child table, add LEFT JOINs for cross-entity names
+            const baseCols = childColumns.map(c => `t."${c}"`).join(", ");
+
+            /** @type {string[]} */
+            const joinParts = [];
+            /** @type {string[]} */
+            const joinCols = [];
+            for (let i = 0; i < rel.joinColumns.length; i++) {
+                const j = rel.joinColumns[i];
+                const alias = `j${i}`;
+                joinParts.push(
+                    ` LEFT JOIN "${j.table}" AS ${alias} ON t."${j.localFk}" = ${alias}."id"`
+                );
+                for (const [srcCol, aliasName] of Object.entries(j.columns)) {
+                    joinCols.push(`${alias}."${srcCol}" AS "${aliasName}"`);
+                }
+            }
+
+            const allCols = `t."${rel.fk}", ${baseCols}` +
+                (joinCols.length > 0 ? `, ${joinCols.join(", ")}` : '');
+
+            sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
+                joinParts.join('') +
+                ` WHERE t."${rel.fk}" IN (${placeholders})` +
+                ` AND t."status" != 'deleted' ORDER BY t."id" ASC`;
+        } else if (childColumns.length > 0) {
+            // Standard path: no JOINs
+            const colExpr = childColumns.map(c => `"${c}"`).join(", ");
+            sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
+                ` WHERE "${rel.fk}" IN (${placeholders})` +
+                ` AND "status" != 'deleted' ORDER BY "id" ASC`;
+        } else {
+            // Fallback: unknown child entity, select everything
+            sql = `SELECT * FROM "${rel.table}"` +
+                ` WHERE "${rel.fk}" IN (${placeholders})` +
+                ` AND "status" != 'deleted' ORDER BY "id" ASC`;
+        }
+
         const result = await db.prepare(sql).bind(...parentIds).all();
 
         if (result.results) {
