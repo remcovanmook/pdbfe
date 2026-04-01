@@ -10,7 +10,7 @@ database_id = "cb04e911-4ce9-4158-b096-1894055fd157"
 [triggers]
 crons = ["*/15 * * * *"]
 
-# Production: set PDB_API_KEY via `wrangler secret put PDB_API_KEY --config wrangler-sync.toml`
+# Production: set PDB_API_KEY via `wrangler secret put PEERINGDB_API_KEY --config wrangler-sync.toml`
 # Local dev: uncomment below
 # [vars]
-# PDB_API_KEY = ""
+# PEERINGDB_API_KEY = ""

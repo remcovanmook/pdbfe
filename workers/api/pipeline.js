@@ -4,29 +4,25 @@
  * Encapsulates the full cache-miss resolution flow that is common to all
  * handler D1 query sites:
  *
- *   coalesce → L2 check → semaphore acquire → D1 query → semaphore release → L1 + L2 write
+ *   coalesce → L2 check → D1 query → L1 + L2 write
  *
  * By centralising this in one function:
- *   - The critical try/finally around the semaphore exists in exactly one place
  *   - Promise coalescing (cache stampede prevention) is guaranteed for every query
  *   - The negative-cache (EMPTY_ENVELOPE) detection logic cannot be omitted
  *
  * Callers provide a queryFn closure that contains only the D1-specific
  * logic (which varies per handler). Everything else — coalescing, L2 lookups,
- * semaphore management, cache writes, negative caching — is handled here.
+ * cache writes, negative caching — is handled here.
+ *
+ * Note: D1 handles query serialization internally (single-threaded SQLite
+ * with its own request queue). A per-isolate semaphore was previously used
+ * here but caused cross-request promise resolution, which the Workers
+ * runtime detects and kills as hung code.
  */
 
 import { getL2, putL2 } from './l2cache.js';
-import { createSemaphore } from '../core/utils.js';
 import { encoder } from '../core/http.js';
 import { NEGATIVE_TTL } from './cache.js';
-
-/**
- * Per-isolate D1 concurrency limiter. Allows up to 4 concurrent
- * D1 queries; additional callers yield to the event loop until a
- * slot opens. Only used within _resolve() below.
- */
-const dbSemaphore = createSemaphore(4);
 
 /**
  * Sentinel value representing a cached 404 / empty result.
@@ -61,10 +57,8 @@ export function isNegative(buf) {
  *   1. Coalesce: if another request is already fetching this key, await
  *      that in-flight promise instead of issuing a duplicate query.
  *   2. Check L2 per-PoP cache (caches.default)
- *   3. On L2 miss: acquire dbSemaphore slot (max 4 per isolate)
- *   4. Execute the caller's queryFn inside try/finally
- *   5. Release semaphore (guaranteed, even on exception)
- *   6. Write result to L1 (per-isolate LRU) and L2 (per-PoP, fire-and-forget)
+ *   3. On L2 miss: execute the caller's queryFn
+ *   4. Write result to L1 (per-isolate LRU) and L2 (per-PoP, fire-and-forget)
  *
  * Promise coalescing:
  *   Uses cache.pending to ensure N concurrent requests for the same expired
@@ -83,9 +77,7 @@ export function isNegative(buf) {
  * @param {number} opts.ttlMs - TTL in milliseconds for positive results (L1 addedAt, L2 max-age).
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query function to execute on
  *        cache miss. Must return a Uint8Array payload for positive results, or null for
- *        404/empty. Runs inside the dbSemaphore — do not acquire additional semaphore slots
- *        within queryFn (nested acquisition risks deadlock). D1 child queries (e.g.
- *        expandDepth) are fine because they share the same slot.
+ *        404/empty.
  * @returns {Promise<Uint8Array|null>} Cached or fresh payload. Null indicates a negative result
  *          (EMPTY_ENVELOPE was stored and the caller should return a 404).
  */
@@ -129,15 +121,8 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
         return l2Buf;
     }
 
-    // ── Semaphore-guarded D1 query ───────────────────────────────
-    /** @type {Uint8Array|null} */
-    let buf;
-    await dbSemaphore.acquire();
-    try {
-        buf = await queryFn();
-    } finally {
-        dbSemaphore.release();
-    }
+    // ── D1 query ─────────────────────────────────────────────────
+    const buf = await queryFn();
 
     // ── Cache write-back ─────────────────────────────────────────
     if (buf === null) {

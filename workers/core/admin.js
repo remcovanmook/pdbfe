@@ -223,7 +223,18 @@ export function wrapHandler(handler, serviceName) {
                 response = await handler(request, env, ctx);
             } catch (err) {
                 console.error(err.stack || err);
-                response = new Response("Internal Server Error", { status: 500 });
+                response = new Response(
+                    JSON.stringify({ error: "Internal Server Error" }) + "\n",
+                    {
+                        status: 500,
+                        headers: {
+                            "Content-Type": "application/json; charset=utf-8",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                            "Cache-Control": "no-store",
+                        },
+                    }
+                );
             }
 
             const h = new Headers(response.headers);
