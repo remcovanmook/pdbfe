@@ -626,6 +626,49 @@ export function validateQuery(entity, filters, sort) {
 }
 
 /**
+ * Resolves implicit cross-entity filters by checking FK-related entities.
+ *
+ * When a filter field doesn't exist on the current entity, iterates through
+ * the entity's FK fields and checks if any referenced entity has that field
+ * as a queryable column. If found, mutates the filter in-place to set
+ * `f.entity` to the target tag, converting it to an explicit cross-entity
+ * filter that the query builder already handles.
+ *
+ * This mirrors Django ORM's implicit related-model filtering:
+ *   net?country=NL → net.org_id IN (SELECT id FROM org WHERE country = 'NL')
+ *
+ * Ambiguity: if multiple FK targets have the same field name, the first
+ * match wins (ordered by field definition). In practice this doesn't occur
+ * in the PeeringDB schema.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed filters (mutated in place).
+ */
+export function resolveImplicitFilters(entity, filters) {
+    const fieldNames = getFieldNames(entity);
+
+    for (let i = 0; i < filters.length; i++) {
+        const f = filters[i];
+        if (f.entity) continue;          // already explicit cross-entity
+        if (fieldNames.has(f.field)) continue; // field exists on this entity
+
+        // Check each FK field's target entity for this field name
+        for (const field of entity.fields) {
+            if (!field.foreignKey) continue;
+
+            const target = ENTITIES[field.foreignKey];
+            if (!target) continue;
+
+            const fieldType = getFilterType(target, f.field);
+            if (fieldType) {
+                f.entity = field.foreignKey;
+                break;
+            }
+        }
+    }
+}
+
+/**
  * Resolves a cross-entity filter reference by following FK metadata.
  *
  * Given a filter like `fac__state=NSW` on the `ixfac` entity:
