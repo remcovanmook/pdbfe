@@ -24,18 +24,29 @@ const API_BASE = 'https://www.peeringdb.com/api';
  * Builds an INSERT OR REPLACE statement for a single row.
  * Handles all value types: null, boolean, number, string, array/object.
  *
+ * For NOT NULL string columns, null/undefined values from the API are
+ * coerced to empty string ("") to match Django's CharField convention
+ * and prevent D1 NOT NULL constraint violations.
+ *
  * @param {string} table - D1 table name.
  * @param {string[]} columns - Column names.
  * @param {Record<string, any>} row - Row data from the API.
+ * @param {Set<string>} notNullStrings - Column names that are NOT NULL strings
+ *        in the schema. null/undefined values for these columns are coerced to "".
  * @returns {{ sql: string, params: any[] }} Parameterised statement.
  */
-function buildUpsert(table, columns, row) {
+function buildUpsert(table, columns, row, notNullStrings) {
     const placeholders = columns.map(() => '?').join(',');
     const sql = `INSERT OR REPLACE INTO "${table}" (${columns.map(c => `"${c}"`).join(',')}) VALUES (${placeholders})`;
 
     const params = columns.map(col => {
         const v = row[col];
-        if (v === undefined || v === null) return null;
+        if (v === undefined || v === null) {
+            // Django CharField(blank=True, null=False) stores "" not NULL.
+            // Coerce to "" for NOT NULL string columns to match upstream
+            // and satisfy the D1 schema constraint.
+            return notNullStrings.has(col) ? '' : null;
+        }
         if (typeof v === 'boolean') return v ? 1 : 0;
         if (typeof v === 'number') return v;
         if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
@@ -99,6 +110,19 @@ async function syncEntity(db, tag, meta, apiKey) {
         // Determine columns from first row
         const columns = Object.keys(rows[0]);
 
+        // Derive NOT NULL string columns from entity field definitions.
+        // The D1 schema uses NOT NULL DEFAULT '' for string/datetime fields
+        // that Django models define as CharField(blank=True, null=False).
+        // When the API sends null for these columns, coerce to "" to
+        // satisfy the constraint and match Django's convention.
+        /** @type {Set<string>} */
+        const notNullStrings = new Set();
+        for (const field of meta.fields) {
+            if (field.type === 'string' || field.type === 'datetime') {
+                notNullStrings.add(field.name);
+            }
+        }
+
         // Separate active rows from deleted ones
         const activeRows = rows.filter(r => r.status !== 'deleted');
         const deletedRows = rows.filter(r => r.status === 'deleted');
@@ -108,7 +132,7 @@ async function syncEntity(db, tag, meta, apiKey) {
         for (let i = 0; i < activeRows.length; i += BATCH_SIZE) {
             const batch = activeRows.slice(i, i + BATCH_SIZE);
             const statements = batch.map(row => {
-                const { sql, params } = buildUpsert(meta.table, columns, row);
+                const { sql, params } = buildUpsert(meta.table, columns, row, notNullStrings);
                 return db.prepare(sql).bind(...params);
             });
             await db.batch(statements);
