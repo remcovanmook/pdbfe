@@ -9,14 +9,21 @@ The API worker serves a read-only mirror of the PeeringDB database from Cloudfla
 ```
 Client → wrapHandler (error trap + telemetry headers)
        → validateRequest (method, traversal, scanner probes)
+       → env.PDB.withSession("first-unconstrained") → db
        → OPTIONS? → handlePreflight (precompiled CORS 204)
        → admin path? → routeAdminPath (robots.txt, health, cache status/flush)
        → POST/PUT/DELETE? → handleNotImplemented (501 JSON)
-       → api/{entity} → handleList
-       → api/{entity}/{id} → handleDetail
-       → api/as_set/{asn} → handleAsSet
+       → api/{entity} → handleList(db, ...)
+       → api/{entity}/{id} → handleDetail(db, ...)
+       → api/as_set/{asn} → handleAsSet(db, ...)
        → else → 404
 ```
+
+## D1 Read Replication
+
+The API worker creates a D1 session per request (`"first-unconstrained"`), enabling global read replication. Queries hit the nearest replica instead of always routing to the primary.
+
+All handler functions receive `db` (typed as `D1Session`) instead of `env`. The sync worker does not use sessions — writes always go to the primary.
 
 ## Module Dependency Graph
 

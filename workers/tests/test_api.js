@@ -20,7 +20,7 @@ import handler from '../api/index.js';
  * @returns {D1Database} Mock D1 binding.
  */
 function mockD1(rows = []) {
-    return /** @type {any} */({
+    const db = /** @type {any} */({
         prepare: (/** @type {string} */ sql) => ({
             bind: (/** @type {any[]} */..._args) => {
                 const isJsonEnvelope = sql.includes('AS payload');
@@ -47,8 +47,11 @@ function mockD1(rows = []) {
                 return rows[0] || null;
             },
             all: async () => ({ results: rows, success: true })
-        })
+        }),
+        /** Sessions API: returns itself since the mock already has .prepare(). */
+        withSession() { return db; }
     });
+    return db;
 }
 
 /**

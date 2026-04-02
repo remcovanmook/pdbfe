@@ -28,7 +28,7 @@ import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
  * cachedQuery() which handles coalescing, L2, semaphore, and D1.
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {string} entityTag - Entity tag (e.g. "net").
  * @param {ParsedFilter[]} filters - Parsed query filters.
@@ -37,13 +37,13 @@ import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleList(request, env, ctx, entityTag, filters, opts, rawPath, queryString) {
+export async function handleList(request, db, ctx, entityTag, filters, opts, rawPath, queryString) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
     // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
     if (opts.limit === 0 && opts.skip === 0) {
-        return handleCount(request, env, entity, entityTag, filters, opts, rawPath, queryString);
+        return handleCount(request, db, entity, entityTag, filters, opts, rawPath, queryString);
     }
 
     const cache = getEntityCache(entityTag);
@@ -58,7 +58,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
 
     const buf = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-        queryFn: () => executeListQuery(env, entity, filters, opts)
+        queryFn: () => executeListQuery(db, entity, filters, opts)
     });
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
@@ -71,7 +71,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(env, entity, entityTag, filters, nextOpts, nextCacheKey, cache)
+                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache)
                 );
             }
         }
@@ -85,7 +85,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
  * Uses the zero-allocation path for depth=0, row expansion for depth>0.
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {string} entityTag - Entity tag.
  * @param {number} id - Entity ID.
@@ -95,7 +95,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleDetail(request, env, ctx, entityTag, id, filters, opts, rawPath, queryString) {
+export async function handleDetail(request, db, ctx, entityTag, id, filters, opts, rawPath, queryString) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
@@ -108,7 +108,7 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
 
     const buf = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: DETAIL_TTL,
-        queryFn: () => executeDetailQuery(env, entity, filters, opts, id)
+        queryFn: () => executeDetailQuery(db, entity, filters, opts, id)
     });
 
     if (!buf) return jsonError(404, notFoundMsg);
@@ -121,11 +121,11 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
  * Looks up a network by ASN and returns its irr_as_set field.
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {number} asn - The ASN to look up.
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleAsSet(request, env, asn) {
+export async function handleAsSet(request, db, asn) {
     const cache = getEntityCache("as_set");
     const cacheKey = `as_set/${asn}`;
     const notFoundMsg = `No network found for ASN ${asn}`;
@@ -136,7 +136,7 @@ export async function handleAsSet(request, env, asn) {
     const buf = await cachedQuery({
         cacheKey, cache, entityTag: "as_set", ttlMs: DETAIL_TTL,
         queryFn: async () => {
-            const result = await env.PDB.prepare(
+            const result = await db.prepare(
                 `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
             ).bind(asn).first();
 
@@ -169,7 +169,7 @@ export function handleNotImplemented(method, path) {
  * Executes a list query against D1. Uses the hot path (json_group_array)
  * for depth=0, or the cold path (row-level + expandDepth) for depth>0.
  *
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
@@ -177,19 +177,19 @@ export function handleNotImplemented(method, path) {
  *          Note: empty lists return EMPTY_ENVELOPE (not null) since an empty
  *          list is valid data, not a 404.
  */
-async function executeListQuery(env, entity, filters, opts) {
+async function executeListQuery(db, entity, filters, opts) {
     if (opts.depth > 0) {
         const { sql, params } = buildRowQuery(entity, filters, opts);
-        const result = await env.PDB.prepare(sql).bind(...params).all();
+        const result = await db.prepare(sql).bind(...params).all();
         const rows = result.results || [];
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(env.PDB, entity, rows, opts.depth);
+        await expandDepth(db, entity, rows, opts.depth);
         return encodeJSON({ data: rows, meta: {} });
     }
 
     // Hot path: D1 returns the full JSON envelope as a single string
     const { sql, params } = buildJsonQuery(entity, filters, opts);
-    const result = await env.PDB.prepare(sql).bind(...params).first();
+    const result = await db.prepare(sql).bind(...params).first();
 
     if (!result || !result.payload) {
         return EMPTY_ENVELOPE;
@@ -201,28 +201,28 @@ async function executeListQuery(env, entity, filters, opts) {
  * Executes a detail (single entity) query against D1.
  * Returns null if the entity doesn't exist (triggering negative caching).
  *
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @param {number} id - Entity ID.
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for 404.
  */
-async function executeDetailQuery(env, entity, filters, opts, id) {
+async function executeDetailQuery(db, entity, filters, opts, id) {
     if (opts.depth > 0) {
         const { sql, params } = buildRowQuery(entity, filters, opts, id);
-        const result = await env.PDB.prepare(sql).bind(...params).all();
+        const result = await db.prepare(sql).bind(...params).all();
         const rows = result.results || [];
 
         if (rows.length === 0) return null;
 
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(env.PDB, entity, rows, opts.depth);
+        await expandDepth(db, entity, rows, opts.depth);
         return encodeJSON({ data: rows, meta: {} });
     }
 
     const { sql, params } = buildJsonQuery(entity, filters, opts, id);
-    const result = await env.PDB.prepare(sql).bind(...params).first();
+    const result = await db.prepare(sql).bind(...params).first();
 
     if (!result || !result.payload || result.payload === '{"data":[],"meta":{}}') {
         return null;
@@ -265,7 +265,7 @@ function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
  * Caches the count envelope with COUNT_TTL (15 min).
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Parsed query filters.
@@ -274,7 +274,7 @@ function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
  * @param {string} queryString - Original query string.
  * @returns {Promise<Response>} JSON response with count in meta.
  */
-async function handleCount(request, env, entity, entityTag, filters, opts, rawPath, queryString) {
+async function handleCount(request, db, entity, entityTag, filters, opts, rawPath, queryString) {
     const cache = getEntityCache(entityTag);
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const now = Date.now();
@@ -307,7 +307,7 @@ async function handleCount(request, env, entity, entityTag, filters, opts, rawPa
         cacheKey, cache, entityTag, ttlMs: COUNT_TTL,
         queryFn: async () => {
             const { sql, params } = buildCountQuery(entity, filters, opts);
-            const result = await env.PDB.prepare(sql).bind(...params).first();
+            const result = await db.prepare(sql).bind(...params).first();
             const count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
             return encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
         }
@@ -362,7 +362,7 @@ function countRows(payload) {
  * Background pre-fetch for the next page of paginated results.
  * Delegates to cachedQuery() which handles coalescing, L2, and D1.
  *
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {ParsedFilter[]} filters - Query filters.
@@ -371,11 +371,11 @@ function countRows(payload) {
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @returns {Promise<void>}
  */
-async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cache) {
+async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache) {
     try {
         await cachedQuery({
             cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-            queryFn: () => executeListQuery(env, entity, filters, opts)
+            queryFn: () => executeListQuery(db, entity, filters, opts)
         });
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);
