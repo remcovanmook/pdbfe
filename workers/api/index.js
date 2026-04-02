@@ -71,11 +71,11 @@ function checkCachedError(entityTag, rawPath, queryString, entity, filters, sort
  * This endpoint lives outside /api/ so it does not interfere
  * with the PeeringDB-compatible API schema.
  *
- * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @returns {Promise<Response>} JSON response with sync metadata.
  */
-async function handleSyncStatus(env) {
-    const rows = await env.PDB.prepare(
+async function handleSyncStatus(db) {
+    const rows = await db.prepare(
         'SELECT entity, last_sync, row_count, updated_at FROM "_sync_meta" ORDER BY entity'
     ).all();
 
@@ -120,6 +120,11 @@ async function handleSyncStatus(env) {
 async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
 
+    // Create a D1 session for read replication. "first-unconstrained" allows
+    // queries to hit any replica (including the primary). This is optimal for
+    // read-only workloads where eventual consistency is acceptable.
+    const db = env.PDB.withSession("first-unconstrained");
+
     // Allow all methods through validation so we can return proper 501s
     const invalid = validateRequest(request, rawPath, ALL_METHODS);
     if (invalid) return invalid;
@@ -134,7 +139,7 @@ async function handleRequest(request, env, ctx) {
     // Root-level paths (no slash): admin endpoints
     if (slash === -1) {
         const adminResponse = routeAdminPath(rawPath, env, {
-            db: env.PDB,
+            db,
             serviceName: "pdbfe-api",
             getStats: getCacheStats,
             flush: purgeAllCaches,
@@ -143,7 +148,7 @@ async function handleRequest(request, env, ctx) {
 
         // /status — public sync metadata (outside /api/ namespace)
         if (rawPath === "status") {
-            return handleSyncStatus(env);
+            return handleSyncStatus(db);
         }
 
         return jsonError(404, "Not found");
@@ -184,7 +189,7 @@ async function handleRequest(request, env, ctx) {
         const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
         if (errorResponse) return errorResponse;
 
-        return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -196,7 +201,7 @@ async function handleRequest(request, env, ctx) {
         if (isNaN(asn) || asn <= 0) {
             return jsonError(400, "Invalid ASN");
         }
-        return handleAsSet(request, env, asn);
+        return handleAsSet(request, db, asn);
     }
 
     // api/{entity}/{id} — detail endpoint
@@ -220,7 +225,7 @@ async function handleRequest(request, env, ctx) {
     const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
     if (errorResponse) return errorResponse;
 
-    return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

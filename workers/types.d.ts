@@ -15,6 +15,14 @@ interface PdbApiEnv {
 }
 
 /**
+ * Common interface for D1Database and D1DatabaseSession.
+ * Both provide .prepare(), which is the only method the API worker uses.
+ * Used for handler parameters that accept either a raw binding or a
+ * session-wrapped binding for read replication.
+ */
+type D1Session = D1Database | D1DatabaseSession;
+
+/**
  * Environment bindings for the sync worker.
  * Matches workers/wrangler-sync.toml d1_databases and vars.
  */

@@ -86,7 +86,7 @@ function isValidSecret(env, provided) {
  * Returns a health check response with D1 connectivity status,
  * aggregated cache statistics, and isolate uptime telemetry.
  *
- * @param {D1Database} db - D1 database binding to probe.
+ * @param {D1Session} db - D1 database binding to probe.
  * @param {string} serviceName - Identifies the worker in the response.
  * @param {Function} getStats - Returns aggregated cache stats object.
  * @returns {Promise<Response>} JSON health response (200 OK or 503 DEGRADED).
@@ -173,7 +173,7 @@ function handleFlush(flushFn) {
  *
  * @param {string} rawPath - URL path without leading slash.
  * @param {PdbEnv} env - Cloudflare environment bindings (needs ADMIN_SECRET).
- * @param {{db: D1Database, serviceName: string, getStats: Function, flush: Function}} opts - Handler configuration.
+ * @param {{db: D1Session, serviceName: string, getStats: Function, flush: Function}} opts - Handler configuration.
  * @returns {Promise<Response>|Response|null} Admin response or null if not matched.
  */
 export function routeAdminPath(rawPath, env, { db, serviceName, getStats, flush }) {

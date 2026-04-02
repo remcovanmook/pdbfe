@@ -34,7 +34,7 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
  *   except the FK back to the parent). Matches upstream PeeringDB
  *   behaviour.
  *
- * @param {D1Database} db - The D1 database binding.
+ * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows to expand.
  * @param {number} depth - Depth level (0, 1, or 2).
@@ -60,7 +60,7 @@ export async function expandDepth(db, entity, rows, depth) {
  * Uses a single batched IN query per relationship (not per row)
  * to avoid N+1 query patterns.
  *
- * @param {D1Database} db - The D1 database binding.
+ * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @returns {Promise<void>}
@@ -109,7 +109,7 @@ async function expandDepthOne(db, entity, rows) {
  * JSON-stored TEXT columns (social_media, info_types, etc.) are parsed
  * back to native arrays/objects.
  *
- * @param {D1Database} db - The D1 database binding.
+ * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @returns {Promise<void>}
