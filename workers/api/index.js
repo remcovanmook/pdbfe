@@ -8,7 +8,7 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, WRITABLE_TAGS, ENTITIES, validateFields } from './entities.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -128,7 +128,12 @@ async function handleRequest(request, env, ctx) {
         }
 
         const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
-        const fields = rawFields.length > 0 ? validateFields(ENTITIES[entityTag], rawFields) : [];
+        const entity = ENTITIES[entityTag];
+        const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
+
+        const queryError = validateQuery(entity, filters, sort);
+        if (queryError) return jsonError(400, queryError);
+
         return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
     }
 
@@ -157,7 +162,12 @@ async function handleRequest(request, env, ctx) {
     }
 
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
-    const fields = rawFields.length > 0 ? validateFields(ENTITIES[entityTag], rawFields) : [];
+    const entity = ENTITIES[entityTag];
+    const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
+
+    const queryError = validateQuery(entity, filters, sort);
+    if (queryError) return jsonError(400, queryError);
+
     return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
 }
 
