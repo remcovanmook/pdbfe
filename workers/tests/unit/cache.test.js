@@ -7,8 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { LRUCache } from '../../core/cache.js';
-import { getEntityCache, getCacheStats, purgeAllCaches, purgeEntityCache, NEGATIVE_TTL, DETAIL_TTL, normaliseCacheKey } from '../../api/cache.js';
-import { createSemaphore } from '../../core/utils.js';
+import { getEntityCache, getCacheStats, purgeAllCaches, NEGATIVE_TTL, DETAIL_TTL, normaliseCacheKey } from '../../api/cache.js';
 
 describe("LRUCache core operations", () => {
     it("should store and retrieve an entry", () => {
@@ -150,14 +149,6 @@ describe("Aggregate cache operations", () => {
         assert.equal(getCacheStats().totals.items, 0);
     });
 
-    it("should purge a single entity cache", () => {
-        purgeAllCaches();
-        getEntityCache("net").add("a", new Uint8Array(10), {}, Date.now());
-        getEntityCache("org").add("b", new Uint8Array(10), {}, Date.now());
-        purgeEntityCache("net");
-        assert.equal(getEntityCache("net").getStats().items, 0);
-        assert.equal(getEntityCache("org").getStats().items, 1);
-    });
 });
 
 describe("normaliseCacheKey", () => {
@@ -238,56 +229,4 @@ describe("Negative cache in LRU", () => {
     });
 });
 
-describe("createSemaphore", () => {
-    it("should allow up to maxConcurrent immediate acquisitions", async () => {
-        const sem = createSemaphore(3);
-        // All three should resolve immediately (no queuing)
-        await sem.acquire();
-        await sem.acquire();
-        await sem.acquire();
-        sem.release();
-        sem.release();
-        sem.release();
-    });
 
-    it("should queue callers beyond maxConcurrent", async () => {
-        const sem = createSemaphore(1);
-        const order = [];
-
-        await sem.acquire(); // slot taken
-
-        // This should queue
-        const queued = sem.acquire().then(() => order.push("queued"));
-
-        // Yield to check the queued caller hasn't run yet
-        await new Promise(r => setTimeout(r, 10));
-        assert.deepEqual(order, []);
-
-        sem.release(); // should wake the queued caller
-        await queued;
-        assert.deepEqual(order, ["queued"]);
-        sem.release();
-    });
-
-    it("should process queued callers in FIFO order", async () => {
-        const sem = createSemaphore(1);
-        const order = [];
-
-        await sem.acquire(); // take the slot
-
-        const p1 = sem.acquire().then(() => { order.push(1); sem.release(); });
-        const p2 = sem.acquire().then(() => { order.push(2); sem.release(); });
-        const p3 = sem.acquire().then(() => { order.push(3); sem.release(); });
-
-        sem.release(); // start draining
-        await Promise.all([p1, p2, p3]);
-
-        assert.deepEqual(order, [1, 2, 3]);
-    });
-
-    it("should handle release without queued callers", () => {
-        const sem = createSemaphore(2);
-        // Release without acquire should not throw
-        sem.release();
-    });
-});

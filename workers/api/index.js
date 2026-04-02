@@ -54,14 +54,12 @@ function checkCachedError(entityTag, rawPath, queryString, entity, filters, sort
     if (!queryError) return null;
 
     // Cache the error body in L1 + L2
-    const errorBody = encoder.encode(JSON.stringify({ error: queryError }) + '\n');
+    const errorJson = JSON.stringify({ error: queryError }) + '\n';
+    const errorBody = encoder.encode(errorJson);
     cache.add(cacheKey, errorBody, { entityTag: ERROR_META_TAG }, now);
     putL2(cacheKey, errorBody, ERROR_TTL / 1000);
 
-    return new Response(
-        JSON.stringify({ error: queryError }) + '\n',
-        { status: 400, headers: H_NOCACHE }
-    );
+    return new Response(errorJson, { status: 400, headers: H_NOCACHE });
 }
 
 /**
