@@ -44,6 +44,16 @@ Before executing any D1 query for a cache miss, the system checks `cache.pending
 
 D1 handles query serialisation internally — SQLite is single-threaded with its own request queue. A per-isolate semaphore was previously used to limit concurrent D1 queries, but it caused cross-request promise resolution issues in the Workers runtime. See `pipeline.js` for the history.
 
+### D1 Read Replication (Sessions API)
+
+The API worker creates a D1 session per request using `env.PDB.withSession("first-unconstrained")`. This enables global read replication — D1 routes read queries to the nearest replica rather than the primary. The `"first-unconstrained"` mode allows queries to hit any available replica, which is optimal because:
+
+- The API worker is read-only (all writes happen in the sync worker).
+- Eventual consistency is acceptable given our 5–15 minute cache TTLs.
+- The sync worker does **not** use sessions — writes always go to the primary.
+
+Handler functions receive a `D1Session` (union of `D1Database | D1DatabaseSession`) parameter named `db` instead of the full `env` object. This keeps the session boundary explicit and prevents accidental direct `env.PDB` access in query code.
+
 ## 5. The Cache Architecture
 
 The API uses a three-tier cache hierarchy:

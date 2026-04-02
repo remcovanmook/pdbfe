@@ -17,15 +17,18 @@ import assert from 'node:assert/strict';
  * @returns {{prepare: Function}}
  */
 function mockDB(rows) {
-    return {
+    const db = {
         prepare(_sql) {
             return {
                 all() {
                     return Promise.resolve({ results: rows });
                 }
             };
-        }
+        },
+        /** Sessions API: returns itself since the mock already has .prepare(). */
+        withSession() { return db; }
     };
+    return db;
 }
 
 // ── Import the worker under test ────────────────────────────────
