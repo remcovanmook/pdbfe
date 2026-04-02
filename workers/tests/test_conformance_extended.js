@@ -399,7 +399,7 @@ describe('Conformance: as_set extended', { concurrency: 1 }, () => {
             `Multi-ASN as_set should return 400, got ${res.status}`);
     });
 
-    it('/api/as_set/<asn> response shape matches upstream', async () => {
+    it('/api/as_set/<asn> value matches upstream', async () => {
         const { mirror, upstream } = await fetchBoth(
             `/api/as_set/${WELL_KNOWN.asn_cloudflare}`);
         if (upstream.body?._error) return;
@@ -410,17 +410,14 @@ describe('Conformance: as_set extended', { concurrency: 1 }, () => {
             `as_set record count mismatch: mirror=${mirData.length} upstream=${upData.length}`);
 
         if (mirData.length > 0 && upData.length > 0) {
-            // Upstream uses ASN as key: {"13335": {asn, irr_as_set, name}}
-            // Mirror uses flat format: {asn, irr_as_set, name}
-            // Compare the inner field names instead
-            const upRecord = upData[0];
+            // Upstream format: {"13335": "AS-CLOUDFLARE"} (ASN key → irr_as_set string)
+            // Mirror format:   {"asn": 13335, "irr_as_set": "AS-CLOUDFLARE", "name": "..."}
+            // Compare the irr_as_set value
             const asnKey = String(WELL_KNOWN.asn_cloudflare);
-            const upInner = (asnKey in upRecord) ? upRecord[asnKey] : upRecord;
-            const upFields = new Set(Object.keys(upInner));
-            const mirFields = new Set(Object.keys(mirData[0]));
-            const missing = [...upFields].filter(k => !mirFields.has(k));
-            assert.deepStrictEqual(missing, [],
-                `as_set mirror missing inner fields: ${missing.join(', ')}`);
+            const upValue = upData[0][asnKey];
+            assert.ok(upValue !== undefined, `Upstream missing key "${asnKey}"`);
+            assert.equal(mirData[0].irr_as_set, upValue,
+                `irr_as_set mismatch: mirror="${mirData[0].irr_as_set}" upstream="${upValue}"`);
         }
     });
 
