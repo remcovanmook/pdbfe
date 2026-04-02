@@ -61,6 +61,15 @@ export const COUNT_TTL = 15 * 60 * 1000;
 export const NEGATIVE_TTL = 5 * 60 * 1000;
 
 /**
+ * TTL for 400 error responses (5 minutes).
+ * Invalid query errors are deterministic — the same malformed filter
+ * always produces the same error. Caching prevents repeated validation
+ * and keeps invalid queries from consuming resources.
+ * @type {number}
+ */
+export const ERROR_TTL = 5 * 60 * 1000;
+
+/**
  * Cache tier configuration per entity. Sized by two factors:
  *
  *   slots:   query cardinality — how many unique filter combinations
