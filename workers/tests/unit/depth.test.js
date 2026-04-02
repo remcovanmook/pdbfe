@@ -38,22 +38,36 @@ function mockD1(responses) {
     return { db: /** @type {any} */(db), queries };
 }
 
+function f(name, type, opts) {
+    const def = { name, type };
+    if (opts?.queryable === false) def.queryable = false;
+    if (opts?.json === true) def.json = true;
+    return def;
+}
+
+/** @type {EntityMeta} */
 const NET_ENTITY = {
     tag: "net",
     table: "peeringdb_network",
-    columns: ["id", "name", "asn"],
-    filters: {},
+    fields: [
+        f("id", "number"),
+        f("name", "string"),
+        f("asn", "number"),
+    ],
     relationships: [
         { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id" },
         { field: "poc_set", table: "peeringdb_network_contact", fk: "net_id" }
     ]
 };
 
+/** @type {EntityMeta} */
 const ENTITY_NO_RELS = {
     tag: "ixpfx",
     table: "peeringdb_ixlan_prefix",
-    columns: ["id", "prefix"],
-    filters: {},
+    fields: [
+        f("id", "number"),
+        f("prefix", "string"),
+    ],
     relationships: []
 };
 
@@ -175,20 +189,31 @@ describe("expandDepth", () => {
     });
 
     it("depth=2 should parse JSON-stored TEXT columns in children", async () => {
+        // Test uses the carrier entity which has social_media as a json field.
+        // The real carrier entity is registered in ENTITIES and used by depth.js via TABLE_TO_TAG.
+        /** @type {EntityMeta} */
+        const ORG_WITH_CARRIERS = {
+            tag: "org",
+            table: "peeringdb_organization",
+            fields: [f("id", "number"), f("name", "string")],
+            relationships: [
+                { field: "carrier_set", table: "peeringdb_carrier", fk: "org_id" }
+            ]
+        };
+
         const { db } = mockD1({
-            peeringdb_network_facility: [
-                { id: 100, net_id: 1, name: "DC1", social_media: '[{"service":"website","identifier":"https://dc1.example"}]', created: "2024-01-01", updated: "2024-01-01", status: "ok" }
-            ],
-            peeringdb_network_contact: []
+            peeringdb_carrier: [
+                { id: 100, org_id: 1, name: "Test Carrier", social_media: '[{"service":"website","identifier":"https://example.com"}]', created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+            ]
         });
 
-        const rows = [{ id: 1, name: "Test Net" }];
-        await expandDepth(db, NET_ENTITY, rows, 2);
+        const rows = [{ id: 1, name: "Test Org" }];
+        await expandDepth(db, ORG_WITH_CARRIERS, rows, 2);
 
         // social_media should be parsed from JSON string to array
-        const fac = rows[0].netfac_set[0];
-        assert.ok(Array.isArray(fac.social_media), "social_media should be parsed to array");
-        assert.equal(fac.social_media[0].service, "website");
+        const carrier = rows[0].carrier_set[0];
+        assert.ok(Array.isArray(carrier.social_media), "social_media should be parsed to array");
+        assert.equal(carrier.social_media[0].service, "website");
     });
 
     it("depth=2 should return empty arrays when no children", async () => {

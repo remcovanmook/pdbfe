@@ -8,7 +8,7 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, WRITABLE_TAGS } from './entities.js';
+import { ENTITY_TAGS, WRITABLE_TAGS, ENTITIES, validateFields } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -127,8 +127,9 @@ async function handleRequest(request, env, ctx) {
             return jsonError(404, `Unknown entity: ${entityTag}`);
         }
 
-        const { filters, depth, limit, skip, since, sort } = parseQueryFilters(queryString);
-        return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort }, rawPath, queryString);
+        const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
+        const fields = rawFields.length > 0 ? validateFields(ENTITIES[entityTag], rawFields) : [];
+        return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -155,8 +156,9 @@ async function handleRequest(request, env, ctx) {
         return jsonError(400, `Invalid ID: ${idStr}`);
     }
 
-    const { filters, depth, limit, skip, since, sort } = parseQueryFilters(queryString);
-    return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort }, rawPath, queryString);
+    const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
+    const fields = rawFields.length > 0 ? validateFields(ENTITIES[entityTag], rawFields) : [];
+    return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");
