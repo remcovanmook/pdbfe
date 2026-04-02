@@ -86,6 +86,36 @@ interface EntityRelationship {
 }
 
 /**
+ * Describes a single column/field on a PeeringDB entity.
+ * Foreign key annotations drive automatic derivation of joinColumns
+ * and relationships — see deriveRelationships() in entities.js.
+ */
+interface FieldDef {
+    /** Column name in D1 (e.g. "asn", "name"). */
+    name: string;
+    /** Data type for filter coercion and validation. */
+    type: 'string' | 'number' | 'boolean' | 'datetime';
+    /** Whether this field can be used in query filters. Defaults to true. */
+    queryable?: boolean;
+    /** Whether D1 stores this as a JSON TEXT column (needs json() wrapping). Defaults to false. */
+    json?: boolean;
+    /** Target entity tag if this field is a foreign key (e.g. "org"). id column implied. */
+    foreignKey?: string;
+    /** Columns to resolve via LEFT JOIN when this FK is present (e.g. { name: "org_name" }). */
+    resolve?: Record<string, string>;
+}
+
+/**
+ * Options for Entity builder field methods.
+ */
+interface FieldOpts {
+    queryable?: boolean;
+    json?: boolean;
+    foreignKey?: string;
+    resolve?: Record<string, string>;
+}
+
+/**
  * Metadata registry entry for a single PeeringDB entity type.
  */
 interface EntityMeta {
@@ -93,10 +123,8 @@ interface EntityMeta {
     table: string;
     /** API endpoint tag (e.g. "net"). */
     tag: string;
-    /** Columns to SELECT. */
-    columns: string[];
-    /** Allowed filter fields (whitelisted from the OpenAPI spec). */
-    filters: Record<string, 'string' | 'number' | 'boolean' | 'datetime'>;
+    /** Field definitions — the single source of truth for columns, types, and filterability. */
+    fields: FieldDef[];
     /** Relationship definitions for depth expansion. */
     relationships: EntityRelationship[];
     /** Optional JOIN definitions for direct list/detail queries. */
@@ -110,12 +138,14 @@ interface EntityMeta {
  * Parsed filter from a URL query parameter.
  */
 interface ParsedFilter {
-    /** Column name. */
+    /** Column name (on the current entity, or on the referenced entity for cross-entity filters). */
     field: string;
     /** Operator (eq, lt, gt, lte, gte, contains, startswith, in). */
     op: string;
     /** Raw value(s) from the query string. */
     value: string;
+    /** Cross-entity reference tag (e.g. "fac" for fac__state). When set, field is on this entity. */
+    entity?: string;
 }
 
 /**
