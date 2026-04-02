@@ -14,7 +14,7 @@
  *   in        → WHERE col IN (?, ?, ...)
  */
 
-import { getColumns, getJsonColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
+import { getColumns, getJsonColumns, getBoolColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).
@@ -115,20 +115,25 @@ function coerceValue(value, fieldType) {
 /**
  * Builds the per-column argument list for SQLite's json_object().
  * JSON-stored columns are wrapped in json() to inline them as native
- * JSON arrays without double-escaping. Regular columns are passed as-is.
+ * JSON arrays without double-escaping. Boolean columns use json()
+ * around a CASE expression to emit true/false instead of 0/1.
+ * Regular columns are passed as-is.
  *
  * @param {string[]} columns - Column names.
  * @param {Set<string>} jsonCols - Column names that store JSON TEXT.
+ * @param {Set<string>} boolCols - Column names with boolean type.
  * @param {string} [prefix] - Optional table alias prefix (e.g. "t").
  * @returns {string} Comma-separated json_object argument pairs.
  */
-function jsonObjectArgs(columns, jsonCols, prefix) {
+function jsonObjectArgs(columns, jsonCols, boolCols, prefix) {
     const pfx = prefix ? `${prefix}.` : '';
     const parts = [];
     for (let i = 0; i < columns.length; i++) {
         const c = columns[i];
         if (jsonCols.has(c)) {
             parts.push(`'${c}', json(${pfx}"${c}")`);
+        } else if (boolCols.has(c)) {
+            parts.push(`'${c}', json(CASE WHEN ${pfx}"${c}" THEN 'true' ELSE 'false' END)`);
         } else {
             parts.push(`'${c}', ${pfx}"${c}"`);
         }
@@ -197,6 +202,7 @@ function buildJoinFragments(joinDefs) {
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity);
     const jsonCols = getJsonColumns(entity);
+    const boolCols = getBoolColumns(entity);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(
@@ -205,14 +211,19 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
     if (hasJoins) {
+        const hasExplicitFields = opts.fields && opts.fields.length > 0;
         const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', ');
-        const allSelectCols = baseCols + ', ' + selectCols.join(', ');
+        const allSelectCols = hasExplicitFields
+            ? baseCols
+            : baseCols + ', ' + selectCols.join(', ');
 
-        const baseJsonArgs = jsonObjectArgs(columns, jsonCols);
-        const allJsonArgs = baseJsonArgs + ', ' + outerJsonArgs.join(', ');
+        const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols);
+        const allJsonArgs = hasExplicitFields
+            ? baseJsonArgs
+            : baseJsonArgs + ', ' + outerJsonArgs.join(', ');
 
         const sql =
             `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +
@@ -223,7 +234,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         return { sql, params };
     }
 
-    const jsonArgs = jsonObjectArgs(columns, jsonCols);
+    const jsonArgs = jsonObjectArgs(columns, jsonCols, boolCols);
     const sql =
         `SELECT json_object('data',json_group_array(json_object(${jsonArgs})),'meta',json_object()) AS payload` +
         ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
@@ -255,11 +266,14 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
     if (hasJoins) {
+        const hasExplicitFields = opts.fields && opts.fields.length > 0;
         const { joinSql, selectCols } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", ");
-        const allCols = baseCols + ', ' + selectCols.join(', ');
+        const allCols = hasExplicitFields
+            ? baseCols
+            : baseCols + ', ' + selectCols.join(', ');
 
         const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY ${orderBy}${pagination}`;
         return { sql, params };

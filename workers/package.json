@@ -4,7 +4,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/unit/*.test.js",
-    "test:integration": "node --test tests/test_api.js"
+    "test:integration": "node --test tests/test_api.js",
+    "test:conformance": "node --test tests/test_conformance.js",
+    "test:equivalence": "node --test tests/test_equivalence.js"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260318.0",

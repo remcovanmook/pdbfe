@@ -15,7 +15,7 @@
  *   the D1-specific logic.
  */
 
-import { ENTITIES, getJsonColumns } from '../entities.js';
+import { ENTITIES, getJsonColumns, getBoolColumns } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, NEGATIVE_TTL, normaliseCacheKey } from '../cache.js';
@@ -318,12 +318,13 @@ async function handleCount(request, db, entity, entityTag, filters, opts, rawPat
 
 
 /**
- * Parses JSON-stored TEXT columns back to native arrays/objects.
+ * Parses JSON-stored TEXT columns back to native arrays/objects and
+ * coerces boolean fields from SQLite's 0/1 integers to JS booleans.
  * Only used in the depth>0 cold path where we need individual row objects
  * for V8-side relationship expansion. Column names are derived from the
- * entity's field definitions (json: true).
+ * entity's field definitions.
  *
- * @param {EntityMeta} entity - Entity metadata for JSON column lookup.
+ * @param {EntityMeta} entity - Entity metadata for column lookup.
  * @param {Record<string, any>} row - A result row to mutate in-place.
  */
 function parseJsonFields(entity, row) {
@@ -331,6 +332,9 @@ function parseJsonFields(entity, row) {
         if (typeof row[col] === "string" && row[col]) {
             try { row[col] = JSON.parse(row[col]); } catch { /* keep as string */ }
         }
+    }
+    for (const col of getBoolColumns(entity)) {
+        if (col in row) row[col] = !!row[col];
     }
 }
 

@@ -469,6 +469,7 @@ export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
  * Caches:
  *   _columns:     string[]       (ordered column names)
  *   _jsonColumns:  Set<string>    (json: true column names)
+ *   _boolColumns:  Set<string>    (boolean-typed column names)
  *   _fieldNames:   Set<string>    (all column names for validation)
  *   _filterTypes:  Map<string, string>  (queryable field → type)
  *
@@ -481,6 +482,8 @@ function cacheFieldLookups(entities) {
         /** @type {Set<string>} */
         const jsonColumns = new Set();
         /** @type {Set<string>} */
+        const boolColumns = new Set();
+        /** @type {Set<string>} */
         const fieldNames = new Set();
         /** @type {Map<string, string>} */
         const filterTypes = new Map();
@@ -489,11 +492,13 @@ function cacheFieldLookups(entities) {
             columns.push(field.name);
             fieldNames.add(field.name);
             if (field.json) jsonColumns.add(field.name);
+            if (field.type === 'boolean') boolColumns.add(field.name);
             if (field.queryable !== false) filterTypes.set(field.name, field.type);
         }
 
         /** @type {any} */ (entity)._columns = columns;
         /** @type {any} */ (entity)._jsonColumns = jsonColumns;
+        /** @type {any} */ (entity)._boolColumns = boolColumns;
         /** @type {any} */ (entity)._fieldNames = fieldNames;
         /** @type {any} */ (entity)._filterTypes = filterTypes;
     }
@@ -525,6 +530,20 @@ export function getJsonColumns(entity) {
     if (/** @type {any} */ (entity)._jsonColumns) return /** @type {any} */ (entity)._jsonColumns;
     const s = new Set();
     for (const field of entity.fields) { if (field.json) s.add(field.name); }
+    return s;
+}
+
+/**
+ * Returns Set of boolean-typed column names. Used by the query builder to
+ * emit proper JSON booleans (true/false) instead of SQLite's 0/1 integers.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} Column names with type: 'boolean'.
+ */
+export function getBoolColumns(entity) {
+    if (/** @type {any} */ (entity)._boolColumns) return /** @type {any} */ (entity)._boolColumns;
+    const s = new Set();
+    for (const field of entity.fields) { if (field.type === 'boolean') s.add(field.name); }
     return s;
 }
 
