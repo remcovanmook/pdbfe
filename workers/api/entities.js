@@ -1,75 +1,147 @@
 /**
  * @fileoverview Entity metadata registry for all PeeringDB API entity types.
- * Maps API endpoint tags to D1 table names, field definitions, relationship
- * definitions for depth expansion, and JOIN definitions for cross-entity
- * name resolution.
  *
- * Each field is described by a single FieldDef object: {name, type, queryable?, json?}.
- * - queryable defaults to true — most fields can be filtered on.
- * - json defaults to false — only columns stored as JSON TEXT in D1 need this.
+ * Each entity is built using the {@link Entity} class, which provides a
+ * chainable builder API. Fields are the single source of truth — foreign
+ * key annotations on fields drive the automatic derivation of:
+ *   - joinColumns: LEFT JOINs for direct list/detail queries
+ *   - relationships: depth expansion _set fields
  *
- * Adding a new entity type means adding an entry here — the router,
- * query builder, and depth expander all consume this registry.
+ * Every entity automatically receives id, created, updated, and status
+ * fields via {@link Entity#done}.
  *
- * JOIN columns (joinColumns) mirror the upstream Django ORM's
- * select_related() annotations. They appear in two places:
- *   - On entity definitions: applied by the query builder for direct
- *     list/detail queries (e.g. GET /api/netixlan?ix_id=26).
- *   - On relationship definitions: applied by the depth expander for
- *     child set expansion (e.g. GET /api/fac/1?depth=2 → netfac_set).
+ * @example
+ * const net = new Entity('net', 'peeringdb_network')
+ *     .number('org_id', { foreignKey: 'org', resolve: { name: 'org_name' } })
+ *     .string('name')
+ *     .number('asn')
+ *     .done();
  */
 
-// ── Field definition helpers ─────────────────────────────────────────────────
+// ── Entity builder ───────────────────────────────────────────────────────────
 
 /**
- * Creates a field definition with sensible defaults.
- * queryable defaults to true, json defaults to false.
+ * Builder for entity metadata. Provides typed field methods and handles
+ * boilerplate (id + timestamps) automatically.
  *
- * @param {string} name - Column name in D1.
- * @param {'string'|'number'|'boolean'|'datetime'} type - Data type.
- * @param {Object} [opts] - Optional overrides.
- * @param {boolean} [opts.queryable] - Whether this field can be filtered on. Defaults to true.
- * @param {boolean} [opts.json] - Whether D1 stores this as JSON TEXT. Defaults to false.
- * @returns {FieldDef}
+ * Fields marked with `foreignKey` reference another entity by tag.
+ * After all entities are defined, {@link deriveRelationships} scans these
+ * annotations to populate `joinColumns` (for query-time JOINs) and
+ * `relationships` (for depth expansion).
+ *
+ * @implements {EntityMeta}
  */
-function f(name, type, opts) {
-    /** @type {FieldDef} */
-    const def = { name, type };
-    if (opts?.queryable === false) def.queryable = false;
-    if (opts?.json === true) def.json = true;
-    return def;
+class Entity {
+    /**
+     * @param {string} tag - API endpoint tag (e.g. "net").
+     * @param {string} table - D1 table name (e.g. "peeringdb_network").
+     */
+    constructor(tag, table) {
+        this.tag = tag;
+        this.table = table;
+        /** @type {FieldDef[]} */
+        this.fields = [{ name: 'id', type: 'number' }];
+        /** @type {EntityRelationship[]} */
+        this.relationships = [];
+        /** @type {JoinColumnDef[]|undefined} */
+        this.joinColumns = undefined;
+    }
+
+    /**
+     * Add a string field (queryable by default).
+     * @param {string} name - Column name in D1.
+     * @param {FieldOpts} [opts] - Override defaults.
+     * @returns {this}
+     */
+    string(name, opts) { return this._add(name, 'string', opts); }
+
+    /**
+     * Add a number field (queryable by default).
+     * @param {string} name
+     * @param {FieldOpts} [opts]
+     * @returns {this}
+     */
+    number(name, opts) { return this._add(name, 'number', opts); }
+
+    /**
+     * Add a boolean field (queryable by default).
+     * @param {string} name
+     * @param {FieldOpts} [opts]
+     * @returns {this}
+     */
+    boolean(name, opts) { return this._add(name, 'boolean', opts); }
+
+    /**
+     * Add a datetime field (queryable by default).
+     * @param {string} name
+     * @param {FieldOpts} [opts]
+     * @returns {this}
+     */
+    datetime(name, opts) { return this._add(name, 'datetime', opts); }
+
+    /**
+     * Add a JSON-stored TEXT column. Non-queryable by definition — D1
+     * stores these as serialised JSON strings that need json() wrapping
+     * in sql and JSON.parse on the V8 side.
+     * @param {string} name - Column name.
+     * @returns {this}
+     */
+    json(name) { return this._add(name, 'string', { queryable: false, json: true }); }
+
+    /**
+     * Add the standard mailing address field group (city, country, state,
+     * zipcode, plus non-queryable street/geo fields). Used by org and fac.
+     * @returns {this}
+     */
+    address() {
+        return this
+            .string('address1', { queryable: false })
+            .string('address2', { queryable: false })
+            .string('city')
+            .string('country')
+            .string('state')
+            .string('zipcode')
+            .string('floor', { queryable: false })
+            .string('suite', { queryable: false })
+            .number('latitude', { queryable: false })
+            .number('longitude', { queryable: false });
+    }
+
+    /**
+     * Seal the entity definition by appending standard timestamp fields
+     * (created, updated, status). Call this last in the builder chain.
+     * @returns {this}
+     */
+    done() {
+        this.fields.push(
+            { name: 'created', type: 'datetime' },
+            { name: 'updated', type: 'datetime' },
+            { name: 'status', type: 'string' },
+        );
+        return this;
+    }
+
+    /**
+     * Internal: push a FieldDef onto the fields array.
+     * @param {string} name
+     * @param {'string'|'number'|'boolean'|'datetime'} type
+     * @param {FieldOpts} [opts]
+     * @returns {this}
+     * @private
+     */
+    _add(name, type, opts) {
+        /** @type {FieldDef} */
+        const def = { name, type };
+        if (opts?.queryable === false) def.queryable = false;
+        if (opts?.json === true) def.json = true;
+        if (opts?.foreignKey) {
+            def.foreignKey = opts.foreignKey;
+            if (opts.resolve) def.resolve = opts.resolve;
+        }
+        this.fields.push(def);
+        return this;
+    }
 }
-
-/** Shorthand for a non-queryable field. */
-const nq = (/** @type {string} */ name, /** @type {'string'|'number'|'boolean'|'datetime'} */ type) =>
-    f(name, type, { queryable: false });
-
-/** Shorthand for a JSON-stored, non-queryable field. */
-const jf = (/** @type {string} */ name) =>
-    f(name, 'string', { queryable: false, json: true });
-
-// ── Common field groups ──────────────────────────────────────────────────────
-
-/** Timestamp fields present on every entity. */
-const TIMESTAMPS = [
-    f('created', 'datetime'),
-    f('updated', 'datetime'),
-    f('status', 'string'),
-];
-
-/** Address fields shared by org and fac. */
-const ADDRESS = [
-    f('address1', 'string', { queryable: false }),
-    f('address2', 'string', { queryable: false }),
-    f('city', 'string'),
-    f('country', 'string'),
-    f('state', 'string'),
-    f('zipcode', 'string'),
-    f('floor', 'string', { queryable: false }),
-    f('suite', 'string', { queryable: false }),
-    f('latitude', 'number', { queryable: false }),
-    f('longitude', 'number', { queryable: false }),
-];
 
 // ── Entity definitions ───────────────────────────────────────────────────────
 
@@ -80,381 +152,304 @@ const ADDRESS = [
  * @type {Record<string, EntityMeta>}
  */
 export const ENTITIES = {
-    net: {
-        tag: 'net',
-        table: 'peeringdb_network',
-        fields: [
-            f('id', 'number'),
-            f('org_id', 'number'),
-            f('name', 'string'),
-            f('aka', 'string'),
-            f('name_long', 'string'),
-            nq('website', 'string'),
-            jf('social_media'),
-            f('asn', 'number'),
-            nq('looking_glass', 'string'),
-            nq('route_server', 'string'),
-            f('irr_as_set', 'string'),
-            f('info_type', 'string'),
-            f('info_types', 'string', { queryable: false, json: true }),
-            f('info_prefixes4', 'number'),
-            f('info_prefixes6', 'number'),
-            f('info_traffic', 'string'),
-            f('info_ratio', 'string'),
-            f('info_scope', 'string'),
-            f('info_unicast', 'boolean'),
-            f('info_multicast', 'boolean'),
-            f('info_ipv6', 'boolean'),
-            f('info_never_via_route_servers', 'boolean'),
-            nq('ix_count', 'number'),
-            nq('fac_count', 'number'),
-            nq('notes', 'string'),
-            nq('netixlan_updated', 'datetime'),
-            nq('netfac_updated', 'datetime'),
-            nq('poc_updated', 'datetime'),
-            nq('policy_url', 'string'),
-            f('policy_general', 'string'),
-            f('policy_locations', 'string'),
-            f('policy_ratio', 'boolean'),
-            f('policy_contracts', 'string'),
-            nq('allow_ixp_update', 'boolean'),
-            nq('status_dashboard', 'string'),
-            nq('rir_status', 'string'),
-            nq('rir_status_updated', 'datetime'),
-            nq('logo', 'string'),
-            ...TIMESTAMPS,
-        ],
-        /** Resolve organization name for network records. */
-        joinColumns: [{
-            table: 'peeringdb_organization',
-            localFk: 'org_id',
-            columns: { name: 'org_name' }
-        }],
-        relationships: [
-            { field: 'netfac_set', table: 'peeringdb_network_facility', fk: 'net_id' },
-            { field: 'netixlan_set', table: 'peeringdb_network_ixlan', fk: 'net_id' },
-            { field: 'poc_set', table: 'peeringdb_network_contact', fk: 'net_id' }
-        ]
-    },
 
-    org: {
-        tag: 'org',
-        table: 'peeringdb_organization',
-        fields: [
-            f('id', 'number'),
-            f('name', 'string'),
-            f('aka', 'string'),
-            f('name_long', 'string'),
-            nq('website', 'string'),
-            jf('social_media'),
-            nq('notes', 'string'),
-            nq('logo', 'string'),
-            ...ADDRESS,
-            ...TIMESTAMPS,
-        ],
-        relationships: [
-            { field: 'net_set', table: 'peeringdb_network', fk: 'org_id' },
-            { field: 'fac_set', table: 'peeringdb_facility', fk: 'org_id' },
-            { field: 'ix_set', table: 'peeringdb_ix', fk: 'org_id' },
-            { field: 'carrier_set', table: 'peeringdb_carrier', fk: 'org_id' },
-            { field: 'campus_set', table: 'peeringdb_campus', fk: 'org_id' }
-        ]
-    },
+    net: new Entity('net', 'peeringdb_network')
+        .number('org_id', { foreignKey: 'org', resolve: { name: 'org_name' } })
+        .string('name')
+        .string('aka')
+        .string('name_long')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .number('asn')
+        .string('looking_glass', { queryable: false })
+        .string('route_server', { queryable: false })
+        .string('irr_as_set')
+        .string('info_type')
+        .json('info_types')
+        .number('info_prefixes4')
+        .number('info_prefixes6')
+        .string('info_traffic')
+        .string('info_ratio')
+        .string('info_scope')
+        .boolean('info_unicast')
+        .boolean('info_multicast')
+        .boolean('info_ipv6')
+        .boolean('info_never_via_route_servers')
+        .number('ix_count', { queryable: false })
+        .number('fac_count', { queryable: false })
+        .string('notes', { queryable: false })
+        .datetime('netixlan_updated', { queryable: false })
+        .datetime('netfac_updated', { queryable: false })
+        .datetime('poc_updated', { queryable: false })
+        .string('policy_url', { queryable: false })
+        .string('policy_general')
+        .string('policy_locations')
+        .boolean('policy_ratio')
+        .string('policy_contracts')
+        .boolean('allow_ixp_update', { queryable: false })
+        .string('status_dashboard', { queryable: false })
+        .string('rir_status', { queryable: false })
+        .datetime('rir_status_updated', { queryable: false })
+        .string('logo', { queryable: false })
+        .done(),
 
-    fac: {
-        tag: 'fac',
-        table: 'peeringdb_facility',
-        fields: [
-            f('id', 'number'),
-            f('org_id', 'number'),
-            nq('org_name', 'string'),
-            f('campus_id', 'number'),
-            f('name', 'string'),
-            f('aka', 'string'),
-            f('name_long', 'string'),
-            nq('website', 'string'),
-            jf('social_media'),
-            f('clli', 'string'),
-            nq('rencode', 'string'),
-            nq('npanxx', 'string'),
-            nq('notes', 'string'),
-            nq('net_count', 'number'),
-            nq('ix_count', 'number'),
-            nq('carrier_count', 'number'),
-            nq('sales_email', 'string'),
-            nq('sales_phone', 'string'),
-            nq('tech_email', 'string'),
-            nq('tech_phone', 'string'),
-            f('available_voltage_services', 'string', { queryable: false, json: true }),
-            nq('diverse_serving_substations', 'boolean'),
-            nq('property', 'string'),
-            f('region_continent', 'string'),
-            nq('status_dashboard', 'string'),
-            nq('logo', 'string'),
-            ...ADDRESS,
-            ...TIMESTAMPS,
-        ],
-        relationships: [
-            {
-                field: 'netfac_set',
-                table: 'peeringdb_network_facility',
-                fk: 'fac_id',
-                joinColumns: [{
-                    table: 'peeringdb_network',
-                    localFk: 'net_id',
-                    columns: { name: 'net_name', asn: 'net_asn' }
-                }]
-            },
-            {
-                field: 'ixfac_set',
-                table: 'peeringdb_ix_facility',
-                fk: 'fac_id',
-                joinColumns: [{
-                    table: 'peeringdb_ix',
-                    localFk: 'ix_id',
-                    columns: { name: 'ix_name' }
-                }]
-            }
-        ]
-    },
+    org: new Entity('org', 'peeringdb_organization')
+        .string('name')
+        .string('aka')
+        .string('name_long')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .string('notes', { queryable: false })
+        .string('logo', { queryable: false })
+        .address()
+        .done(),
 
-    ix: {
-        tag: 'ix',
-        table: 'peeringdb_ix',
-        fields: [
-            f('id', 'number'),
-            f('org_id', 'number'),
-            f('name', 'string'),
-            f('aka', 'string'),
-            f('name_long', 'string'),
-            f('city', 'string'),
-            f('country', 'string'),
-            f('region_continent', 'string'),
-            nq('media', 'string'),
-            nq('notes', 'string'),
-            f('proto_unicast', 'boolean'),
-            f('proto_multicast', 'boolean'),
-            f('proto_ipv6', 'boolean'),
-            nq('website', 'string'),
-            jf('social_media'),
-            nq('url_stats', 'string'),
-            nq('tech_email', 'string'),
-            nq('tech_phone', 'string'),
-            nq('policy_email', 'string'),
-            nq('policy_phone', 'string'),
-            nq('sales_phone', 'string'),
-            nq('sales_email', 'string'),
-            nq('net_count', 'number'),
-            nq('fac_count', 'number'),
-            nq('ixf_net_count', 'number'),
-            nq('ixf_last_import', 'datetime'),
-            nq('ixf_import_request', 'string'),
-            nq('ixf_import_request_status', 'string'),
-            nq('service_level', 'string'),
-            nq('terms', 'string'),
-            nq('status_dashboard', 'string'),
-            nq('logo', 'string'),
-            ...TIMESTAMPS,
-        ],
-        /** Resolve organization name for exchange records. */
-        joinColumns: [{
-            table: 'peeringdb_organization',
-            localFk: 'org_id',
-            columns: { name: 'org_name' }
-        }],
-        relationships: [
-            { field: 'ixlan_set', table: 'peeringdb_ixlan', fk: 'ix_id' },
-            { field: 'ixfac_set', table: 'peeringdb_ix_facility', fk: 'ix_id' }
-        ]
-    },
+    fac: new Entity('fac', 'peeringdb_facility')
+        .number('org_id', { foreignKey: 'org' })
+        .string('org_name', { queryable: false })
+        .number('campus_id', { foreignKey: 'campus' })
+        .string('name')
+        .string('aka')
+        .string('name_long')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .string('clli')
+        .string('rencode', { queryable: false })
+        .string('npanxx', { queryable: false })
+        .string('notes', { queryable: false })
+        .number('net_count', { queryable: false })
+        .number('ix_count', { queryable: false })
+        .number('carrier_count', { queryable: false })
+        .string('sales_email', { queryable: false })
+        .string('sales_phone', { queryable: false })
+        .string('tech_email', { queryable: false })
+        .string('tech_phone', { queryable: false })
+        .json('available_voltage_services')
+        .boolean('diverse_serving_substations', { queryable: false })
+        .string('property', { queryable: false })
+        .string('region_continent')
+        .string('status_dashboard', { queryable: false })
+        .string('logo', { queryable: false })
+        .address()
+        .done(),
 
-    ixlan: {
-        tag: 'ixlan',
-        table: 'peeringdb_ixlan',
-        fields: [
-            f('id', 'number'),
-            f('ix_id', 'number'),
-            f('name', 'string'),
-            f('descr', 'string'),
-            f('mtu', 'number'),
-            f('dot1q_support', 'boolean'),
-            f('rs_asn', 'number'),
-            nq('arp_sponge', 'string'),
-            nq('ixf_ixp_member_list_url_visible', 'string'),
-            nq('ixf_ixp_import_enabled', 'boolean'),
-            ...TIMESTAMPS,
-        ],
-        relationships: [
-            { field: 'ixpfx_set', table: 'peeringdb_ixlan_prefix', fk: 'ixlan_id' },
-            { field: 'netixlan_set', table: 'peeringdb_network_ixlan', fk: 'ixlan_id' }
-        ]
-    },
+    ix: new Entity('ix', 'peeringdb_ix')
+        .number('org_id', { foreignKey: 'org', resolve: { name: 'org_name' } })
+        .string('name')
+        .string('aka')
+        .string('name_long')
+        .string('city')
+        .string('country')
+        .string('region_continent')
+        .string('media', { queryable: false })
+        .string('notes', { queryable: false })
+        .boolean('proto_unicast')
+        .boolean('proto_multicast')
+        .boolean('proto_ipv6')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .string('url_stats', { queryable: false })
+        .string('tech_email', { queryable: false })
+        .string('tech_phone', { queryable: false })
+        .string('policy_email', { queryable: false })
+        .string('policy_phone', { queryable: false })
+        .string('sales_phone', { queryable: false })
+        .string('sales_email', { queryable: false })
+        .number('net_count', { queryable: false })
+        .number('fac_count', { queryable: false })
+        .number('ixf_net_count', { queryable: false })
+        .datetime('ixf_last_import', { queryable: false })
+        .string('ixf_import_request', { queryable: false })
+        .string('ixf_import_request_status', { queryable: false })
+        .string('service_level', { queryable: false })
+        .string('terms', { queryable: false })
+        .string('status_dashboard', { queryable: false })
+        .string('logo', { queryable: false })
+        .done(),
 
-    ixpfx: {
-        tag: 'ixpfx',
-        table: 'peeringdb_ixlan_prefix',
-        fields: [
-            f('id', 'number'),
-            f('ixlan_id', 'number'),
-            f('protocol', 'string'),
-            f('prefix', 'string'),
-            nq('notes', 'string'),
-            f('in_dfz', 'boolean'),
-            ...TIMESTAMPS,
-        ],
-        relationships: []
-    },
+    ixlan: new Entity('ixlan', 'peeringdb_ixlan')
+        .number('ix_id', { foreignKey: 'ix' })
+        .string('name')
+        .string('descr')
+        .number('mtu')
+        .boolean('dot1q_support')
+        .number('rs_asn')
+        .string('arp_sponge', { queryable: false })
+        .string('ixf_ixp_member_list_url_visible', { queryable: false })
+        .boolean('ixf_ixp_import_enabled', { queryable: false })
+        .done(),
 
-    netfac: {
-        tag: 'netfac',
-        table: 'peeringdb_network_facility',
-        fields: [
-            f('id', 'number'),
-            nq('name', 'string'),
-            nq('city', 'string'),
-            nq('country', 'string'),
-            f('net_id', 'number'),
-            f('fac_id', 'number'),
-            f('local_asn', 'number'),
-            ...TIMESTAMPS,
-        ],
-        /** Resolve network name/ASN for netfac records queried directly. */
-        joinColumns: [{
-            table: 'peeringdb_network',
-            localFk: 'net_id',
-            columns: { name: 'net_name', asn: 'net_asn' }
-        }],
-        relationships: []
-    },
+    ixpfx: new Entity('ixpfx', 'peeringdb_ixlan_prefix')
+        .number('ixlan_id', { foreignKey: 'ixlan' })
+        .string('protocol')
+        .string('prefix')
+        .string('notes', { queryable: false })
+        .boolean('in_dfz')
+        .done(),
 
-    netixlan: {
-        tag: 'netixlan',
-        table: 'peeringdb_network_ixlan',
-        fields: [
-            f('id', 'number'),
-            f('net_id', 'number'),
-            f('ix_id', 'number'),
-            nq('name', 'string'),
-            f('ixlan_id', 'number'),
-            nq('notes', 'string'),
-            f('speed', 'number'),
-            f('asn', 'number'),
-            f('ipaddr4', 'string'),
-            f('ipaddr6', 'string'),
-            f('is_rs_peer', 'boolean'),
-            f('bfd_support', 'boolean'),
-            f('operational', 'boolean'),
-            nq('net_side_id', 'number'),
-            nq('ix_side_id', 'number'),
-            ...TIMESTAMPS,
-        ],
-        /** Resolve network name for netixlan records queried directly. */
-        joinColumns: [{
-            table: 'peeringdb_network',
-            localFk: 'net_id',
-            columns: { name: 'net_name' }
-        }],
-        relationships: []
-    },
+    netfac: new Entity('netfac', 'peeringdb_network_facility')
+        .string('name', { queryable: false })
+        .string('city', { queryable: false })
+        .string('country', { queryable: false })
+        .number('net_id', { foreignKey: 'net', resolve: { name: 'net_name', asn: 'net_asn' } })
+        .number('fac_id', { foreignKey: 'fac' })
+        .number('local_asn')
+        .done(),
 
-    poc: {
-        tag: 'poc',
-        table: 'peeringdb_network_contact',
-        fields: [
-            f('id', 'number'),
-            f('net_id', 'number'),
-            f('role', 'string'),
-            nq('visible', 'string'),
-            f('name', 'string'),
-            nq('phone', 'string'),
-            f('email', 'string'),
-            nq('url', 'string'),
-            ...TIMESTAMPS,
-        ],
-        relationships: []
-    },
+    netixlan: new Entity('netixlan', 'peeringdb_network_ixlan')
+        .number('net_id', { foreignKey: 'net', resolve: { name: 'net_name' } })
+        .number('ix_id')
+        .string('name', { queryable: false })
+        .number('ixlan_id', { foreignKey: 'ixlan' })
+        .string('notes', { queryable: false })
+        .number('speed')
+        .number('asn')
+        .string('ipaddr4')
+        .string('ipaddr6')
+        .boolean('is_rs_peer')
+        .boolean('bfd_support')
+        .boolean('operational')
+        .number('net_side_id', { queryable: false })
+        .number('ix_side_id', { queryable: false })
+        .done(),
 
-    carrier: {
-        tag: 'carrier',
-        table: 'peeringdb_carrier',
-        fields: [
-            f('id', 'number'),
-            f('org_id', 'number'),
-            nq('org_name', 'string'),
-            f('name', 'string'),
-            f('aka', 'string'),
-            f('name_long', 'string'),
-            nq('website', 'string'),
-            jf('social_media'),
-            nq('notes', 'string'),
-            nq('fac_count', 'number'),
-            nq('logo', 'string'),
-            ...TIMESTAMPS,
-        ],
-        relationships: [
-            { field: 'carrierfac_set', table: 'peeringdb_ix_carrier_facility', fk: 'carrier_id' }
-        ]
-    },
+    poc: new Entity('poc', 'peeringdb_network_contact')
+        .number('net_id', { foreignKey: 'net' })
+        .string('role')
+        .string('visible', { queryable: false })
+        .string('name')
+        .string('phone', { queryable: false })
+        .string('email')
+        .string('url', { queryable: false })
+        .done(),
 
-    carrierfac: {
-        tag: 'carrierfac',
-        table: 'peeringdb_ix_carrier_facility',
-        fields: [
-            f('id', 'number'),
-            nq('name', 'string'),
-            f('carrier_id', 'number'),
-            f('fac_id', 'number'),
-            ...TIMESTAMPS,
-        ],
-        relationships: []
-    },
+    carrier: new Entity('carrier', 'peeringdb_carrier')
+        .number('org_id', { foreignKey: 'org' })
+        .string('org_name', { queryable: false })
+        .string('name')
+        .string('aka')
+        .string('name_long')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .string('notes', { queryable: false })
+        .number('fac_count', { queryable: false })
+        .string('logo', { queryable: false })
+        .done(),
 
-    ixfac: {
-        tag: 'ixfac',
-        table: 'peeringdb_ix_facility',
-        fields: [
-            f('id', 'number'),
-            nq('name', 'string'),
-            nq('city', 'string'),
-            nq('country', 'string'),
-            f('ix_id', 'number'),
-            f('fac_id', 'number'),
-            ...TIMESTAMPS,
-        ],
-        /** Resolve IX name for ixfac records queried directly. */
-        joinColumns: [{
-            table: 'peeringdb_ix',
-            localFk: 'ix_id',
-            columns: { name: 'ix_name' }
-        }],
-        relationships: []
-    },
+    carrierfac: new Entity('carrierfac', 'peeringdb_ix_carrier_facility')
+        .string('name', { queryable: false })
+        .number('carrier_id', { foreignKey: 'carrier' })
+        .number('fac_id', { foreignKey: 'fac' })
+        .done(),
 
-    campus: {
-        tag: 'campus',
-        table: 'peeringdb_campus',
-        fields: [
-            f('id', 'number'),
-            f('org_id', 'number'),
-            nq('org_name', 'string'),
-            f('name', 'string'),
-            f('name_long', 'string'),
-            nq('notes', 'string'),
-            f('aka', 'string'),
-            nq('website', 'string'),
-            jf('social_media'),
-            f('country', 'string'),
-            f('city', 'string'),
-            f('zipcode', 'string'),
-            f('state', 'string'),
-            nq('logo', 'string'),
-            ...TIMESTAMPS,
-        ],
-        relationships: [
-            { field: 'fac_set', table: 'peeringdb_facility', fk: 'campus_id' }
-        ]
-    }
+    ixfac: new Entity('ixfac', 'peeringdb_ix_facility')
+        .string('name', { queryable: false })
+        .string('city', { queryable: false })
+        .string('country', { queryable: false })
+        .number('ix_id', { foreignKey: 'ix', resolve: { name: 'ix_name' } })
+        .number('fac_id', { foreignKey: 'fac' })
+        .done(),
+
+    campus: new Entity('campus', 'peeringdb_campus')
+        .number('org_id', { foreignKey: 'org' })
+        .string('org_name', { queryable: false })
+        .string('name')
+        .string('name_long')
+        .string('notes', { queryable: false })
+        .string('aka')
+        .string('website', { queryable: false })
+        .json('social_media')
+        .string('country')
+        .string('city')
+        .string('zipcode')
+        .string('state')
+        .string('logo', { queryable: false })
+        .done(),
 };
+
+// ── Relationship derivation ──────────────────────────────────────────────────
+
+/**
+ * Scans all entity definitions for foreignKey annotations and populates
+ * two derived properties on each entity:
+ *
+ *   - joinColumns: for direct list/detail queries. Built from FK fields
+ *     that have a `resolve` spec (e.g. org_id → resolve org.name as org_name).
+ *
+ *   - relationships: for depth expansion (_set fields). For each FK field F
+ *     on child entity C that references parent entity P, P gets a relationship
+ *     {tag}_set → C. The relationship's own joinColumns come from C's OTHER
+ *     FK fields that have resolve specs (sibling FKs).
+ *
+ * This runs once at module load. The derived properties have the same shape
+ * as the old hand-written definitions, so query.js, depth.js, and handlers
+ * require no changes.
+ *
+ * @param {Record<string, EntityMeta>} entities - The full entity registry.
+ */
+function deriveRelationships(entities) {
+    // Pass 1: derive entity-level joinColumns from FK fields with resolve
+    for (const entity of Object.values(entities)) {
+        /** @type {JoinColumnDef[]} */
+        const joins = [];
+        for (const field of entity.fields) {
+            if (!field.foreignKey || !field.resolve) continue;
+            const target = entities[field.foreignKey];
+            if (!target) continue;
+            joins.push({
+                table: target.table,
+                localFk: field.name,
+                columns: field.resolve,
+            });
+        }
+        entity.joinColumns = joins.length > 0 ? joins : undefined;
+    }
+
+    // Pass 2: derive relationships from FK fields pointing at each entity
+    for (const entity of Object.values(entities)) {
+        entity.relationships = [];
+    }
+
+    for (const [childTag, childEntity] of Object.entries(entities)) {
+        for (const field of childEntity.fields) {
+            if (!field.foreignKey) continue;
+            const parent = entities[field.foreignKey];
+            if (!parent) continue;
+
+            // Build the relationship: parent gets {childTag}_set
+            /** @type {EntityRelationship} */
+            const rel = {
+                field: `${childTag}_set`,
+                table: childEntity.table,
+                fk: field.name,
+            };
+
+            // Sibling FK fields with resolve specs become joinColumns
+            // on this relationship (for depth=2 expansion with cross-entity names)
+            /** @type {JoinColumnDef[]} */
+            const siblingJoins = [];
+            for (const sibling of childEntity.fields) {
+                if (sibling === field) continue;
+                if (!sibling.foreignKey || !sibling.resolve) continue;
+                const siblingTarget = entities[sibling.foreignKey];
+                if (!siblingTarget) continue;
+                siblingJoins.push({
+                    table: siblingTarget.table,
+                    localFk: sibling.name,
+                    columns: sibling.resolve,
+                });
+            }
+            if (siblingJoins.length > 0) {
+                rel.joinColumns = siblingJoins;
+            }
+
+            parent.relationships.push(rel);
+        }
+    }
+}
+
+// Run derivation at module load
+deriveRelationships(ENTITIES);
 
 // ── Derived lookups ──────────────────────────────────────────────────────────
 
@@ -474,8 +469,10 @@ export const WRITABLE_TAGS = new Set([
     'netfac', 'netixlan', 'poc', 'carrier', 'carrierfac', 'ixfac', 'campus'
 ]);
 
+// ── Field accessor helpers ───────────────────────────────────────────────────
+
 /**
- * Returns the column names for an entity (replaces the old entity.columns array).
+ * Returns the column names for an entity, derived from its fields array.
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @returns {string[]} Ordered column names.

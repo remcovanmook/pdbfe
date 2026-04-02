@@ -87,7 +87,8 @@ interface EntityRelationship {
 
 /**
  * Describes a single column/field on a PeeringDB entity.
- * Replaces the old separate columns[] and filters{} arrays.
+ * Foreign key annotations drive automatic derivation of joinColumns
+ * and relationships — see deriveRelationships() in entities.js.
  */
 interface FieldDef {
     /** Column name in D1 (e.g. "asn", "name"). */
@@ -98,6 +99,20 @@ interface FieldDef {
     queryable?: boolean;
     /** Whether D1 stores this as a JSON TEXT column (needs json() wrapping). Defaults to false. */
     json?: boolean;
+    /** Target entity tag if this field is a foreign key (e.g. "org"). id column implied. */
+    foreignKey?: string;
+    /** Columns to resolve via LEFT JOIN when this FK is present (e.g. { name: "org_name" }). */
+    resolve?: Record<string, string>;
+}
+
+/**
+ * Options for Entity builder field methods.
+ */
+interface FieldOpts {
+    queryable?: boolean;
+    json?: boolean;
+    foreignKey?: string;
+    resolve?: Record<string, string>;
 }
 
 /**
