@@ -396,7 +396,7 @@ describe("validateQuery", () => {
 
 // ── Cross-entity filter SQL generation ───────────────────────────────────────
 
-import { ENTITIES } from '../../api/entities.js';
+import { ENTITIES, resolveImplicitFilters } from '../../api/entities.js';
 
 describe("cross-entity filters", () => {
     // Use real ENTITIES for these tests since subquery generation
@@ -443,6 +443,49 @@ describe("cross-entity filters", () => {
         const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 10, skip: 0, since: 0 });
         // ixfac has joinColumns, so buildRowQuery uses aliases (t."fac_id")
         assert.ok(result.sql.includes('t."fac_id" IN (SELECT'));
+    });
+});
+
+// ── Implicit cross-entity filter resolution ──────────────────────────────────
+
+describe("resolveImplicitFilters", () => {
+    it("should resolve country on net to org__country", () => {
+        const filters = [{ field: "country", op: "eq", value: "NL" }];
+        resolveImplicitFilters(ENTITIES.net, filters);
+        assert.equal(filters[0].entity, "org");
+        assert.equal(filters[0].field, "country");
+    });
+
+    it("should not modify filters for fields that exist on the entity", () => {
+        const filters = [{ field: "asn", op: "eq", value: "13335" }];
+        resolveImplicitFilters(ENTITIES.net, filters);
+        assert.equal(filters[0].entity, undefined);
+    });
+
+    it("should not modify explicit cross-entity filters", () => {
+        const filters = [{ field: "country", op: "eq", value: "AU", entity: "fac" }];
+        resolveImplicitFilters(ENTITIES.ixfac, filters);
+        assert.equal(filters[0].entity, "fac");
+    });
+
+    it("should leave unresolvable filters untouched", () => {
+        const filters = [{ field: "nonexistent_xyz", op: "eq", value: "foo" }];
+        resolveImplicitFilters(ENTITIES.net, filters);
+        assert.equal(filters[0].entity, undefined);
+    });
+
+    it("should resolve city on net to org__city", () => {
+        const filters = [{ field: "city", op: "contains", value: "Amsterdam" }];
+        resolveImplicitFilters(ENTITIES.net, filters);
+        assert.equal(filters[0].entity, "org");
+    });
+
+    it("should produce valid SQL after resolution", () => {
+        const filters = [{ field: "country", op: "eq", value: "NL" }];
+        resolveImplicitFilters(ENTITIES.net, filters);
+        const result = buildRowQuery(ENTITIES.net, filters, { depth: 0, limit: 50, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"org_id" IN (SELECT "id" FROM "peeringdb_organization" WHERE "country" = ?)'));
+        assert.ok(result.params.includes("NL"));
     });
 });
 
