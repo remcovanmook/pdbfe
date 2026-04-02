@@ -379,4 +379,115 @@ describe("validateQuery", () => {
     it("should accept empty filters and no sort", () => {
         assert.equal(validateQuery(NET_ENTITY, [], ''), null);
     });
+
+    it("should accept cross-entity filter when FK exists", () => {
+        // Real netixlan has net_id with foreignKey: 'net'
+        const filters = [{ field: "name", op: "contains", value: "Cloud", entity: "net" }];
+        assert.equal(validateQuery(ENTITIES.netixlan, filters, ''), null);
+    });
+
+    it("should reject cross-entity filter when no FK exists", () => {
+        // NET_ENTITY has no FK to 'ix'
+        const filters = [{ field: "name", op: "eq", value: "AMS-IX", entity: "ix" }];
+        const err = validateQuery(NET_ENTITY, filters, '');
+        assert.ok(err?.includes("No foreign key to 'ix'"));
+    });
+});
+
+// ── Cross-entity filter SQL generation ───────────────────────────────────────
+
+import { ENTITIES } from '../../api/entities.js';
+
+describe("cross-entity filters", () => {
+    // Use real ENTITIES for these tests since subquery generation
+    // calls resolveCrossEntityFilter which looks up ENTITIES.
+
+    it("should generate subquery for equality filter", () => {
+        const ixfac = ENTITIES.ixfac;
+        const filters = [{ field: "country", op: "eq", value: "AU", entity: "fac" }];
+        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "country" = ?)'));
+        assert.ok(result.params.includes("AU"));
+    });
+
+    it("should generate subquery for contains filter", () => {
+        const ixfac = ENTITIES.ixfac;
+        const filters = [{ field: "state", op: "contains", value: "NSW", entity: "fac" }];
+        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "state"'));
+        assert.ok(result.sql.includes("LIKE '%' || ? || '%'"));
+    });
+
+    it("should generate subquery for IN filter", () => {
+        const netixlan = ENTITIES.netixlan;
+        const filters = [{ field: "asn", op: "in", value: "13335,15169", entity: "net" }];
+        const result = buildQuery(netixlan, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (?, ?))'));
+        assert.deepEqual(result.params.filter(p => typeof p === 'number' && p > 100), [13335, 15169]);
+    });
+
+    it("should combine cross-entity filter with regular filter", () => {
+        const ixfac = ENTITIES.ixfac;
+        const filters = [
+            { field: "country", op: "eq", value: "AU", entity: "fac" },
+            { field: "ix_id", op: "eq", value: "26" }
+        ];
+        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"fac_id" IN (SELECT'));
+        assert.ok(result.sql.includes('"ix_id" = ?'));
+    });
+
+    it("should qualify subquery FK with table alias in buildRowQuery", () => {
+        const ixfac = ENTITIES.ixfac;
+        const filters = [{ field: "country", op: "eq", value: "AU", entity: "fac" }];
+        const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 10, skip: 0, since: 0 });
+        // ixfac has joinColumns, so buildRowQuery uses aliases (t."fac_id")
+        assert.ok(result.sql.includes('t."fac_id" IN (SELECT'));
+    });
+});
+
+// ── Cross-entity filter parsing ──────────────────────────────────────────────
+
+import { parseQueryFilters } from '../../core/utils.js';
+
+describe("parseQueryFilters cross-entity syntax", () => {
+    it("should parse fac__state=NSW as cross-entity filter", () => {
+        const result = parseQueryFilters("fac__state=NSW");
+        assert.equal(result.filters.length, 1);
+        assert.equal(result.filters[0].entity, "fac");
+        assert.equal(result.filters[0].field, "state");
+        assert.equal(result.filters[0].op, "eq");
+        assert.equal(result.filters[0].value, "NSW");
+    });
+
+    it("should parse fac__state__contains=NSW as cross-entity filter with operator", () => {
+        const result = parseQueryFilters("fac__state__contains=NSW");
+        assert.equal(result.filters[0].entity, "fac");
+        assert.equal(result.filters[0].field, "state");
+        assert.equal(result.filters[0].op, "contains");
+    });
+
+    it("should parse net__asn__in=13335,15169 as cross-entity IN filter", () => {
+        const result = parseQueryFilters("net__asn__in=13335,15169");
+        assert.equal(result.filters[0].entity, "net");
+        assert.equal(result.filters[0].field, "asn");
+        assert.equal(result.filters[0].op, "in");
+        assert.equal(result.filters[0].value, "13335,15169");
+    });
+
+    it("should not treat regular double-underscore operators as cross-entity", () => {
+        const result = parseQueryFilters("asn__gt=100");
+        assert.equal(result.filters[0].entity, undefined);
+        assert.equal(result.filters[0].field, "asn");
+        assert.equal(result.filters[0].op, "gt");
+    });
+
+    it("should handle both cross-entity and regular filters in one query", () => {
+        const result = parseQueryFilters("fac__country=AU&ix_id=26");
+        assert.equal(result.filters.length, 2);
+        assert.equal(result.filters[0].entity, "fac");
+        assert.equal(result.filters[0].field, "country");
+        assert.equal(result.filters[1].entity, undefined);
+        assert.equal(result.filters[1].field, "ix_id");
+    });
 });

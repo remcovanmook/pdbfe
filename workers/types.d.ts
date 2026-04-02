@@ -138,12 +138,14 @@ interface EntityMeta {
  * Parsed filter from a URL query parameter.
  */
 interface ParsedFilter {
-    /** Column name. */
+    /** Column name (on the current entity, or on the referenced entity for cross-entity filters). */
     field: string;
     /** Operator (eq, lt, gt, lte, gte, contains, startswith, in). */
     op: string;
     /** Raw value(s) from the query string. */
     value: string;
+    /** Cross-entity reference tag (e.g. "fac" for fac__state). When set, field is on this entity. */
+    entity?: string;
 }
 
 /**

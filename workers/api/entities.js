@@ -526,11 +526,8 @@ const VALID_OPS = new Set(['eq', 'lt', 'gt', 'lte', 'gte', 'contains', 'startswi
  * Validates parsed query filters and sort against the entity schema.
  * Returns a human-readable error string if invalid, or null if valid.
  *
- * Checks:
- *   - Filter field exists on the entity
- *   - Filter field is queryable (not output-only)
- *   - Filter operator is recognised
- *   - Sort column exists on the entity
+ * Handles both regular filters (field on this entity) and cross-entity
+ * filters (field on a FK-related entity, e.g. fac__state on ixfac).
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
@@ -541,17 +538,23 @@ export function validateQuery(entity, filters, sort) {
     const fieldNames = new Set(entity.fields.map(f => f.name));
 
     for (const f of filters) {
-        if (!fieldNames.has(f.field)) {
-            return `Unknown field '${f.field}' on ${entity.tag}`;
-        }
-
-        const fieldType = getFilterType(entity, f.field);
-        if (!fieldType) {
-            return `Field '${f.field}' is not filterable on ${entity.tag}`;
-        }
-
         if (!VALID_OPS.has(f.op)) {
-            return `Unknown filter operator '${f.op}' on ${entity.tag}.${f.field}`;
+            return `Unknown filter operator '${f.op}'`;
+        }
+
+        if (f.entity) {
+            // Cross-entity filter: validate FK chain
+            const ref = resolveCrossEntityFilter(entity, f.entity, f.field);
+            if (typeof ref === 'string') return ref;
+        } else {
+            // Regular filter: field must exist and be queryable
+            if (!fieldNames.has(f.field)) {
+                return `Unknown field '${f.field}' on ${entity.tag}`;
+            }
+            const fieldType = getFilterType(entity, f.field);
+            if (!fieldType) {
+                return `Field '${f.field}' is not filterable on ${entity.tag}`;
+            }
         }
     }
 
@@ -563,4 +566,44 @@ export function validateQuery(entity, filters, sort) {
     }
 
     return null;
+}
+
+/**
+ * Resolves a cross-entity filter reference by following FK metadata.
+ *
+ * Given a filter like `fac__state=NSW` on the `ixfac` entity:
+ *   1. Finds the field on ixfac with `foreignKey === 'fac'` → `fac_id`
+ *   2. Looks up the `fac` entity → table `peeringdb_facility`
+ *   3. Verifies `state` is queryable on `fac`
+ *
+ * Returns the resolved reference for the query builder, or an error string.
+ *
+ * @param {EntityMeta} entity - Current entity being queried.
+ * @param {string} targetTag - Referenced entity tag (e.g. "fac").
+ * @param {string} fieldName - Field name on the target entity (e.g. "state").
+ * @returns {{fkField: string, targetTable: string, fieldType: string}|string}
+ *   Resolved reference, or error string.
+ */
+export function resolveCrossEntityFilter(entity, targetTag, fieldName) {
+    // Find the FK field on this entity that references the target
+    const fkField = entity.fields.find(f => f.foreignKey === targetTag);
+    if (!fkField) {
+        return `No foreign key to '${targetTag}' on ${entity.tag}`;
+    }
+
+    const target = ENTITIES[targetTag];
+    if (!target) {
+        return `Unknown entity '${targetTag}'`;
+    }
+
+    const fieldType = getFilterType(target, fieldName);
+    if (!fieldType) {
+        return `Field '${fieldName}' is not filterable on ${targetTag}`;
+    }
+
+    return {
+        fkField: fkField.name,
+        targetTable: target.table,
+        fieldType,
+    };
 }

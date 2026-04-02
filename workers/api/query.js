@@ -14,7 +14,7 @@
  *   in        → WHERE col IN (?, ?, ...)
  */
 
-import { getColumns, getJsonColumns, getFilterType } from './entities.js';
+import { getColumns, getJsonColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).
@@ -329,6 +329,31 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
 
     // Apply user-provided filters, validating against the entity's field definitions
     for (const f of filters) {
+
+        // Cross-entity filter: generate a subquery against the related table.
+        // e.g. fac__state=NSW on ixfac → ixfac.fac_id IN (SELECT id FROM fac WHERE state = ?)
+        if (f.entity) {
+            const ref = resolveCrossEntityFilter(entity, f.entity, f.field);
+            if (typeof ref === 'string') continue; // Validation should have caught this
+
+            const opFn = OPS[f.op];
+            if (!opFn) continue;
+
+            // Build the inner WHERE clause using the standard OPS functions
+            // (they operate on unaliased column names, which is what we want)
+            if (f.op === 'in') {
+                const parts = f.value.split(',');
+                const placeholders = parts.map(() => '?').join(', ');
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (${placeholders}))`);
+                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))));
+            } else {
+                const inner = opFn(f.field, f.value);
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause})`);
+                params.push(coerceValue(f.value, /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)));
+            }
+            continue;
+        }
+
         const fieldType = getFilterType(entity, f.field);
         if (!fieldType) continue; // Unknown or non-queryable field — ignore silently
 
@@ -336,16 +361,11 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         if (!opFn) continue; // Unknown operator — ignore silently
 
         // Qualify the column with the table alias for JOIN queries.
-        // OPS functions wrap the column in double quotes, so we pass
-        // the raw field name (OPS will produce "field") or the
-        // pre-qualified form that already includes proper quoting.
-        // When aliased: build t."field" directly, skipping OPS quoting.
         const sqlCol = pfx ? `${pfx}"${f.field}"` : f.field;
 
         // For 'in' operator, coerce each comma-separated value
         if (f.op === "in") {
             if (pfx) {
-                // Build clause directly with proper quoting
                 const parts = f.value.split(",");
                 const placeholders = parts.map(() => "?").join(", ");
                 clauses.push(`${sqlCol} IN (${placeholders})`);
@@ -359,7 +379,6 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         } else {
             const coerced = coerceValue(f.value, fieldType);
             if (pfx) {
-                // Build clause directly with proper quoting
                 const opSql = OPS_SQL[f.op];
                 if (opSql) {
                     clauses.push(opSql(sqlCol, '?'));
