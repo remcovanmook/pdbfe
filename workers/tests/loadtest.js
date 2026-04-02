@@ -542,6 +542,15 @@ async function main() {
             String(hits).padEnd(6) +
             String(errors)
         );
+
+        // Log detail for each failed request
+        for (let i = 0; i < results.length; i++) {
+            if (results[i].status !== expectedStatus) {
+                const path = burst.urls[i] || urls[i];
+                const errBody = results[i].data?.error || results[i].error || '(no body)';
+                console.log(`  ✘ ${path}  → HTTP ${results[i].status}  ${errBody}`);
+            }
+        }
     }
 
     // ── Phase 3: Sustained throughput ────────────────────────────
