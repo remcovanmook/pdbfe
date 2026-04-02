@@ -6,3 +6,4 @@ node_modules/
 debthin_workers/
 database/*.sqlite
 database/*.json
+.DS_Store

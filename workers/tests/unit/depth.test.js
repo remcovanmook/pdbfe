@@ -252,4 +252,32 @@ describe("expandDepth", () => {
         assert.equal(rows[2].netfac_set.length, 1);
         assert.equal(rows[2].netfac_set[0].name, "DC-B");
     });
+
+    it("depth=2 should coerce boolean fields on child objects", async () => {
+        // Use ix entity as parent → ixlan children have boolean fields
+        // (dot1q_support, ixf_ixp_import_enabled)
+        /** @type {EntityMeta} */
+        const IX_WITH_IXLAN = {
+            tag: "ix",
+            table: "peeringdb_ix",
+            fields: [f("id", "number"), f("name", "string")],
+            relationships: [
+                { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" }
+            ]
+        };
+
+        const { db } = mockD1({
+            peeringdb_ixlan: [
+                // SQLite returns 0/1 for booleans; these should become false/true
+                { id: 10, ix_id: 1, name: "LAN 1", descr: "", mtu: 1500, dot1q_support: 1, rs_asn: 0, arp_sponge: null, ixf_ixp_member_list_url_visible: "", ixf_ixp_import_enabled: 0, created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+            ]
+        });
+
+        const rows = [{ id: 1, name: "Test IX" }];
+        await expandDepth(db, IX_WITH_IXLAN, rows, 2);
+
+        const child = rows[0].ixlan_set[0];
+        assert.strictEqual(child.dot1q_support, true, "dot1q_support 1 should coerce to true");
+        assert.strictEqual(child.ixf_ixp_import_enabled, false, "ixf_ixp_import_enabled 0 should coerce to false");
+    });
 });

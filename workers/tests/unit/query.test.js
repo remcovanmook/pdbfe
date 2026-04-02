@@ -327,7 +327,7 @@ describe("fields parameter", () => {
 
 // ── validateQuery ────────────────────────────────────────────────────────────
 
-import { validateQuery } from '../../api/entities.js';
+import { validateQuery, MAX_IN_VALUES } from '../../api/entities.js';
 
 describe("validateQuery", () => {
     it("should return null for valid filters", () => {
@@ -391,6 +391,20 @@ describe("validateQuery", () => {
         const filters = [{ field: "name", op: "eq", value: "AMS-IX", entity: "ix" }];
         const err = validateQuery(NET_ENTITY, filters, '');
         assert.ok(err?.includes("No foreign key to 'ix'"));
+    });
+
+    it("should reject __in filter exceeding MAX_IN_VALUES", () => {
+        const ids = Array.from({ length: MAX_IN_VALUES + 1 }, (_, i) => String(i + 1));
+        const filters = [{ field: "id", op: "in", value: ids.join(",") }];
+        const err = validateQuery(NET_ENTITY, filters, '');
+        assert.ok(err?.includes("Too many values"));
+        assert.ok(err?.includes(String(MAX_IN_VALUES + 1)));
+    });
+
+    it("should accept __in filter at exactly MAX_IN_VALUES", () => {
+        const ids = Array.from({ length: MAX_IN_VALUES }, (_, i) => String(i + 1));
+        const filters = [{ field: "id", op: "in", value: ids.join(",") }];
+        assert.equal(validateQuery(NET_ENTITY, filters, ''), null);
     });
 });
 

@@ -591,12 +591,21 @@ export function validateFields(entity, requested) {
     for (let i = 0; i < requested.length; i++) {
         if (valid.has(requested[i])) result.push(requested[i]);
     }
-    if (!result.includes('id')) result.unshift('id');
     return result;
 }
 
 /** Valid filter operators. */
 const VALID_OPS = new Set(['eq', 'lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in']);
+
+/**
+ * Maximum number of values allowed in an __in filter list.
+ * D1/SQLite has a compiled-in limit of 999 bind parameters
+ * (SQLITE_MAX_VARIABLE_NUMBER). We cap at 500 to leave headroom
+ * for other bind parameters in the same query (pagination, since,
+ * status, cross-entity subqueries).
+ * @type {number}
+ */
+export const MAX_IN_VALUES = 500;
 
 /**
  * Validates parsed query filters and sort against the entity schema.
@@ -616,6 +625,14 @@ export function validateQuery(entity, filters, sort) {
     for (const f of filters) {
         if (!VALID_OPS.has(f.op)) {
             return `Unknown filter operator '${f.op}'`;
+        }
+
+        // Reject __in lists that would exceed D1's bind parameter limit
+        if (f.op === 'in') {
+            const count = f.value.split(',').length;
+            if (count > MAX_IN_VALUES) {
+                return `Too many values in __in filter for '${f.field}': ${count} exceeds maximum of ${MAX_IN_VALUES}`;
+            }
         }
 
         if (f.entity) {

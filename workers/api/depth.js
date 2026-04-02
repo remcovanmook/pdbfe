@@ -7,7 +7,7 @@
  * to avoid N+1 patterns.
  */
 
-import { ENTITIES, getColumns, getJsonColumns } from './entities.js';
+import { ENTITIES, getColumns, getJsonColumns, getBoolColumns } from './entities.js';
 
 /**
  * Reverse lookup: maps a D1 table name to the EntityMeta tag.
@@ -140,12 +140,16 @@ async function expandDepthTwo(db, entity, rows) {
         let childColumns;
         /** @type {Set<string>} */
         let childJsonCols;
+        /** @type {Set<string>} */
+        let childBoolCols;
         if (childEntity) {
             childColumns = getColumns(childEntity).filter(c => c !== rel.fk);
             childJsonCols = getJsonColumns(childEntity);
+            childBoolCols = getBoolColumns(childEntity);
         } else {
             childColumns = [];
             childJsonCols = new Set();
+            childBoolCols = new Set();
         }
 
         const placeholders = parentIds.map(() => "?").join(", ");
@@ -205,6 +209,11 @@ async function expandDepthTwo(db, entity, rows) {
                     if (typeof child[col] === "string" && child[col]) {
                         try { child[col] = JSON.parse(child[col]); } catch { /* keep as string */ }
                     }
+                }
+
+                // Coerce boolean columns from SQLite's 0/1 to JS booleans
+                for (const col of childBoolCols) {
+                    if (col in child) child[col] = !!child[col];
                 }
 
                 parentRow[rel.field].push(child);
