@@ -283,7 +283,6 @@ export const ENTITIES = {
         .number('ixlan_id', { foreignKey: 'ixlan' })
         .string('protocol')
         .string('prefix')
-        .string('notes', { queryable: false })
         .boolean('in_dfz')
         .done(),
 
