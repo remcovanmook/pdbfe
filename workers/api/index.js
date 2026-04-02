@@ -196,9 +196,13 @@ async function handleRequest(request, env, ctx) {
     const rest = apiPath.slice(entitySlash + 1);
 
     // Special case: as_set/{asn}
+    // Upstream rejects comma-separated ASNs with 400 — match that behaviour.
     if (entityTag === "as_set") {
+        if (rest.includes(',')) {
+            return jsonError(400, "Invalid ASN");
+        }
         const asn = parseInt(rest, 10);
-        if (isNaN(asn) || asn <= 0) {
+        if (isNaN(asn)) {
             return jsonError(400, "Invalid ASN");
         }
         return handleAsSet(request, db, asn);
@@ -209,7 +213,11 @@ async function handleRequest(request, env, ctx) {
         return jsonError(404, `Unknown entity: ${entityTag}`);
     }
 
-    // Trailing slash is common in PeeringDB URLs — strip it
+    // Trailing slash is common in PeeringDB URLs — strip it.
+    // Note: parseInt tolerates trailing non-numeric characters, so
+    // ".json" extensions (e.g. /api/net/1.json) work accidentally:
+    // parseInt('1.json', 10) → 1. This provides compatibility with
+    // clients that append .json to API paths.
     const idStr = rest.endsWith("/") ? rest.slice(0, -1) : rest;
     const id = parseInt(idStr, 10);
     if (isNaN(id) || id <= 0) {
