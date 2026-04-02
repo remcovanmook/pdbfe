@@ -6,13 +6,63 @@
 
 import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API } from '../core/http.js';
+import { handlePreflight, jsonError, H_API, H_NOCACHE, encoder } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery } from './entities.js';
-import { getCacheStats, purgeAllCaches } from './cache.js';
+import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
+import { putL2 } from './l2cache.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
+
+/** Cache metadata tag for 400 error entries, distinguishing them from data. */
+const ERROR_META_TAG = '_error';
+
+/**
+ * Checks the entity cache for a cached 400 error response. If found and
+ * within TTL, returns the Response directly. If not cached, runs
+ * validation; on failure, caches the error body in L1 + L2 and returns
+ * the Response. Returns null if validation passes.
+ *
+ * This prevents repeated schema validation for the same invalid query
+ * string (bot traffic, retries, scrapers with broken filters).
+ *
+ * @param {string} entityTag - Entity tag for cache lookup.
+ * @param {string} rawPath - URL path for cache key.
+ * @param {string} queryString - Query string for cache key.
+ * @param {EntityMeta} entity - Entity schema for validation.
+ * @param {ParsedFilter[]} filters - Parsed filters to validate.
+ * @param {string} sort - Sort parameter to validate.
+ * @returns {Response|null} Cached or fresh 400 Response, or null if valid.
+ */
+function checkCachedError(entityTag, rawPath, queryString, entity, filters, sort) {
+    const cache = getEntityCache(entityTag);
+    const cacheKey = normaliseCacheKey(rawPath, queryString);
+    const now = Date.now();
+
+    // L1 check: if we've already cached a 400 for this exact query, return it
+    const cached = cache.get(cacheKey);
+    if (cached && cached.meta?.entityTag === ERROR_META_TAG && (now - cached.addedAt) < ERROR_TTL) {
+        return new Response(
+            /** @type {BodyInit} */(/** @type {unknown} */(cached.buf)),
+            { status: 400, headers: H_NOCACHE }
+        );
+    }
+
+    // Run validation
+    const queryError = validateQuery(entity, filters, sort);
+    if (!queryError) return null;
+
+    // Cache the error body in L1 + L2
+    const errorBody = encoder.encode(JSON.stringify({ error: queryError }) + '\n');
+    cache.add(cacheKey, errorBody, { entityTag: ERROR_META_TAG }, now);
+    putL2(cacheKey, errorBody, ERROR_TTL / 1000);
+
+    return new Response(
+        JSON.stringify({ error: queryError }) + '\n',
+        { status: 400, headers: H_NOCACHE }
+    );
+}
 
 /**
  * Returns database sync status from the _sync_meta table.
@@ -131,8 +181,8 @@ async function handleRequest(request, env, ctx) {
         const entity = ENTITIES[entityTag];
         const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-        const queryError = validateQuery(entity, filters, sort);
-        if (queryError) return jsonError(400, queryError);
+        const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+        if (errorResponse) return errorResponse;
 
         return handleList(request, env, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
     }
@@ -165,8 +215,8 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    const queryError = validateQuery(entity, filters, sort);
-    if (queryError) return jsonError(400, queryError);
+    const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+    if (errorResponse) return errorResponse;
 
     return handleDetail(request, env, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
 }
