@@ -459,15 +459,6 @@ deriveRelationships(ENTITIES);
  */
 export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
 
-/**
- * Set of entity tags that support write operations in the upstream
- * PeeringDB API. Used to return 501 Not Implemented for write methods.
- * @type {Set<string>}
- */
-export const WRITABLE_TAGS = new Set([
-    'net', 'org', 'fac', 'ix', 'ixlan', 'ixpfx',
-    'netfac', 'netixlan', 'poc', 'carrier', 'carrierfac', 'ixfac', 'campus'
-]);
 
 // ── Field accessor helpers ───────────────────────────────────────────────────
 
@@ -526,4 +517,50 @@ export function validateFields(entity, requested) {
     const result = requested.filter(name => valid.has(name));
     if (!result.includes('id')) result.unshift('id');
     return result;
+}
+
+/** Valid filter operators. */
+const VALID_OPS = new Set(['eq', 'lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in']);
+
+/**
+ * Validates parsed query filters and sort against the entity schema.
+ * Returns a human-readable error string if invalid, or null if valid.
+ *
+ * Checks:
+ *   - Filter field exists on the entity
+ *   - Filter field is queryable (not output-only)
+ *   - Filter operator is recognised
+ *   - Sort column exists on the entity
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {string} sort - Sort parameter (e.g. "-updated").
+ * @returns {string|null} Error message, or null if query is valid.
+ */
+export function validateQuery(entity, filters, sort) {
+    const fieldNames = new Set(entity.fields.map(f => f.name));
+
+    for (const f of filters) {
+        if (!fieldNames.has(f.field)) {
+            return `Unknown field '${f.field}' on ${entity.tag}`;
+        }
+
+        const fieldType = getFilterType(entity, f.field);
+        if (!fieldType) {
+            return `Field '${f.field}' is not filterable on ${entity.tag}`;
+        }
+
+        if (!VALID_OPS.has(f.op)) {
+            return `Unknown filter operator '${f.op}' on ${entity.tag}.${f.field}`;
+        }
+    }
+
+    if (sort) {
+        const col = sort.startsWith('-') ? sort.slice(1) : sort;
+        if (!fieldNames.has(col)) {
+            return `Unknown sort column '${col}' on ${entity.tag}`;
+        }
+    }
+
+    return null;
 }

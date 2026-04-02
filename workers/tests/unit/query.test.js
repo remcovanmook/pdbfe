@@ -324,3 +324,59 @@ describe("fields parameter", () => {
         assert.ok(!result.sql.includes("'org_id'"));
     });
 });
+
+// ── validateQuery ────────────────────────────────────────────────────────────
+
+import { validateQuery } from '../../api/entities.js';
+
+describe("validateQuery", () => {
+    it("should return null for valid filters", () => {
+        const filters = [{ field: "asn", op: "eq", value: "13335" }];
+        assert.equal(validateQuery(NET_ENTITY, filters, ''), null);
+    });
+
+    it("should return null for valid sort", () => {
+        assert.equal(validateQuery(NET_ENTITY, [], '-name'), null);
+        assert.equal(validateQuery(NET_ENTITY, [], 'asn'), null);
+    });
+
+    it("should reject unknown filter field", () => {
+        const filters = [{ field: "nonexistent", op: "eq", value: "foo" }];
+        const err = validateQuery(NET_ENTITY, filters, '');
+        assert.ok(err?.includes("Unknown field 'nonexistent'"));
+    });
+
+    it("should reject non-queryable field", () => {
+        /** @type {EntityMeta} */
+        const entity = {
+            ...NET_ENTITY,
+            fields: [
+                ...NET_ENTITY.fields,
+                { name: 'logo', type: 'string', queryable: false },
+            ]
+        };
+        const filters = [{ field: "logo", op: "eq", value: "test" }];
+        const err = validateQuery(entity, filters, '');
+        assert.ok(err?.includes("not filterable"));
+    });
+
+    it("should reject unknown operator", () => {
+        const filters = [{ field: "name", op: "regex", value: ".*" }];
+        const err = validateQuery(NET_ENTITY, filters, '');
+        assert.ok(err?.includes("Unknown filter operator 'regex'"));
+    });
+
+    it("should reject unknown sort column", () => {
+        const err = validateQuery(NET_ENTITY, [], 'nonexistent');
+        assert.ok(err?.includes("Unknown sort column 'nonexistent'"));
+    });
+
+    it("should reject unknown descending sort column", () => {
+        const err = validateQuery(NET_ENTITY, [], '-bogus');
+        assert.ok(err?.includes("Unknown sort column 'bogus'"));
+    });
+
+    it("should accept empty filters and no sort", () => {
+        assert.equal(validateQuery(NET_ENTITY, [], ''), null);
+    });
+});
