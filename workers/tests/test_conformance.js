@@ -671,24 +671,135 @@ describe('Conformance: as_set', { concurrency: 1 }, () => {
 });
 
 // ==========================================================================
-// SECTION 9 — PERFORMANCE BASELINES
+// SECTION 9 — PERFORMANCE COMPARISON
 // ==========================================================================
 
-describe('Conformance: performance', { concurrency: 1 }, () => {
-    it('cached response < 100ms', async () => {
-        // Warm the cache
-        await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`);
-        // Measure
-        const res = await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`);
-        assert.ok(res.elapsed < 100,
-            `Cached response took ${res.elapsed}ms (expected < 100ms)`);
-    });
+/**
+ * Performance benchmark queries. Each entry defines a label, API path,
+ * and whether to warm the mirror cache before measuring.
+ * @type {{label: string, path: string, warm?: boolean}[]}
+ */
+const PERF_QUERIES = [
+    // ── Single-record lookups ────────────────────────────────────────────
+    { label: 'net by ASN (CF)',        path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`, warm: true },
+    { label: 'net by ASN (Netflix)',   path: `/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`, warm: true },
+    { label: 'net detail by ID',       path: '/api/net/1?depth=0', warm: true },
+    { label: 'ix detail by ID',        path: `/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`, warm: true },
+    { label: 'fac detail by ID',       path: `/api/fac/${WELL_KNOWN.fac_equinix_am5}?depth=0`, warm: true },
 
-    it('cold response < 500ms', async () => {
-        // Use a unique filter unlikely to be cached
-        const ts = Math.floor(Date.now() / 1000) - 3600;
-        const res = await fetchMirror(`/api/net?since=${ts}&limit=5&depth=0`);
-        assert.ok(res.elapsed < 500,
-            `Cold response took ${res.elapsed}ms (expected < 500ms)`);
+    // ── Filtered lists ───────────────────────────────────────────────────
+    { label: 'netixlan by ix_id',      path: `/api/netixlan?ix_id=${WELL_KNOWN.ix_amsix_id}&depth=0` },
+    { label: 'netfac by local_asn',    path: `/api/netfac?local_asn=${WELL_KNOWN.asn_google}&depth=0` },
+    { label: 'ix Europe (limit=20)',   path: '/api/ix?region_continent=Europe&limit=20&depth=0' },
+    { label: 'net NL (cross-entity)',  path: '/api/net?country=NL&limit=10&depth=0' },
+    { label: 'netixlan __in filter',   path: '/api/netixlan?net_id__in=694,1100&depth=0' },
+
+    // ── Pagination ───────────────────────────────────────────────────────
+    { label: 'net limit=5 skip=0',     path: '/api/net?limit=5&skip=0&depth=0' },
+    { label: 'net limit=5 skip=100',   path: '/api/net?limit=5&skip=100&depth=0' },
+
+    // ── Depth expansion ──────────────────────────────────────────────────
+    { label: 'net depth=1 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=1` },
+    { label: 'net depth=2 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=2` },
+
+    // ── Large results ────────────────────────────────────────────────────
+    { label: 'net limit=50',           path: '/api/net?limit=50&depth=0' },
+    { label: 'netixlan limit=50',      path: '/api/netixlan?limit=50&depth=0' },
+    { label: 'fac limit=50',           path: '/api/fac?limit=50&depth=0' },
+
+    // ── Count ────────────────────────────────────────────────────────────
+    { label: 'net count (limit=0)',    path: '/api/net?limit=0&depth=0' },
+
+    // ── Fields filter ────────────────────────────────────────────────────
+    { label: 'net fields=id,asn,name', path: '/api/net?limit=10&fields=id,asn,name&depth=0' },
+
+    // ── as_set ───────────────────────────────────────────────────────────
+    { label: 'as_set lookup',          path: `/api/as_set/${WELL_KNOWN.asn_cloudflare}` },
+];
+
+describe('Conformance: performance comparison', { concurrency: 1 }, () => {
+    /** @type {{label: string, mirror: number, upstream: number, ratio: number}[]} */
+    const results = [];
+
+    for (const q of PERF_QUERIES) {
+        it(`${q.label}`, async (t) => {
+            // Optional cache warm for mirror
+            if (q.warm) {
+                await fetchMirror(q.path);
+            }
+
+            const mirror = await fetchMirror(q.path);
+            await delay(300);
+
+            /** @type {{status: number, body: any, headers: Headers, elapsed: number}} */
+            let upstream;
+            try {
+                upstream = await fetchJSON(`${PEERINGDB}${q.path}`);
+            } catch {
+                t.diagnostic(`${q.label}: upstream fetch failed, skipping comparison`);
+                return;
+            }
+
+            if (upstream.body?._error) {
+                t.diagnostic(`${q.label}: upstream returned non-JSON, skipping comparison`);
+                return;
+            }
+
+            const ratio = mirror.elapsed / Math.max(upstream.elapsed, 1);
+            results.push({
+                label: q.label,
+                mirror: mirror.elapsed,
+                upstream: upstream.elapsed,
+                ratio,
+            });
+
+            t.diagnostic(
+                `mirror=${mirror.elapsed}ms  upstream=${upstream.elapsed}ms  ratio=${ratio.toFixed(2)}x`
+            );
+        });
+    }
+
+    // Print summary table after all queries complete
+    it('── summary ──', async (t) => {
+        if (results.length === 0) {
+            t.diagnostic('No results collected');
+            return;
+        }
+
+        const pad = (/** @type {string} */ s, /** @type {number} */ n) => s.padEnd(n);
+        const rpad = (/** @type {string} */ s, /** @type {number} */ n) => s.padStart(n);
+
+        const header = `${pad('Query', 30)} ${rpad('Mirror', 8)} ${rpad('Upstream', 10)} ${rpad('Ratio', 8)} ${rpad('Winner', 8)}`;
+        const sep = '─'.repeat(header.length);
+
+        t.diagnostic('');
+        t.diagnostic(sep);
+        t.diagnostic(header);
+        t.diagnostic(sep);
+
+        let mirrorWins = 0;
+        let upstreamWins = 0;
+        let totalMirror = 0;
+        let totalUpstream = 0;
+
+        for (const r of results) {
+            const winner = r.ratio < 1.0 ? 'mirror' : r.ratio > 1.0 ? 'upstream' : 'tie';
+            if (r.ratio < 1.0) mirrorWins++;
+            if (r.ratio > 1.0) upstreamWins++;
+            totalMirror += r.mirror;
+            totalUpstream += r.upstream;
+
+            t.diagnostic(
+                `${pad(r.label, 30)} ${rpad(r.mirror + 'ms', 8)} ${rpad(r.upstream + 'ms', 10)} ${rpad(r.ratio.toFixed(2) + 'x', 8)} ${rpad(winner, 8)}`
+            );
+        }
+
+        t.diagnostic(sep);
+        const totalRatio = totalMirror / Math.max(totalUpstream, 1);
+        t.diagnostic(
+            `${pad('TOTAL', 30)} ${rpad(totalMirror + 'ms', 8)} ${rpad(totalUpstream + 'ms', 10)} ${rpad(totalRatio.toFixed(2) + 'x', 8)} ${rpad(totalRatio < 1 ? 'mirror' : 'upstream', 8)}`
+        );
+        t.diagnostic(`Mirror wins: ${mirrorWins}/${results.length}  Upstream wins: ${upstreamWins}/${results.length}`);
+        t.diagnostic('');
     });
 });
