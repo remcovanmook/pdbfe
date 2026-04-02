@@ -8,7 +8,7 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API, H_NOCACHE, encoder } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery } from './entities.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
 import { putL2 } from './l2cache.js';
 
@@ -179,6 +179,8 @@ async function handleRequest(request, env, ctx) {
         const entity = ENTITIES[entityTag];
         const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
+        resolveImplicitFilters(entity, filters);
+
         const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
         if (errorResponse) return errorResponse;
 
@@ -212,6 +214,8 @@ async function handleRequest(request, env, ctx) {
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
+
+    resolveImplicitFilters(entity, filters);
 
     const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
     if (errorResponse) return errorResponse;
