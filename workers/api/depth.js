@@ -7,7 +7,7 @@
  * to avoid N+1 patterns.
  */
 
-import { ENTITIES, JSON_STORED_COLUMNS } from './entities.js';
+import { ENTITIES, getColumns, getJsonColumns } from './entities.js';
 
 /**
  * Reverse lookup: maps a D1 table name to the EntityMeta tag.
@@ -138,10 +138,14 @@ async function expandDepthTwo(db, entity, rows) {
         // Build column list, excluding the FK back to the parent
         /** @type {string[]} */
         let childColumns;
+        /** @type {Set<string>} */
+        let childJsonCols;
         if (childEntity) {
-            childColumns = childEntity.columns.filter(c => c !== rel.fk);
+            childColumns = getColumns(childEntity).filter(c => c !== rel.fk);
+            childJsonCols = getJsonColumns(childEntity);
         } else {
             childColumns = [];
+            childJsonCols = new Set();
         }
 
         const placeholders = parentIds.map(() => "?").join(", ");
@@ -197,7 +201,7 @@ async function expandDepthTwo(db, entity, rows) {
                 delete child[rel.fk];
 
                 // Parse JSON-stored TEXT columns
-                for (const col of JSON_STORED_COLUMNS) {
+                for (const col of childJsonCols) {
                     if (typeof child[col] === "string" && child[col]) {
                         try { child[col] = JSON.parse(child[col]); } catch { /* keep as string */ }
                     }

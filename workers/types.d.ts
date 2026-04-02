@@ -86,6 +86,21 @@ interface EntityRelationship {
 }
 
 /**
+ * Describes a single column/field on a PeeringDB entity.
+ * Replaces the old separate columns[] and filters{} arrays.
+ */
+interface FieldDef {
+    /** Column name in D1 (e.g. "asn", "name"). */
+    name: string;
+    /** Data type for filter coercion and validation. */
+    type: 'string' | 'number' | 'boolean' | 'datetime';
+    /** Whether this field can be used in query filters. Defaults to true. */
+    queryable?: boolean;
+    /** Whether D1 stores this as a JSON TEXT column (needs json() wrapping). Defaults to false. */
+    json?: boolean;
+}
+
+/**
  * Metadata registry entry for a single PeeringDB entity type.
  */
 interface EntityMeta {
@@ -93,10 +108,8 @@ interface EntityMeta {
     table: string;
     /** API endpoint tag (e.g. "net"). */
     tag: string;
-    /** Columns to SELECT. */
-    columns: string[];
-    /** Allowed filter fields (whitelisted from the OpenAPI spec). */
-    filters: Record<string, 'string' | 'number' | 'boolean' | 'datetime'>;
+    /** Field definitions — the single source of truth for columns, types, and filterability. */
+    fields: FieldDef[];
     /** Relationship definitions for depth expansion. */
     relationships: EntityRelationship[];
     /** Optional JOIN definitions for direct list/detail queries. */

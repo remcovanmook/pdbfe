@@ -1,10 +1,13 @@
 /**
  * @fileoverview Entity metadata registry for all PeeringDB API entity types.
- * Maps API endpoint tags to D1 table names, column lists, allowed filter
- * fields, relationship definitions for depth expansion, and JOIN
- * definitions for cross-entity name resolution.
+ * Maps API endpoint tags to D1 table names, field definitions, relationship
+ * definitions for depth expansion, and JOIN definitions for cross-entity
+ * name resolution.
  *
- * This module is the single source of truth for what the API exposes.
+ * Each field is described by a single FieldDef object: {name, type, queryable?, json?}.
+ * - queryable defaults to true — most fields can be filtered on.
+ * - json defaults to false — only columns stored as JSON TEXT in D1 need this.
+ *
  * Adding a new entity type means adding an entry here — the router,
  * query builder, and depth expander all consume this registry.
  *
@@ -16,6 +19,60 @@
  *     child set expansion (e.g. GET /api/fac/1?depth=2 → netfac_set).
  */
 
+// ── Field definition helpers ─────────────────────────────────────────────────
+
+/**
+ * Creates a field definition with sensible defaults.
+ * queryable defaults to true, json defaults to false.
+ *
+ * @param {string} name - Column name in D1.
+ * @param {'string'|'number'|'boolean'|'datetime'} type - Data type.
+ * @param {Object} [opts] - Optional overrides.
+ * @param {boolean} [opts.queryable] - Whether this field can be filtered on. Defaults to true.
+ * @param {boolean} [opts.json] - Whether D1 stores this as JSON TEXT. Defaults to false.
+ * @returns {FieldDef}
+ */
+function f(name, type, opts) {
+    /** @type {FieldDef} */
+    const def = { name, type };
+    if (opts?.queryable === false) def.queryable = false;
+    if (opts?.json === true) def.json = true;
+    return def;
+}
+
+/** Shorthand for a non-queryable field. */
+const nq = (/** @type {string} */ name, /** @type {'string'|'number'|'boolean'|'datetime'} */ type) =>
+    f(name, type, { queryable: false });
+
+/** Shorthand for a JSON-stored, non-queryable field. */
+const jf = (/** @type {string} */ name) =>
+    f(name, 'string', { queryable: false, json: true });
+
+// ── Common field groups ──────────────────────────────────────────────────────
+
+/** Timestamp fields present on every entity. */
+const TIMESTAMPS = [
+    f('created', 'datetime'),
+    f('updated', 'datetime'),
+    f('status', 'string'),
+];
+
+/** Address fields shared by org and fac. */
+const ADDRESS = [
+    f('address1', 'string', { queryable: false }),
+    f('address2', 'string', { queryable: false }),
+    f('city', 'string'),
+    f('country', 'string'),
+    f('state', 'string'),
+    f('zipcode', 'string'),
+    f('floor', 'string', { queryable: false }),
+    f('suite', 'string', { queryable: false }),
+    f('latitude', 'number', { queryable: false }),
+    f('longitude', 'number', { queryable: false }),
+];
+
+// ── Entity definitions ───────────────────────────────────────────────────────
+
 /**
  * Maps an API endpoint tag to its entity metadata.
  * Keys are the URL path segments (e.g. "net" for /api/net).
@@ -24,328 +81,382 @@
  */
 export const ENTITIES = {
     net: {
-        tag: "net",
-        table: "peeringdb_network",
-        columns: [
-            "id", "org_id", "name", "aka", "name_long", "website", "social_media",
-            "asn", "looking_glass", "route_server", "irr_as_set",
-            "info_type", "info_types", "info_prefixes4", "info_prefixes6",
-            "info_traffic", "info_ratio", "info_scope",
-            "info_unicast", "info_multicast", "info_ipv6",
-            "info_never_via_route_servers",
-            "ix_count", "fac_count",
-            "notes", "netixlan_updated", "netfac_updated", "poc_updated",
-            "policy_url", "policy_general", "policy_locations",
-            "policy_ratio", "policy_contracts", "allow_ixp_update",
-            "status_dashboard", "rir_status", "rir_status_updated",
-            "logo",
-            "created", "updated", "status"
+        tag: 'net',
+        table: 'peeringdb_network',
+        fields: [
+            f('id', 'number'),
+            f('org_id', 'number'),
+            f('name', 'string'),
+            f('aka', 'string'),
+            f('name_long', 'string'),
+            nq('website', 'string'),
+            jf('social_media'),
+            f('asn', 'number'),
+            nq('looking_glass', 'string'),
+            nq('route_server', 'string'),
+            f('irr_as_set', 'string'),
+            f('info_type', 'string'),
+            f('info_types', 'string', { queryable: false, json: true }),
+            f('info_prefixes4', 'number'),
+            f('info_prefixes6', 'number'),
+            f('info_traffic', 'string'),
+            f('info_ratio', 'string'),
+            f('info_scope', 'string'),
+            f('info_unicast', 'boolean'),
+            f('info_multicast', 'boolean'),
+            f('info_ipv6', 'boolean'),
+            f('info_never_via_route_servers', 'boolean'),
+            nq('ix_count', 'number'),
+            nq('fac_count', 'number'),
+            nq('notes', 'string'),
+            nq('netixlan_updated', 'datetime'),
+            nq('netfac_updated', 'datetime'),
+            nq('poc_updated', 'datetime'),
+            nq('policy_url', 'string'),
+            f('policy_general', 'string'),
+            f('policy_locations', 'string'),
+            f('policy_ratio', 'boolean'),
+            f('policy_contracts', 'string'),
+            nq('allow_ixp_update', 'boolean'),
+            nq('status_dashboard', 'string'),
+            nq('rir_status', 'string'),
+            nq('rir_status_updated', 'datetime'),
+            nq('logo', 'string'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", org_id: "number", asn: "number",
-            name: "string", aka: "string", name_long: "string",
-            irr_as_set: "string", info_type: "string",
-            info_traffic: "string", info_ratio: "string", info_scope: "string",
-            info_prefixes4: "number", info_prefixes6: "number",
-            info_unicast: "boolean", info_multicast: "boolean", info_ipv6: "boolean",
-            info_never_via_route_servers: "boolean",
-            policy_general: "string", policy_locations: "string",
-            policy_ratio: "boolean", policy_contracts: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         /** Resolve organization name for network records. */
         joinColumns: [{
-            table: "peeringdb_organization",
-            localFk: "org_id",
-            columns: { name: "org_name" }
+            table: 'peeringdb_organization',
+            localFk: 'org_id',
+            columns: { name: 'org_name' }
         }],
         relationships: [
-            { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id" },
-            { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" },
-            { field: "poc_set", table: "peeringdb_network_contact", fk: "net_id" }
+            { field: 'netfac_set', table: 'peeringdb_network_facility', fk: 'net_id' },
+            { field: 'netixlan_set', table: 'peeringdb_network_ixlan', fk: 'net_id' },
+            { field: 'poc_set', table: 'peeringdb_network_contact', fk: 'net_id' }
         ]
     },
 
     org: {
-        tag: "org",
-        table: "peeringdb_organization",
-        columns: [
-            "id", "name", "aka", "name_long", "website", "social_media",
-            "notes", "logo", "address1", "address2", "city", "country",
-            "state", "zipcode", "floor", "suite",
-            "latitude", "longitude",
-            "created", "updated", "status"
+        tag: 'org',
+        table: 'peeringdb_organization',
+        fields: [
+            f('id', 'number'),
+            f('name', 'string'),
+            f('aka', 'string'),
+            f('name_long', 'string'),
+            nq('website', 'string'),
+            jf('social_media'),
+            nq('notes', 'string'),
+            nq('logo', 'string'),
+            ...ADDRESS,
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", name: "string", aka: "string", name_long: "string",
-            city: "string", state: "string", country: "string", zipcode: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: [
-            { field: "net_set", table: "peeringdb_network", fk: "org_id" },
-            { field: "fac_set", table: "peeringdb_facility", fk: "org_id" },
-            { field: "ix_set", table: "peeringdb_ix", fk: "org_id" },
-            { field: "carrier_set", table: "peeringdb_carrier", fk: "org_id" },
-            { field: "campus_set", table: "peeringdb_campus", fk: "org_id" }
+            { field: 'net_set', table: 'peeringdb_network', fk: 'org_id' },
+            { field: 'fac_set', table: 'peeringdb_facility', fk: 'org_id' },
+            { field: 'ix_set', table: 'peeringdb_ix', fk: 'org_id' },
+            { field: 'carrier_set', table: 'peeringdb_carrier', fk: 'org_id' },
+            { field: 'campus_set', table: 'peeringdb_campus', fk: 'org_id' }
         ]
     },
 
     fac: {
-        tag: "fac",
-        table: "peeringdb_facility",
-        columns: [
-            "id", "org_id", "org_name", "campus_id",
-            "name", "aka", "name_long", "website", "social_media",
-            "clli", "rencode", "npanxx", "notes",
-            "net_count", "ix_count", "carrier_count",
-            "sales_email", "sales_phone", "tech_email", "tech_phone",
-            "available_voltage_services", "diverse_serving_substations",
-            "property", "region_continent", "status_dashboard", "logo",
-            "created", "updated", "status",
-            "address1", "address2", "city", "country", "state", "zipcode",
-            "floor", "suite", "latitude", "longitude"
+        tag: 'fac',
+        table: 'peeringdb_facility',
+        fields: [
+            f('id', 'number'),
+            f('org_id', 'number'),
+            nq('org_name', 'string'),
+            f('campus_id', 'number'),
+            f('name', 'string'),
+            f('aka', 'string'),
+            f('name_long', 'string'),
+            nq('website', 'string'),
+            jf('social_media'),
+            f('clli', 'string'),
+            nq('rencode', 'string'),
+            nq('npanxx', 'string'),
+            nq('notes', 'string'),
+            nq('net_count', 'number'),
+            nq('ix_count', 'number'),
+            nq('carrier_count', 'number'),
+            nq('sales_email', 'string'),
+            nq('sales_phone', 'string'),
+            nq('tech_email', 'string'),
+            nq('tech_phone', 'string'),
+            f('available_voltage_services', 'string', { queryable: false, json: true }),
+            nq('diverse_serving_substations', 'boolean'),
+            nq('property', 'string'),
+            f('region_continent', 'string'),
+            nq('status_dashboard', 'string'),
+            nq('logo', 'string'),
+            ...ADDRESS,
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", org_id: "number", campus_id: "number",
-            name: "string", aka: "string", name_long: "string",
-            city: "string", state: "string", country: "string", zipcode: "string",
-            clli: "string", region_continent: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: [
             {
-                field: "netfac_set",
-                table: "peeringdb_network_facility",
-                fk: "fac_id",
+                field: 'netfac_set',
+                table: 'peeringdb_network_facility',
+                fk: 'fac_id',
                 joinColumns: [{
-                    table: "peeringdb_network",
-                    localFk: "net_id",
-                    columns: { name: "net_name", asn: "net_asn" }
+                    table: 'peeringdb_network',
+                    localFk: 'net_id',
+                    columns: { name: 'net_name', asn: 'net_asn' }
                 }]
             },
             {
-                field: "ixfac_set",
-                table: "peeringdb_ix_facility",
-                fk: "fac_id",
+                field: 'ixfac_set',
+                table: 'peeringdb_ix_facility',
+                fk: 'fac_id',
                 joinColumns: [{
-                    table: "peeringdb_ix",
-                    localFk: "ix_id",
-                    columns: { name: "ix_name" }
+                    table: 'peeringdb_ix',
+                    localFk: 'ix_id',
+                    columns: { name: 'ix_name' }
                 }]
             }
         ]
     },
 
     ix: {
-        tag: "ix",
-        table: "peeringdb_ix",
-        columns: [
-            "id", "org_id", "name", "aka", "name_long",
-            "city", "country", "region_continent", "media",
-            "notes", "proto_unicast", "proto_multicast", "proto_ipv6",
-            "website", "social_media",
-            "url_stats", "tech_email", "tech_phone",
-            "policy_email", "policy_phone",
-            "sales_phone", "sales_email",
-            "net_count", "fac_count", "ixf_net_count",
-            "ixf_last_import", "ixf_import_request", "ixf_import_request_status",
-            "service_level", "terms", "status_dashboard", "logo",
-            "created", "updated", "status"
+        tag: 'ix',
+        table: 'peeringdb_ix',
+        fields: [
+            f('id', 'number'),
+            f('org_id', 'number'),
+            f('name', 'string'),
+            f('aka', 'string'),
+            f('name_long', 'string'),
+            f('city', 'string'),
+            f('country', 'string'),
+            f('region_continent', 'string'),
+            nq('media', 'string'),
+            nq('notes', 'string'),
+            f('proto_unicast', 'boolean'),
+            f('proto_multicast', 'boolean'),
+            f('proto_ipv6', 'boolean'),
+            nq('website', 'string'),
+            jf('social_media'),
+            nq('url_stats', 'string'),
+            nq('tech_email', 'string'),
+            nq('tech_phone', 'string'),
+            nq('policy_email', 'string'),
+            nq('policy_phone', 'string'),
+            nq('sales_phone', 'string'),
+            nq('sales_email', 'string'),
+            nq('net_count', 'number'),
+            nq('fac_count', 'number'),
+            nq('ixf_net_count', 'number'),
+            nq('ixf_last_import', 'datetime'),
+            nq('ixf_import_request', 'string'),
+            nq('ixf_import_request_status', 'string'),
+            nq('service_level', 'string'),
+            nq('terms', 'string'),
+            nq('status_dashboard', 'string'),
+            nq('logo', 'string'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", org_id: "number",
-            name: "string", aka: "string", name_long: "string",
-            city: "string", country: "string", region_continent: "string",
-            proto_unicast: "boolean", proto_multicast: "boolean", proto_ipv6: "boolean",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         /** Resolve organization name for exchange records. */
         joinColumns: [{
-            table: "peeringdb_organization",
-            localFk: "org_id",
-            columns: { name: "org_name" }
+            table: 'peeringdb_organization',
+            localFk: 'org_id',
+            columns: { name: 'org_name' }
         }],
         relationships: [
-            { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" },
-            { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id" }
+            { field: 'ixlan_set', table: 'peeringdb_ixlan', fk: 'ix_id' },
+            { field: 'ixfac_set', table: 'peeringdb_ix_facility', fk: 'ix_id' }
         ]
     },
 
     ixlan: {
-        tag: "ixlan",
-        table: "peeringdb_ixlan",
-        columns: [
-            "id", "ix_id", "name", "descr", "mtu",
-            "dot1q_support", "rs_asn", "arp_sponge",
-            "ixf_ixp_member_list_url_visible", "ixf_ixp_import_enabled",
-            "created", "updated", "status"
+        tag: 'ixlan',
+        table: 'peeringdb_ixlan',
+        fields: [
+            f('id', 'number'),
+            f('ix_id', 'number'),
+            f('name', 'string'),
+            f('descr', 'string'),
+            f('mtu', 'number'),
+            f('dot1q_support', 'boolean'),
+            f('rs_asn', 'number'),
+            nq('arp_sponge', 'string'),
+            nq('ixf_ixp_member_list_url_visible', 'string'),
+            nq('ixf_ixp_import_enabled', 'boolean'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", ix_id: "number", rs_asn: "number", mtu: "number",
-            name: "string", descr: "string",
-            dot1q_support: "boolean",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: [
-            { field: "ixpfx_set", table: "peeringdb_ixlan_prefix", fk: "ixlan_id" },
-            { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "ixlan_id" }
+            { field: 'ixpfx_set', table: 'peeringdb_ixlan_prefix', fk: 'ixlan_id' },
+            { field: 'netixlan_set', table: 'peeringdb_network_ixlan', fk: 'ixlan_id' }
         ]
     },
 
     ixpfx: {
-        tag: "ixpfx",
-        table: "peeringdb_ixlan_prefix",
-        columns: [
-            "id", "ixlan_id", "protocol", "prefix", "notes", "in_dfz",
-            "created", "updated", "status"
+        tag: 'ixpfx',
+        table: 'peeringdb_ixlan_prefix',
+        fields: [
+            f('id', 'number'),
+            f('ixlan_id', 'number'),
+            f('protocol', 'string'),
+            f('prefix', 'string'),
+            nq('notes', 'string'),
+            f('in_dfz', 'boolean'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", ixlan_id: "number",
-            protocol: "string", prefix: "string",
-            in_dfz: "boolean",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     netfac: {
-        tag: "netfac",
-        table: "peeringdb_network_facility",
-        columns: [
-            "id", "name", "city", "country",
-            "net_id", "fac_id", "local_asn",
-            "created", "updated", "status"
+        tag: 'netfac',
+        table: 'peeringdb_network_facility',
+        fields: [
+            f('id', 'number'),
+            nq('name', 'string'),
+            nq('city', 'string'),
+            nq('country', 'string'),
+            f('net_id', 'number'),
+            f('fac_id', 'number'),
+            f('local_asn', 'number'),
+            ...TIMESTAMPS,
         ],
         /** Resolve network name/ASN for netfac records queried directly. */
         joinColumns: [{
-            table: "peeringdb_network",
-            localFk: "net_id",
-            columns: { name: "net_name", asn: "net_asn" }
+            table: 'peeringdb_network',
+            localFk: 'net_id',
+            columns: { name: 'net_name', asn: 'net_asn' }
         }],
-        filters: {
-            id: "number", net_id: "number", fac_id: "number",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     netixlan: {
-        tag: "netixlan",
-        table: "peeringdb_network_ixlan",
-        columns: [
-            "id", "net_id", "ix_id", "name", "ixlan_id",
-            "notes", "speed", "asn",
-            "ipaddr4", "ipaddr6", "is_rs_peer",
-            "bfd_support", "operational",
-            "net_side_id", "ix_side_id",
-            "created", "updated", "status"
+        tag: 'netixlan',
+        table: 'peeringdb_network_ixlan',
+        fields: [
+            f('id', 'number'),
+            f('net_id', 'number'),
+            f('ix_id', 'number'),
+            nq('name', 'string'),
+            f('ixlan_id', 'number'),
+            nq('notes', 'string'),
+            f('speed', 'number'),
+            f('asn', 'number'),
+            f('ipaddr4', 'string'),
+            f('ipaddr6', 'string'),
+            f('is_rs_peer', 'boolean'),
+            f('bfd_support', 'boolean'),
+            f('operational', 'boolean'),
+            nq('net_side_id', 'number'),
+            nq('ix_side_id', 'number'),
+            ...TIMESTAMPS,
         ],
-        /** Resolve network name for netixlan records queried directly (e.g. IX peer table). */
+        /** Resolve network name for netixlan records queried directly. */
         joinColumns: [{
-            table: "peeringdb_network",
-            localFk: "net_id",
-            columns: { name: "net_name" }
+            table: 'peeringdb_network',
+            localFk: 'net_id',
+            columns: { name: 'net_name' }
         }],
-        filters: {
-            id: "number", net_id: "number", ixlan_id: "number",
-            ix_id: "number", asn: "number", speed: "number",
-            ipaddr4: "string", ipaddr6: "string",
-            is_rs_peer: "boolean", operational: "boolean",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     poc: {
-        tag: "poc",
-        table: "peeringdb_network_contact",
-        columns: [
-            "id", "net_id", "role", "visible",
-            "name", "phone", "email", "url",
-            "created", "updated", "status"
+        tag: 'poc',
+        table: 'peeringdb_network_contact',
+        fields: [
+            f('id', 'number'),
+            f('net_id', 'number'),
+            f('role', 'string'),
+            nq('visible', 'string'),
+            f('name', 'string'),
+            nq('phone', 'string'),
+            f('email', 'string'),
+            nq('url', 'string'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", net_id: "number",
-            role: "string", name: "string", email: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     carrier: {
-        tag: "carrier",
-        table: "peeringdb_carrier",
-        columns: [
-            "id", "org_id", "org_name", "name", "aka", "name_long",
-            "website", "social_media", "notes",
-            "fac_count", "logo",
-            "created", "updated", "status"
+        tag: 'carrier',
+        table: 'peeringdb_carrier',
+        fields: [
+            f('id', 'number'),
+            f('org_id', 'number'),
+            nq('org_name', 'string'),
+            f('name', 'string'),
+            f('aka', 'string'),
+            f('name_long', 'string'),
+            nq('website', 'string'),
+            jf('social_media'),
+            nq('notes', 'string'),
+            nq('fac_count', 'number'),
+            nq('logo', 'string'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", org_id: "number",
-            name: "string", aka: "string", name_long: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: [
-            { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "carrier_id" }
+            { field: 'carrierfac_set', table: 'peeringdb_ix_carrier_facility', fk: 'carrier_id' }
         ]
     },
 
     carrierfac: {
-        tag: "carrierfac",
-        table: "peeringdb_ix_carrier_facility",
-        columns: [
-            "id", "name", "carrier_id", "fac_id",
-            "created", "updated", "status"
+        tag: 'carrierfac',
+        table: 'peeringdb_ix_carrier_facility',
+        fields: [
+            f('id', 'number'),
+            nq('name', 'string'),
+            f('carrier_id', 'number'),
+            f('fac_id', 'number'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", carrier_id: "number", fac_id: "number",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     ixfac: {
-        tag: "ixfac",
-        table: "peeringdb_ix_facility",
-        columns: [
-            "id", "name", "city", "country",
-            "ix_id", "fac_id",
-            "created", "updated", "status"
+        tag: 'ixfac',
+        table: 'peeringdb_ix_facility',
+        fields: [
+            f('id', 'number'),
+            nq('name', 'string'),
+            nq('city', 'string'),
+            nq('country', 'string'),
+            f('ix_id', 'number'),
+            f('fac_id', 'number'),
+            ...TIMESTAMPS,
         ],
         /** Resolve IX name for ixfac records queried directly. */
         joinColumns: [{
-            table: "peeringdb_ix",
-            localFk: "ix_id",
-            columns: { name: "ix_name" }
+            table: 'peeringdb_ix',
+            localFk: 'ix_id',
+            columns: { name: 'ix_name' }
         }],
-        filters: {
-            id: "number", ix_id: "number", fac_id: "number",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: []
     },
 
     campus: {
-        tag: "campus",
-        table: "peeringdb_campus",
-        columns: [
-            "id", "org_id", "org_name", "status",
-            "created", "updated",
-            "name", "name_long", "notes", "aka",
-            "website", "social_media",
-            "country", "city", "zipcode", "state", "logo"
+        tag: 'campus',
+        table: 'peeringdb_campus',
+        fields: [
+            f('id', 'number'),
+            f('org_id', 'number'),
+            nq('org_name', 'string'),
+            f('name', 'string'),
+            f('name_long', 'string'),
+            nq('notes', 'string'),
+            f('aka', 'string'),
+            nq('website', 'string'),
+            jf('social_media'),
+            f('country', 'string'),
+            f('city', 'string'),
+            f('zipcode', 'string'),
+            f('state', 'string'),
+            nq('logo', 'string'),
+            ...TIMESTAMPS,
         ],
-        filters: {
-            id: "number", org_id: "number",
-            name: "string", aka: "string", name_long: "string",
-            status: "string", created: "datetime", updated: "datetime"
-        },
         relationships: [
-            { field: "fac_set", table: "peeringdb_facility", fk: "campus_id" }
+            { field: 'fac_set', table: 'peeringdb_facility', fk: 'campus_id' }
         ]
     }
 };
+
+// ── Derived lookups ──────────────────────────────────────────────────────────
 
 /**
  * Set of valid entity tags for fast lookup in the router.
@@ -359,19 +470,63 @@ export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
  * @type {Set<string>}
  */
 export const WRITABLE_TAGS = new Set([
-    "net", "org", "fac", "ix", "ixlan", "ixpfx",
-    "netfac", "netixlan", "poc", "carrier", "carrierfac", "ixfac", "campus"
+    'net', 'org', 'fac', 'ix', 'ixlan', 'ixpfx',
+    'netfac', 'netixlan', 'poc', 'carrier', 'carrierfac', 'ixfac', 'campus'
 ]);
 
 /**
- * Columns that store JSON arrays/objects as TEXT in D1.
- * These need special handling in three places:
- *   - query.js: wrapped in SQLite json() to prevent double-escaping in json_object()
- *   - depth.js: JSON.parse'd when returning full child objects at depth=2
- *   - handlers: JSON.parse'd when building row-level responses at depth>0
+ * Returns the column names for an entity (replaces the old entity.columns array).
  *
- * @type {Set<string>}
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {string[]} Ordered column names.
  */
-export const JSON_STORED_COLUMNS = new Set([
-    "social_media", "info_types", "available_voltage_services"
-]);
+export function getColumns(entity) {
+    return entity.fields.map(f => f.name);
+}
+
+/**
+ * Returns a Set of column names that store JSON arrays/objects as TEXT in D1.
+ * These need json() wrapping in json_object() and JSON.parse in the cold path.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} Column names with json: true.
+ */
+export function getJsonColumns(entity) {
+    const s = new Set();
+    for (const field of entity.fields) {
+        if (field.json) s.add(field.name);
+    }
+    return s;
+}
+
+/**
+ * Looks up a field definition by name and checks filterability.
+ * Returns the field's type if it exists and is queryable, null otherwise.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {string} fieldName - The field name to look up.
+ * @returns {'string'|'number'|'boolean'|'datetime'|null} Field type, or null if not queryable.
+ */
+export function getFilterType(entity, fieldName) {
+    for (const field of entity.fields) {
+        if (field.name === fieldName) {
+            return field.queryable === false ? null : field.type;
+        }
+    }
+    return null;
+}
+
+/**
+ * Validates a list of requested field names against an entity's field definitions.
+ * Returns only names that exist on the entity. Always includes 'id'.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {string[]} requested - Field names from the ?fields= parameter.
+ * @returns {string[]} Validated field names.
+ */
+export function validateFields(entity, requested) {
+    const valid = new Set(entity.fields.map(f => f.name));
+    const result = requested.filter(name => valid.has(name));
+    if (!result.includes('id')) result.unshift('id');
+    return result;
+}

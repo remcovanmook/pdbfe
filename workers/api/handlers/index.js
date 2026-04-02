@@ -15,7 +15,7 @@
  *   the D1-specific logic.
  */
 
-import { ENTITIES, JSON_STORED_COLUMNS } from '../entities.js';
+import { ENTITIES, getJsonColumns } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, NEGATIVE_TTL, normaliseCacheKey } from '../cache.js';
@@ -32,7 +32,7 @@ import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {string} entityTag - Entity tag (e.g. "net").
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
@@ -90,7 +90,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
  * @param {string} entityTag - Entity tag.
  * @param {number} id - Entity ID.
  * @param {ParsedFilter[]} filters - Parsed query filters (only depth is relevant here).
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Depth option.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Depth option.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @returns {Promise<Response>} JSON response.
@@ -193,7 +193,7 @@ export function handleNotImplemented(method, path) {
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for empty result.
  *          Note: empty lists return EMPTY_ENVELOPE (not null) since an empty
  *          list is valid data, not a 404.
@@ -203,7 +203,7 @@ async function executeListQuery(env, entity, filters, opts) {
         const { sql, params } = buildRowQuery(entity, filters, opts);
         const result = await env.PDB.prepare(sql).bind(...params).all();
         const rows = result.results || [];
-        for (const row of rows) { parseJsonFields(row); }
+        for (const row of rows) { parseJsonFields(entity, row); }
         await expandDepth(env.PDB, entity, rows, opts.depth);
         return encodeJSON({ data: rows, meta: {} });
     }
@@ -225,7 +225,7 @@ async function executeListQuery(env, entity, filters, opts) {
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @param {number} id - Entity ID.
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for 404.
  */
@@ -237,7 +237,7 @@ async function executeDetailQuery(env, entity, filters, opts, id) {
 
         if (rows.length === 0) return null;
 
-        for (const row of rows) { parseJsonFields(row); }
+        for (const row of rows) { parseJsonFields(entity, row); }
         await expandDepth(env.PDB, entity, rows, opts.depth);
         return encodeJSON({ data: rows, meta: {} });
     }
@@ -264,7 +264,7 @@ async function executeDetailQuery(env, entity, filters, opts, id) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Query options.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @param {string} rawPath - Original URL path.
  * @param {string} queryString - Original query string.
  * @returns {Promise<Response>} JSON response with count in meta.
@@ -315,13 +315,14 @@ async function handleCount(request, env, entity, entityTag, filters, opts, rawPa
 /**
  * Parses JSON-stored TEXT columns back to native arrays/objects.
  * Only used in the depth>0 cold path where we need individual row objects
- * for V8-side relationship expansion. Column names are sourced from
- * JSON_STORED_COLUMNS (entities.js) — no hardcoded list here.
+ * for V8-side relationship expansion. Column names are derived from the
+ * entity's field definitions (json: true).
  *
+ * @param {EntityMeta} entity - Entity metadata for JSON column lookup.
  * @param {Record<string, any>} row - A result row to mutate in-place.
  */
-function parseJsonFields(row) {
-    for (const col of JSON_STORED_COLUMNS) {
+function parseJsonFields(entity, row) {
+    for (const col of getJsonColumns(entity)) {
         if (typeof row[col] === "string" && row[col]) {
             try { row[col] = JSON.parse(row[col]); } catch { /* keep as string */ }
         }
@@ -360,7 +361,7 @@ function countRows(payload) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {ParsedFilter[]} filters - Query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} needsExpansion - Whether depth>0 expansion is required.
@@ -375,7 +376,7 @@ async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cac
                     const { sql, params } = buildRowQuery(entity, filters, opts);
                     const result = await env.PDB.prepare(sql).bind(...params).all();
                     const rows = result.results || [];
-                    for (const row of rows) { parseJsonFields(row); }
+                    for (const row of rows) { parseJsonFields(entity, row); }
                     if (opts.depth > 0) {
                         await expandDepth(env.PDB, entity, rows, opts.depth);
                     }
@@ -401,7 +402,7 @@ async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cac
  * Used to build the cache key for the pre-fetched next page.
  *
  * @param {ParsedFilter[]} filters - The current query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @returns {string} Sorted query string.
  */
 function buildSortedQS(filters, opts) {
