@@ -4,8 +4,8 @@
  * to prevent redundant requests during back/forward navigation.
  */
 
-/** Base URL for the API worker. */
-const API_BASE = 'https://pdbfe-api.remco-vanmook.workers.dev';
+/** Base URL for the API — empty string uses the /api/* same-origin proxy. */
+const API_BASE = '';
 
 /**
  * In-memory response cache. Maps URL → { data, timestamp }.

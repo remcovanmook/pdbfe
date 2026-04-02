@@ -45,7 +45,7 @@ export function parseURL(request) {
  * and returned in the `pagination` and `meta` objects.
  *
  * @param {string} queryString - Raw query string without the leading '?'.
- * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string}} Parsed query components.
+ * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[]}} Parsed query components.
  */
 export function parseQueryFilters(queryString) {
     /** @type {ParsedFilter[]} */
@@ -55,8 +55,10 @@ export function parseQueryFilters(queryString) {
     let skip = 0;
     let since = 0;
     let sort = '';
+    /** @type {string[]} */
+    let fields = [];
 
-    if (!queryString) return { filters, depth, limit, skip, since, sort };
+    if (!queryString) return { filters, depth, limit, skip, since, sort, fields };
 
     const pairs = queryString.split("&");
     for (let i = 0; i < pairs.length; i++) {
@@ -91,6 +93,10 @@ export function parseQueryFilters(queryString) {
             sort = rawValue;
             continue;
         }
+        if (rawKey === "fields") {
+            fields = rawValue.split(",").map(s => s.trim()).filter(Boolean);
+            continue;
+        }
 
         // Parse filter suffix from the field name
         const suffixes = ["__lte", "__gte", "__lt", "__gt", "__contains", "__startswith", "__in"];
@@ -105,10 +111,17 @@ export function parseQueryFilters(queryString) {
             }
         }
 
-        filters.push({ field, op, value: rawValue });
+        // Cross-entity filter: if the field still contains __, the prefix
+        // is a related entity tag (e.g. fac__state → entity=fac, field=state).
+        const dunder = field.indexOf('__');
+        if (dunder !== -1) {
+            filters.push({ field: field.slice(dunder + 2), op, value: rawValue, entity: field.slice(0, dunder) });
+        } else {
+            filters.push({ field, op, value: rawValue });
+        }
     }
 
-    return { filters, depth, limit, skip, since, sort };
+    return { filters, depth, limit, skip, since, sort, fields };
 }
 
 /**

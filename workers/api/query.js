@@ -14,7 +14,7 @@
  *   in        → WHERE col IN (?, ?, ...)
  */
 
-import { JSON_STORED_COLUMNS } from './entities.js';
+import { getColumns, getJsonColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).
@@ -118,15 +118,16 @@ function coerceValue(value, fieldType) {
  * JSON arrays without double-escaping. Regular columns are passed as-is.
  *
  * @param {string[]} columns - Column names.
+ * @param {Set<string>} jsonCols - Column names that store JSON TEXT.
  * @param {string} [prefix] - Optional table alias prefix (e.g. "t").
  * @returns {string} Comma-separated json_object argument pairs.
  */
-function jsonObjectArgs(columns, prefix) {
+function jsonObjectArgs(columns, jsonCols, prefix) {
     const pfx = prefix ? `${prefix}.` : '';
     const parts = [];
     for (let i = 0; i < columns.length; i++) {
         const c = columns[i];
-        if (JSON_STORED_COLUMNS.has(c)) {
+        if (jsonCols.has(c)) {
             parts.push(`'${c}', json(${pfx}"${c}")`);
         } else {
             parts.push(`'${c}', ${pfx}"${c}"`);
@@ -189,11 +190,13 @@ function buildJoinFragments(joinDefs) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
+    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity);
+    const jsonCols = getJsonColumns(entity);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(
@@ -205,13 +208,10 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
-        // Inner subquery: SELECT base cols + joined cols with JOINs
-        const baseCols = entity.columns.map(c => `t."${c}"`).join(', ');
+        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', ');
         const allSelectCols = baseCols + ', ' + selectCols.join(', ');
 
-        // Outer wrapper: json_group_array wraps each row's json_object.
-        // Uses unqualified alias refs since the subquery flattens them.
-        const baseJsonArgs = jsonObjectArgs(entity.columns);
+        const baseJsonArgs = jsonObjectArgs(columns, jsonCols);
         const allJsonArgs = baseJsonArgs + ', ' + outerJsonArgs.join(', ');
 
         const sql =
@@ -223,9 +223,9 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         return { sql, params };
     }
 
-    const jsonCols = jsonObjectArgs(entity.columns);
+    const jsonArgs = jsonObjectArgs(columns, jsonCols);
     const sql =
-        `SELECT json_object('data',json_group_array(json_object(${jsonCols})),'meta',json_object()) AS payload` +
+        `SELECT json_object('data',json_group_array(json_object(${jsonArgs})),'meta',json_object()) AS payload` +
         ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
 
     return { sql, params };
@@ -241,11 +241,12 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
 export function buildRowQuery(entity, filters, opts, singleId = null) {
+    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(
@@ -257,14 +258,14 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         const { joinSql, selectCols } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
-        const baseCols = entity.columns.map(c => `t."${c}"`).join(", ");
+        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", ");
         const allCols = baseCols + ', ' + selectCols.join(', ');
 
         const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY ${orderBy}${pagination}`;
         return { sql, params };
     }
 
-    const cols = entity.columns.map(c => `"${c}"`).join(", ");
+    const cols = columns.map((/** @type {string} */ c) => `"${c}"`).join(", ");
     const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination}`;
     return { sql, params };
 }
@@ -275,7 +276,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination and depth.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
@@ -293,7 +294,7 @@ export function buildQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Pagination.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {number|null} singleId - Single-row ID or null.
  * @param {string} [tableAlias] - Optional table alias for column qualification.
  * @returns {{ clauses: string[], params: (string|number)[], pagination: string, orderBy: string }}
@@ -318,25 +319,53 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         params.push(since);
     }
 
-    // Apply user-provided filters, validating against the entity's allowed fields
+    // Default to status=ok if no explicit status filter is present
+    // (matches upstream PeeringDB behaviour — deleted records excluded by default)
+    const hasStatusFilter = filters.some(f => f.field === 'status');
+    if (!hasStatusFilter && getFilterType(entity, 'status')) {
+        clauses.push(`${pfx}"status" = ?`);
+        params.push('ok');
+    }
+
+    // Apply user-provided filters, validating against the entity's field definitions
     for (const f of filters) {
-        const fieldType = entity.filters[f.field];
-        if (!fieldType) continue; // Unknown field — ignore silently
+
+        // Cross-entity filter: generate a subquery against the related table.
+        // e.g. fac__state=NSW on ixfac → ixfac.fac_id IN (SELECT id FROM fac WHERE state = ?)
+        if (f.entity) {
+            const ref = resolveCrossEntityFilter(entity, f.entity, f.field);
+            if (typeof ref === 'string') continue; // Validation should have caught this
+
+            const opFn = OPS[f.op];
+            if (!opFn) continue;
+
+            // Build the inner WHERE clause using the standard OPS functions
+            // (they operate on unaliased column names, which is what we want)
+            if (f.op === 'in') {
+                const parts = f.value.split(',');
+                const placeholders = parts.map(() => '?').join(', ');
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (${placeholders}))`);
+                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))));
+            } else {
+                const inner = opFn(f.field, f.value);
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause})`);
+                params.push(coerceValue(f.value, /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)));
+            }
+            continue;
+        }
+
+        const fieldType = getFilterType(entity, f.field);
+        if (!fieldType) continue; // Unknown or non-queryable field — ignore silently
 
         const opFn = OPS[f.op];
         if (!opFn) continue; // Unknown operator — ignore silently
 
         // Qualify the column with the table alias for JOIN queries.
-        // OPS functions wrap the column in double quotes, so we pass
-        // the raw field name (OPS will produce "field") or the
-        // pre-qualified form that already includes proper quoting.
-        // When aliased: build t."field" directly, skipping OPS quoting.
         const sqlCol = pfx ? `${pfx}"${f.field}"` : f.field;
 
         // For 'in' operator, coerce each comma-separated value
         if (f.op === "in") {
             if (pfx) {
-                // Build clause directly with proper quoting
                 const parts = f.value.split(",");
                 const placeholders = parts.map(() => "?").join(", ");
                 clauses.push(`${sqlCol} IN (${placeholders})`);
@@ -350,7 +379,6 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         } else {
             const coerced = coerceValue(f.value, fieldType);
             if (pfx) {
-                // Build clause directly with proper quoting
                 const opSql = OPS_SQL[f.op];
                 if (opSql) {
                     clauses.push(opSql(sqlCol, '?'));
@@ -392,7 +420,8 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
     if (sort) {
         const desc = sort.startsWith('-');
         const col = desc ? sort.slice(1) : sort;
-        if (entity.columns.includes(col)) {
+        const allCols = getColumns(entity);
+        if (allCols.includes(col)) {
             orderBy = `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}`;
         }
     }
@@ -407,7 +436,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string}} opts - Only since is used.
+ * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Only since is used.
  * @returns {BuiltQuery} Parameterised SQL returning { cnt: number }.
  */
 export function buildCountQuery(entity, filters, opts) {
