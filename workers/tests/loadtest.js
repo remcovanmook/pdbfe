@@ -85,7 +85,7 @@ const SCENARIOS = [
     // ── Filtered lists ───────────────────────────────────────────
     {
         name: 'Nets by country (NL)',
-        path: '/api/net?country=NL&limit=50',
+        path: '/api/net?org__country=NL&limit=50',
         validate: (d) => d.data?.length > 0 ? null : 'no NL networks returned'
     },
     {
@@ -453,8 +453,8 @@ async function main() {
         {
             name: 'Parallel filtered lists',
             urls: [
-                '/api/net?country=NL&limit=100', '/api/net?country=US&limit=100',
-                '/api/net?country=DE&limit=100', '/api/net?country=GB&limit=100',
+                '/api/net?org__country=NL&limit=100', '/api/net?org__country=US&limit=100',
+                '/api/net?org__country=DE&limit=100', '/api/net?org__country=GB&limit=100',
                 '/api/fac?country=NL&limit=100', '/api/fac?country=US&limit=100',
                 '/api/ix?country=US&limit=100', '/api/ix?country=DE&limit=100',
                 '/api/net?name__contains=cloud&limit=50',
@@ -467,7 +467,7 @@ async function main() {
                 '/api/net?limit=250', '/api/fac?limit=250',
                 '/api/ix?limit=250', '/api/netixlan?ix_id=26',
                 '/api/net?limit=250&skip=250', '/api/fac?limit=250&skip=250',
-                '/api/netfac?fac_id=18', '/api/net?country=US&limit=250',
+                '/api/netfac?fac_id=18', '/api/net?org__country=US&limit=250',
                 '/api/netixlan?ix_id=171', '/api/netixlan?ix_id=359',
             ]
         },
