@@ -111,7 +111,14 @@ export function parseQueryFilters(queryString) {
             }
         }
 
-        filters.push({ field, op, value: rawValue });
+        // Cross-entity filter: if the field still contains __, the prefix
+        // is a related entity tag (e.g. fac__state → entity=fac, field=state).
+        const dunder = field.indexOf('__');
+        if (dunder !== -1) {
+            filters.push({ field: field.slice(dunder + 2), op, value: rawValue, entity: field.slice(0, dunder) });
+        } else {
+            filters.push({ field, op, value: rawValue });
+        }
     }
 
     return { filters, depth, limit, skip, since, sort, fields };
