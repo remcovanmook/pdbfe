@@ -1,16 +1,30 @@
 /**
  * @fileoverview Per-entity LRU cache instances for the PeeringDB API worker.
  * Each entity type gets its own cache with slot counts and max sizes
- * proportional to its data volume. Stores pre-encoded Uint8Array JSON
- * payloads — cache hits serve bytes directly with zero serialisation cost.
+ * proportional to its query cardinality and response sizes. Stores
+ * pre-encoded Uint8Array JSON payloads — cache hits serve bytes directly
+ * with zero serialisation cost.
  *
- * Cache tiers:
- *   Heavy  (net, org, netixlan):  1024 slots, 16 MB
- *   Medium (netfac, poc, fac):     256 slots,  4 MB
- *   Light  (everything else):      128 slots,  2 MB
+ * Cache tiers are sized based on measured response data (April 2026):
  *
- * Total budget: 76 MB, leaving ~52 MB for working memory and future
- * pre-cooked answer caches.
+ *   Entity      Avg Response   Outlier           Slots   Max
+ *   ──────────  ────────────   ────────────────  ─────   ────
+ *   net         1-24 KB        depth=2: 200 KB   1024    16 MB
+ *   netixlan    1-7 KB         big ASN: 157 KB   2048    16 MB
+ *   netfac      2-5 KB         big net: 37 KB     512     8 MB
+ *   fac         1-19 KB        —                  512     4 MB
+ *   ix          1-20 KB        —                  512     4 MB
+ *   org         0.1-10 KB      depth=2: 314 KB    512     8 MB
+ *   poc         0.05-0.5 KB    —                  256     1 MB
+ *   light tier  0.2 KB         —                  128     1 MB
+ *
+ * Slot counts prioritise query cardinality: entities with many filter
+ * combinations (asn, ix_id, fac_id, cross-entity filters) get more
+ * slots. Byte budgets are sized for the measured outlier responses,
+ * not the average — a single netixlan?asn={big ASN} can be 157 KB.
+ *
+ * Total budget: ~59 MB, leaving ~69 MB of the 128 MB isolate for
+ * working memory, V8 heap, and the D1 query pipeline.
  */
 
 import { LRUCache } from '../core/cache.js';
@@ -47,21 +61,53 @@ export const COUNT_TTL = 15 * 60 * 1000;
 export const NEGATIVE_TTL = 5 * 60 * 1000;
 
 /**
- * Cache tier configuration. Entities not listed here default to the
- * light tier (128 slots, 2 MB).
+ * Cache tier configuration per entity. Sized by two factors:
+ *
+ *   slots:   query cardinality — how many unique filter combinations
+ *            are expected. Entities queryable by ASN, net_id, ix_id,
+ *            fac_id, and cross-entity filters get more slots.
+ *
+ *   maxSize: byte budget — based on measured response outliers.
+ *            A single netixlan?asn=13335 (Cloudflare) is 157 KB.
+ *            A single net?asn=13335&depth=2 is 200 KB.
+ *            A single org?id=X&depth=2 can reach 314 KB.
+ *
+ * Entities not listed here use the light tier (128 slots, 1 MB).
  *
  * @type {Record<string, {slots: number, maxSize: number}>}
  */
 const TIERS = {
+    // High cardinality: ASN lookups, IX participant lists, cross-entity filters.
+    // depth=2 produces 200KB responses; filtered lists average 1-24KB.
     net:      { slots: 1024, maxSize: 16 * MB },
-    org:      { slots: 1024, maxSize: 16 * MB },
-    netixlan: { slots: 1024, maxSize: 16 * MB },
-    netfac:   { slots: 256,  maxSize: 4 * MB },
-    poc:      { slots: 256,  maxSize: 4 * MB },
-    fac:      { slots: 256,  maxSize: 4 * MB },
+
+    // Highest cardinality: queried by asn, net_id, ix_id, ixlan_id.
+    // Big-ASN responses reach 157KB (Cloudflare: 411 IX connections).
+    netixlan: { slots: 2048, maxSize: 16 * MB },
+
+    // High cardinality: queried by net_id, fac_id. Big-carrier
+    // responses reach 37KB (167 facilities for a single network).
+    netfac:   { slots: 512,  maxSize: 8 * MB },
+
+    // Mid cardinality: cross-entity filter target (fac__state, fac__country).
+    // Filtered lists average 1-19KB; detail pages ~4KB with depth.
+    fac:      { slots: 512,  maxSize: 4 * MB },
+
+    // Mid cardinality: regional queries (region_continent), cross-entity
+    // filter target (ix__name). Filtered lists average 1-20KB.
+    ix:       { slots: 512,  maxSize: 4 * MB },
+
+    // Lower cardinality but depth=2 outlier: a single large org
+    // expands to 314KB with all nets/facs/IXs. Most responses <10KB.
+    org:      { slots: 512,  maxSize: 8 * MB },
+
+    // Low cardinality: queried by net_id + role. Responses are tiny
+    // (0.05-0.5KB). 1MB is enough for 2000+ entries.
+    poc:      { slots: 256,  maxSize: 1 * MB },
 };
 
-const DEFAULT_TIER = { slots: 128, maxSize: 2 * MB };
+/** Light tier for low-traffic entities: ixlan, ixpfx, ixfac, carrier, carrierfac, campus. */
+const DEFAULT_TIER = { slots: 128, maxSize: 1 * MB };
 
 /**
  * Per-entity cache instances. Keyed by entity tag.
