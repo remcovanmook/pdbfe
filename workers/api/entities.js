@@ -459,48 +459,102 @@ deriveRelationships(ENTITIES);
 export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
 
 
+// ── Boot-time caches ─────────────────────────────────────────────────────────
+
+/**
+ * Pre-computes derived lookups on each entity so hot-path accessors
+ * are zero-alloc property reads instead of per-call map/filter/Set
+ * allocations. Runs once at module load after deriveRelationships.
+ *
+ * Caches:
+ *   _columns:     string[]       (ordered column names)
+ *   _jsonColumns:  Set<string>    (json: true column names)
+ *   _fieldNames:   Set<string>    (all column names for validation)
+ *   _filterTypes:  Map<string, string>  (queryable field → type)
+ *
+ * @param {Record<string, EntityMeta>} entities
+ */
+function cacheFieldLookups(entities) {
+    for (const entity of Object.values(entities)) {
+        /** @type {string[]} */
+        const columns = [];
+        /** @type {Set<string>} */
+        const jsonColumns = new Set();
+        /** @type {Set<string>} */
+        const fieldNames = new Set();
+        /** @type {Map<string, string>} */
+        const filterTypes = new Map();
+
+        for (const field of entity.fields) {
+            columns.push(field.name);
+            fieldNames.add(field.name);
+            if (field.json) jsonColumns.add(field.name);
+            if (field.queryable !== false) filterTypes.set(field.name, field.type);
+        }
+
+        /** @type {any} */ (entity)._columns = columns;
+        /** @type {any} */ (entity)._jsonColumns = jsonColumns;
+        /** @type {any} */ (entity)._fieldNames = fieldNames;
+        /** @type {any} */ (entity)._filterTypes = filterTypes;
+    }
+}
+
+cacheFieldLookups(ENTITIES);
+
 // ── Field accessor helpers ───────────────────────────────────────────────────
 
 /**
- * Returns the column names for an entity, derived from its fields array.
+ * Returns column names for an entity. Uses boot-time cache when available
+ * (production), falls back to deriving from fields (test mocks).
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @returns {string[]} Ordered column names.
  */
 export function getColumns(entity) {
-    return entity.fields.map(f => f.name);
+    return /** @type {any} */ (entity)._columns || entity.fields.map(f => f.name);
 }
 
 /**
- * Returns a Set of column names that store JSON arrays/objects as TEXT in D1.
- * These need json() wrapping in json_object() and JSON.parse in the cold path.
+ * Returns Set of JSON-stored column names. Uses boot-time cache when
+ * available, falls back to deriving from fields.
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @returns {Set<string>} Column names with json: true.
  */
 export function getJsonColumns(entity) {
+    if (/** @type {any} */ (entity)._jsonColumns) return /** @type {any} */ (entity)._jsonColumns;
     const s = new Set();
-    for (const field of entity.fields) {
-        if (field.json) s.add(field.name);
-    }
+    for (const field of entity.fields) { if (field.json) s.add(field.name); }
     return s;
 }
 
 /**
- * Looks up a field definition by name and checks filterability.
- * Returns the field's type if it exists and is queryable, null otherwise.
+ * Looks up a field's type. Uses cached Map when available, falls back
+ * to linear scan for test mocks.
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} fieldName - The field name to look up.
  * @returns {'string'|'number'|'boolean'|'datetime'|null} Field type, or null if not queryable.
  */
 export function getFilterType(entity, fieldName) {
+    const cached = /** @type {any} */ (entity)._filterTypes;
+    if (cached) {
+        return /** @type {'string'|'number'|'boolean'|'datetime'|null} */ (cached.get(fieldName) ?? null);
+    }
     for (const field of entity.fields) {
-        if (field.name === fieldName) {
-            return field.queryable === false ? null : field.type;
-        }
+        if (field.name === fieldName) return field.queryable === false ? null : field.type;
     }
     return null;
+}
+
+/**
+ * Returns Set of all field names. Uses boot-time cache when available.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} All field names.
+ */
+function getFieldNames(entity) {
+    return /** @type {any} */ (entity)._fieldNames || new Set(entity.fields.map(f => f.name));
 }
 
 /**
@@ -512,7 +566,7 @@ export function getFilterType(entity, fieldName) {
  * @returns {string[]} Validated field names.
  */
 export function validateFields(entity, requested) {
-    const valid = new Set(entity.fields.map(f => f.name));
+    const valid = getFieldNames(entity);
     const result = requested.filter(name => valid.has(name));
     if (!result.includes('id')) result.unshift('id');
     return result;
@@ -534,7 +588,7 @@ const VALID_OPS = new Set(['eq', 'lt', 'gt', 'lte', 'gte', 'contains', 'startswi
  * @returns {string|null} Error message, or null if query is valid.
  */
 export function validateQuery(entity, filters, sort) {
-    const fieldNames = new Set(entity.fields.map(f => f.name));
+    const fieldNames = getFieldNames(entity);
 
     for (const f of filters) {
         if (!VALID_OPS.has(f.op)) {
