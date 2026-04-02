@@ -71,7 +71,7 @@ export async function handleList(request, env, ctx, entityTag, filters, opts, ra
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(env, entity, entityTag, filters, nextOpts, nextCacheKey, cache, opts.depth > 0)
+                    prefetchPage(env, entity, entityTag, filters, nextOpts, nextCacheKey, cache)
                 );
             }
         }
@@ -101,28 +101,17 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
 
     const cache = getEntityCache(entityTag);
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const now = Date.now();
+    const notFoundMsg = `${entityTag} with id ${id} not found`;
 
-    // L1 cache check (with negative TTL awareness)
-    const cached = cache.get(cacheKey);
-    if (cached) {
-        const ttl = isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf))) ? NEGATIVE_TTL : DETAIL_TTL;
-        if ((now - cached.addedAt) < ttl) {
-            if (isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)))) {
-                return jsonError(404, `${entityTag} with id ${id} not found`);
-            }
-            return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
-        }
-    }
+    const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
+    if (l1Hit) return l1Hit;
 
     const buf = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: DETAIL_TTL,
         queryFn: () => executeDetailQuery(env, entity, filters, opts, id)
     });
 
-    if (!buf) {
-        return jsonError(404, `${entityTag} with id ${id} not found`);
-    }
+    if (!buf) return jsonError(404, notFoundMsg);
 
     return serveJSON(request, buf, { isCached: false, hits: 0 });
 }
@@ -139,18 +128,10 @@ export async function handleDetail(request, env, ctx, entityTag, id, filters, op
 export async function handleAsSet(request, env, asn) {
     const cache = getEntityCache("as_set");
     const cacheKey = `as_set/${asn}`;
-    const now = Date.now();
+    const notFoundMsg = `No network found for ASN ${asn}`;
 
-    const cached = cache.get(cacheKey);
-    if (cached) {
-        const ttl = isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf))) ? NEGATIVE_TTL : DETAIL_TTL;
-        if ((now - cached.addedAt) < ttl) {
-            if (isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)))) {
-                return jsonError(404, `No network found for ASN ${asn}`);
-            }
-            return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
-        }
-    }
+    const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
+    if (l1Hit) return l1Hit;
 
     const buf = await cachedQuery({
         cacheKey, cache, entityTag: "as_set", ttlMs: DETAIL_TTL,
@@ -164,9 +145,7 @@ export async function handleAsSet(request, env, asn) {
         }
     });
 
-    if (!buf) {
-        return jsonError(404, `No network found for ASN ${asn}`);
-    }
+    if (!buf) return jsonError(404, notFoundMsg);
 
     return serveJSON(request, buf, { isCached: false, hits: 0 });
 }
@@ -184,7 +163,7 @@ export function handleNotImplemented(method, path) {
 
 // ── D1 query functions ───────────────────────────────────────────────────────
 // These are the queryFn closures passed to cachedQuery(). They contain only
-// the D1-specific logic and run inside the dbSemaphore try/finally block.
+// the D1-specific logic; everything else is handled by the pipeline.
 
 /**
  * Executes a list query against D1. Uses the hot path (json_group_array)
@@ -252,6 +231,32 @@ async function executeDetailQuery(env, entity, filters, opts, id) {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Checks the L1 cache for a detail-type entry (with negative TTL awareness).
+ * Returns a Response on hit (including 404 for negative entries), or null
+ * on miss. Caches the isNegative check result to avoid duplicate byte
+ * comparisons.
+ *
+ * Used by handleDetail and handleAsSet to de-duplicate the L1 check pattern.
+ *
+ * @param {Request} request - The inbound HTTP request (for ETag headers).
+ * @param {LocalCache} cache - Per-entity LRU cache instance.
+ * @param {string} cacheKey - Normalised cache key.
+ * @param {string} notFoundMsg - 404 message if the entry is a negative cache hit.
+ * @returns {Response|null} Cached response, or null on miss/expired.
+ */
+function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
+    const cached = cache.get(cacheKey);
+    if (!cached) return null;
+
+    const neg = isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)));
+    const ttl = neg ? NEGATIVE_TTL : DETAIL_TTL;
+    if ((Date.now() - cached.addedAt) >= ttl) return null;
+
+    if (neg) return jsonError(404, notFoundMsg);
+    return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+}
 
 /**
  * Handles count requests (limit=0, skip=0).
@@ -355,7 +360,7 @@ function countRows(payload) {
 
 /**
  * Background pre-fetch for the next page of paginated results.
- * Delegates to cachedQuery() which handles coalescing, L2, semaphore, D1.
+ * Delegates to cachedQuery() which handles coalescing, L2, and D1.
  *
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
  * @param {EntityMeta} entity - Entity metadata.
@@ -364,33 +369,13 @@ function countRows(payload) {
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
- * @param {boolean} needsExpansion - Whether depth>0 expansion is required.
  * @returns {Promise<void>}
  */
-async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cache, needsExpansion) {
+async function prefetchPage(env, entity, entityTag, filters, opts, cacheKey, cache) {
     try {
         await cachedQuery({
             cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-            queryFn: async () => {
-                if (needsExpansion) {
-                    const { sql, params } = buildRowQuery(entity, filters, opts);
-                    const result = await env.PDB.prepare(sql).bind(...params).all();
-                    const rows = result.results || [];
-                    for (const row of rows) { parseJsonFields(entity, row); }
-                    if (opts.depth > 0) {
-                        await expandDepth(env.PDB, entity, rows, opts.depth);
-                    }
-                    return encodeJSON({ data: rows, meta: {} });
-                }
-
-                const { sql, params } = buildJsonQuery(entity, filters, opts);
-                const result = await env.PDB.prepare(sql).bind(...params).first();
-
-                if (!result || !result.payload) {
-                    return EMPTY_ENVELOPE;
-                }
-                return encoder.encode(/** @type {string} */(result.payload));
-            }
+            queryFn: () => executeListQuery(env, entity, filters, opts)
         });
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);
@@ -413,6 +398,7 @@ function buildSortedQS(filters, opts) {
         parts.push(`${key}=${encodeURIComponent(f.value)}`);
     }
     if (opts.depth > 0) parts.push(`depth=${opts.depth}`);
+    if (opts.fields && opts.fields.length > 0) parts.push(`fields=${opts.fields.join(',')}`);
     if (opts.limit > 0) parts.push(`limit=${opts.limit}`);
     if (opts.skip > 0) parts.push(`skip=${opts.skip}`);
     if (opts.since > 0) parts.push(`since=${opts.since}`);

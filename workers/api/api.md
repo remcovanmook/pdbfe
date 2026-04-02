@@ -24,9 +24,9 @@ Client → wrapHandler (error trap + telemetry headers)
 api/index.js (router)
 ├── core/admin.js         (validateRequest, wrapHandler, routeAdminPath)
 ├── core/http.js          (encoder, serveJSON, handlePreflight, jsonError, encodeJSON)
-├── core/utils.js         (parseURL, parseQueryFilters, createSemaphore)
+├── core/utils.js         (parseURL, parseQueryFilters)
 ├── api/handlers/index.js (handleList, handleDetail, handleAsSet, handleNotImplemented)
-│   ├── api/pipeline.js   (cachedQuery, EMPTY_ENVELOPE, isNegative — owns dbSemaphore)
+│   ├── api/pipeline.js   (cachedQuery, EMPTY_ENVELOPE, isNegative)
 │   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
 │   ├── api/depth.js      (expandDepth)
 │   ├── api/cache.js      (getEntityCache, normaliseCacheKey, TTL constants)
@@ -44,11 +44,14 @@ Each entity type gets its own LRU cache instance. This prevents heavy traffic on
 
 | Tier | Entities | Slots | Max Size |
 |---|---|---|---|
-| Heavy | net, org, netixlan | 1024 | 16 MB each |
-| Medium | netfac, poc, fac | 256 | 4 MB each |
-| Light | everything else | 128 | 2 MB each |
+| Heavy | net | 1024 | 16 MB |
+| Heavy | netixlan | 2048 | 16 MB |
+| Mid-high | netfac, org | 512 | 8 MB each |
+| Mid | fac, ix | 512 | 4 MB each |
+| Low | poc | 256 | 1 MB |
+| Light | ixlan, ixpfx, ixfac, carrier, carrierfac, campus | 128 | 1 MB each |
 
-Total: 76 MB. Remaining ~52 MB is available for working memory and a future pre-cooked answer cache.
+Total: ~64 MB. Remaining ~64 MB is available for working memory and a future pre-cooked answer cache.
 
 ### Raw JSON Byte Forwarding (Zero-Allocation Hot Path)
 
