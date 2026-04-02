@@ -63,12 +63,13 @@ The `Uint8Array` stored in the LRU cache is the *same reference* served to every
 *  **Use:** If you need to modify response data, create a new buffer.
 
 ### 9. Querying D1 Outside `cachedQuery()`
-All D1 queries in handlers must flow through `cachedQuery()` (pipeline.js), which owns both promise coalescing (cache stampede prevention) and the semaphore `acquire()`/`release()` lifecycle within a single `try/finally`.
+All D1 queries in API handlers must flow through `cachedQuery()` (pipeline.js), which owns promise coalescing (cache stampede prevention) and the L1/L2 cache write-back lifecycle.
 
 *  **Forbidden:** Calling `env.PDB.prepare(...).bind(...).all()` directly in handler code without going through `cachedQuery()`.
 *  **Forbidden:** Manually manipulating `cache.pending` (`.get()`, `.set()`, `.delete()`). Coalescing is internal to `cachedQuery()`.
-*  **Required flow:** Pass a `queryFn` closure to `cachedQuery()`. The closure runs inside the semaphore — do not acquire additional slots within it (nested acquisition risks deadlock).
-*  **Exception:** `depth.js` child-set queries run inside a `queryFn` closure and share the parent's semaphore slot. This is correct — do not add a second `acquire()` call inside `expandDepth`.
+*  **Required flow:** Pass a `queryFn` closure to `cachedQuery()`. The closure receives no arguments — capture what you need from the outer scope.
+*  **Exception:** `depth.js` child-set queries run inside a `queryFn` closure that already went through `cachedQuery()`. This is correct.
+*  **Exception:** Admin endpoints (`handleSyncStatus`, `/health`, `/_cache_status`) query D1 directly. These are low-traffic diagnostic paths where caching would defeat the purpose.
 
 ### 10. Awaiting L2 Cache Writes
 `putL2()` writes to the per-PoP Cache API. These writes are fire-and-forget — the response should not block on them.
