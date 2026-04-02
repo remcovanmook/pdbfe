@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildQuery, buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../api/query.js';
+import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../api/query.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,9 +66,9 @@ const NETIXLAN_ENTITY = {
 // expected no WHERE clause will see one. Tests that provide an explicit
 // status filter will not get the default injected.
 
-describe("buildQuery", () => {
+describe("buildRowQuery", () => {
     it("should build a basic SELECT with default status filter", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('SELECT "id", "name", "asn", "org_id", "status", "updated"'));
         assert.ok(result.sql.includes('WHERE "status" = ?'));
         assert.ok(result.sql.includes('ORDER BY "id" ASC'));
@@ -77,7 +77,7 @@ describe("buildQuery", () => {
 
     it("should apply equality filter alongside default status", () => {
         const filters = [{ field: "asn", op: "eq", value: "13335" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"asn" = ?'));
         assert.ok(result.sql.includes('"status" = ?'));
         assert.deepEqual(result.params, ["ok", 13335]);
@@ -85,7 +85,7 @@ describe("buildQuery", () => {
 
     it("should not inject default status when explicit status filter is provided", () => {
         const filters = [{ field: "status", op: "eq", value: "deleted" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Should have exactly one status = ? in the WHERE clause
         const whereClause = result.sql.slice(result.sql.indexOf('WHERE'));
         const statusMatches = whereClause.match(/"status" = \?/g);
@@ -95,7 +95,7 @@ describe("buildQuery", () => {
 
     it("should apply numeric comparison filters", () => {
         const filters = [{ field: "id", op: "gt", value: "100" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"id" > ?'));
     });
 
@@ -104,32 +104,32 @@ describe("buildQuery", () => {
             { field: "id", op: "gte", value: "10" },
             { field: "id", op: "lte", value: "20" }
         ];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"id" >= ?'));
         assert.ok(result.sql.includes('"id" <= ?'));
     });
 
     it("should apply contains filter (case-insensitive)", () => {
         const filters = [{ field: "name", op: "contains", value: "Cloudflare" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIKE '%' || ? || '%' COLLATE NOCASE"));
     });
 
     it("should apply startswith filter", () => {
         const filters = [{ field: "name", op: "startswith", value: "Cloud" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIKE ? || '%' COLLATE NOCASE"));
     });
 
     it("should apply IN filter with multiple values", () => {
         const filters = [{ field: "id", op: "in", value: "1,5,10" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"id" IN (?, ?, ?)'));
     });
 
     it("should ignore unknown fields", () => {
         const filters = [{ field: "nonexistent", op: "eq", value: "foo" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Still has the default status filter
         assert.ok(result.sql.includes('"status" = ?'));
         assert.deepEqual(result.params, ["ok"]);
@@ -137,25 +137,25 @@ describe("buildQuery", () => {
 
     it("should ignore unknown operators", () => {
         const filters = [{ field: "name", op: "regex", value: ".*" }];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Only the default status filter
         assert.deepEqual(result.params, ["ok"]);
     });
 
     it("should handle single ID fetch", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 }, 42);
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 }, 42);
         assert.ok(result.sql.includes('"id" = ?'));
         assert.ok(result.params.includes(42));
     });
 
     it("should apply 'since' as datetime filter on updated", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 1700000000 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 1700000000 });
         assert.ok(result.sql.includes('"updated" >= datetime(?, \'unixepoch\')'));
         assert.ok(result.params.includes(1700000000));
     });
 
     it("should apply LIMIT and OFFSET", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 10, skip: 20, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 10, skip: 20, since: 0 });
         assert.ok(result.sql.includes("LIMIT ?"));
         assert.ok(result.sql.includes("OFFSET ?"));
         assert.ok(result.params.includes(10));
@@ -163,13 +163,13 @@ describe("buildQuery", () => {
     });
 
     it("should cap limit at 250 when depth > 0", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 1, limit: 500, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 1, limit: 500, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIMIT ?"));
         assert.ok(result.params.includes(250));
     });
 
     it("should default limit to 250 when depth > 0 and no limit specified", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIMIT ?"));
         assert.ok(result.params.includes(250));
     });
@@ -179,7 +179,7 @@ describe("buildQuery", () => {
             { field: "status", op: "eq", value: "ok" },
             { field: "asn", op: "gt", value: "1000" }
         ];
-        const result = buildQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"status" = ? AND "asn" > ?'));
         assert.deepEqual(result.params, ["ok", 1000]);
     });
@@ -193,18 +193,18 @@ describe("buildQuery", () => {
             ]
         };
         const filters = [{ field: "info_unicast", op: "eq", value: "true" }];
-        const result = buildQuery(boolEntity, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(boolEntity, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.params.includes(1));
     });
 
     it("should handle skip without limit using LIMIT -1", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 50, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 50, since: 0 });
         assert.ok(result.sql.includes("LIMIT -1 OFFSET ?"));
         assert.ok(result.params.includes(50));
     });
 
     it("should always ORDER BY id ASC", () => {
-        const result = buildQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('ORDER BY "id" ASC'));
     });
 });
@@ -405,7 +405,7 @@ describe("cross-entity filters", () => {
     it("should generate subquery for equality filter", () => {
         const ixfac = ENTITIES.ixfac;
         const filters = [{ field: "country", op: "eq", value: "AU", entity: "fac" }];
-        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "country" = ?)'));
         assert.ok(result.params.includes("AU"));
     });
@@ -413,7 +413,7 @@ describe("cross-entity filters", () => {
     it("should generate subquery for contains filter", () => {
         const ixfac = ENTITIES.ixfac;
         const filters = [{ field: "state", op: "contains", value: "NSW", entity: "fac" }];
-        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "state"'));
         assert.ok(result.sql.includes("LIKE '%' || ? || '%'"));
     });
@@ -421,7 +421,7 @@ describe("cross-entity filters", () => {
     it("should generate subquery for IN filter", () => {
         const netixlan = ENTITIES.netixlan;
         const filters = [{ field: "asn", op: "in", value: "13335,15169", entity: "net" }];
-        const result = buildQuery(netixlan, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(netixlan, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (?, ?))'));
         assert.deepEqual(result.params.filter(p => typeof p === 'number' && p > 100), [13335, 15169]);
     });
@@ -432,7 +432,7 @@ describe("cross-entity filters", () => {
             { field: "country", op: "eq", value: "AU", entity: "fac" },
             { field: "ix_id", op: "eq", value: "26" }
         ];
-        const result = buildQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"fac_id" IN (SELECT'));
         assert.ok(result.sql.includes('"ix_id" = ?'));
     });

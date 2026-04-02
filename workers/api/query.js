@@ -270,19 +270,6 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
     return { sql, params };
 }
 
-/**
- * Backwards-compatible alias. Delegates to buildRowQuery.
- * Retained for existing callsites (depth expansion, sync worker, tests).
- *
- * @param {EntityMeta} entity - Entity metadata from the registry.
- * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
- * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
- * @returns {BuiltQuery} Parameterised SQL and bind values.
- */
-export function buildQuery(entity, filters, opts, singleId = null) {
-    return buildRowQuery(entity, filters, opts, singleId);
-}
 
 /**
  * Common WHERE/LIMIT/OFFSET construction shared by all query builders.

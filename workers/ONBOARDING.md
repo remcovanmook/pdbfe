@@ -40,11 +40,9 @@ If 50 requests ask for the same D1 query simultaneously, and you do not coordina
 
 Before executing any D1 query for a cache miss, the system checks `cache.pending.has(key)`. If true, it `await`s the shared Promise. **Never bypass this coalescence lock.** The SWR pre-fetch for paginated next-page queries uses this same mechanism.
 
-### D1 Semaphore
+### D1 Query Serialisation
 
-Coalescence only protects against N requests for the *same* key. When N requests arrive for N *different* keys simultaneously, N parallel D1 queries fire. SQLite can't handle arbitrary parallelism — it locks.
-
-The `dbSemaphore` (defined in `api/pipeline.js`) is an async semaphore that limits concurrent D1 queries to 4 per isolate. It is managed exclusively inside `cachedQuery()` with a single `try/finally` block — handlers never touch it directly.
+D1 handles query serialisation internally — SQLite is single-threaded with its own request queue. A per-isolate semaphore was previously used to limit concurrent D1 queries, but it caused cross-request promise resolution issues in the Workers runtime. See `pipeline.js` for the history.
 
 ## 5. The Cache Architecture
 
@@ -58,11 +56,14 @@ Our `LRUCache` (`core/cache.js`) bypasses traditional doubly-linked list impleme
 
 | Tier | Entities | Slots | Max Size |
 |---|---|---|---|
-| Heavy | net, org, netixlan | 1024 | 16 MB each |
-| Medium | netfac, poc, fac | 256 | 4 MB each |
-| Light | everything else | 128 | 2 MB each |
+| Heavy | net | 1024 | 16 MB |
+| Heavy | netixlan | 2048 | 16 MB |
+| Mid-high | netfac, org | 512 | 8 MB each |
+| Mid | fac, ix | 512 | 4 MB each |
+| Low | poc | 256 | 1 MB |
+| Light | ixlan, ixpfx, ixfac, carrier, carrierfac, campus | 128 | 1 MB each |
 
-Total: 76 MB. Remaining ~52 MB is for working memory and future pre-cooked answer caches.
+Total: ~64 MB. Remaining ~64 MB is for working memory and future pre-cooked answer caches.
 
 **Zero-serialisation serving:** D1 results are JSON-encoded *once* into a `Uint8Array` via `encodeJSON()`, then stored in the LRU cache. On cache hits, the bytes are forwarded directly as the `Response` body — no `JSON.parse` or `JSON.stringify` round-trip. This is the critical performance guarantee.
 

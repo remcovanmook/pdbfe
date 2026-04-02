@@ -567,7 +567,11 @@ function getFieldNames(entity) {
  */
 export function validateFields(entity, requested) {
     const valid = getFieldNames(entity);
-    const result = requested.filter(name => valid.has(name));
+    /** @type {string[]} */
+    const result = [];
+    for (let i = 0; i < requested.length; i++) {
+        if (valid.has(requested[i])) result.push(requested[i]);
+    }
     if (!result.includes('id')) result.unshift('id');
     return result;
 }

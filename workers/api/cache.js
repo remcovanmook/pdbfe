@@ -179,16 +179,7 @@ export function purgeAllCaches() {
     }
 }
 
-/**
- * Flushes a single entity's cache. Useful after sync updates.
- *
- * @param {string} tag - Entity tag to flush.
- */
-export function purgeEntityCache(tag) {
-    if (caches[tag]) {
-        caches[tag].purge();
-    }
-}
+
 
 /**
  * Normalises a cache key from a URL path and query string.
