@@ -211,14 +211,19 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
     if (hasJoins) {
+        const hasExplicitFields = opts.fields && opts.fields.length > 0;
         const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', ');
-        const allSelectCols = baseCols + ', ' + selectCols.join(', ');
+        const allSelectCols = hasExplicitFields
+            ? baseCols
+            : baseCols + ', ' + selectCols.join(', ');
 
         const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols);
-        const allJsonArgs = baseJsonArgs + ', ' + outerJsonArgs.join(', ');
+        const allJsonArgs = hasExplicitFields
+            ? baseJsonArgs
+            : baseJsonArgs + ', ' + outerJsonArgs.join(', ');
 
         const sql =
             `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +
@@ -261,11 +266,14 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
     if (hasJoins) {
+        const hasExplicitFields = opts.fields && opts.fields.length > 0;
         const { joinSql, selectCols } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", ");
-        const allCols = baseCols + ', ' + selectCols.join(', ');
+        const allCols = hasExplicitFields
+            ? baseCols
+            : baseCols + ', ' + selectCols.join(', ');
 
         const sql = `SELECT ${allCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY ${orderBy}${pagination}`;
         return { sql, params };
