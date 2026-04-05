@@ -7,10 +7,11 @@
 
 /**
  * Environment bindings for the API worker.
- * Matches workers/wrangler.toml d1_databases and vars.
+ * Matches workers/wrangler.toml d1_databases, kv_namespaces, and vars.
  */
 interface PdbApiEnv {
     PDB: D1Database;
+    SESSIONS: KVNamespace;
     ADMIN_SECRET?: string;
 }
 
@@ -33,7 +34,47 @@ interface PdbSyncEnv {
 }
 
 /**
+ * Environment bindings for the auth worker (pdbfe-auth).
+ * Matches workers/wrangler-auth.toml kv_namespaces, vars, and secrets.
+ */
+interface PdbAuthEnv {
+    SESSIONS: KVNamespace;
+    OAUTH_CLIENT_ID: string;
+    OAUTH_CLIENT_SECRET: string;
+    OAUTH_REDIRECT_URI: string;
+    FRONTEND_ORIGIN: string;
+}
+
+/**
+ * Session data stored in the SESSIONS KV namespace.
+ * Written by pdbfe-auth on successful OAuth callback,
+ * read by pdbfe-api to determine authentication status.
+ */
+interface SessionData {
+    /** PeeringDB user ID. */
+    id: number;
+    /** Full display name. */
+    name: string;
+    /** First name. */
+    given_name: string;
+    /** Last name. */
+    family_name: string;
+    /** Email address (requires 'email' scope). */
+    email: string;
+    /** Whether the PeeringDB account is verified. */
+    verified_user: boolean;
+    /** Whether the email is verified (requires 'email' scope). */
+    verified_email: boolean;
+    /** Network affiliations with CRUD permission bitmasks (requires 'networks' scope). */
+    networks: Array<{ perms: number; asn: number; name: string; id: number }>;
+    /** ISO 8601 timestamp when the session was created. */
+    created_at: string;
+}
+
+/**
  * Union type for shared core code that accepts any worker's env.
+ * Excludes PdbAuthEnv because the auth worker has its own entry
+ * point and doesn't use admin.js (which expects ADMIN_SECRET).
  */
 type PdbEnv = PdbApiEnv | PdbSyncEnv;
 

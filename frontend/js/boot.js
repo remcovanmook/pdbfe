@@ -1,7 +1,8 @@
 /**
  * @fileoverview Application bootstrap module.
  * Registers SPA routes, wires up the header search bar,
- * initialises the router, and fetches sync status for the footer.
+ * initialises the router, fetches sync status for the footer,
+ * and bootstraps OAuth session state.
  */
 
 import { addRoute, initRouter, navigate } from '/js/router.js';
@@ -17,6 +18,7 @@ import { renderAbout } from '/js/pages/about.js';
 import { renderAsn } from '/js/pages/asn.js';
 import { fetchSyncStatus } from '/js/api.js';
 import { attachTypeahead } from '/js/typeahead.js';
+import { initAuth } from '/js/auth.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -39,6 +41,11 @@ attachTypeahead(headerSearch);
 
 // Boot the router
 initRouter(document.getElementById('app'));
+
+// Bootstrap OAuth session state (non-blocking)
+initAuth().catch(() => {
+    // Non-critical — auth UI will show "Sign in" on failure
+});
 
 // Fetch and display sync status in the footer
 fetchSyncStatus().then(sync => {
