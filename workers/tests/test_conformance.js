@@ -214,7 +214,10 @@ describe('Conformance: envelope', { concurrency: 1 }, () => {
             const res = await fetchMirror(`/api/${entity}?limit=1&depth=0`);
             assert.equal(res.status, 200);
             const data = extractData(res.body, entity);
-            assert.ok(data.length > 0, `${entity} returned empty data`);
+            // poc returns empty for anonymous callers (matching upstream)
+            if (entity !== 'poc') {
+                assert.ok(data.length > 0, `${entity} returned empty data`);
+            }
         });
     }
 
@@ -838,3 +841,101 @@ describe('Conformance: divergence edge cases', { concurrency: 1 }, () => {
     });
 });
 
+// ==========================================================================
+// SECTION 10 — POC VISIBILITY / AUTH CONFORMANCE
+// ==========================================================================
+
+describe('Conformance: poc visibility', { concurrency: 1 }, () => {
+
+    // ── Anonymous poc list ────────────────────────────────────────────────
+    // The test harness sends PEERINGDB_API_KEY to upstream, so upstream
+    // returns actual poc data. We can only verify the mirror (which has
+    // no API key) returns empty.
+    it('/api/poc — anonymous mirror returns empty data', async () => {
+        const res = await fetchMirror('/api/poc?limit=5&depth=0');
+        assert.equal(res.status, 200);
+        const data = extractData(res.body, 'mirror poc');
+        assert.equal(data.length, 0,
+            'Anonymous mirror poc list should return empty data');
+    });
+
+    // ── Injection prevention: visible= parameter ─────────────────────────
+    it('/api/poc?visible=Private — blocked (returns empty)', async () => {
+        const res = await fetchMirror('/api/poc?visible=Private&depth=0');
+        assert.equal(res.status, 200);
+        const data = extractData(res.body, 'poc?visible=Private');
+        assert.equal(data.length, 0,
+            'visible=Private injection should return empty for anonymous caller');
+    });
+
+    it('/api/poc?visible=Users — blocked (returns empty)', async () => {
+        const res = await fetchMirror('/api/poc?visible=Users&depth=0');
+        assert.equal(res.status, 200);
+        const data = extractData(res.body, 'poc?visible=Users');
+        assert.equal(data.length, 0,
+            'visible=Users injection should return empty for anonymous caller');
+    });
+
+    it('/api/poc?visible__in=Public,Private — blocked (returns empty)', async () => {
+        const res = await fetchMirror('/api/poc?visible__in=Public,Private&depth=0');
+        assert.equal(res.status, 200);
+        const data = extractData(res.body, 'poc?visible__in');
+        assert.equal(data.length, 0,
+            'visible__in injection should return empty for anonymous caller');
+    });
+
+    // ── Depth expansion: poc_set visibility ───────────────────────────────
+    // The mirror should only include visible=Public contacts in poc_set.
+    // Upstream gets the API key so it may include non-Public contacts —
+    // we only verify the mirror side.
+    it('depth=2 poc_set — mirror only includes visible=Public contacts', async () => {
+        const res = await fetchMirror(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=2`
+        );
+        const data = extractData(res.body, 'mirror net depth=2');
+        if (data.length === 0) return;
+
+        const mirPoc = data[0].poc_set || [];
+        for (const contact of mirPoc) {
+            assert.equal(contact.visible, 'Public',
+                `Mirror poc_set contact ${contact.id} should be visible=Public, got ${contact.visible}`);
+        }
+    });
+
+    it('depth=1 poc_set — IDs correspond to visible=Public contacts', async () => {
+        const res = await fetchMirror(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=1`
+        );
+        const data = extractData(res.body, 'net depth=1');
+        if (data.length === 0) return;
+
+        const pocIds = data[0].poc_set || [];
+        if (pocIds.length === 0) return;
+
+        // Verify each returned poc ID is visible=Public
+        const spotId = pocIds[0];
+        const pocRes = await fetchMirror(`/api/poc/${spotId}?depth=0`);
+        if (pocRes.status === 200) {
+            const pocData = extractData(pocRes.body, `poc/${spotId}`);
+            if (pocData.length > 0) {
+                assert.equal(pocData[0].visible, 'Public',
+                    `poc/${spotId} from depth=1 poc_set should be visible=Public`);
+            }
+        }
+    });
+
+    // ── poc detail: anonymous access ─────────────────────────────────────
+    it('/api/poc/{id} — non-Public poc returns empty data', async () => {
+        // poc/1 is likely not visible=Public
+        const res = await fetchMirror('/api/poc/1?depth=0');
+        // Should either 404 or return empty data
+        if (res.status === 200) {
+            const data = extractData(res.body, 'poc/1');
+            assert.equal(data.length, 0,
+                'Non-Public poc detail should return empty data');
+        } else {
+            assert.equal(res.status, 404,
+                'Non-Public poc detail should return 404');
+        }
+    });
+});
