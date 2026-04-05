@@ -253,9 +253,7 @@ describe('Conformance: envelope', { concurrency: 1 }, () => {
 describe('Conformance: schema', { concurrency: 1 }, () => {
     const schemaEntities = [
         { entity: 'net', depth: 0 },
-        // depth=1 adds _set arrays only — validated by depth=0/depth=1
-        // _set tests below. Skipped from upstream comparison because
-        // it triggers 429 rate limits (Django serializer cost).
+        { entity: 'net', depth: 1 },
         { entity: 'ix', depth: 0 },
         { entity: 'fac', depth: 0 },
         { entity: 'org', depth: 0 },
