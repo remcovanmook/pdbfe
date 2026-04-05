@@ -45,6 +45,10 @@ class Entity {
         this.relationships = [];
         /** @type {JoinColumnDef[]|undefined} */
         this.joinColumns = undefined;
+        /** @type {boolean} */
+        this._restricted = false;
+        /** @type {{field: string, value: string}|undefined} */
+        this._anonFilter = undefined;
     }
 
     /**
@@ -105,6 +109,31 @@ class Entity {
             .string('suite', { queryable: false })
             .number('latitude', { queryable: false })
             .number('longitude', { queryable: false });
+    }
+
+    /**
+     * Marks this entity as requiring authentication for full data access.
+     * Anonymous callers will have the anonFilter applied automatically.
+     * @returns {this}
+     */
+    restricted() {
+        this._restricted = true;
+        return this;
+    }
+
+    /**
+     * Defines a mandatory filter applied to anonymous (unauthenticated)
+     * queries. This filter cannot be overridden by user-supplied query
+     * parameters — any user-supplied filter on the same field is stripped
+     * and replaced with this value.
+     *
+     * @param {string} field - Column name to filter on.
+     * @param {string} value - Required value for anonymous access.
+     * @returns {this}
+     */
+    anonFilter(field, value) {
+        this._anonFilter = { field, value };
+        return this;
     }
 
     /**
@@ -313,9 +342,11 @@ export const ENTITIES = {
         .done(),
 
     poc: new Entity('poc', 'peeringdb_network_contact')
+        .restricted()
+        .anonFilter('visible', 'Public')
         .number('net_id', { foreignKey: 'net' })
         .string('role')
-        .string('visible', { queryable: false })
+        .string('visible')
         .string('name')
         .string('phone', { queryable: false })
         .string('email')
@@ -457,6 +488,32 @@ deriveRelationships(ENTITIES);
  * @type {Set<string>}
  */
 export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
+
+/**
+ * Enforces the anonymous visibility filter on a restricted entity.
+ * Strips any user-supplied filters on the anonFilter field (preventing
+ * injection of ?visible=Private to bypass access control), then injects
+ * the mandatory system filter.
+ *
+ * No-op if the entity is not restricted or has no anonFilter defined.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed query filters (mutated in place).
+ */
+export function enforceAnonFilter(entity, filters) {
+    const anon = /** @type {any} */ (entity)._anonFilter;
+    if (!anon) return;
+
+    // Strip all user-supplied filters on the restricted field
+    for (let i = filters.length - 1; i >= 0; i--) {
+        if (filters[i].field === anon.field && !filters[i].entity) {
+            filters.splice(i, 1);
+        }
+    }
+
+    // Inject the mandatory system filter
+    filters.push({ field: anon.field, op: 'eq', value: anon.value });
+}
 
 
 // ── Boot-time caches ─────────────────────────────────────────────────────────

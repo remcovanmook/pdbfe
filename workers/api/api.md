@@ -123,6 +123,33 @@ Precompiled frozen headers on every response:
 {"error": "POST /api/net is not available on this read-only mirror. See peeringdb.com for write access."}
 ```
 
+## Authentication & Access Control
+
+### Restricted Entities
+
+Some PeeringDB entities contain sensitive data gated behind authentication upstream. The entity registry supports this via two builder methods:
+
+- `.restricted()` — marks the entity as requiring auth for full access
+- `.anonFilter('visible', 'Public')` — defines a mandatory filter for unauthenticated callers
+
+Currently only `poc` (network contacts) is restricted. Upstream PeeringDB uses a `visible` field with three levels: `Public` (anyone), `Users` (authenticated), `Private` (org-only).
+
+### Anon Filter Enforcement
+
+For anonymous callers, `enforceAnonFilter()` in the router:
+1. **Strips** all user-supplied filters on the restricted field (prevents `?visible=Private` injection)
+2. **Injects** the mandatory system filter (`visible = 'Public'`)
+
+This runs before query validation and execution, so the query builder sees only the forced filter. The same enforcement applies to depth expansion — `expandDepth()` adds a `WHERE "visible" = ?` clause to `poc_set` child queries for anonymous callers.
+
+### Auth Scaffolding
+
+`core/auth.js` provides:
+- `extractApiKey(request)` — parses `Authorization: Api-Key <key>` headers
+- `verifyApiKey(key)` — stub, always returns `false`
+
+The router calls both on every request. When auth is needed, replace `verifyApiKey()` with a KV namespace lookup. Authenticated callers bypass the anon filter and see `visible=Users` and `visible=Private` contacts.
+
 ## Entity Registry
 
-`api/entities.js` is the single source of truth. Adding a new entity type means adding an entry there — the router, query builder, depth expander, and cache all consume it.
+`api/entities.js` is the single source of truth. Adding a new entity type means adding an entry there — the router, query builder, depth expander, and cache all consume it. Entity-level access control metadata (`.restricted()`, `.anonFilter()`) is also defined here.

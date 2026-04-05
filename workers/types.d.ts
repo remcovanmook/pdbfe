@@ -137,6 +137,10 @@ interface EntityMeta {
     relationships: EntityRelationship[];
     /** Optional JOIN definitions for direct list/detail queries. */
     joinColumns?: JoinColumnDef[];
+    /** Whether this entity requires authentication for full data access. */
+    _restricted?: boolean;
+    /** Mandatory filter applied to anonymous queries (e.g. {field: 'visible', value: 'Public'}). */
+    _anonFilter?: { field: string; value: string };
 }
 
 
