@@ -4,7 +4,6 @@
  * with added query-filter parsing for the PeeringDB filter syntax.
  *
  * Cache-key normalisation lives in api/cache.js.
- * The D1 semaphore instance lives in api/pipeline.js.
  */
 
 /**

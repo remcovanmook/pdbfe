@@ -42,7 +42,7 @@ Before executing any D1 query for a cache miss, the system checks `cache.pending
 
 ### D1 Query Serialisation
 
-D1 handles query serialisation internally — SQLite is single-threaded with its own request queue. A per-isolate semaphore was previously used to limit concurrent D1 queries, but it caused cross-request promise resolution issues in the Workers runtime. See `pipeline.js` for the history.
+D1 handles query serialisation internally — SQLite is single-threaded with its own request queue. No application-level concurrency limiter is needed.
 
 ### D1 Read Replication (Sessions API)
 
@@ -90,7 +90,7 @@ Total: ~64 MB. Remaining ~64 MB is for working memory and future pre-cooked answ
 
 ### L3: D1 (Global)
 
-SQLite-backed Cloudflare D1. The source of truth. Queries are rate-limited by `dbSemaphore` (4 concurrent per isolate).
+SQLite-backed Cloudflare D1. The source of truth. D1 handles query serialisation internally.
 
 ### Negative Caching
 
@@ -113,9 +113,8 @@ Every API request follows this strict hierarchy:
 2. **`cachedQuery()` Pipeline** (pipeline.js): The handler calls `cachedQuery()` which handles everything below:
    - **Coalesce:** Is the same cache key in `cache.pending`? → *Await the in-flight promise instead of issuing a duplicate query.*
    - **L2 PoP Cache:** Is it in `caches.default` for this PoP? → *Populate L1 from L2, return (~20ms).*
-   - **Semaphore Gate:** Acquire a `dbSemaphore` slot (max 4 per isolate). Callers beyond 4 yield.
    - **Cold Path (D1):** Execute the handler's `queryFn` closure against D1.
-   - **Cache Write-Back:** Store result in L1 + L2 (fire-and-forget), release semaphore, return.
+   - **Cache Write-Back:** Store result in L1 + L2 (fire-and-forget), return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
 3. **Background:** If paginated, `waitUntil` to pre-fetch next page via `cachedQuery()`.
 

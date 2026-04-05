@@ -10,7 +10,7 @@
  *
  * D1 query pipeline:
  *   All D1 queries flow through cachedQuery() (pipeline.js) which owns
- *   promise coalescing, the L2→semaphore→D1→cache-write lifecycle, and
+ *   promise coalescing, the L2→D1→cache-write lifecycle, and
  *   negative caching. Handlers provide only a queryFn closure containing
  *   the D1-specific logic.
  */
@@ -25,7 +25,7 @@ import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
  * Checks the per-entity LRU cache first. On miss, delegates to
- * cachedQuery() which handles coalescing, L2, semaphore, and D1.
+ * cachedQuery() which handles coalescing, L2, and D1.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).

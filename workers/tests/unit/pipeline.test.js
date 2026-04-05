@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for the cachedQuery pipeline (pipeline.js).
  * Tests the isNegative helper and cachedQuery behaviour with mocked
- * L2 cache and semaphore dependencies.
+ * L2 cache dependencies.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -60,8 +60,8 @@ describe("EMPTY_ENVELOPE", () => {
 
 // ── cachedQuery tests ────────────────────────────────────────────────────────
 // These test the pipeline function directly. The L2 cache (l2cache.js) and
-// semaphore (core/utils.js) are real — L2 silently returns null in Node.js
-// (no caches.default available), so all queries go through the semaphore path.
+// L2 silently returns null in Node.js (no caches.default available),
+// so all queries go straight to the D1 path.
 
 describe("cachedQuery", () => {
     /** @type {ReturnType<typeof LRUCache>} */
@@ -121,10 +121,10 @@ describe("cachedQuery", () => {
         assert.equal(entry.buf, EMPTY_ENVELOPE);
     });
 
-    it("should release semaphore even when queryFn throws", async () => {
-        // If semaphore isn't released, subsequent acquires would deadlock.
-        // Run 5 queries (semaphore limit is 4) — if any deadlocks, the
-        // test will timeout.
+    it("should propagate queryFn errors without blocking subsequent queries", async () => {
+        // If errors aren't handled cleanly, subsequent queries could hang.
+        // Run 5 queries (including the failing one) — if anything deadlocks,
+        // the test will timeout.
         const failedQuery = cachedQuery({
             cacheKey: "test/throw",
             cache,
@@ -135,7 +135,7 @@ describe("cachedQuery", () => {
 
         await assert.rejects(failedQuery, { message: "D1 exploded" });
 
-        // Verify semaphore wasn't leaked by running 4 more queries
+        // Verify subsequent queries still work after the error
         const results = await Promise.all(
             Array.from({ length: 4 }, (_, i) =>
                 cachedQuery({

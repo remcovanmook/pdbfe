@@ -11,17 +11,17 @@ The foundation layer. Contains generic, reusable components that have zero knowl
   - `wrapHandler(handler, serviceName)` — error trapping, X-Timer, X-Served-By, and X-Isolate-ID headers
 - **`cache.js`**: TypedArray LRU cache. Uses contiguous `Uint32Array`, `Float64Array`, and `Int32Array` blocks for zero-GC eviction. Instantiated 14 times by `api/cache.js` — one per entity type plus `as_set`.
 - **`http.js`**: JSON response serving, ETag generation (DJB2 hash), 304 Not Modified handling, precompiled frozen CORS headers, and `encodeJSON()` for single-serialisation-point caching.
-- **`utils.js`**: Zero-allocation URL parsing (`parseURL`), PeeringDB filter syntax parser (`parseQueryFilters`), cache key normalisation (`normaliseCacheKey`), and the `createSemaphore` / `dbSemaphore` concurrency limiter that bounds parallel D1 queries per isolate.
+- **`utils.js`**: Zero-allocation URL parsing (`parseURL`) and PeeringDB filter syntax parser (`parseQueryFilters`). Cache-key normalisation lives in `api/cache.js`.
 
 ## 2. API Domain (`workers/api/`)
 The primary traffic handler serving read-only PeeringDB API responses.
 
 - **`index.js`**: Top-level router. Validates requests, dispatches to admin endpoints, CORS preflight, entity handlers, or returns 501 for write methods.
-- **`pipeline.js`**: Shared D1 query pipeline used by all handlers. The `cachedQuery()` function encapsulates promise coalescing (stampede prevention), L2 cache lookups, the semaphore `acquire()`/`release()` lifecycle in a single `try/finally`, and L1+L2 cache write-back. Owns the per-isolate `dbSemaphore` instance (max 4 concurrent D1 queries). Handlers pass a `queryFn` closure containing D1-specific logic. Also exports `EMPTY_ENVELOPE` (negative cache sentinel) and `isNegative()` (byte-level sentinel detection for L2 cache entries).
+- **`pipeline.js`**: Shared D1 query pipeline used by all handlers. The `cachedQuery()` function encapsulates promise coalescing (stampede prevention), L2 cache lookups, D1 query execution, and L1+L2 cache write-back. Handlers pass a `queryFn` closure containing D1-specific logic. Also exports `EMPTY_ENVELOPE` (negative cache sentinel) and `isNegative()` (byte-level sentinel detection for L2 cache entries).
 - **`handlers/index.js`**: Route handlers for list, detail, AS set, count, and 501 Not Implemented. Two code paths based on depth:
   - **depth=0 (hot)**: `buildJsonQuery` → D1 returns pre-formatted JSON envelope string → `TextEncoder.encode()` → cache → serve. Zero V8 object allocations per row.
   - **depth>0 (cold)**: `buildRowQuery` → V8 row expansion → `JSON.stringify` → cache → serve.
-  - **D1 query pipeline**: All D1 queries delegate to `cachedQuery()` (pipeline.js) which owns promise coalescing, the semaphore lifecycle, L2 cache reads/writes, and negative caching.
+  - **D1 query pipeline**: All D1 queries delegate to `cachedQuery()` (pipeline.js) which owns promise coalescing, L2 cache reads/writes, and negative caching.
   - **SWR pre-fetch**: Paginated next pages fetched in background via `ctx.waitUntil()`.
 - **`entities.js`**: Single source of truth for all 13 PeeringDB entity types. Maps API tags to D1 table names, column lists, allowed filter fields, and relationship definitions for depth expansion. Also exports `JSON_STORED_COLUMNS` — the set of columns that store JSON as TEXT in D1 — consumed by `query.js`, `depth.js`, and `handlers/index.js`.
 - **`query.js`**: Dual query builder:
@@ -42,7 +42,7 @@ Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (ev
 
 - **`tests/unit/query.test.js`**: Query builder — all filter operators, type coercion, pagination, injection prevention
 - **`tests/unit/depth.test.js`**: Depth expansion — mock D1, batched IN queries, empty results
-- **`tests/unit/cache.test.js`**: LRU operations, per-entity config, aggregate stats, key normalisation, negative cache TTL contracts, EMPTY_ENVELOPE sentinel detection, `createSemaphore` concurrency behaviour (FIFO ordering, queuing, slot limiting)
+- **`tests/unit/cache.test.js`**: LRU operations, per-entity config, aggregate stats, key normalisation, negative cache TTL contracts, EMPTY_ENVELOPE sentinel detection
 - **`tests/test_api.js`**: Integration — full router with mock D1, admin endpoints, CORS, 501s, scanner blocking
 - **`tests/test_equivalence.js`** (Phase 2): Compares responses against the live PeeringDB API for a set of reference queries
 - **`tests/loadtest.js`**: Production load test covering sequential cold/warm scenarios, parallel bursts, sustained throughput, and negative cache (404) validation across entity types

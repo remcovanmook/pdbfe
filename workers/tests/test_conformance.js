@@ -676,8 +676,9 @@ describe('Conformance: as_set', { concurrency: 1 }, () => {
 
 /**
  * Performance benchmark queries. Each entry defines a label, API path,
- * and whether to warm the mirror cache before measuring.
- * @type {{label: string, path: string, warm?: boolean}[]}
+ * whether to warm the mirror cache before measuring, and whether to
+ * skip the upstream fetch (for queries known to be expensive on Django).
+ * @type {{label: string, path: string, warm?: boolean, mirrorOnly?: boolean}[]}
  */
 const PERF_QUERIES = [
     // ── Single-record lookups ────────────────────────────────────────────
@@ -698,17 +699,17 @@ const PERF_QUERIES = [
     { label: 'net limit=5 skip=0',     path: '/api/net?limit=5&skip=0&depth=0' },
     { label: 'net limit=5 skip=100',   path: '/api/net?limit=5&skip=100&depth=0' },
 
-    // ── Depth expansion ──────────────────────────────────────────────────
-    { label: 'net depth=1 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=1` },
-    { label: 'net depth=2 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=2` },
+    // ── Depth expansion (mirror-only: triggers Django nested serializer) ─
+    { label: 'net depth=1 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=1`, mirrorOnly: true },
+    { label: 'net depth=2 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=2`, mirrorOnly: true },
 
     // ── Large results ────────────────────────────────────────────────────
     { label: 'net limit=50',           path: '/api/net?limit=50&depth=0' },
     { label: 'netixlan limit=50',      path: '/api/netixlan?limit=50&depth=0' },
     { label: 'fac limit=50',           path: '/api/fac?limit=50&depth=0' },
 
-    // ── Count ────────────────────────────────────────────────────────────
-    { label: 'net count (limit=0)',    path: '/api/net?limit=0&depth=0' },
+    // ── Count (mirror-only: upstream COUNT(*) causes full InnoDB scan) ───
+    { label: 'net count (limit=0)',    path: '/api/net?limit=0&depth=0', mirrorOnly: true },
 
     // ── Fields filter ────────────────────────────────────────────────────
     { label: 'net fields=id,asn,name', path: '/api/net?limit=10&fields=id,asn,name&depth=0' },
@@ -729,6 +730,14 @@ describe('Conformance: performance comparison', { concurrency: 1 }, () => {
             }
 
             const mirror = await fetchMirror(q.path);
+
+            // Skip upstream for queries known to cause timeouts or OOM
+            // on Django (depth>0 serializer recursion, COUNT full scans)
+            if (q.mirrorOnly) {
+                t.diagnostic(`mirror=${mirror.elapsed}ms  (upstream skipped: expensive query)`);
+                return;
+            }
+
             await delay(300);
 
             /** @type {{status: number, body: any, headers: Headers, elapsed: number}} */

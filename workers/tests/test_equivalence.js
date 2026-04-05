@@ -108,8 +108,8 @@ const ENTITIES = [
 
 describe('Equivalence: response envelope', { concurrency: 1 }, () => {
     for (const entity of ENTITIES) {
-        it(`/api/${entity}?limit=1 — has data array`, async () => {
-            const { mirror } = await fetchBoth(`/api/${entity}?limit=1`);
+        it(`/api/${entity}?limit=1&depth=0 — has data array`, async () => {
+            const { mirror } = await fetchBoth(`/api/${entity}?limit=1&depth=0`);
             assertHasData(mirror, `mirror /api/${entity}`);
         });
     }
@@ -139,7 +139,7 @@ describe('Equivalence: field sets match', { concurrency: 1 }, () => {
 
 describe('Equivalence: specific lookups', { concurrency: 1 }, () => {
     it('/api/net?asn=13335 — Cloudflare exists', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/net?asn=13335');
+        const { mirror, upstream } = await fetchBoth('/api/net?asn=13335&depth=0');
 
         assertHasData(upstream, 'upstream Cloudflare');
         assertHasData(mirror, 'mirror Cloudflare');
@@ -148,7 +148,7 @@ describe('Equivalence: specific lookups', { concurrency: 1 }, () => {
     });
 
     it('/api/net/1 — detail returns single item', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/net/1');
+        const { mirror, upstream } = await fetchBoth('/api/net/1?depth=0');
 
         assertHasData(upstream, 'upstream net/1');
         assertHasData(mirror, 'mirror net/1');
@@ -157,7 +157,7 @@ describe('Equivalence: specific lookups', { concurrency: 1 }, () => {
     });
 
     it('/api/org?name__contains=Cloudflare — filter works', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/org?name__contains=Cloudflare');
+        const { mirror, upstream } = await fetchBoth('/api/org?name__contains=Cloudflare&limit=20&depth=0');
 
         assertHasData(upstream, 'upstream org Cloudflare');
         assertHasData(mirror, 'mirror org Cloudflare');
@@ -169,7 +169,7 @@ describe('Equivalence: specific lookups', { concurrency: 1 }, () => {
     });
 
     it('/api/ix?name__contains=AMS-IX — IX search', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/ix?name__contains=AMS-IX');
+        const { mirror, upstream } = await fetchBoth('/api/ix?name__contains=AMS-IX&limit=20&depth=0');
 
         assertHasData(upstream, 'upstream AMS-IX');
         assertHasData(mirror, 'mirror AMS-IX');
@@ -180,7 +180,7 @@ describe('Equivalence: specific lookups', { concurrency: 1 }, () => {
 
 describe('Equivalence: pagination', { concurrency: 1 }, () => {
     it('/api/net?limit=5&skip=10 — pagination returns correct count', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/net?limit=5&skip=10');
+        const { mirror, upstream } = await fetchBoth('/api/net?limit=5&skip=10&depth=0');
 
         assertHasData(mirror, 'mirror pagination');
         assertHasData(upstream, 'upstream pagination');
