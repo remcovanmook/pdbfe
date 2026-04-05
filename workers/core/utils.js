@@ -57,6 +57,9 @@ export function parseQueryFilters(queryString) {
     /** @type {string[]} */
     let fields = [];
 
+    /** @type {Map<string, number>} Track filter index by "field:op" to implement last-value-wins */
+    const filterIdx = new Map();
+
     if (!queryString) return { filters, depth, limit, skip, since, sort, fields };
 
     const pairs = queryString.split("&");
@@ -113,10 +116,25 @@ export function parseQueryFilters(queryString) {
         // Cross-entity filter: if the field still contains __, the prefix
         // is a related entity tag (e.g. fac__state → entity=fac, field=state).
         const dunder = field.indexOf('__');
+
+        // Build the filter entry
+        /** @type {ParsedFilter} */
+        let entry;
         if (dunder !== -1) {
-            filters.push({ field: field.slice(dunder + 2), op, value: rawValue, entity: field.slice(0, dunder) });
+            entry = { field: field.slice(dunder + 2), op, value: rawValue, entity: field.slice(0, dunder) };
         } else {
-            filters.push({ field, op, value: rawValue });
+            entry = { field, op, value: rawValue };
+        }
+
+        // Last-value-wins: if the same field+op was seen before, overwrite it
+        // This matches Django's QueryDict.get() which returns the last value
+        const dedupeKey = `${entry.entity || ''}:${entry.field}:${op}`;
+        const existingIdx = filterIdx.get(dedupeKey);
+        if (existingIdx !== undefined) {
+            filters[existingIdx] = entry;
+        } else {
+            filterIdx.set(dedupeKey, filters.length);
+            filters.push(entry);
         }
     }
 

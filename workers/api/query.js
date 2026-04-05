@@ -23,7 +23,7 @@ import { getColumns, getJsonColumns, getBoolColumns, getFilterType, resolveCross
  */
 const OPS = {
     eq: (col, value) => ({
-        clause: `"${col}" = ?`,
+        clause: `"${col}" = ? COLLATE NOCASE`,
         params: [value]
     }),
     lt: (col, value) => ({
@@ -68,7 +68,7 @@ const OPS = {
  * @type {Record<string, (col: string, ph: string) => string>}
  */
 const OPS_SQL = {
-    eq: (col, ph) => `${col} = ${ph}`,
+    eq: (col, ph) => `${col} = ${ph} COLLATE NOCASE`,
     lt: (col, ph) => `${col} < ${ph}`,
     gt: (col, ph) => `${col} > ${ph}`,
     lte: (col, ph) => `${col} <= ${ph}`,

@@ -78,7 +78,7 @@ describe("buildRowQuery", () => {
     it("should apply equality filter alongside default status", () => {
         const filters = [{ field: "asn", op: "eq", value: "13335" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"asn" = ?'));
+        assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
         assert.ok(result.sql.includes('"status" = ?'));
         assert.deepEqual(result.params, ["ok", 13335]);
     });
@@ -180,7 +180,7 @@ describe("buildRowQuery", () => {
             { field: "asn", op: "gt", value: "1000" }
         ];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"status" = ? AND "asn" > ?'));
+        assert.ok(result.sql.includes('"status" = ? COLLATE NOCASE AND "asn" > ?'));
         assert.deepEqual(result.params, ["ok", 1000]);
     });
 
@@ -249,7 +249,7 @@ describe("buildRowQuery with joinColumns", () => {
     it("should qualify WHERE filters with table alias", () => {
         const filters = [{ field: "ix_id", op: "eq", value: "26" }];
         const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('t."ix_id" = ?'));
+        assert.ok(result.sql.includes('t."ix_id" = ? COLLATE NOCASE'));
     });
 
     it("should qualify single ID fetch with table alias", () => {
@@ -420,7 +420,7 @@ describe("cross-entity filters", () => {
         const ixfac = ENTITIES.ixfac;
         const filters = [{ field: "country", op: "eq", value: "AU", entity: "fac" }];
         const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "country" = ?)'));
+        assert.ok(result.sql.includes('"fac_id" IN (SELECT "id" FROM "peeringdb_facility" WHERE "country" = ? COLLATE NOCASE)'));
         assert.ok(result.params.includes("AU"));
     });
 
@@ -498,7 +498,7 @@ describe("resolveImplicitFilters", () => {
         const filters = [{ field: "country", op: "eq", value: "NL" }];
         resolveImplicitFilters(ENTITIES.net, filters);
         const result = buildRowQuery(ENTITIES.net, filters, { depth: 0, limit: 50, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"org_id" IN (SELECT "id" FROM "peeringdb_organization" WHERE "country" = ?)'));
+        assert.ok(result.sql.includes('"org_id" IN (SELECT "id" FROM "peeringdb_organization" WHERE "country" = ? COLLATE NOCASE)'));
         assert.ok(result.params.includes("NL"));
     });
 });
@@ -546,5 +546,66 @@ describe("parseQueryFilters cross-entity syntax", () => {
         assert.equal(result.filters[0].field, "country");
         assert.equal(result.filters[1].entity, undefined);
         assert.equal(result.filters[1].field, "ix_id");
+    });
+});
+
+// ── COLLATE NOCASE on eq ─────────────────────────────────────────────────────
+
+describe("eq COLLATE NOCASE", () => {
+    it("should emit COLLATE NOCASE for string eq filter", () => {
+        const filters = [{ field: "name", op: "eq", value: "cloudflare" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"name" = ? COLLATE NOCASE'));
+    });
+
+    it("should emit COLLATE NOCASE for number eq filter (no-op in SQLite)", () => {
+        const filters = [{ field: "asn", op: "eq", value: "13335" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
+    });
+
+    it("should emit COLLATE NOCASE in aliased JOIN queries", () => {
+        const filters = [{ field: "name", op: "eq", value: "test" }];
+        const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('t."name" = ? COLLATE NOCASE'));
+    });
+
+    it("should emit COLLATE NOCASE in cross-entity subqueries", () => {
+        const ixfac = ENTITIES.ixfac;
+        const filters = [{ field: "country", op: "eq", value: "au", entity: "fac" }];
+        const result = buildRowQuery(ixfac, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"country" = ? COLLATE NOCASE'));
+    });
+});
+
+// ── Duplicate query parameters ───────────────────────────────────────────────
+
+describe("parseQueryFilters duplicate params", () => {
+    it("should use last value when same field+op appears twice", () => {
+        const result = parseQueryFilters("asn=13335&asn=2906");
+        assert.equal(result.filters.length, 1);
+        assert.equal(result.filters[0].value, "2906");
+    });
+
+    it("should preserve filters with different ops on same field", () => {
+        const result = parseQueryFilters("asn=13335&asn__gt=100");
+        assert.equal(result.filters.length, 2);
+        assert.equal(result.filters[0].op, "eq");
+        assert.equal(result.filters[0].value, "13335");
+        assert.equal(result.filters[1].op, "gt");
+        assert.equal(result.filters[1].value, "100");
+    });
+
+    it("should use last value for duplicate reserved params", () => {
+        const result = parseQueryFilters("depth=1&depth=2&limit=10&limit=20");
+        assert.equal(result.depth, 2);
+        assert.equal(result.limit, 20);
+    });
+
+    it("should use last value for duplicate cross-entity filters", () => {
+        const result = parseQueryFilters("fac__country=AU&fac__country=NL");
+        assert.equal(result.filters.length, 1);
+        assert.equal(result.filters[0].value, "NL");
+        assert.equal(result.filters[0].entity, "fac");
     });
 });
