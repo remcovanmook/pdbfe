@@ -84,8 +84,9 @@ describe("cachedQuery", () => {
         });
 
         assert.equal(called, true);
-        assert.ok(result !== null);
-        assert.equal(result.byteLength, payload.byteLength);
+        assert.ok(result.buf !== null);
+        assert.equal(result.buf.byteLength, payload.byteLength);
+        assert.equal(result.tier, 'MISS');
     });
 
     it("should store positive result in L1 cache after queryFn", async () => {
@@ -113,7 +114,8 @@ describe("cachedQuery", () => {
             queryFn: async () => null
         });
 
-        assert.equal(result, null);
+        assert.equal(result.buf, null);
+        assert.equal(result.tier, 'MISS');
 
         // EMPTY_ENVELOPE should be in L1
         const entry = cache.get("test/negative");
@@ -149,7 +151,7 @@ describe("cachedQuery", () => {
         );
 
         assert.equal(results.length, 4);
-        results.forEach(r => assert.ok(r !== null));
+        results.forEach(r => assert.ok(r.buf !== null));
     });
 
     it("should not call queryFn when L1 is populated by prior cachedQuery", async () => {
@@ -192,8 +194,9 @@ describe("cachedQuery", () => {
 
         assert.equal(callCount, 1, "queryFn should be called exactly once");
         results.forEach(r => {
-            assert.ok(r !== null);
-            assert.equal(r.byteLength, payload.byteLength);
+            assert.ok(r.buf !== null);
+            assert.equal(r.buf.byteLength, payload.byteLength);
+            assert.equal(r.tier, 'MISS');
         });
     });
 

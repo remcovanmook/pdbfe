@@ -53,10 +53,10 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
     // L1 cache check
     const cached = cache.get(cacheKey);
     if (cached && (now - cached.addedAt) < LIST_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
     }
 
-    const buf = await cachedQuery({
+    const { buf, tier } = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: LIST_TTL,
         queryFn: () => executeListQuery(db, entity, filters, opts)
     });
@@ -77,7 +77,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
         }
     }
 
-    return serveJSON(request, effectiveBuf, { isCached: false, hits: 0 });
+    return serveJSON(request, effectiveBuf, { tier, hits: 0 });
 }
 
 /**
@@ -106,14 +106,14 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
     const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
     if (l1Hit) return l1Hit;
 
-    const buf = await cachedQuery({
+    const { buf, tier } = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: DETAIL_TTL,
         queryFn: () => executeDetailQuery(db, entity, filters, opts, id)
     });
 
     if (!buf) return jsonError(404, notFoundMsg);
 
-    return serveJSON(request, buf, { isCached: false, hits: 0 });
+    return serveJSON(request, buf, { tier, hits: 0 });
 }
 
 /**
@@ -133,7 +133,7 @@ export async function handleAsSet(request, db, asn) {
     const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
     if (l1Hit) return l1Hit;
 
-    const buf = await cachedQuery({
+    const { buf, tier } = await cachedQuery({
         cacheKey, cache, entityTag: "as_set", ttlMs: DETAIL_TTL,
         queryFn: async () => {
             const result = await db.prepare(
@@ -147,7 +147,7 @@ export async function handleAsSet(request, db, asn) {
 
     if (!buf) return jsonError(404, notFoundMsg);
 
-    return serveJSON(request, buf, { isCached: false, hits: 0 });
+    return serveJSON(request, buf, { tier, hits: 0 });
 }
 
 /**
@@ -255,7 +255,7 @@ function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
     if ((Date.now() - cached.addedAt) >= ttl) return null;
 
     if (neg) return jsonError(404, notFoundMsg);
-    return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+    return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
 }
 
 /**
@@ -282,7 +282,7 @@ async function handleCount(request, db, entity, entityTag, filters, opts, rawPat
     // Check if the count itself is cached (L1)
     const cached = cache.get(cacheKey);
     if (cached && (now - cached.addedAt) < COUNT_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { isCached: true, hits: cached.hits });
+        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
     }
 
     // Try to derive count from a cached unfiltered list for this entity.
@@ -297,13 +297,13 @@ async function handleCount(request, db, entity, entityTag, filters, opts, rawPat
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
                 cache.add(cacheKey, buf, { entityTag }, Date.now());
-                return serveJSON(request, buf, { isCached: false, hits: 0 });
+                return serveJSON(request, buf, { tier: 'L1', hits: 0 });
             }
         }
     }
 
     // Fall back to cachedQuery pipeline with COUNT(*) query
-    const buf = await cachedQuery({
+    const { buf, tier } = await cachedQuery({
         cacheKey, cache, entityTag, ttlMs: COUNT_TTL,
         queryFn: async () => {
             const { sql, params } = buildCountQuery(entity, filters, opts);
@@ -313,7 +313,7 @@ async function handleCount(request, db, entity, entityTag, filters, opts, rawPat
         }
     });
 
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { isCached: false, hits: 0 });
+    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits: 0 });
 }
 
 

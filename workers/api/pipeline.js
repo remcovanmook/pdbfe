@@ -51,6 +51,18 @@ export function isNegative(buf) {
 }
 
 /**
+ * @typedef {'L1' | 'L2' | 'MISS'} CacheTier
+ * Indicates which cache tier served a request:
+ *   - L1: per-isolate LRU (set by handler, not by cachedQuery)
+ *   - L2: per-PoP caches.default
+ *   - MISS: D1 query
+ */
+
+/**
+ * @typedef {{buf: Uint8Array|null, tier: CacheTier}} CachedResult
+ */
+
+/**
  * Executes a D1 query through the full cache-miss resolution pipeline.
  *
  * Flow:
@@ -78,8 +90,8 @@ export function isNegative(buf) {
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query function to execute on
  *        cache miss. Must return a Uint8Array payload for positive results, or null for
  *        404/empty.
- * @returns {Promise<Uint8Array|null>} Cached or fresh payload. Null indicates a negative result
- *          (EMPTY_ENVELOPE was stored and the caller should return a 404).
+ * @returns {Promise<CachedResult>} Cached or fresh payload with the tier that served it.
+ *          buf is null for negative results (EMPTY_ENVELOPE was stored, caller should 404).
  */
 export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }) {
     // ── Promise coalescing ───────────────────────────────────────
@@ -107,7 +119,7 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {number} ttlMs - TTL in milliseconds for positive results.
  * @param {() => Promise<Uint8Array|null>} queryFn - D1 query closure.
- * @returns {Promise<Uint8Array|null>}
+ * @returns {Promise<CachedResult>}
  */
 async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
     // ── L2 per-PoP cache check ───────────────────────────────────
@@ -115,10 +127,10 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
     if (l2Buf) {
         if (isNegative(l2Buf)) {
             cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
-            return null;
+            return { buf: null, tier: 'L2' };
         }
         cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
-        return l2Buf;
+        return { buf: l2Buf, tier: 'L2' };
     }
 
     // ── D1 query ─────────────────────────────────────────────────
@@ -129,10 +141,10 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
         // Negative result: store sentinel with shorter TTL
         cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
         putL2(cacheKey, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
-        return null;
+        return { buf: null, tier: 'MISS' };
     }
 
     cache.add(cacheKey, buf, { entityTag }, Date.now());
     putL2(cacheKey, buf, ttlMs / 1000);
-    return buf;
+    return { buf, tier: 'MISS' };
 }
