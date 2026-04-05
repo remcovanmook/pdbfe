@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS "peeringdb_organization" (
     "status" TEXT NOT NULL DEFAULT ''
 );
 
+CREATE INDEX IF NOT EXISTS "peeringdb_organization_name_nocase_idx" ON "peeringdb_organization" ("name" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_organization_country_nocase_idx" ON "peeringdb_organization" ("country" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_organization_city_nocase_idx" ON "peeringdb_organization" ("city" COLLATE NOCASE);
+
 CREATE TABLE IF NOT EXISTS "peeringdb_campus" (
     "id" INTEGER NOT NULL PRIMARY KEY,
     "org_id" INTEGER NOT NULL DEFAULT 0,
@@ -52,6 +56,7 @@ CREATE TABLE IF NOT EXISTS "peeringdb_campus" (
     "logo" TEXT
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_campus_org_id_idx" ON "peeringdb_campus" ("org_id");
+CREATE INDEX IF NOT EXISTS "peeringdb_campus_name_nocase_idx" ON "peeringdb_campus" ("name" COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS "peeringdb_facility" (
     "id" INTEGER NOT NULL PRIMARY KEY,
@@ -95,6 +100,9 @@ CREATE TABLE IF NOT EXISTS "peeringdb_facility" (
     "longitude" REAL
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_facility_org_id_idx" ON "peeringdb_facility" ("org_id");
+CREATE INDEX IF NOT EXISTS "peeringdb_facility_name_nocase_idx" ON "peeringdb_facility" ("name" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_facility_country_nocase_idx" ON "peeringdb_facility" ("country" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_facility_city_nocase_idx" ON "peeringdb_facility" ("city" COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS "peeringdb_carrier" (
     "id" INTEGER NOT NULL PRIMARY KEY,
@@ -113,6 +121,7 @@ CREATE TABLE IF NOT EXISTS "peeringdb_carrier" (
     "status" TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_carrier_org_id_idx" ON "peeringdb_carrier" ("org_id");
+CREATE INDEX IF NOT EXISTS "peeringdb_carrier_name_nocase_idx" ON "peeringdb_carrier" ("name" COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS "peeringdb_ix" (
     "id" INTEGER NOT NULL PRIMARY KEY,
@@ -152,6 +161,9 @@ CREATE TABLE IF NOT EXISTS "peeringdb_ix" (
     "status" TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_ix_org_id_idx" ON "peeringdb_ix" ("org_id");
+CREATE INDEX IF NOT EXISTS "peeringdb_ix_name_nocase_idx" ON "peeringdb_ix" ("name" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_ix_country_nocase_idx" ON "peeringdb_ix" ("country" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_ix_city_nocase_idx" ON "peeringdb_ix" ("city" COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS "peeringdb_ixlan" (
     "id" INTEGER NOT NULL PRIMARY KEY,
@@ -227,6 +239,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_network" (
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_network_org_id_idx" ON "peeringdb_network" ("org_id");
 CREATE INDEX IF NOT EXISTS "peeringdb_network_asn_idx" ON "peeringdb_network" ("asn");
+CREATE INDEX IF NOT EXISTS "peeringdb_network_name_nocase_idx" ON "peeringdb_network" ("name" COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS "peeringdb_network_irr_as_set_nocase_idx" ON "peeringdb_network" ("irr_as_set" COLLATE NOCASE);
 
 CREATE TABLE IF NOT EXISTS "peeringdb_network_contact" (
     "id" INTEGER NOT NULL PRIMARY KEY,

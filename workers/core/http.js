@@ -112,10 +112,10 @@ export function encodeJSON(data) {
  *
  * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
- * @param {{isCached: boolean, hits: number}} [meta] - Cache metadata for X-Cache headers.
+ * @param {{tier: import('../api/pipeline.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
  * @returns {Response} The HTTP response ready for the client.
  */
-export function serveJSON(request, buf, meta = { isCached: false, hits: 0 }) {
+export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }) {
     const etag = generateETag(buf);
 
     if (isNotModified(request.headers, etag)) {
@@ -124,7 +124,7 @@ export function serveJSON(request, buf, meta = { isCached: false, hits: 0 }) {
             headers: {
                 ...H_API,
                 "ETag": etag,
-                "X-Cache": meta.isCached ? "HIT" : "MISS",
+                "X-Cache": meta.tier,
                 "X-Cache-Hits": meta.hits.toString()
             }
         });
@@ -136,7 +136,7 @@ export function serveJSON(request, buf, meta = { isCached: false, hits: 0 }) {
             ...H_API,
             "ETag": etag,
             "Content-Length": buf.byteLength.toString(),
-            "X-Cache": meta.isCached ? "HIT" : "MISS",
+            "X-Cache": meta.tier,
             "X-Cache-Hits": meta.hits.toString()
         }
     });

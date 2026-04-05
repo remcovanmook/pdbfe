@@ -2,8 +2,8 @@
  * @fileoverview PeeringDB API conformance test suite.
  * Validates the pdbfe mirror against the canonical PeeringDB API.
  * Covers envelope structure, schema conformance, query parameters,
- * data types, cross-endpoint consistency, error handling, and
- * performance baselines.
+ * data types, cross-endpoint consistency, and error handling.
+ * Performance benchmarks are in test_performance.js.
  *
  * Environment variables:
  *   PDBFE_URL          - Mirror URL (default: https://pdbfe-api.remco-vanmook.workers.dev)
@@ -101,16 +101,48 @@ async function fetchJSON(url, opts = {}) {
 }
 
 /**
+ * Timestamp of the most recent upstream fetch. Used to space
+ * sequential upstream requests without adding fixed delays.
+ */
+let _lastUpstreamTs = 0;
+
+/**
+ * Minimum milliseconds between consecutive upstream PeeringDB requests.
+ * Applied automatically — no per-call delay needed.
+ */
+const UPSTREAM_SPACING_MS = 500;
+
+/**
  * Fetches the same API path from both mirror and upstream PeeringDB.
- * Adds a delay between to avoid upstream rate limiting.
+ * Spaces upstream requests to avoid rate limiting, and reports
+ * wall clock timing via the test diagnostic channel.
  *
  * @param {string} path - API path starting with / (e.g. "/api/net?limit=1").
+ * @param {import('node:test').TestContext} [t] - Test context for timing diagnostics.
  * @returns {Promise<{mirror: {status: number, body: any, elapsed: number}, upstream: {status: number, body: any, elapsed: number}}>}
  */
-async function fetchBoth(path) {
+async function fetchBoth(path, t) {
     const mirror = await fetchJSON(`${PDBFE}${path}`);
-    await delay(500);
+
+    // Rate-limit upstream: wait if last request was too recent
+    const gap = Date.now() - _lastUpstreamTs;
+    if (gap < UPSTREAM_SPACING_MS) await delay(UPSTREAM_SPACING_MS - gap);
+
     const upstream = await fetchJSON(`${PEERINGDB}${path}`);
+    _lastUpstreamTs = Date.now();
+
+    if (t) {
+        // Extract server-side metrics from mirror response headers
+        const timer = mirror.headers.get('X-Timer') || '';
+        const veMatch = timer.match(/VE(\d+)/);
+        const ve = veMatch ? veMatch[1] + 'ms' : '–';
+        const cache = mirror.headers.get('X-Cache') || '–';
+        const hits = mirror.headers.get('X-Cache-Hits') || '0';
+
+        t.diagnostic(
+            `mirror=${mirror.elapsed}ms (VE=${ve} cache=${cache} hits=${hits})  upstream=${upstream.elapsed}ms`
+        );
+    }
     return { mirror, upstream };
 }
 
@@ -233,8 +265,8 @@ describe('Conformance: schema', { concurrency: 1 }, () => {
     ];
 
     for (const { entity, depth } of schemaEntities) {
-        it(`/api/${entity}?depth=${depth} — field names match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=${depth}`);
+        it(`/api/${entity}?depth=${depth} — field names match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=${depth}`, t);
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
 
@@ -249,8 +281,8 @@ describe('Conformance: schema', { concurrency: 1 }, () => {
     }
 
     for (const entity of ['net', 'ix', 'fac', 'org', 'netixlan', 'netfac']) {
-        it(`/api/${entity} — field types match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=20&depth=0`);
+        it(`/api/${entity} — field types match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=20&depth=0`, t);
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
 
@@ -404,8 +436,8 @@ describe('Conformance: query parameters', { concurrency: 1 }, () => {
         }
     });
 
-    it('?country=NL filter on net (cross-entity)', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/net?country=NL&limit=5&depth=0');
+    it('?country=NL filter on net (cross-entity)', async (t) => {
+        const { mirror, upstream } = await fetchBoth('/api/net?country=NL&limit=5&depth=0', t);
         const mirData = extractData(mirror.body, 'mirror net?country');
         const upData = extractData(upstream.body, 'upstream net?country');
         assert.ok(Math.abs(mirData.length - upData.length) <= 1,
@@ -559,8 +591,8 @@ describe('Conformance: cross-endpoint consistency', { concurrency: 1 }, () => {
 // ==========================================================================
 
 describe('Conformance: value comparison', { concurrency: 1 }, () => {
-    it('net — stable fields match upstream for Netflix', async () => {
-        const { mirror, upstream } = await fetchBoth(`/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`);
+    it('net — stable fields match upstream for Netflix', async (t) => {
+        const { mirror, upstream } = await fetchBoth(`/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`, t);
         const mirData = extractData(mirror.body, 'mirror Netflix');
         const upData = extractData(upstream.body, 'upstream Netflix');
 
@@ -578,8 +610,8 @@ describe('Conformance: value comparison', { concurrency: 1 }, () => {
             `Stable field mismatches:\n${mismatches.join('\n')}`);
     });
 
-    it('ix — AMS-IX data matches upstream', async () => {
-        const { mirror, upstream } = await fetchBoth(`/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`);
+    it('ix — AMS-IX data matches upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(`/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`, t);
         const mirRec = extractData(mirror.body, 'mirror AMS-IX')[0];
         const upRec = extractData(upstream.body, 'upstream AMS-IX')[0];
 
@@ -671,135 +703,138 @@ describe('Conformance: as_set', { concurrency: 1 }, () => {
 });
 
 // ==========================================================================
-// SECTION 9 — PERFORMANCE COMPARISON
+// SECTION 9 — DIVERGENCE EDGE CASES
 // ==========================================================================
 
-/**
- * Performance benchmark queries. Each entry defines a label, API path,
- * and whether to warm the mirror cache before measuring.
- * @type {{label: string, path: string, warm?: boolean}[]}
- */
-const PERF_QUERIES = [
-    // ── Single-record lookups ────────────────────────────────────────────
-    { label: 'net by ASN (CF)',        path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`, warm: true },
-    { label: 'net by ASN (Netflix)',   path: `/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`, warm: true },
-    { label: 'net detail by ID',       path: '/api/net/1?depth=0', warm: true },
-    { label: 'ix detail by ID',        path: `/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`, warm: true },
-    { label: 'fac detail by ID',       path: `/api/fac/${WELL_KNOWN.fac_equinix_am5}?depth=0`, warm: true },
+describe('Conformance: divergence edge cases', { concurrency: 1 }, () => {
 
-    // ── Filtered lists ───────────────────────────────────────────────────
-    { label: 'netixlan by ix_id',      path: `/api/netixlan?ix_id=${WELL_KNOWN.ix_amsix_id}&depth=0` },
-    { label: 'netfac by local_asn',    path: `/api/netfac?local_asn=${WELL_KNOWN.asn_google}&depth=0` },
-    { label: 'ix Europe (limit=20)',   path: '/api/ix?region_continent=Europe&limit=20&depth=0' },
-    { label: 'net NL (cross-entity)',  path: '/api/net?country=NL&limit=10&depth=0' },
-    { label: 'netixlan __in filter',   path: '/api/netixlan?net_id__in=694,1100&depth=0' },
+    // ── Default depth ────────────────────────────────────────────────────
+    it('default depth (no param) matches depth=0', async () => {
+        const noDepth = await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}`);
+        const depth0 = await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`);
+        const noDepthData = extractData(noDepth.body, 'net no-depth');
+        const depth0Data = extractData(depth0.body, 'net depth=0');
 
-    // ── Pagination ───────────────────────────────────────────────────────
-    { label: 'net limit=5 skip=0',     path: '/api/net?limit=5&skip=0&depth=0' },
-    { label: 'net limit=5 skip=100',   path: '/api/net?limit=5&skip=100&depth=0' },
+        if (noDepthData.length === 0) return;
 
-    // ── Depth expansion ──────────────────────────────────────────────────
-    { label: 'net depth=1 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=1` },
-    { label: 'net depth=2 (CF)',       path: `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=2` },
+        // Should have identical key sets (no _set fields)
+        const noDepthKeys = Object.keys(noDepthData[0]).sort();
+        const depth0Keys = Object.keys(depth0Data[0]).sort();
+        assert.deepStrictEqual(noDepthKeys, depth0Keys,
+            'Default depth should produce same fields as depth=0');
+    });
 
-    // ── Large results ────────────────────────────────────────────────────
-    { label: 'net limit=50',           path: '/api/net?limit=50&depth=0' },
-    { label: 'netixlan limit=50',      path: '/api/netixlan?limit=50&depth=0' },
-    { label: 'fac limit=50',           path: '/api/fac?limit=50&depth=0' },
+    // ── Default sort order ───────────────────────────────────────────────
+    it('default sort order is ascending by id', async (t) => {
+        const { mirror, upstream } = await fetchBoth('/api/net?limit=5&depth=0', t);
+        const upIds = extractData(upstream.body, 'upstream').map(r => r.id);
+        const mirIds = extractData(mirror.body, 'mirror').map(r => r.id);
 
-    // ── Count ────────────────────────────────────────────────────────────
-    { label: 'net count (limit=0)',    path: '/api/net?limit=0&depth=0' },
+        // Both should be sorted ascending — exact IDs may differ
+        // due to deleted records being present in the mirror's D1
+        const mirSorted = [...mirIds].sort((a, b) => a - b);
+        const upSorted = [...upIds].sort((a, b) => a - b);
+        assert.deepStrictEqual(mirIds, mirSorted, 'Mirror should sort by id ASC');
+        assert.deepStrictEqual(upIds, upSorted, 'Upstream should sort by id ASC');
+    });
 
-    // ── Fields filter ────────────────────────────────────────────────────
-    { label: 'net fields=id,asn,name', path: '/api/net?limit=10&fields=id,asn,name&depth=0' },
-
-    // ── as_set ───────────────────────────────────────────────────────────
-    { label: 'as_set lookup',          path: `/api/as_set/${WELL_KNOWN.asn_cloudflare}` },
-];
-
-describe('Conformance: performance comparison', { concurrency: 1 }, () => {
-    /** @type {{label: string, mirror: number, upstream: number, ratio: number}[]} */
-    const results = [];
-
-    for (const q of PERF_QUERIES) {
-        it(`${q.label}`, async (t) => {
-            // Optional cache warm for mirror
-            if (q.warm) {
-                await fetchMirror(q.path);
-            }
-
-            const mirror = await fetchMirror(q.path);
-            await delay(300);
-
-            /** @type {{status: number, body: any, headers: Headers, elapsed: number}} */
-            let upstream;
-            try {
-                upstream = await fetchJSON(`${PEERINGDB}${q.path}`);
-            } catch {
-                t.diagnostic(`${q.label}: upstream fetch failed, skipping comparison`);
-                return;
-            }
-
-            if (upstream.body?._error) {
-                t.diagnostic(`${q.label}: upstream returned non-JSON, skipping comparison`);
-                return;
-            }
-
-            const ratio = mirror.elapsed / Math.max(upstream.elapsed, 1);
-            results.push({
-                label: q.label,
-                mirror: mirror.elapsed,
-                upstream: upstream.elapsed,
-                ratio,
-            });
-
-            t.diagnostic(
-                `mirror=${mirror.elapsed}ms  upstream=${upstream.elapsed}ms  ratio=${ratio.toFixed(2)}x`
-            );
-        });
-    }
-
-    // Print summary table after all queries complete
-    it('── summary ──', async (t) => {
-        if (results.length === 0) {
-            t.diagnostic('No results collected');
-            return;
-        }
-
-        const pad = (/** @type {string} */ s, /** @type {number} */ n) => s.padEnd(n);
-        const rpad = (/** @type {string} */ s, /** @type {number} */ n) => s.padStart(n);
-
-        const header = `${pad('Query', 30)} ${rpad('Mirror', 8)} ${rpad('Upstream', 10)} ${rpad('Ratio', 8)} ${rpad('Winner', 8)}`;
-        const sep = '─'.repeat(header.length);
-
-        t.diagnostic('');
-        t.diagnostic(sep);
-        t.diagnostic(header);
-        t.diagnostic(sep);
-
-        let mirrorWins = 0;
-        let upstreamWins = 0;
-        let totalMirror = 0;
-        let totalUpstream = 0;
-
-        for (const r of results) {
-            const winner = r.ratio < 1.0 ? 'mirror' : r.ratio > 1.0 ? 'upstream' : 'tie';
-            if (r.ratio < 1.0) mirrorWins++;
-            if (r.ratio > 1.0) upstreamWins++;
-            totalMirror += r.mirror;
-            totalUpstream += r.upstream;
-
-            t.diagnostic(
-                `${pad(r.label, 30)} ${rpad(r.mirror + 'ms', 8)} ${rpad(r.upstream + 'ms', 10)} ${rpad(r.ratio.toFixed(2) + 'x', 8)} ${rpad(winner, 8)}`
-            );
-        }
-
-        t.diagnostic(sep);
-        const totalRatio = totalMirror / Math.max(totalUpstream, 1);
-        t.diagnostic(
-            `${pad('TOTAL', 30)} ${rpad(totalMirror + 'ms', 8)} ${rpad(totalUpstream + 'ms', 10)} ${rpad(totalRatio.toFixed(2) + 'x', 8)} ${rpad(totalRatio < 1 ? 'mirror' : 'upstream', 8)}`
+    // ── Case-insensitive string filters ──────────────────────────────────
+    it('?name= filter is case-insensitive (MySQL parity)', async (t) => {
+        // Upstream MySQL uses case-insensitive collation; mirror must match
+        const { mirror, upstream } = await fetchBoth(
+            '/api/net?name=cloudflare&limit=1&depth=0', t
         );
-        t.diagnostic(`Mirror wins: ${mirrorWins}/${results.length}  Upstream wins: ${upstreamWins}/${results.length}`);
-        t.diagnostic('');
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            `Case-insensitive filter: mirror=${mirData.length} results, upstream=${upData.length}`);
+        if (upData.length > 0) {
+            assert.equal(mirData[0].name, upData[0].name);
+        }
+    });
+
+    it('?name__contains= is case-insensitive', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            '/api/ix?name__contains=ams-ix&limit=1&depth=0', t
+        );
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            `Case-insensitive contains: mirror=${mirData.length}, upstream=${upData.length}`);
+    });
+
+    // ── Duplicate query parameters ───────────────────────────────────────
+    it('duplicate params — last value wins (Django parity)', async (t) => {
+        // Django's QueryDict.get() returns the last value for a repeated key
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&asn=${WELL_KNOWN.asn_netflix}&limit=1&depth=0`, t
+        );
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            'Duplicate param should return same count');
+        if (upData.length > 0 && mirData.length > 0) {
+            assert.equal(mirData[0].asn, upData[0].asn,
+                'Duplicate param: mirror and upstream should resolve to same ASN');
+        }
+    });
+
+    // ── Date format ──────────────────────────────────────────────────────
+    it('created/updated date format matches upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=0`, t
+        );
+        const upRow = extractData(upstream.body, 'upstream')[0];
+        const mirRow = extractData(mirror.body, 'mirror')[0];
+        if (!upRow || !mirRow) return;
+
+        // Should be ISO 8601: 2024-01-01T00:00:00Z
+        assert.equal(mirRow.created, upRow.created,
+            `created mismatch: mirror=${mirRow.created}, upstream=${upRow.created}`);
+    });
+
+    // ── Depth=2 FK exclusion ─────────────────────────────────────────────
+    it('depth=2 child objects exclude parent FK', async () => {
+        const res = await fetchMirror(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=2`
+        );
+        const data = extractData(res.body, 'net depth=2');
+        if (data.length === 0) return;
+
+        const row = data[0];
+        if (row.netfac_set && row.netfac_set.length > 0) {
+            assert.equal(row.netfac_set[0].net_id, undefined,
+                'netfac_set child should not contain net_id at depth=2');
+        }
+        if (row.poc_set && row.poc_set.length > 0) {
+            assert.equal(row.poc_set[0].net_id, undefined,
+                'poc_set child should not contain net_id at depth=2');
+        }
+    });
+
+    // ── Empty string vs null ─────────────────────────────────────────────
+    it('nullable field types match upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=0`, t
+        );
+        const upRow = extractData(upstream.body, 'upstream')[0];
+        const mirRow = extractData(mirror.body, 'mirror')[0];
+        if (!upRow || !mirRow) return;
+
+        // Check that for each field, null/non-null matches
+        const mismatches = [];
+        for (const key of Object.keys(upRow)) {
+            const upNull = upRow[key] === null;
+            const mirNull = mirRow[key] === null;
+            if (upNull !== mirNull) {
+                mismatches.push(`${key}: upstream=${upRow[key]}, mirror=${mirRow[key]}`);
+            }
+        }
+        assert.deepStrictEqual(mismatches, [],
+            `Null/non-null mismatches:\n${mismatches.join('\n')}`);
     });
 });
+
