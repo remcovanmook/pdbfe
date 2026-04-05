@@ -102,7 +102,16 @@ async function fetchBoth(path, t) {
     _lastUpstreamTs = Date.now();
 
     if (t) {
-        t.diagnostic(`mirror=${mirror.elapsed}ms  upstream=${upstream.elapsed}ms`);
+        // Extract server-side metrics from mirror response headers
+        const timer = mirror.headers.get('X-Timer') || '';
+        const veMatch = timer.match(/VE(\d+)/);
+        const ve = veMatch ? veMatch[1] + 'ms' : '–';
+        const cache = mirror.headers.get('X-Cache') || '–';
+        const hits = mirror.headers.get('X-Cache-Hits') || '0';
+
+        t.diagnostic(
+            `mirror=${mirror.elapsed}ms (VE=${ve} cache=${cache} hits=${hits})  upstream=${upstream.elapsed}ms`
+        );
     }
     return { mirror, upstream };
 }
