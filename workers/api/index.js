@@ -191,11 +191,12 @@ async function handleRequest(request, env, ctx) {
         const entity = ENTITIES[entityTag];
         const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-        // For restricted entities (poc), enforce the visibility filter
-        // for anonymous callers. This strips any user-supplied visible=
-        // parameter and injects the mandatory system filter.
+        // Restricted entities (poc) are not accessible to anonymous callers.
+        // Upstream PeeringDB returns {"data": []} for unauthenticated /api/poc
+        // requests. The anonFilter (visible=Public) is only applied during
+        // depth expansion (poc_set), not on the direct endpoint.
         if (!authenticated && entity._restricted) {
-            enforceAnonFilter(entity, filters);
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: H_API });
         }
 
         resolveImplicitFilters(entity, filters);
@@ -242,9 +243,9 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // For restricted entities (poc), enforce the visibility filter
+    // Restricted entities (poc) are not accessible to anonymous callers.
     if (!authenticated && entity._restricted) {
-        enforceAnonFilter(entity, filters);
+        return jsonError(404, `${entityTag} with id ${id} not found`);
     }
 
     resolveImplicitFilters(entity, filters);

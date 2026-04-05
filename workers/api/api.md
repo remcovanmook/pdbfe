@@ -134,13 +134,20 @@ Some PeeringDB entities contain sensitive data gated behind authentication upstr
 
 Currently only `poc` (network contacts) is restricted. Upstream PeeringDB uses a `visible` field with three levels: `Public` (anyone), `Users` (authenticated), `Private` (org-only).
 
-### Anon Filter Enforcement
+### Access Control Model
 
-For anonymous callers, `enforceAnonFilter()` in the router:
-1. **Strips** all user-supplied filters on the restricted field (prevents `?visible=Private` injection)
-2. **Injects** the mandatory system filter (`visible = 'Public'`)
+Restricted entities have two layers of access control:
 
-This runs before query validation and execution, so the query builder sees only the forced filter. The same enforcement applies to depth expansion — `expandDepth()` adds a `WHERE "visible" = ?` clause to `poc_set` child queries for anonymous callers.
+**Direct endpoint access** (`/api/poc`, `/api/poc/{id}`):
+- Anonymous callers get empty results immediately — no database query is made
+- `/api/poc` returns `{"data":[], "meta":{}}`
+- `/api/poc/{id}` returns 404
+- This matches upstream PeeringDB, which returns empty for anonymous `/api/poc` requests
+
+**Depth expansion** (`poc_set` in `/api/net?depth=1` or `depth=2`):
+- Anonymous callers see only `visible=Public` contacts
+- `expandDepth()` adds `WHERE "visible" = ?` to `poc_set` child queries
+- `enforceAnonFilter()` strips user-supplied `visible=` parameters and injects the mandatory `visible=Public` filter (prevents `?visible=Private` injection in depth expansion contexts)
 
 ### Auth Scaffolding
 
@@ -148,7 +155,7 @@ This runs before query validation and execution, so the query builder sees only 
 - `extractApiKey(request)` — parses `Authorization: Api-Key <key>` headers
 - `verifyApiKey(key)` — stub, always returns `false`
 
-The router calls both on every request. When auth is needed, replace `verifyApiKey()` with a KV namespace lookup. Authenticated callers bypass the anon filter and see `visible=Users` and `visible=Private` contacts.
+The router calls both on every request. When auth is needed, replace `verifyApiKey()` with a KV namespace lookup. Authenticated callers bypass both the endpoint block and the depth expansion filter.
 
 ## Entity Registry
 
