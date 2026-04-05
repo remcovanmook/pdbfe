@@ -8,9 +8,10 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API, H_NOCACHE, encoder } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, enforceAnonFilter } from './entities.js';
 import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
 import { putL2 } from './l2cache.js';
+import { extractApiKey, verifyApiKey } from '../core/auth.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
@@ -120,6 +121,12 @@ async function handleSyncStatus(db) {
 async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
 
+    // Determine authentication status. The stub verifyApiKey() always
+    // returns false — when KV-based auth is added, this becomes the
+    // control point for restricted entity access.
+    const apiKey = extractApiKey(request);
+    const authenticated = apiKey !== null && verifyApiKey(apiKey);
+
     // Create a D1 session for read replication. "first-unconstrained" allows
     // queries to hit any replica (including the primary). This is optimal for
     // read-only workloads where eventual consistency is acceptable.
@@ -184,6 +191,14 @@ async function handleRequest(request, env, ctx) {
         const entity = ENTITIES[entityTag];
         const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
+        // Restricted entities (poc) are not accessible to anonymous callers.
+        // Upstream PeeringDB returns {"data": []} for unauthenticated /api/poc
+        // requests. The anonFilter (visible=Public) is only applied during
+        // depth expansion (poc_set), not on the direct endpoint.
+        if (!authenticated && entity._restricted) {
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: H_API });
+        }
+
         resolveImplicitFilters(entity, filters);
 
         const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
@@ -227,6 +242,11 @@ async function handleRequest(request, env, ctx) {
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
+
+    // Restricted entities (poc) are not accessible to anonymous callers.
+    if (!authenticated && entity._restricted) {
+        return jsonError(404, `${entityTag} with id ${id} not found`);
+    }
 
     resolveImplicitFilters(entity, filters);
 

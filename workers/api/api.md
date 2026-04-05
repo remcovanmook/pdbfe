@@ -123,6 +123,40 @@ Precompiled frozen headers on every response:
 {"error": "POST /api/net is not available on this read-only mirror. See peeringdb.com for write access."}
 ```
 
+## Authentication & Access Control
+
+### Restricted Entities
+
+Some PeeringDB entities contain sensitive data gated behind authentication upstream. The entity registry supports this via two builder methods:
+
+- `.restricted()` — marks the entity as requiring auth for full access
+- `.anonFilter('visible', 'Public')` — defines a mandatory filter for unauthenticated callers
+
+Currently only `poc` (network contacts) is restricted. Upstream PeeringDB uses a `visible` field with three levels: `Public` (anyone), `Users` (authenticated), `Private` (org-only).
+
+### Access Control Model
+
+Restricted entities have two layers of access control:
+
+**Direct endpoint access** (`/api/poc`, `/api/poc/{id}`):
+- Anonymous callers get empty results immediately — no database query is made
+- `/api/poc` returns `{"data":[], "meta":{}}`
+- `/api/poc/{id}` returns 404
+- This matches upstream PeeringDB, which returns empty for anonymous `/api/poc` requests
+
+**Depth expansion** (`poc_set` in `/api/net?depth=1` or `depth=2`):
+- Anonymous callers see only `visible=Public` contacts
+- `expandDepth()` adds `WHERE "visible" = ?` to `poc_set` child queries
+- `enforceAnonFilter()` strips user-supplied `visible=` parameters and injects the mandatory `visible=Public` filter (prevents `?visible=Private` injection in depth expansion contexts)
+
+### Auth Scaffolding
+
+`core/auth.js` provides:
+- `extractApiKey(request)` — parses `Authorization: Api-Key <key>` headers
+- `verifyApiKey(key)` — stub, always returns `false`
+
+The router calls both on every request. When auth is needed, replace `verifyApiKey()` with a KV namespace lookup. Authenticated callers bypass both the endpoint block and the depth expansion filter.
+
 ## Entity Registry
 
-`api/entities.js` is the single source of truth. Adding a new entity type means adding an entry there — the router, query builder, depth expander, and cache all consume it.
+`api/entities.js` is the single source of truth. Adding a new entity type means adding an entry there — the router, query builder, depth expander, and cache all consume it. Entity-level access control metadata (`.restricted()`, `.anonFilter()`) is also defined here.

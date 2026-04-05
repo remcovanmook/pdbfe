@@ -34,21 +34,25 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
  *   except the FK back to the parent). Matches upstream PeeringDB
  *   behaviour.
  *
+ * For restricted child entities (e.g. poc), anonymous callers only
+ * see records matching the entity's anonFilter (visible=Public).
+ *
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows to expand.
  * @param {number} depth - Depth level (0, 1, or 2).
+ * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
-export async function expandDepth(db, entity, rows, depth) {
+export async function expandDepth(db, entity, rows, depth, authenticated = false) {
     if (depth === 0 || rows.length === 0 || entity.relationships.length === 0) {
         return;
     }
 
     if (depth >= 2) {
-        await expandDepthTwo(db, entity, rows);
+        await expandDepthTwo(db, entity, rows, authenticated);
     } else {
-        await expandDepthOne(db, entity, rows);
+        await expandDepthOne(db, entity, rows, authenticated);
     }
 }
 
@@ -63,9 +67,10 @@ export async function expandDepth(db, entity, rows, depth) {
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
+ * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<void>}
  */
-async function expandDepthOne(db, entity, rows) {
+async function expandDepthOne(db, entity, rows, authenticated) {
     const parentIds = rows.map(r => r.id);
     if (parentIds.length === 0) return;
 
@@ -81,8 +86,23 @@ async function expandDepthOne(db, entity, rows) {
         }
 
         const placeholders = parentIds.map(() => "?").join(", ");
-        const sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted' ORDER BY "id" ASC`;
-        const result = await db.prepare(sql).bind(...parentIds).all();
+
+        // For restricted child entities, add visibility filter for anonymous callers
+        const childTag = TABLE_TO_TAG.get(rel.table);
+        const childEntity = childTag ? ENTITIES[childTag] : null;
+        const anonFilter = (!authenticated && childEntity?._restricted && childEntity?._anonFilter) ? childEntity._anonFilter : null;
+
+        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted'`;
+        /** @type {any[]} */
+        const params = [...parentIds];
+
+        if (anonFilter) {
+            sql += ` AND "${anonFilter.field}" = ?`;
+            params.push(anonFilter.value);
+        }
+
+        sql += ` ORDER BY "id" ASC`;
+        const result = await db.prepare(sql).bind(...params).all();
 
         if (result.results) {
             for (const child of result.results) {
@@ -109,12 +129,16 @@ async function expandDepthOne(db, entity, rows) {
  * JSON-stored TEXT columns (social_media, info_types, etc.) are parsed
  * back to native arrays/objects.
  *
+ * For restricted child entities (e.g. poc), anonymous callers only
+ * see records matching the entity's anonFilter.
+ *
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
+ * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<void>}
  */
-async function expandDepthTwo(db, entity, rows) {
+async function expandDepthTwo(db, entity, rows, authenticated) {
     const parentIds = rows.map(r => r.id);
     if (parentIds.length === 0) return;
 
@@ -135,6 +159,9 @@ async function expandDepthTwo(db, entity, rows) {
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
 
+        // Check if this child entity needs visibility filtering for anonymous callers
+        const anonFilter = (!authenticated && childEntity?._restricted && childEntity?._anonFilter) ? childEntity._anonFilter : null;
+
         // Build column list, excluding the FK back to the parent
         /** @type {string[]} */
         let childColumns;
@@ -153,6 +180,8 @@ async function expandDepthTwo(db, entity, rows) {
         }
 
         const placeholders = parentIds.map(() => "?").join(", ");
+        /** @type {any[]} */
+        const params = [...parentIds];
         let sql;
 
         if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
@@ -180,21 +209,42 @@ async function expandDepthTwo(db, entity, rows) {
             sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
                 joinParts.join('') +
                 ` WHERE t."${rel.fk}" IN (${placeholders})` +
-                ` AND t."status" != 'deleted' ORDER BY t."id" ASC`;
+                ` AND t."status" != 'deleted'`;
+
+            if (anonFilter) {
+                sql += ` AND t."${anonFilter.field}" = ?`;
+                params.push(anonFilter.value);
+            }
+
+            sql += ` ORDER BY t."id" ASC`;
         } else if (childColumns.length > 0) {
             // Standard path: no JOINs
             const colExpr = childColumns.map(c => `"${c}"`).join(", ");
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" IN (${placeholders})` +
-                ` AND "status" != 'deleted' ORDER BY "id" ASC`;
+                ` AND "status" != 'deleted'`;
+
+            if (anonFilter) {
+                sql += ` AND "${anonFilter.field}" = ?`;
+                params.push(anonFilter.value);
+            }
+
+            sql += ` ORDER BY "id" ASC`;
         } else {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" IN (${placeholders})` +
-                ` AND "status" != 'deleted' ORDER BY "id" ASC`;
+                ` AND "status" != 'deleted'`;
+
+            if (anonFilter) {
+                sql += ` AND "${anonFilter.field}" = ?`;
+                params.push(anonFilter.value);
+            }
+
+            sql += ` ORDER BY "id" ASC`;
         }
 
-        const result = await db.prepare(sql).bind(...parentIds).all();
+        const result = await db.prepare(sql).bind(...params).all();
 
         if (result.results) {
             for (const child of result.results) {
