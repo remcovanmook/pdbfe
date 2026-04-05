@@ -702,3 +702,139 @@ describe('Conformance: as_set', { concurrency: 1 }, () => {
     });
 });
 
+// ==========================================================================
+// SECTION 9 — DIVERGENCE EDGE CASES
+// ==========================================================================
+
+describe('Conformance: divergence edge cases', { concurrency: 1 }, () => {
+
+    // ── Default depth ────────────────────────────────────────────────────
+    it('default depth (no param) matches depth=0', async () => {
+        const noDepth = await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}`);
+        const depth0 = await fetchMirror(`/api/net?asn=${WELL_KNOWN.asn_cloudflare}&depth=0`);
+        const noDepthData = extractData(noDepth.body, 'net no-depth');
+        const depth0Data = extractData(depth0.body, 'net depth=0');
+
+        if (noDepthData.length === 0) return;
+
+        // Should have identical key sets (no _set fields)
+        const noDepthKeys = Object.keys(noDepthData[0]).sort();
+        const depth0Keys = Object.keys(depth0Data[0]).sort();
+        assert.deepStrictEqual(noDepthKeys, depth0Keys,
+            'Default depth should produce same fields as depth=0');
+    });
+
+    // ── Default sort order ───────────────────────────────────────────────
+    it('default sort order is ascending by id', async (t) => {
+        const { mirror, upstream } = await fetchBoth('/api/net?limit=5&depth=0', t);
+        const upIds = extractData(upstream.body, 'upstream').map(r => r.id);
+        const mirIds = extractData(mirror.body, 'mirror').map(r => r.id);
+
+        // Both should be sorted ascending — exact IDs may differ
+        // due to deleted records being present in the mirror's D1
+        const mirSorted = [...mirIds].sort((a, b) => a - b);
+        const upSorted = [...upIds].sort((a, b) => a - b);
+        assert.deepStrictEqual(mirIds, mirSorted, 'Mirror should sort by id ASC');
+        assert.deepStrictEqual(upIds, upSorted, 'Upstream should sort by id ASC');
+    });
+
+    // ── Case-insensitive string filters ──────────────────────────────────
+    it('?name= filter is case-insensitive (MySQL parity)', async (t) => {
+        // Upstream MySQL uses case-insensitive collation; mirror must match
+        const { mirror, upstream } = await fetchBoth(
+            '/api/net?name=cloudflare&limit=1&depth=0', t
+        );
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            `Case-insensitive filter: mirror=${mirData.length} results, upstream=${upData.length}`);
+        if (upData.length > 0) {
+            assert.equal(mirData[0].name, upData[0].name);
+        }
+    });
+
+    it('?name__contains= is case-insensitive', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            '/api/ix?name__contains=ams-ix&limit=1&depth=0', t
+        );
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            `Case-insensitive contains: mirror=${mirData.length}, upstream=${upData.length}`);
+    });
+
+    // ── Duplicate query parameters ───────────────────────────────────────
+    it('duplicate params — last value wins (Django parity)', async (t) => {
+        // Django's QueryDict.get() returns the last value for a repeated key
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&asn=${WELL_KNOWN.asn_netflix}&limit=1&depth=0`, t
+        );
+        const upData = extractData(upstream.body, 'upstream');
+        const mirData = extractData(mirror.body, 'mirror');
+
+        assert.equal(mirData.length, upData.length,
+            'Duplicate param should return same count');
+        if (upData.length > 0 && mirData.length > 0) {
+            assert.equal(mirData[0].asn, upData[0].asn,
+                'Duplicate param: mirror and upstream should resolve to same ASN');
+        }
+    });
+
+    // ── Date format ──────────────────────────────────────────────────────
+    it('created/updated date format matches upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=0`, t
+        );
+        const upRow = extractData(upstream.body, 'upstream')[0];
+        const mirRow = extractData(mirror.body, 'mirror')[0];
+        if (!upRow || !mirRow) return;
+
+        // Should be ISO 8601: 2024-01-01T00:00:00Z
+        assert.equal(mirRow.created, upRow.created,
+            `created mismatch: mirror=${mirRow.created}, upstream=${upRow.created}`);
+    });
+
+    // ── Depth=2 FK exclusion ─────────────────────────────────────────────
+    it('depth=2 child objects exclude parent FK', async () => {
+        const res = await fetchMirror(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=2`
+        );
+        const data = extractData(res.body, 'net depth=2');
+        if (data.length === 0) return;
+
+        const row = data[0];
+        if (row.netfac_set && row.netfac_set.length > 0) {
+            assert.equal(row.netfac_set[0].net_id, undefined,
+                'netfac_set child should not contain net_id at depth=2');
+        }
+        if (row.poc_set && row.poc_set.length > 0) {
+            assert.equal(row.poc_set[0].net_id, undefined,
+                'poc_set child should not contain net_id at depth=2');
+        }
+    });
+
+    // ── Empty string vs null ─────────────────────────────────────────────
+    it('nullable field types match upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=0`, t
+        );
+        const upRow = extractData(upstream.body, 'upstream')[0];
+        const mirRow = extractData(mirror.body, 'mirror')[0];
+        if (!upRow || !mirRow) return;
+
+        // Check that for each field, null/non-null matches
+        const mismatches = [];
+        for (const key of Object.keys(upRow)) {
+            const upNull = upRow[key] === null;
+            const mirNull = mirRow[key] === null;
+            if (upNull !== mirNull) {
+                mismatches.push(`${key}: upstream=${upRow[key]}, mirror=${mirRow[key]}`);
+            }
+        }
+        assert.deepStrictEqual(mismatches, [],
+            `Null/non-null mismatches:\n${mismatches.join('\n')}`);
+    });
+});
+
