@@ -44,5 +44,8 @@ Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (ev
 - **`tests/unit/depth.test.js`**: Depth expansion — mock D1, batched IN queries, empty results
 - **`tests/unit/cache.test.js`**: LRU operations, per-entity config, aggregate stats, key normalisation, negative cache TTL contracts, EMPTY_ENVELOPE sentinel detection
 - **`tests/test_api.js`**: Integration — full router with mock D1, admin endpoints, CORS, 501s, scanner blocking
-- **`tests/test_equivalence.js`** (Phase 2): Compares responses against the live PeeringDB API for a set of reference queries
+- **`tests/test_conformance.js`**: Envelope, schema, query parameter, data type, cross-endpoint, and error handling conformance against live upstream PeeringDB
+- **`tests/test_conformance_extended.js`**: Substring/prefix filters, carrier/campus entities, timestamp ranges, sorting, concurrency, field selection, numeric filters
+- **`tests/test_performance.js`**: Mirror vs upstream latency comparison across 20 query patterns; depth>0 and COUNT queries are mirror-only to avoid overloading upstream
+- **`tests/test_equivalence.js`**: Compares responses against the live PeeringDB API for a set of reference queries
 - **`tests/loadtest.js`**: Production load test covering sequential cold/warm scenarios, parallel bursts, sustained throughput, and negative cache (404) validation across entity types
