@@ -101,16 +101,39 @@ async function fetchJSON(url, opts = {}) {
 }
 
 /**
+ * Timestamp of the most recent upstream fetch. Used to space
+ * sequential upstream requests without adding fixed delays.
+ */
+let _lastUpstreamTs = 0;
+
+/**
+ * Minimum milliseconds between consecutive upstream PeeringDB requests.
+ * Applied automatically — no per-call delay needed.
+ */
+const UPSTREAM_SPACING_MS = 500;
+
+/**
  * Fetches the same API path from both mirror and upstream PeeringDB.
- * Adds a delay between to avoid upstream rate limiting.
+ * Spaces upstream requests to avoid rate limiting, and reports
+ * wall clock timing via the test diagnostic channel.
  *
  * @param {string} path - API path starting with / (e.g. "/api/net?limit=1").
+ * @param {import('node:test').TestContext} [t] - Test context for timing diagnostics.
  * @returns {Promise<{mirror: {status: number, body: any, elapsed: number}, upstream: {status: number, body: any, elapsed: number}}>}
  */
-async function fetchBoth(path) {
+async function fetchBoth(path, t) {
     const mirror = await fetchJSON(`${PDBFE}${path}`);
-    await delay(500);
+
+    // Rate-limit upstream: wait if last request was too recent
+    const gap = Date.now() - _lastUpstreamTs;
+    if (gap < UPSTREAM_SPACING_MS) await delay(UPSTREAM_SPACING_MS - gap);
+
     const upstream = await fetchJSON(`${PEERINGDB}${path}`);
+    _lastUpstreamTs = Date.now();
+
+    if (t) {
+        t.diagnostic(`mirror=${mirror.elapsed}ms  upstream=${upstream.elapsed}ms`);
+    }
     return { mirror, upstream };
 }
 
@@ -233,8 +256,8 @@ describe('Conformance: schema', { concurrency: 1 }, () => {
     ];
 
     for (const { entity, depth } of schemaEntities) {
-        it(`/api/${entity}?depth=${depth} — field names match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=${depth}`);
+        it(`/api/${entity}?depth=${depth} — field names match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=${depth}`, t);
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
 
@@ -249,8 +272,8 @@ describe('Conformance: schema', { concurrency: 1 }, () => {
     }
 
     for (const entity of ['net', 'ix', 'fac', 'org', 'netixlan', 'netfac']) {
-        it(`/api/${entity} — field types match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=20&depth=0`);
+        it(`/api/${entity} — field types match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=20&depth=0`, t);
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
 
@@ -404,8 +427,8 @@ describe('Conformance: query parameters', { concurrency: 1 }, () => {
         }
     });
 
-    it('?country=NL filter on net (cross-entity)', async () => {
-        const { mirror, upstream } = await fetchBoth('/api/net?country=NL&limit=5&depth=0');
+    it('?country=NL filter on net (cross-entity)', async (t) => {
+        const { mirror, upstream } = await fetchBoth('/api/net?country=NL&limit=5&depth=0', t);
         const mirData = extractData(mirror.body, 'mirror net?country');
         const upData = extractData(upstream.body, 'upstream net?country');
         assert.ok(Math.abs(mirData.length - upData.length) <= 1,
@@ -559,8 +582,8 @@ describe('Conformance: cross-endpoint consistency', { concurrency: 1 }, () => {
 // ==========================================================================
 
 describe('Conformance: value comparison', { concurrency: 1 }, () => {
-    it('net — stable fields match upstream for Netflix', async () => {
-        const { mirror, upstream } = await fetchBoth(`/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`);
+    it('net — stable fields match upstream for Netflix', async (t) => {
+        const { mirror, upstream } = await fetchBoth(`/api/net?asn=${WELL_KNOWN.asn_netflix}&depth=0`, t);
         const mirData = extractData(mirror.body, 'mirror Netflix');
         const upData = extractData(upstream.body, 'upstream Netflix');
 
@@ -578,8 +601,8 @@ describe('Conformance: value comparison', { concurrency: 1 }, () => {
             `Stable field mismatches:\n${mismatches.join('\n')}`);
     });
 
-    it('ix — AMS-IX data matches upstream', async () => {
-        const { mirror, upstream } = await fetchBoth(`/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`);
+    it('ix — AMS-IX data matches upstream', async (t) => {
+        const { mirror, upstream } = await fetchBoth(`/api/ix/${WELL_KNOWN.ix_amsix_id}?depth=0`, t);
         const mirRec = extractData(mirror.body, 'mirror AMS-IX')[0];
         const upRec = extractData(upstream.body, 'upstream AMS-IX')[0];
 

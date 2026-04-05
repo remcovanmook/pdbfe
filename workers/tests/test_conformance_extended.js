@@ -72,11 +72,38 @@ async function fetchJSON(url, opts = {}) {
 /** @param {string} path */
 async function fetchMirror(path, opts) { return fetchJSON(`${PDBFE}${path}`, opts); }
 
-/** @param {string} path */
-async function fetchBoth(path) {
+/**
+ * Timestamp of the most recent upstream fetch. Used to space
+ * sequential upstream requests without adding fixed delays.
+ */
+let _lastUpstreamTs = 0;
+
+/**
+ * Minimum milliseconds between consecutive upstream PeeringDB requests.
+ */
+const UPSTREAM_SPACING_MS = 500;
+
+/**
+ * Fetches the same API path from both mirror and upstream PeeringDB.
+ * Spaces upstream requests to avoid rate limiting, and reports
+ * wall clock timing via the test diagnostic channel.
+ *
+ * @param {string} path
+ * @param {import('node:test').TestContext} [t] - Test context for timing diagnostics.
+ */
+async function fetchBoth(path, t) {
     const mirror = await fetchJSON(`${PDBFE}${path}`);
-    await delay(500);
+
+    // Rate-limit upstream: wait if last request was too recent
+    const gap = Date.now() - _lastUpstreamTs;
+    if (gap < UPSTREAM_SPACING_MS) await delay(UPSTREAM_SPACING_MS - gap);
+
     const upstream = await fetchJSON(`${PEERINGDB}${path}`);
+    _lastUpstreamTs = Date.now();
+
+    if (t) {
+        t.diagnostic(`mirror=${mirror.elapsed}ms  upstream=${upstream.elapsed}ms`);
+    }
     return { mirror, upstream };
 }
 
@@ -143,9 +170,9 @@ describe('Conformance: substring & prefix filters', { concurrency: 1 }, () => {
         }
     });
 
-    it('?name__contains= case sensitivity matches upstream', async () => {
+    it('?name__contains= case sensitivity matches upstream', async (t) => {
         // PeeringDB __contains is case-insensitive — verify mirror matches
-        const { mirror, upstream } = await fetchBoth('/api/net?name__contains=CLOUD&limit=5&depth=0');
+        const { mirror, upstream } = await fetchBoth('/api/net?name__contains=CLOUD&limit=5&depth=0', t);
         const mirData = extractData(mirror.body, 'mirror');
         const upData = extractData(upstream.body, 'upstream');
         // Should get results (case-insensitive) or both return 0
@@ -187,8 +214,8 @@ describe('Conformance: carrier/carrierfac/campus', { concurrency: 1 }, () => {
     // ── Schema tests ──
 
     for (const entity of ['carrier', 'carrierfac', 'campus']) {
-        it(`/api/${entity}?depth=0 — field names match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=0`);
+        it(`/api/${entity}?depth=0 — field names match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=5&depth=0`, t);
             if (upstream.body?._error) return; // upstream may not support these yet
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
@@ -201,8 +228,8 @@ describe('Conformance: carrier/carrierfac/campus', { concurrency: 1 }, () => {
                 `/${entity} mirror missing fields: ${missing.join(', ')}`);
         });
 
-        it(`/api/${entity} — field types match upstream`, async () => {
-            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=10&depth=0`);
+        it(`/api/${entity} — field types match upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=10&depth=0`, t);
             if (upstream.body?._error) return;
             const upData = extractData(upstream.body, `upstream/${entity}`);
             const mirData = extractData(mirror.body, `mirror/${entity}`);
@@ -399,9 +426,9 @@ describe('Conformance: as_set extended', { concurrency: 1 }, () => {
             `Multi-ASN as_set should return 400, got ${res.status}`);
     });
 
-    it('/api/as_set/<asn> value matches upstream', async () => {
+    it('/api/as_set/<asn> value matches upstream', async (t) => {
         const { mirror, upstream } = await fetchBoth(
-            `/api/as_set/${WELL_KNOWN.asn_cloudflare}`);
+            `/api/as_set/${WELL_KNOWN.asn_cloudflare}`, t);
         if (upstream.body?._error) return;
 
         const mirData = extractData(mirror.body, 'mirror as_set');
@@ -580,10 +607,10 @@ describe('Conformance: ordering', { concurrency: 1 }, () => {
             `Paging overlap detected: ${all.length} total but ${unique.size} unique`);
     });
 
-    it('ordering matches upstream sort direction', async () => {
+    it('ordering matches upstream sort direction', async (t) => {
         // Don't compare exact IDs — sync timing may cause different result sets.
         // Instead verify both use ascending ID order (the shared default).
-        const { mirror, upstream } = await fetchBoth('/api/net?limit=10&depth=0');
+        const { mirror, upstream } = await fetchBoth('/api/net?limit=10&depth=0', t);
         const mirIds = extractData(mirror.body, 'mirror').map(/** @param {any} r */ r => r.id);
         const upIds = extractData(upstream.body, 'upstream').map(/** @param {any} r */ r => r.id);
 
