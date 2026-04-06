@@ -14,6 +14,8 @@
  * header on API requests that need authenticated access.
  */
 
+import { AUTH_ORIGIN } from '/js/config.js';
+
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
 
@@ -22,25 +24,6 @@ let _cachedSid = null;
 
 /** @type {SessionData|null} Cached user profile for the current page load. */
 let _cachedUser = null;
-
-/**
- * Returns the auth worker origin. Derived from the current page's
- * origin by convention — the auth worker runs on a separate domain.
- * This should be configured to match the deployed auth worker URL.
- *
- * @returns {string} The auth worker origin URL.
- */
-function getAuthOrigin() {
-    // In production, this should be the auth worker's URL.
-    // For local dev, override via a <meta> tag or environment detection.
-    const meta = document.querySelector('meta[name="auth-origin"]');
-    if (meta && meta.getAttribute('content')) {
-        return meta.getAttribute('content');
-    }
-    // Default: assume auth worker is at pdbfe-auth on the same workers.dev account
-    // This will need to be updated when the actual deployment URL is known
-    return 'https://pdbfe-auth.remco-vanmook.workers.dev';
-}
 
 /**
  * Initialises the auth module. Should be called once during page boot.
@@ -128,7 +111,7 @@ export function logout() {
     // Redirect to auth worker logout to clean up KV
     // Pass the session ID as a Bearer token so the auth worker can delete it
     if (sid) {
-        window.location.href = `${getAuthOrigin()}/auth/logout`;
+        window.location.href = `${AUTH_ORIGIN}/auth/logout`;
     }
 }
 
@@ -141,7 +124,7 @@ export function logout() {
  */
 async function validateSession(sid) {
     try {
-        const response = await fetch(`${getAuthOrigin()}/auth/me`, {
+        const response = await fetch(`${AUTH_ORIGIN}/auth/me`, {
             headers: { 'Authorization': `Bearer ${sid}` },
         });
 
@@ -179,7 +162,7 @@ function renderAuthUI() {
             });
         }
     } else {
-        const loginUrl = `${getAuthOrigin()}/auth/login`;
+        const loginUrl = `${AUTH_ORIGIN}/auth/login`;
         container.innerHTML = `
             <a href="${loginUrl}" class="auth-link">Sign in with PeeringDB</a>
         `;
