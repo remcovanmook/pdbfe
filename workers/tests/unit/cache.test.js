@@ -210,10 +210,12 @@ describe("Negative cache in LRU", () => {
         cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, Date.now());
         cache.add("api/net/694", realData, { entityTag: "net" }, Date.now());
 
-        const negative = cache.get("api/net/999999");
-        const positive = cache.get("api/net/694");
-        assert.equal(negative.buf, EMPTY_ENVELOPE);
-        assert.notEqual(positive.buf, EMPTY_ENVELOPE);
+        const negEntry = cache.get("api/net/999999");
+        const negBuf = negEntry.buf;
+        const posEntry = cache.get("api/net/694");
+        const posBuf = posEntry.buf;
+        assert.equal(negBuf, EMPTY_ENVELOPE);
+        assert.notEqual(posBuf, EMPTY_ENVELOPE);
     });
 
     it("negative entry should expire after NEGATIVE_TTL", () => {
@@ -229,4 +231,36 @@ describe("Negative cache in LRU", () => {
     });
 });
 
+describe("Shared return object (zero-allocation)", () => {
+    it("consecutive get() calls should return the same object reference", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        cache.add("a", new Uint8Array([1]), {}, 1);
+        cache.add("b", new Uint8Array([2]), {}, 2);
 
+        const first = cache.get("a");
+        const second = cache.get("b");
+        assert.equal(first, second, "get() should return the same shared object");
+        // After second get(), the shared object contains b's data
+        assert.deepEqual(Array.from(second.buf), [2]);
+    });
+
+    it("callers must extract values before next get()", () => {
+        const cache = LRUCache(8, 1024 * 1024);
+        cache.add("x", new Uint8Array([10]), { tag: "x" }, 100);
+        cache.add("y", new Uint8Array([20]), { tag: "y" }, 200);
+
+        // Correct pattern: read fields before next get()
+        const entry = cache.get("x");
+        const xBuf = entry.buf;
+        const xMeta = entry.meta;
+
+        cache.get("y"); // overwrites _ret
+
+        // xBuf and xMeta still reference the correct underlying arrays
+        assert.deepEqual(Array.from(xBuf), [10]);
+        assert.equal(xMeta.tag, "x");
+
+        // But entry.buf now points to y's data (shared object was overwritten)
+        assert.deepEqual(Array.from(entry.buf), [20]);
+    });
+});

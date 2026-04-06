@@ -12,18 +12,36 @@ import { API_ORIGIN } from './config.js';
 const API_BASE = API_ORIGIN;
 
 /**
- * In-memory response cache. Maps URL → { data, timestamp }.
- * Entries expire after CACHE_TTL_MS milliseconds.
+ * In-memory response cache. Maps cache key → { data, timestamp }.
+ * Entries are served stale during the SWR window and refreshed
+ * in the background.
  * @type {Map<string, {data: any, ts: number}>}
  */
 const _cache = new Map();
 
-/** Cache entry lifetime in milliseconds. */
+/**
+ * Set of cache keys currently being revalidated in the background.
+ * Prevents duplicate concurrent fetches for the same stale entry.
+ * @type {Set<string>}
+ */
+const _pending = new Set();
+
+/** Fresh window — cached data returned without revalidation. */
 const CACHE_TTL_MS = 60_000;
 
+/** Stale-while-revalidate window — stale data returned, background refresh fired. */
+const CACHE_SWR_MS = 300_000;
+
 /**
- * Performs a cached fetch against the API. Returns cached data if the
- * entry exists and hasn't expired, otherwise fetches fresh data.
+ * Performs a cached fetch with stale-while-revalidate semantics.
+ *
+ * - **Fresh** (< 60s): returns cached data, no network request.
+ * - **Stale** (60s–5min): returns cached data immediately, fires a
+ *   background fetch to update the cache for subsequent calls.
+ * - **Expired** (> 5min) or **first request**: blocks on fetch.
+ *
+ * Cache keys include auth state so authenticated and anonymous
+ * responses are stored separately.
  *
  * @param {string} path - API path (e.g. "/api/net/694").
  * @param {Record<string, string|number>} [params] - Query parameters.
@@ -33,17 +51,40 @@ const CACHE_TTL_MS = 60_000;
 async function cachedFetch(path, params) {
     const url = buildURL(path, params);
     const now = Date.now();
-    // Include auth state in the cache key so authenticated and anonymous
-    // responses are stored separately. Prevents stale anonymous data
-    // (e.g. missing poc_set) from being served after login.
     const sid = getSessionId();
     const cacheKey = sid ? `auth:${url}` : url;
 
     const cached = _cache.get(cacheKey);
-    if (cached && (now - cached.ts) < CACHE_TTL_MS) {
-        return cached.data;
+    if (cached) {
+        const age = now - cached.ts;
+
+        // Fresh: return immediately
+        if (age < CACHE_TTL_MS) {
+            return cached.data;
+        }
+
+        // Stale but within SWR window: return stale, revalidate in background
+        if (age < CACHE_SWR_MS) {
+            revalidate(cacheKey, url, sid);
+            return cached.data;
+        }
     }
 
+    // Expired or first request: blocking fetch
+    return freshFetch(cacheKey, url, sid);
+}
+
+/**
+ * Fetches fresh data from the API and updates the cache.
+ * Used for both blocking fetches and background revalidation.
+ *
+ * @param {string} cacheKey - Cache key for storage.
+ * @param {string} url - Full API URL to fetch.
+ * @param {string|null} sid - Session ID for auth header, or null.
+ * @returns {Promise<any>} Parsed JSON response body.
+ * @throws {Error} On non-2xx status or network failure.
+ */
+async function freshFetch(cacheKey, url, sid) {
     /** @type {RequestInit} */
     const init = {};
     if (sid) {
@@ -56,8 +97,26 @@ async function cachedFetch(path, params) {
     }
 
     const data = await res.json();
-    _cache.set(cacheKey, { data, ts: now });
+    _cache.set(cacheKey, { data, ts: Date.now() });
     return data;
+}
+
+/**
+ * Fires a background fetch to refresh a stale cache entry.
+ * Deduplicates via _pending — only one in-flight revalidation
+ * per cache key at a time. Errors are silently swallowed since
+ * the caller already received stale data.
+ *
+ * @param {string} cacheKey - Cache key to revalidate.
+ * @param {string} url - Full API URL to fetch.
+ * @param {string|null} sid - Session ID for auth header, or null.
+ */
+function revalidate(cacheKey, url, sid) {
+    if (_pending.has(cacheKey)) return;
+    _pending.add(cacheKey);
+    freshFetch(cacheKey, url, sid)
+        .catch(() => {})
+        .finally(() => _pending.delete(cacheKey));
 }
 
 /**
