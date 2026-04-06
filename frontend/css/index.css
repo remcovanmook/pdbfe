@@ -98,7 +98,7 @@ a:hover {
     position: sticky;
     top: 0;
     z-index: 100;
-    height: var(--header-height);
+    min-height: var(--header-height);
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -111,10 +111,11 @@ a:hover {
 .site-header__inner {
     display: flex;
     align-items: center;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     width: 100%;
     max-width: var(--content-max);
     margin: 0 auto;
+    flex-wrap: wrap;
 }
 
 .site-logo {
@@ -136,17 +137,11 @@ body[data-page="home"] .search-wrapper {
 }
 
 body[data-page="home"] .site-header__inner {
-    justify-content: center;
-    position: relative;
+    justify-content: space-between;
 }
 
 body[data-page="home"] .site-logo {
     font-size: 1.5rem;
-}
-
-body[data-page="home"] .site-header__inner nav {
-    position: absolute;
-    right: 0;
 }
 
 /* ── Header nav / auth UI ─────────────────────────────────────── */
@@ -154,7 +149,7 @@ body[data-page="home"] .site-header__inner nav {
 .site-header__nav {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     margin-left: auto;
     white-space: nowrap;
 }
@@ -184,6 +179,16 @@ body[data-page="home"] .site-header__inner nav {
     background: var(--bg-hover);
     border-color: var(--accent-muted);
     color: var(--accent-hover);
+}
+
+.header-external-link {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+}
+
+.header-external-link:hover {
+    color: var(--text-secondary);
 }
 
 /* ── API Key modal ─────────────────────────────────────────────── */
@@ -217,7 +222,7 @@ body[data-page="home"] .site-header__inner nav {
 }
 
 .td-mono {
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
     font-size: 0.8125rem;
     color: var(--text-muted);
 }
@@ -231,8 +236,7 @@ body[data-page="home"] .site-header__inner nav {
     font-size: 0.875rem;
     color: var(--text-primary);
     outline: none;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
+    transition: border-color var(--transition-fast);
 }
 
 .key-label-input:focus {
@@ -611,7 +615,6 @@ body[data-page="home"] .site-header__inner nav {
 }
 
 .data-table td.td-mono {
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
     font-size: 0.75rem;
     letter-spacing: 0;
 }
@@ -692,6 +695,7 @@ body[data-page="home"] .site-header__inner nav {
     font-size: 0.75rem;
     color: var(--text-muted);
 }
+
 /* ── Homepage layout ───────────────────────────────────────────── */
 
 .home-heading {
@@ -752,6 +756,7 @@ body[data-page="home"] .site-header__inner nav {
     position: relative;
     max-width: 600px;
     margin: 0 auto;
+    padding: 0 var(--space-md);
 }
 
 .home-search__input {
@@ -936,7 +941,7 @@ body[data-page="home"] .site-header__inner nav {
 }
 
 .site-footer__sync-time--stale {
-    color: #e74c3c;
+    color: var(--status-error);
 }
 
 .site-footer__heading {
@@ -1116,7 +1121,64 @@ body[data-page="home"] .site-header__inner nav {
     }
 
     .site-header {
-        padding: 0 var(--space-md);
+        padding: var(--space-sm) var(--space-md);
+    }
+
+    /* Two-row header on mobile:
+       Row 1: logo (order 1) + nav/auth (order 2)
+       Row 2: search bar full-width (order 3) */
+    .site-header__inner {
+        gap: var(--space-sm);
+    }
+
+    .site-logo {
+        order: 1;
+    }
+
+    .site-header__nav {
+        order: 2;
+        gap: var(--space-xs);
+    }
+
+    .search-wrapper {
+        order: 3;
+        flex: 1 0 100%;
+        max-width: none;
+    }
+
+    /* On mobile the dropdown must break out of the sticky header's
+       stacking context so it overlays main content. Use fixed
+       positioning anchored below the header. */
+    .search-dropdown {
+        position: fixed;
+        top: auto;
+        left: var(--space-md);
+        right: var(--space-md);
+        max-height: 60vh;
+    }
+
+    .search-input {
+        font-size: 0.8125rem;
+        height: 32px;
+    }
+
+    .search-input::placeholder {
+        font-size: 0.75rem;
+    }
+
+    /* Collapse user name on narrow screens, keep buttons */
+    .auth-user {
+        display: none;
+    }
+
+    .auth-link {
+        font-size: 0.6875rem;
+        padding: var(--space-xs) var(--space-sm);
+    }
+
+    /* Hide the peeringdb.com external link on mobile */
+    .header-external-link {
+        display: none;
     }
 
     .main-content {
@@ -1166,6 +1228,14 @@ body[data-page="home"] .site-header__inner nav {
 
     .detail-header__title {
         font-size: 1.25rem;
+    }
+
+    .site-logo {
+        font-size: 0.9375rem;
+    }
+
+    body[data-page="home"] .site-logo {
+        font-size: 1.125rem;
     }
 
     /* Compact table cells for very narrow screens */
