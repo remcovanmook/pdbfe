@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 // If running as a separate file, paste the config/helpers block from test_conformance.js
 // or extract them into a shared module.
 
-const PDBFE = (process.env.PDBFE_URL || 'https://pdbfe-api.remco-vanmook.workers.dev').replace(/\/$/, '');
+const PDBFE = (process.env.PDBFE_URL || 'http://localhost:8787').replace(/\/$/, '');
 const PEERINGDB = 'https://www.peeringdb.com';
 const PDB_API_KEY = process.env.PEERINGDB_API_KEY || '';
 

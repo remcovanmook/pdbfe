@@ -2,11 +2,11 @@
  * @fileoverview Frontend configuration.
  *
  * Single source of truth for environment-specific settings.
- * Update these values per deployment environment.
+ * Copy this file to config.js and update the values for your deployment.
  */
 
 /** Origin of the pdbfe-auth worker (no trailing slash). */
-export const AUTH_ORIGIN = 'https://pdbfe-auth.remco-vanmook.workers.dev';
+export const AUTH_ORIGIN = 'https://pdbfe-auth.<your-subdomain>.workers.dev';
 
 /** Origin of the pdbfe-api worker (empty string = same-origin proxy via Pages). */
-export const API_ORIGIN = 'https://pdbfe-api.remco-vanmook.workers.dev';
+export const API_ORIGIN = 'https://pdbfe-api.<your-subdomain>.workers.dev';

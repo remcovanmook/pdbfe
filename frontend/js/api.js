@@ -5,8 +5,8 @@
  * Attaches OAuth session tokens when the user is authenticated.
  */
 
-import { getSessionId } from '/js/auth.js';
-import { API_ORIGIN } from '/js/config.js';
+import { getSessionId } from './auth.js';
+import { API_ORIGIN } from './config.js';
 
 /** Base URL for the API — configured in config.js. */
 const API_BASE = API_ORIGIN;
