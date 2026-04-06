@@ -281,11 +281,17 @@ async function exchangeCode(code, env) {
         client_secret: env.OAUTH_CLIENT_SECRET,
     });
 
+    // PeeringDB's WAF blocks Cloudflare Worker subrequests that lack an
+    // Authorization header. We use a PeeringDB API key in the header to
+    // satisfy the WAF, while the token endpoint reads OAuth client
+    // credentials from the POST body.
+
     try {
         const response = await fetch(PDB_TOKEN_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`,
                 'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
             },
             body: body.toString(),

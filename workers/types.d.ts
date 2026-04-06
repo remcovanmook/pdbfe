@@ -45,6 +45,7 @@ interface PdbAuthEnv {
     OAUTH_CLIENT_SECRET: string;
     OAUTH_REDIRECT_URI: string;
     FRONTEND_ORIGIN: string;
+    PEERINGDB_API_KEY: string;
 }
 
 /**
