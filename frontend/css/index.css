@@ -106,7 +106,6 @@ a:hover {
     padding: 0 var(--space-lg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    overflow-x: hidden;
 }
 
 .site-header__inner {
@@ -1146,6 +1145,17 @@ body[data-page="home"] .site-logo {
         order: 3;
         flex: 1 0 100%;
         max-width: none;
+    }
+
+    /* On mobile the dropdown must break out of the sticky header's
+       stacking context so it overlays main content. Use fixed
+       positioning anchored below the header. */
+    .search-dropdown {
+        position: fixed;
+        top: auto;
+        left: var(--space-md);
+        right: var(--space-md);
+        max-height: 60vh;
     }
 
     .search-input {
