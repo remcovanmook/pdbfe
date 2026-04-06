@@ -578,6 +578,9 @@ async function main() {
         'Reqs'.padEnd(6) +
         'Wall'.padEnd(9) +
         'RTT⌀'.padEnd(8) +
+        'RTT P50'.padEnd(8) +
+        'RTT P95'.padEnd(8) +
+        'RTT max'.padEnd(8) +
         'VE⌀'.padEnd(8) +
         'VE P50'.padEnd(8) +
         'VE P95'.padEnd(8) +
@@ -588,7 +591,7 @@ async function main() {
         'MISS'.padEnd(6) +
         'Errs'
     );
-    console.log('─'.repeat(112));
+    console.log('─'.repeat(136));
 
     for (const burst of burstScenarios) {
         const urls = burst.urls.map(p => `${BASE_URL}${p}`);
@@ -600,6 +603,9 @@ async function main() {
         const ves = results.map(r => r.server.isolateMs).filter(v => v >= 0).sort((a, b) => a - b);
 
         const rttAvg = rtts.reduce((a, b) => a + b, 0) / rtts.length;
+        const rttP50 = percentile(rtts, 0.50);
+        const rttP95 = percentile(rtts, 0.95);
+        const rttMax = rtts[rtts.length - 1];
         const veAvg = ves.length > 0 ? ves.reduce((a, b) => a + b, 0) / ves.length : -1;
         const veP50 = ves.length > 0 ? percentile(ves, 0.50) : -1;
         const veP95 = ves.length > 0 ? percentile(ves, 0.95) : -1;
@@ -616,6 +622,9 @@ async function main() {
             String(urls.length).padEnd(6) +
             fmtMs(wallMs).padEnd(9) +
             fmtMs(rttAvg).padEnd(8) +
+            fmtMs(rttP50).padEnd(8) +
+            fmtMs(rttP95).padEnd(8) +
+            fmtMs(rttMax).padEnd(8) +
             fmtMs(veAvg).padEnd(8) +
             fmtMs(veP50).padEnd(8) +
             fmtMs(veP95).padEnd(8) +
