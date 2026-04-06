@@ -106,6 +106,7 @@ a:hover {
     padding: 0 var(--space-lg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    overflow-x: hidden;
 }
 
 .site-header__inner {
@@ -125,7 +126,6 @@ a:hover {
     white-space: nowrap;
     letter-spacing: -0.02em;
     transform: scaleX(-1);
-    flex-shrink: 0;
 }
 
 .site-logo span {
@@ -153,7 +153,6 @@ body[data-page="home"] .site-logo {
     gap: var(--space-sm);
     margin-left: auto;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .auth-container {
@@ -749,6 +748,7 @@ body[data-page="home"] .site-logo {
     position: relative;
     max-width: 600px;
     margin: 0 auto;
+    padding: 0 var(--space-md);
 }
 
 .home-search__input {
