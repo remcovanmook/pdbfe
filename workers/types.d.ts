@@ -12,6 +12,7 @@
 interface PdbApiEnv {
     PDB: D1Database;
     SESSIONS: KVNamespace;
+    USERS: KVNamespace;
     ADMIN_SECRET?: string;
 }
 
@@ -39,10 +40,12 @@ interface PdbSyncEnv {
  */
 interface PdbAuthEnv {
     SESSIONS: KVNamespace;
+    USERS: KVNamespace;
     OAUTH_CLIENT_ID: string;
     OAUTH_CLIENT_SECRET: string;
     OAUTH_REDIRECT_URI: string;
     FRONTEND_ORIGIN: string;
+    PEERINGDB_API_KEY: string;
 }
 
 /**
@@ -68,6 +71,55 @@ interface SessionData {
     /** Network affiliations with CRUD permission bitmasks (requires 'networks' scope). */
     networks: Array<{ perms: number; asn: number; name: string; id: number }>;
     /** ISO 8601 timestamp when the session was created. */
+    created_at: string;
+}
+
+/**
+ * Per-user record stored in the USERS KV namespace.
+ * Key format: `user:<peeringdb_user_id>`.
+ */
+interface UserRecord {
+    /** PeeringDB user ID (same as SessionData.id). */
+    id: number;
+    /** Display name. */
+    name: string;
+    /** Email address. */
+    email: string;
+    /** API keys owned by this user (stores prefix + metadata, never the full key). */
+    api_keys: ApiKeyMeta[];
+    /** ISO 8601 timestamp of record creation. */
+    created_at: string;
+    /** ISO 8601 timestamp of last modification. */
+    updated_at: string;
+}
+
+/**
+ * API key metadata stored in the user record.
+ * The full key is only returned once at creation time — the user
+ * record stores only the 4-character prefix for display purposes.
+ */
+interface ApiKeyMeta {
+    /** Key identifier (first 8 hex chars of the full key). */
+    id: string;
+    /** User-assigned label (e.g. "curl scripts"). */
+    label: string;
+    /** First 4 hex characters of the key, for display (e.g. "a1b2"). */
+    prefix: string;
+    /** ISO 8601 timestamp of key creation. */
+    created_at: string;
+}
+
+/**
+ * Reverse-index entry stored in USERS KV for API key lookups.
+ * Key format: `apikey:<full_key>`. Looked up by pdbfe-api to
+ * verify incoming Api-Key headers.
+ */
+interface ApiKeyEntry {
+    /** PeeringDB user ID that owns this key. */
+    user_id: number;
+    /** User-assigned label. */
+    label: string;
+    /** ISO 8601 timestamp of key creation. */
     created_at: string;
 }
 

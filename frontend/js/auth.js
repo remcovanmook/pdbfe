@@ -34,23 +34,22 @@ let _cachedUser = null;
  * 4. Updates the header UI
  */
 export async function initAuth() {
-    // Check for session token in URL fragment (from OAuth callback redirect)
-    const hash = window.location.hash;
-    if (hash) {
-        const params = new URLSearchParams(hash.slice(1));
+    // Check for session token in URL query params (from OAuth callback redirect).
+    // Query params are used instead of URL fragments because Cloudflare Access
+    // strips fragments during its auth redirect chain.
+    const urlParams = new URLSearchParams(window.location.search);
 
-        const sid = params.get('sid');
-        if (sid) {
-            localStorage.setItem(STORAGE_KEY, sid);
-            // Clean the fragment from the URL without triggering a page reload
-            history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
+    const sid = urlParams.get('sid');
+    if (sid) {
+        localStorage.setItem(STORAGE_KEY, sid);
+        // Clean the query param from the URL without triggering a page reload
+        history.replaceState(null, '', window.location.pathname);
+    }
 
-        const authError = params.get('auth_error');
-        if (authError) {
-            console.warn('Auth error:', decodeURIComponent(authError));
-            history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
+    const authError = urlParams.get('auth_error');
+    if (authError) {
+        console.warn('Auth error:', authError);
+        history.replaceState(null, '', window.location.pathname);
     }
 
     // Load cached session ID
@@ -152,6 +151,7 @@ function renderAuthUI() {
     if (_cachedUser) {
         container.innerHTML = `
             <span class="auth-user">${escapeHtml(_cachedUser.given_name || _cachedUser.name)}</span>
+            <a href="/account" class="auth-link" data-link>Account</a>
             <a href="#" id="auth-logout" class="auth-link">Sign out</a>
         `;
         const logoutLink = document.getElementById('auth-logout');

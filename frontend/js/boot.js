@@ -16,6 +16,7 @@ import { renderCarrier } from '/js/pages/carrier.js';
 import { renderCampus } from '/js/pages/campus.js';
 import { renderAbout } from '/js/pages/about.js';
 import { renderAsn } from '/js/pages/asn.js';
+import { renderAccount } from '/js/pages/account.js';
 import { fetchSyncStatus } from '/js/api.js';
 import { attachTypeahead } from '/js/typeahead.js';
 import { initAuth } from '/js/auth.js';
@@ -30,6 +31,7 @@ addRoute('/org/:id', renderOrg);
 addRoute('/carrier/:id', renderCarrier);
 addRoute('/campus/:id', renderCampus);
 addRoute('/asn/:asn', renderAsn);
+addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 
 // Expose navigate for the homepage search box
@@ -39,13 +41,14 @@ window.__router = { navigate };
 const headerSearch = /** @type {HTMLInputElement} */ (document.getElementById('header-search'));
 attachTypeahead(headerSearch);
 
-// Boot the router
-initRouter(document.getElementById('app'));
-
-// Bootstrap OAuth session state (non-blocking)
-initAuth().catch(() => {
+// Bootstrap OAuth session state before routing, so isAuthenticated()
+// returns the correct value when page handlers run.
+await initAuth().catch(() => {
     // Non-critical — auth UI will show "Sign in" on failure
 });
+
+// Boot the router (dispatches the current URL immediately)
+initRouter(document.getElementById('app'));
 
 // Fetch and display sync status in the footer
 fetchSyncStatus().then(sync => {

@@ -281,17 +281,26 @@ async function exchangeCode(code, env) {
         client_secret: env.OAUTH_CLIENT_SECRET,
     });
 
+    // PeeringDB's WAF blocks Cloudflare Worker subrequests that lack an
+    // Authorization header. We use a PeeringDB API key in the header to
+    // satisfy the WAF, while the token endpoint reads OAuth client
+    // credentials from the POST body.
+
     try {
         const response = await fetch(PDB_TOKEN_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`,
+                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
+            },
             body: body.toString(),
         });
 
         if (!response.ok) {
             const text = await response.text();
             console.error(`Token exchange failed (${response.status}):`, text);
-            return { ok: false, error: `Token endpoint returned ${response.status}` };
+            return { ok: false, error: `Token endpoint returned ${response.status}: ${text}` };
         }
 
         const data = /** @type {{access_token: string, token_type: string}} */ (await response.json());
@@ -316,7 +325,10 @@ async function exchangeCode(code, env) {
 async function fetchProfile(accessToken) {
     try {
         const response = await fetch(PDB_PROFILE_URL, {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
+            },
         });
 
         if (!response.ok) {
@@ -333,11 +345,11 @@ async function fetchProfile(accessToken) {
 
 /**
  * Builds a redirect response back to the frontend origin.
- * On success, appends the session ID as a URL fragment (#sid=...).
- * On error, appends the error message as a fragment (#auth_error=...).
+ * On success, appends the session ID as a query parameter (?sid=...).
+ * On error, appends the error message as a query parameter (?auth_error=...).
  *
- * Using URL fragments ensures the session ID is not sent to any
- * server as part of the URL — it stays client-side only.
+ * Query parameters survive Cloudflare Access redirect chains, while
+ * URL fragments (#) are stripped by Access during its auth flow.
  *
  * @param {string} frontendOrigin - The frontend origin URL.
  * @param {string|null} sid - The session ID on success, or null.
@@ -347,9 +359,9 @@ async function fetchProfile(accessToken) {
 function redirectToFrontend(frontendOrigin, sid, error) {
     let location = frontendOrigin;
     if (sid) {
-        location += `/#sid=${sid}`;
+        location += `/?sid=${sid}`;
     } else if (error) {
-        location += `/#auth_error=${encodeURIComponent(error)}`;
+        location += `/?auth_error=${encodeURIComponent(error)}`;
     }
 
     return new Response(null, {
