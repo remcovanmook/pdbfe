@@ -98,7 +98,7 @@ a:hover {
     position: sticky;
     top: 0;
     z-index: 100;
-    height: var(--header-height);
+    min-height: var(--header-height);
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -111,10 +111,11 @@ a:hover {
 .site-header__inner {
     display: flex;
     align-items: center;
-    gap: var(--space-lg);
+    gap: var(--space-md);
     width: 100%;
     max-width: var(--content-max);
     margin: 0 auto;
+    flex-wrap: wrap;
 }
 
 .site-logo {
@@ -124,6 +125,7 @@ a:hover {
     white-space: nowrap;
     letter-spacing: -0.02em;
     transform: scaleX(-1);
+    flex-shrink: 0;
 }
 
 .site-logo span {
@@ -136,17 +138,11 @@ body[data-page="home"] .search-wrapper {
 }
 
 body[data-page="home"] .site-header__inner {
-    justify-content: center;
-    position: relative;
+    justify-content: space-between;
 }
 
 body[data-page="home"] .site-logo {
     font-size: 1.5rem;
-}
-
-body[data-page="home"] .site-header__inner nav {
-    position: absolute;
-    right: 0;
 }
 
 /* ── Header nav / auth UI ─────────────────────────────────────── */
@@ -154,9 +150,10 @@ body[data-page="home"] .site-header__inner nav {
 .site-header__nav {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     margin-left: auto;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .auth-container {
@@ -1116,7 +1113,40 @@ body[data-page="home"] .site-header__inner nav {
     }
 
     .site-header {
-        padding: 0 var(--space-md);
+        padding: var(--space-xs) var(--space-md);
+    }
+
+    /* Search bar: shrink to fit, don't force wrap */
+    .search-wrapper {
+        min-width: 0;
+        flex: 1 1 120px;
+    }
+
+    .search-input {
+        font-size: 0.8125rem;
+    }
+
+    .search-input::placeholder {
+        font-size: 0.75rem;
+    }
+
+    /* Collapse user name on narrow screens, keep buttons */
+    .auth-user {
+        display: none;
+    }
+
+    .auth-link {
+        font-size: 0.6875rem;
+        padding: var(--space-xs) var(--space-xs);
+    }
+
+    .site-header__nav {
+        gap: var(--space-xs);
+    }
+
+    /* Hide the peeringdb.com external link on mobile */
+    .site-header__nav > a[target="_blank"] {
+        display: none;
     }
 
     .main-content {
@@ -1166,6 +1196,14 @@ body[data-page="home"] .site-header__inner nav {
 
     .detail-header__title {
         font-size: 1.25rem;
+    }
+
+    .site-logo {
+        font-size: 0.9375rem;
+    }
+
+    body[data-page="home"] .site-logo {
+        font-size: 1.125rem;
     }
 
     /* Compact table cells for very narrow screens */
