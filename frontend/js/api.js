@@ -2,7 +2,10 @@
  * @fileoverview API client for the PeeringDB mirror.
  * Fetches data from the pdbfe-api worker with client-side response caching
  * to prevent redundant requests during back/forward navigation.
+ * Attaches OAuth session tokens when the user is authenticated.
  */
+
+import { getSessionId } from '/js/auth.js';
 
 /** Base URL for the API — empty string uses the /api/* same-origin proxy. */
 const API_BASE = '';
@@ -35,7 +38,14 @@ async function cachedFetch(path, params) {
         return cached.data;
     }
 
-    const res = await fetch(url);
+    /** @type {RequestInit} */
+    const init = {};
+    const sid = getSessionId();
+    if (sid) {
+        init.headers = { 'Authorization': `Bearer ${sid}` };
+    }
+
+    const res = await fetch(url, init);
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }

@@ -149,6 +149,43 @@ body[data-page="home"] .site-header__inner nav {
     right: 0;
 }
 
+/* ── Header nav / auth UI ─────────────────────────────────────── */
+
+.site-header__nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.auth-container {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.8125rem;
+}
+
+.auth-user {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.auth-link {
+    font-size: 0.75rem;
+    color: var(--accent);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.auth-link:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-muted);
+    color: var(--accent-hover);
+}
+
 /* ── Search ────────────────────────────────────────────────────── */
 
 .search-wrapper {

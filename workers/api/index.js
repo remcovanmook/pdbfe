@@ -11,7 +11,7 @@ import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './h
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, enforceAnonFilter } from './entities.js';
 import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
 import { putL2 } from './l2cache.js';
-import { extractApiKey, verifyApiKey } from '../core/auth.js';
+import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
@@ -121,11 +121,19 @@ async function handleSyncStatus(db) {
 async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
 
-    // Determine authentication status. The stub verifyApiKey() always
-    // returns false — when KV-based auth is added, this becomes the
-    // control point for restricted entity access.
+    // Determine authentication status. Two paths:
+    //   1. API-Key header (PeeringDB convention) — stub, always false for now
+    //   2. Session ID (from Bearer token or cookie) → KV lookup
     const apiKey = extractApiKey(request);
-    const authenticated = apiKey !== null && verifyApiKey(apiKey);
+    let authenticated = apiKey !== null && verifyApiKey(apiKey);
+
+    if (!authenticated) {
+        const sid = extractSessionId(request);
+        if (sid) {
+            const session = await resolveSession(env.SESSIONS, sid);
+            authenticated = session !== null;
+        }
+    }
 
     // Create a D1 session for read replication. "first-unconstrained" allows
     // queries to hit any replica (including the primary). This is optimal for
