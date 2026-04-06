@@ -1113,17 +1113,34 @@ body[data-page="home"] .site-logo {
     }
 
     .site-header {
-        padding: var(--space-xs) var(--space-md);
+        padding: var(--space-sm) var(--space-md);
     }
 
-    /* Search bar: shrink to fit, don't force wrap */
+    /* Two-row header on mobile:
+       Row 1: logo (order 1) + nav/auth (order 2)
+       Row 2: search bar full-width (order 3) */
+    .site-header__inner {
+        gap: var(--space-sm);
+    }
+
+    .site-logo {
+        order: 1;
+    }
+
+    .site-header__nav {
+        order: 2;
+        gap: var(--space-xs);
+    }
+
     .search-wrapper {
-        min-width: 0;
-        flex: 1 1 120px;
+        order: 3;
+        flex: 1 0 100%;
+        max-width: none;
     }
 
     .search-input {
         font-size: 0.8125rem;
+        height: 32px;
     }
 
     .search-input::placeholder {
@@ -1137,11 +1154,7 @@ body[data-page="home"] .site-logo {
 
     .auth-link {
         font-size: 0.6875rem;
-        padding: var(--space-xs) var(--space-xs);
-    }
-
-    .site-header__nav {
-        gap: var(--space-xs);
+        padding: var(--space-xs) var(--space-sm);
     }
 
     /* Hide the peeringdb.com external link on mobile */
