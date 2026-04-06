@@ -7,16 +7,22 @@
  * times to measure cold vs warm cache behaviour.
  *
  * Reports both client-side round-trip latency and server-side isolate
- * processing time from the X-Timer, X-Cache, X-Isolate-ID, and
- * X-Served-By response headers set by the API worker.
+ * processing time from the X-Timer, X-Cache, X-Cache-Hits,
+ * X-Isolate-ID, and X-Served-By response headers set by the API worker.
+ *
+ * Cache tiers reported by the worker:
+ *   L1   — In-memory per-isolate LRU cache hit
+ *   L2   — R2-backed second-level cache hit
+ *   MISS — Cache miss, served from D1 database
  *
  * Usage:
- *   node workers/tests/loadtest.js [--base-url URL] [--concurrency N] [--rounds N]
+ *   node workers/tests/loadtest.js [--base-url URL] [--concurrency N] [--rounds N] [--duration S]
  *
  * Defaults:
- *   --base-url   https://pdbfe-api.remco-vanmook.workers.dev
+ *   --base-url    https://pdbfe-api.remco-vanmook.workers.dev
  *   --concurrency 10
  *   --rounds      3
+ *   --duration    30
  */
 
 const BASE_URL = process.argv.includes('--base-url')
@@ -31,12 +37,17 @@ const ROUNDS = process.argv.includes('--rounds')
     ? parseInt(process.argv[process.argv.indexOf('--rounds') + 1], 10)
     : 3;
 
+const DURATION_S = process.argv.includes('--duration')
+    ? parseInt(process.argv[process.argv.indexOf('--duration') + 1], 10)
+    : 30;
+
 // ── Scenario definitions ─────────────────────────────────────────
 
 /**
  * @typedef {Object} Scenario
  * @property {string} name - Human-readable label.
  * @property {string} path - API path with query string.
+ * @property {number} [expectStatus] - Expected HTTP status (default 200).
  * @property {function(any): string|null} [validate] - Returns error string or null.
  */
 
@@ -191,8 +202,8 @@ const SCENARIOS = [
  *
  * @typedef {Object} ServerMetrics
  * @property {number} isolateMs - Worker isolate processing time (VE value from X-Timer).
- * @property {string} cache - L1 cache status ("HIT" or "MISS").
- * @property {number} cacheHits - Number of times this key has been served from cache.
+ * @property {string} cache - Cache tier: "L1" (in-memory), "L2" (R2), or "MISS" (D1).
+ * @property {number} cacheHits - Number of times this L1 key has been served.
  * @property {string} isolateId - 8-char hex isolate identifier.
  * @property {string} colo - Cloudflare colo code (e.g. "AMS", "FRA").
  */
@@ -201,8 +212,8 @@ const SCENARIOS = [
 
 /**
  * Parses server-side metrics from the API worker response headers.
- * Reads X-Timer (format: S{epoch},VS0,VE{ms}), X-Cache, X-Cache-Hits,
- * X-Isolate-ID, and X-Served-By (format: cache-{colo}-pdbfe-api).
+ * Reads X-Timer (format: S{epoch},VS0,VE{ms}), X-Cache (L1|L2|MISS),
+ * X-Cache-Hits, X-Isolate-ID, and X-Served-By.
  *
  * @param {Headers} headers - Response headers.
  * @returns {ServerMetrics}
@@ -304,6 +315,73 @@ function percentile(sorted, p) {
     return sorted[Math.floor(sorted.length * p)] ?? 0;
 }
 
+// ── Sustained load: endpoint pool ────────────────────────────────
+
+/**
+ * Pool of API paths exercised during the sustained throughput phase.
+ * Covers all query categories: lookups, filters, depth expansion,
+ * JOINs, COUNTs, and 404s. Each worker picks a random path per
+ * request so the load pattern resembles real traffic.
+ *
+ * @type {{path: string, expectStatus: number}[]}
+ */
+const SUSTAINED_POOL = [
+    // Entity lookups
+    { path: '/api/net/694', expectStatus: 200 },
+    { path: '/api/net/20', expectStatus: 200 },
+    { path: '/api/net/4775', expectStatus: 200 },
+    { path: '/api/net/1', expectStatus: 200 },
+    { path: '/api/ix/26', expectStatus: 200 },
+    { path: '/api/ix/1', expectStatus: 200 },
+    { path: '/api/ix/42', expectStatus: 200 },
+    { path: '/api/fac/18', expectStatus: 200 },
+    { path: '/api/fac/1', expectStatus: 200 },
+    { path: '/api/org/2634', expectStatus: 200 },
+    { path: '/api/org/14', expectStatus: 200 },
+
+    // Filtered lists
+    { path: '/api/net?country=NL&limit=50', expectStatus: 200 },
+    { path: '/api/net?country=US&limit=50', expectStatus: 200 },
+    { path: '/api/net?country=DE&limit=50', expectStatus: 200 },
+    { path: '/api/net?country=GB&limit=50', expectStatus: 200 },
+    { path: '/api/net?asn=13335', expectStatus: 200 },
+    { path: '/api/net?asn=15169', expectStatus: 200 },
+    { path: '/api/net?name__contains=cloud&limit=20', expectStatus: 200 },
+    { path: '/api/net?name__contains=telecom&limit=20', expectStatus: 200 },
+    { path: '/api/fac?city__contains=amsterdam&limit=50', expectStatus: 200 },
+    { path: '/api/fac?country=US&limit=50', expectStatus: 200 },
+    { path: '/api/ix?country=US&limit=50', expectStatus: 200 },
+    { path: '/api/ix?region_continent=Europe&limit=50', expectStatus: 200 },
+
+    // Depth expansion
+    { path: '/api/net/694?depth=1', expectStatus: 200 },
+    { path: '/api/net/694?depth=2', expectStatus: 200 },
+    { path: '/api/net/20?depth=2', expectStatus: 200 },
+    { path: '/api/fac/18?depth=2', expectStatus: 200 },
+    { path: '/api/ix/26?depth=2', expectStatus: 200 },
+
+    // JOINs
+    { path: '/api/netixlan?ix_id=26&limit=50', expectStatus: 200 },
+    { path: '/api/netixlan?ix_id=171&limit=50', expectStatus: 200 },
+    { path: '/api/netfac?fac_id=18&limit=50', expectStatus: 200 },
+
+    // Large results
+    { path: '/api/net?limit=250', expectStatus: 200 },
+    { path: '/api/fac?limit=250', expectStatus: 200 },
+    { path: '/api/netixlan?ix_id=26', expectStatus: 200 },
+
+    // COUNTs
+    { path: '/api/net?limit=0', expectStatus: 200 },
+    { path: '/api/ix?limit=0', expectStatus: 200 },
+    { path: '/api/fac?limit=0', expectStatus: 200 },
+    { path: '/api/org?limit=0', expectStatus: 200 },
+
+    // 404s
+    { path: '/api/net/999999', expectStatus: 404 },
+    { path: '/api/ix/999999', expectStatus: 404 },
+    { path: '/api/as_set/999999', expectStatus: 404 },
+];
+
 // ── Main ─────────────────────────────────────────────────────────
 
 async function main() {
@@ -312,6 +390,7 @@ async function main() {
     console.log(`  Target:      ${BASE_URL}`);
     console.log(`  Concurrency: ${CONCURRENCY}`);
     console.log(`  Rounds:      ${ROUNDS}`);
+    console.log(`  Duration:    ${DURATION_S}s`);
     console.log(`${'═'.repeat(78)}\n`);
 
     // ── Probe: health + isolate info ─────────────────────────────
@@ -411,9 +490,10 @@ async function main() {
 
     for (const [name, t] of timings) {
         const rttAvg = t.rtts.reduce((a, b) => a + b, 0) / t.rtts.length;
-        const veAvg = t.ves.filter(v => v >= 0).reduce((a, b) => a + b, 0) / t.ves.filter(v => v >= 0).length || 0;
+        const veValid = t.ves.filter(v => v >= 0);
+        const veAvg = veValid.length > 0 ? veValid.reduce((a, b) => a + b, 0) / veValid.length : 0;
         const overhead = rttAvg - veAvg;
-        const cachePattern = t.caches.join('→').replace(/MISS/g, 'M').replace(/HIT/g, 'H');
+        const cachePattern = t.caches.join('→');
 
         console.log(
             name.padEnd(38) +
@@ -480,20 +560,18 @@ async function main() {
                 '/api/ixfac?limit=0', '/api/ixlan?limit=0',
                 '/api/poc?limit=0', '/api/net?limit=0',
             ]
-        }
+        },
+        {
+            name: 'Parallel 404s (negative cache)',
+            urls: [
+                '/api/net/900001', '/api/net/900002', '/api/net/900003',
+                '/api/ix/900001', '/api/ix/900002',
+                '/api/fac/900001', '/api/fac/900002',
+                '/api/as_set/900001', '/api/as_set/900002', '/api/as_set/900003',
+            ],
+            expect404: true
+        },
     ];
-
-    // Add negative-cache burst for 404 testing
-    burstScenarios.push({
-        name: 'Parallel 404s (negative cache)',
-        urls: [
-            '/api/net/900001', '/api/net/900002', '/api/net/900003',
-            '/api/ix/900001', '/api/ix/900002',
-            '/api/fac/900001', '/api/fac/900002',
-            '/api/as_set/900001', '/api/as_set/900002', '/api/as_set/900003',
-        ],
-        expect404: true
-    });
 
     console.log(
         'Burst'.padEnd(33) +
@@ -505,10 +583,12 @@ async function main() {
         'VE P95'.padEnd(8) +
         'VE max'.padEnd(8) +
         'OH⌀'.padEnd(8) +
-        'Hits'.padEnd(6) +
+        'L1'.padEnd(5) +
+        'L2'.padEnd(5) +
+        'MISS'.padEnd(6) +
         'Errs'
     );
-    console.log('─'.repeat(105));
+    console.log('─'.repeat(112));
 
     for (const burst of burstScenarios) {
         const urls = burst.urls.map(p => `${BASE_URL}${p}`);
@@ -525,7 +605,9 @@ async function main() {
         const veP95 = ves.length > 0 ? percentile(ves, 0.95) : -1;
         const veMax = ves.length > 0 ? ves[ves.length - 1] : -1;
         const overhead = veAvg >= 0 ? rttAvg - veAvg : -1;
-        const hits = results.filter(r => r.server.cache === 'HIT').length;
+        const l1Hits = results.filter(r => r.server.cache === 'L1').length;
+        const l2Hits = results.filter(r => r.server.cache === 'L2').length;
+        const misses = results.filter(r => r.server.cache === 'MISS').length;
         const expectedStatus = burst.expect404 ? 404 : 200;
         const errors = results.filter(r => r.status !== expectedStatus).length;
 
@@ -539,7 +621,9 @@ async function main() {
             fmtMs(veP95).padEnd(8) +
             fmtMs(veMax).padEnd(8) +
             fmtMs(overhead).padEnd(8) +
-            String(hits).padEnd(6) +
+            String(l1Hits).padEnd(5) +
+            String(l2Hits).padEnd(5) +
+            String(misses).padEnd(6) +
             String(errors)
         );
 
@@ -554,17 +638,18 @@ async function main() {
     }
 
     // ── Phase 3: Sustained throughput ────────────────────────────
-    console.log(`\n── Phase 3: Sustained throughput (30s, ${CONCURRENCY} concurrent) ──\n`);
+    const duration = DURATION_S * 1000;
+    console.log(`\n── Phase 3: Sustained throughput (${DURATION_S}s, ${CONCURRENCY} concurrent, ${SUSTAINED_POOL.length} endpoints) ──\n`);
 
-    const sustainedUrl = `${BASE_URL}/api/net?limit=50`;
-    const duration = 30_000;
     const start = performance.now();
     let completed = 0;
     let errors = 0;
     let totalRtt = 0;
     let totalVe = 0;
     let veCount = 0;
-    let cacheHits = 0;
+    let l1Total = 0;
+    let l2Total = 0;
+    let missTotal = 0;
 
     /** @type {number[]} */
     const rttAll = [];
@@ -572,21 +657,38 @@ async function main() {
     const veAll = [];
     /** @type {Set<string>} */
     const sustainedIsolates = new Set();
+    /** @type {Map<string, {ok: number, err: number}>} */
+    const endpointStats = new Map();
 
     const sustainedWorkers = Array.from({ length: CONCURRENCY }, async () => {
         while (performance.now() - start < duration) {
-            const r = await timedFetch(sustainedUrl);
+            // Pick a random endpoint from the pool
+            const entry = SUSTAINED_POOL[Math.floor(Math.random() * SUSTAINED_POOL.length)];
+            const r = await timedFetch(`${BASE_URL}${entry.path}`);
+
             completed++;
             totalRtt += r.ms;
             rttAll.push(r.ms);
+
             if (r.server.isolateMs >= 0) {
                 totalVe += r.server.isolateMs;
                 veAll.push(r.server.isolateMs);
                 veCount++;
             }
-            if (r.server.cache === 'HIT') cacheHits++;
+
+            if (r.server.cache === 'L1') l1Total++;
+            else if (r.server.cache === 'L2') l2Total++;
+            else missTotal++;
+
             if (r.server.isolateId !== '–') sustainedIsolates.add(r.server.isolateId);
-            if (r.status !== 200) errors++;
+
+            const isError = r.status !== entry.expectStatus;
+            if (isError) errors++;
+
+            // Track per-endpoint stats
+            const stat = endpointStats.get(entry.path) || { ok: 0, err: 0 };
+            if (isError) stat.err++; else stat.ok++;
+            endpointStats.set(entry.path, stat);
         }
     });
 
@@ -601,7 +703,8 @@ async function main() {
     console.log(`  Throughput:    ${(completed / (elapsed / 1000)).toFixed(1)} req/s`);
     console.log(`  Errors:        ${errors}`);
     console.log(`  Isolates:      ${sustainedIsolates.size} (${[...sustainedIsolates].join(', ')})`);
-    console.log(`  Cache HIT:     ${cacheHits}/${completed} (${(cacheHits / completed * 100).toFixed(1)}%)`);
+    console.log(`  Endpoints hit: ${endpointStats.size} / ${SUSTAINED_POOL.length}`);
+    console.log(`  Cache tiers:   L1=${l1Total} (${(l1Total / completed * 100).toFixed(1)}%)  L2=${l2Total} (${(l2Total / completed * 100).toFixed(1)}%)  MISS=${missTotal} (${(missTotal / completed * 100).toFixed(1)}%)`);
     console.log('');
     console.log('                 RTT (client)    VE (isolate)');
     console.log('  ─────────────────────────────────────────────');
@@ -611,6 +714,17 @@ async function main() {
     console.log(`  P99:           ${fmtMs(percentile(rttAll, 0.99)).padEnd(16)}${fmtMs(veAll.length > 0 ? percentile(veAll, 0.99) : -1)}`);
     console.log(`  Max:           ${fmtMs(rttAll[rttAll.length - 1]).padEnd(16)}${fmtMs(veAll.length > 0 ? veAll[veAll.length - 1] : -1)}`);
     console.log(`  Overhead avg:  ${fmtMs(veCount > 0 ? (totalRtt / completed) - (totalVe / veCount) : -1)}`);
+
+    // Top 5 slowest endpoints by error rate
+    const withErrors = [...endpointStats.entries()]
+        .filter(([, s]) => s.err > 0)
+        .sort((a, b) => b[1].err - a[1].err);
+    if (withErrors.length > 0) {
+        console.log('\n  Endpoints with errors:');
+        for (const [path, stat] of withErrors.slice(0, 10)) {
+            console.log(`    ${path}  ok=${stat.ok} err=${stat.err}`);
+        }
+    }
 
     console.log(`\n${'═'.repeat(78)}`);
     console.log(`  Load test complete`);
