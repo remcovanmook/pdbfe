@@ -109,6 +109,25 @@ export async function renderAccount(_params) {
                 </div>
             </div>
         </div>
+
+        <div id="revoke-modal" style="display:none" class="key-modal-overlay">
+            <div class="card key-modal">
+                <div class="card__header">
+                    <span class="card__title">Revoke API Key</span>
+                </div>
+                <div class="card__body">
+                    <p style="color:var(--status-error);font-size:0.8125rem;margin-bottom:var(--space-md)">
+                        This will permanently revoke the key. Any client using it will lose access.
+                    </p>
+                    <p id="revoke-key-info" style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)"></p>
+                    <div style="display:flex;gap:var(--space-sm)">
+                        <button id="btn-do-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)">Revoke</button>
+                        <button id="btn-cancel-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">Cancel</button>
+                    </div>
+                    <p id="revoke-error" class="modal-error" style="display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)"></p>
+                </div>
+            </div>
+        </div>
     `;
 
     // Wire up create key button
@@ -200,7 +219,10 @@ async function loadKeys(sid) {
                                 <td class="td-mono">pdbfe.${esc(k.prefix)}…</td>
                                 <td>${formatDate(k.created_at)}</td>
                                 <td>
-                                    <button class="auth-link btn-delete-key" data-key-id="${esc(k.id)}"
+                                    <button class="auth-link btn-delete-key"
+                                            data-key-id="${esc(k.id)}"
+                                            data-key-label="${esc(k.label)}"
+                                            data-key-prefix="${esc(k.prefix)}"
                                             style="cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)">
                                         Revoke
                                     </button>
@@ -217,11 +239,13 @@ async function loadKeys(sid) {
 
         // Wire up delete buttons
         keysContainer.querySelectorAll('.btn-delete-key').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const keyId = /** @type {HTMLElement} */ (e.target).dataset.keyId;
+            btn.addEventListener('click', (e) => {
+                const el = /** @type {HTMLElement} */ (e.target);
+                const keyId = el.dataset.keyId;
+                const keyLabel = el.dataset.keyLabel || '';
+                const keyPrefix = el.dataset.keyPrefix || '';
                 if (!keyId) return;
-                if (!confirm(`Revoke API key ${keyId}? This cannot be undone.`)) return;
-                await deleteKey(sid, keyId);
+                showRevokeDialog(sid, keyId, keyLabel, keyPrefix);
             });
         });
 
@@ -335,29 +359,64 @@ function showCreateDialog(sid) {
 }
 
 /**
- * Deletes an API key by its ID.
+ * Shows a confirmation modal before revoking an API key.
  *
  * @param {string} sid - Session ID.
  * @param {string} keyId - The 8-char key ID to revoke.
+ * @param {string} label - Display label for the key.
+ * @param {string} prefix - 4-char key prefix.
  */
-async function deleteKey(sid, keyId) {
-    try {
-        const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${sid}` },
-        });
+function showRevokeDialog(sid, keyId, label, prefix) {
+    const modal = document.getElementById('revoke-modal');
+    const infoEl = document.getElementById('revoke-key-info');
+    const errorEl = document.getElementById('revoke-error');
+    if (!modal || !infoEl || !errorEl) return;
 
-        if (!res.ok) {
-            const data = await res.json();
-            alert(data.error || 'Failed to revoke key');
-            return;
-        }
+    infoEl.innerHTML = `<strong>${esc(label)}</strong> <span class="td-mono" style="display:inline">(pdbfe.${esc(prefix)}…)</span>`;
+    errorEl.style.display = 'none';
+    modal.style.display = 'flex';
 
-        await loadKeys(sid);
-    } catch (err) {
-        console.error('Delete key error:', err);
-        alert('Failed to revoke API key');
+    /** Closes the revoke modal. */
+    function closeModal() {
+        modal.style.display = 'none';
     }
+
+    /** Performs the DELETE request and refreshes the list. */
+    async function doRevoke() {
+        const revokeBtn = document.getElementById('btn-do-revoke');
+        if (revokeBtn) revokeBtn.textContent = 'Revoking...';
+
+        try {
+            const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${sid}` },
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                errorEl.textContent = data.error || 'Failed to revoke key';
+                errorEl.style.display = 'block';
+                if (revokeBtn) revokeBtn.textContent = 'Revoke';
+                return;
+            }
+
+            closeModal();
+            await loadKeys(sid);
+        } catch (err) {
+            console.error('Delete key error:', err);
+            errorEl.textContent = 'Network error';
+            errorEl.style.display = 'block';
+            if (revokeBtn) revokeBtn.textContent = 'Revoke';
+        }
+    }
+
+    const revokeBtn = document.getElementById('btn-do-revoke');
+    const cancelBtn = document.getElementById('btn-cancel-revoke');
+    if (revokeBtn) {
+        revokeBtn.textContent = 'Revoke';
+        revokeBtn.onclick = doRevoke;
+    }
+    if (cancelBtn) cancelBtn.onclick = closeModal;
 }
 
 /**
