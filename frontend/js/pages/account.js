@@ -8,8 +8,8 @@
  * Requires an active session (redirects to homepage if not logged in).
  */
 
-import { AUTH_ORIGIN } from '/js/config.js';
-import { getSessionId, isAuthenticated, getUser } from '/js/auth.js';
+import { AUTH_ORIGIN } from '../config.js';
+import { getSessionId, isAuthenticated, getUser } from '../auth.js';
 
 /**
  * Renders the /account page into the app container.

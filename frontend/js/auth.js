@@ -14,8 +14,8 @@
  * header on API requests that need authenticated access.
  */
 
-import { AUTH_ORIGIN } from '/js/config.js';
-import { clearCache } from '/js/api.js';
+import { AUTH_ORIGIN } from './config.js';
+import { clearCache } from './api.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';

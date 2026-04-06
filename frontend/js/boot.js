@@ -5,21 +5,21 @@
  * and bootstraps OAuth session state.
  */
 
-import { addRoute, initRouter, navigate } from '/js/router.js';
-import { renderHome } from '/js/pages/home.js';
-import { renderSearch } from '/js/pages/search.js';
-import { renderNet } from '/js/pages/net.js';
-import { renderIx } from '/js/pages/ix.js';
-import { renderFac } from '/js/pages/fac.js';
-import { renderOrg } from '/js/pages/org.js';
-import { renderCarrier } from '/js/pages/carrier.js';
-import { renderCampus } from '/js/pages/campus.js';
-import { renderAbout } from '/js/pages/about.js';
-import { renderAsn } from '/js/pages/asn.js';
-import { renderAccount } from '/js/pages/account.js';
-import { fetchSyncStatus } from '/js/api.js';
-import { attachTypeahead } from '/js/typeahead.js';
-import { initAuth } from '/js/auth.js';
+import { addRoute, initRouter, navigate } from './router.js';
+import { renderHome } from './pages/home.js';
+import { renderSearch } from './pages/search.js';
+import { renderNet } from './pages/net.js';
+import { renderIx } from './pages/ix.js';
+import { renderFac } from './pages/fac.js';
+import { renderOrg } from './pages/org.js';
+import { renderCarrier } from './pages/carrier.js';
+import { renderCampus } from './pages/campus.js';
+import { renderAbout } from './pages/about.js';
+import { renderAsn } from './pages/asn.js';
+import { renderAccount } from './pages/account.js';
+import { fetchSyncStatus } from './api.js';
+import { attachTypeahead } from './typeahead.js';
+import { initAuth } from './auth.js';
 
 // Register routes
 addRoute('/', renderHome);
