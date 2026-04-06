@@ -150,7 +150,7 @@ function renderNetworks(user) {
     const rows = nets.map(n =>
         `<div class="info-field">
             <span class="info-field__label">AS${n.asn}</span>
-            <span class="info-field__value">${esc(n.name)}</span>
+            <span class="info-field__value"><a href="/net/${n.id}" data-link>${esc(n.name)}</a></span>
         </div>`
     ).join('');
 
