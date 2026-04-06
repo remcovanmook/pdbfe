@@ -284,14 +284,17 @@ async function exchangeCode(code, env) {
     try {
         const response = await fetch(PDB_TOKEN_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
+            },
             body: body.toString(),
         });
 
         if (!response.ok) {
             const text = await response.text();
             console.error(`Token exchange failed (${response.status}):`, text);
-            return { ok: false, error: `Token endpoint returned ${response.status}` };
+            return { ok: false, error: `Token endpoint returned ${response.status}: ${text}` };
         }
 
         const data = /** @type {{access_token: string, token_type: string}} */ (await response.json());
@@ -316,7 +319,10 @@ async function exchangeCode(code, env) {
 async function fetchProfile(accessToken) {
     try {
         const response = await fetch(PDB_PROFILE_URL, {
-            headers: { 'Authorization': `Bearer ${accessToken}` },
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
+            },
         });
 
         if (!response.ok) {
