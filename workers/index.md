@@ -33,7 +33,7 @@ The primary traffic handler serving read-only PeeringDB API responses.
 - **`l2cache.js`**: Per-PoP L2 cache using Cloudflare's Cache API (`caches.default`). Functions `getL2(cacheKey)` and `putL2(cacheKey, buf, ttlSeconds)` store/retrieve `Uint8Array` payloads keyed by synthetic URLs under `https://pdbfe-l2.internal/`. Errors silently degrade to D1 fallback.
 
 ## 3. Sync Domain (`workers/sync/`)
-Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min). Deployed at `https://pdbfe-sync.remco-vanmook.workers.dev`.
+Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min).
 
 - **`index.js`**: Exports `{ scheduled, fetch }` handlers. Cron reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>&depth=0` per entity, UPSERTs active rows via `INSERT OR REPLACE`, deletes rows with `status='deleted'`. Batches in groups of 50 to stay within D1 limits. HTTP endpoints for manual control (`GET /sync/status`, `POST /sync/trigger`).
 - **`entities.js`**: Re-exports entity definitions from `api/entities.js` (no duplication).

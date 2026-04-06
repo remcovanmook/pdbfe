@@ -9,7 +9,7 @@
  *   PEERINGDB_API_KEY  - API key for authenticated PeeringDB requests
  *
  * Usage:
- *   PDBFE_URL=https://pdbfe-api.remco-vanmook.workers.dev \
+ *   PDBFE_URL=http://localhost:8787 \
  *   PEERINGDB_API_KEY=... \
  *   node --test workers/tests/test_equivalence.js
  */

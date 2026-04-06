@@ -6,7 +6,7 @@
  * Performance benchmarks are in test_performance.js.
  *
  * Environment variables:
- *   PDBFE_URL          - Mirror URL (default: https://pdbfe-api.remco-vanmook.workers.dev)
+ *   PDBFE_URL          - Mirror URL (default: http://localhost:8787)
  *   PEERINGDB_API_KEY  - API key for authenticated PeeringDB upstream requests
  *   PDBFE_API_KEY      - pdbfe-issued API key (pdbfe.<hex>) for auth tests (optional)
  *
@@ -23,7 +23,7 @@ import assert from 'node:assert/strict';
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-const PDBFE = (process.env.PDBFE_URL || 'https://pdbfe-api.remco-vanmook.workers.dev').replace(/\/$/, '');
+const PDBFE = (process.env.PDBFE_URL || 'http://localhost:8787').replace(/\/$/, '');
 const PEERINGDB = 'https://www.peeringdb.com';
 const PDB_API_KEY = process.env.PEERINGDB_API_KEY || '';
 

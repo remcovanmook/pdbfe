@@ -1,9 +1,35 @@
+# Environment and secrets
 .env
+.env.*
+!.env.example
+
+# Node
 node_modules/
 .npm-cache/
+
+# Cloudflare
 .wrangler/
+.wrangler-home/
 .d1-migration-tmp/
-debthin_workers/
+.bundle-check/
+
+# Local wrangler configs (use .example files as templates)
+workers/wrangler.toml
+workers/wrangler-sync.toml
+workers/wrangler-auth.toml
+
+# Frontend deploy configs (use .example files as templates)
+frontend/js/config.js
+frontend/_headers
+frontend/_redirects
+
+# Database artifacts
 database/*.sqlite
 database/*.json
+*.sqlite
+
+# Legacy
+debthin_workers/
+
+# OS
 .DS_Store
