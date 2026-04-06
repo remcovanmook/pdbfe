@@ -151,7 +151,7 @@ function renderAuthUI() {
     if (_cachedUser) {
         container.innerHTML = `
             <span class="auth-user">${escapeHtml(_cachedUser.given_name || _cachedUser.name)}</span>
-            <a href="/account" class="auth-link" data-spa>Account</a>
+            <a href="/account" class="auth-link" data-link>Account</a>
             <a href="#" id="auth-logout" class="auth-link">Sign out</a>
         `;
         const logoutLink = document.getElementById('auth-logout');
