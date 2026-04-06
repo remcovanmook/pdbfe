@@ -39,7 +39,7 @@ function getAuthOrigin() {
     }
     // Default: assume auth worker is at pdbfe-auth on the same workers.dev account
     // This will need to be updated when the actual deployment URL is known
-    return 'https://pdbfe-auth.remcovanmook.workers.dev';
+    return 'https://pdbfe-auth.remco-vanmook.workers.dev';
 }
 
 /**
