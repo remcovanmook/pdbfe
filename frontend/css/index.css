@@ -222,6 +222,27 @@ body[data-page="home"] .site-header__inner nav {
     color: var(--text-muted);
 }
 
+.key-label-input {
+    width: 100%;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+.key-label-input:focus {
+    border-color: var(--accent);
+}
+
+.key-label-input::placeholder {
+    color: var(--text-muted);
+}
+
 /* ── Search ────────────────────────────────────────────────────── */
 
 .search-wrapper {

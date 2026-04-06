@@ -82,19 +82,30 @@ export async function renderAccount(_params) {
         <div id="key-modal" style="display:none" class="key-modal-overlay">
             <div class="card key-modal">
                 <div class="card__header">
-                    <span class="card__title">New API Key Created</span>
+                    <span class="card__title" id="key-modal-title">Create API Key</span>
                 </div>
-                <div class="card__body">
-                    <p style="color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)">
-                        Copy this key now — it will not be shown again.
-                    </p>
-                    <code id="key-modal-value" class="key-display"></code>
-                    <button id="btn-copy-key" class="auth-link" style="cursor:pointer;margin-top:var(--space-md);display:block;background:none">
-                        Copy to clipboard
-                    </button>
-                    <button id="btn-close-modal" class="auth-link" style="cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted)">
-                        Close
-                    </button>
+                <div class="card__body" id="key-modal-body">
+                    <div id="key-modal-create">
+                        <label style="display:block;color:var(--text-secondary);font-size:0.8125rem;margin-bottom:var(--space-xs)">Label</label>
+                        <input type="text" id="key-label-input" class="key-label-input"
+                               placeholder='e.g. "curl scripts"' maxlength="64" autofocus>
+                        <div style="display:flex;gap:var(--space-sm);margin-top:var(--space-md)">
+                            <button id="btn-do-create" class="auth-link" style="cursor:pointer;background:none;flex:1">Create</button>
+                            <button id="btn-cancel-create" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">Cancel</button>
+                        </div>
+                    </div>
+                    <div id="key-modal-result" style="display:none">
+                        <p style="color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)">
+                            Copy this key now — it will not be shown again.
+                        </p>
+                        <code id="key-modal-value" class="key-display"></code>
+                        <button id="btn-copy-key" class="auth-link" style="cursor:pointer;margin-top:var(--space-md);display:block;background:none;width:100%">
+                            Copy to clipboard
+                        </button>
+                        <button id="btn-close-modal" class="auth-link" style="cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%">
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -221,54 +232,106 @@ async function loadKeys(sid) {
 }
 
 /**
- * Shows a prompt for key label and creates the key.
+ * Shows the create-key modal with a label input.
+ * On submit, creates the key and switches to the result view
+ * showing the full key value.
  *
  * @param {string} sid - Session ID.
  */
-async function showCreateDialog(sid) {
-    const label = prompt('Label for the new API key (e.g. "curl scripts"):');
-    if (label === null) return; // Cancelled
+function showCreateDialog(sid) {
+    const modal = document.getElementById('key-modal');
+    const createView = document.getElementById('key-modal-create');
+    const resultView = document.getElementById('key-modal-result');
+    const titleEl = document.getElementById('key-modal-title');
+    const labelInput = /** @type {HTMLInputElement|null} */ (document.getElementById('key-label-input'));
 
-    try {
-        const res = await fetch(`${AUTH_ORIGIN}/account/keys`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${sid}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ label: label || 'Unnamed key' }),
-        });
+    if (!modal || !createView || !resultView || !titleEl || !labelInput) return;
 
-        const data = await res.json();
-        if (!res.ok) {
-            alert(data.error || 'Failed to create key');
-            return;
-        }
+    // Reset to input state
+    titleEl.textContent = 'Create API Key';
+    createView.style.display = 'block';
+    resultView.style.display = 'none';
+    labelInput.value = '';
+    modal.style.display = 'flex';
+    labelInput.focus();
 
-        // Show the full key in the modal
-        const modal = document.getElementById('key-modal');
-        const keyValue = document.getElementById('key-modal-value');
-        if (modal && keyValue) {
-            keyValue.textContent = data.key;
-            modal.style.display = 'flex';
-
-            document.getElementById('btn-copy-key')?.addEventListener('click', () => {
-                navigator.clipboard.writeText(data.key).then(() => {
-                    const btn = document.getElementById('btn-copy-key');
-                    if (btn) btn.textContent = 'Copied!';
-                });
-            });
-
-            document.getElementById('btn-close-modal')?.addEventListener('click', () => {
-                modal.style.display = 'none';
-                loadKeys(sid);
-            });
-        }
-
-    } catch (err) {
-        console.error('Create key error:', err);
-        alert('Failed to create API key');
+    /** Closes the modal and refreshes the key list. */
+    function closeModal() {
+        modal.style.display = 'none';
+        loadKeys(sid);
     }
+
+    /** Submits the create request and shows the result. */
+    async function doCreate() {
+        const label = labelInput.value.trim() || 'Unnamed key';
+        const createBtn = document.getElementById('btn-do-create');
+        if (createBtn) createBtn.textContent = 'Creating...';
+
+        try {
+            const res = await fetch(`${AUTH_ORIGIN}/account/keys`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ label }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                if (createBtn) createBtn.textContent = 'Create';
+                // Show inline error instead of alert
+                const existing = createView.querySelector('.modal-error');
+                if (existing) existing.remove();
+                const errEl = document.createElement('p');
+                errEl.className = 'modal-error';
+                errEl.style.cssText = 'color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)';
+                errEl.textContent = data.error || 'Failed to create key';
+                createView.appendChild(errEl);
+                return;
+            }
+
+            // Switch to result view
+            titleEl.textContent = 'API Key Created';
+            createView.style.display = 'none';
+            resultView.style.display = 'block';
+
+            const keyValue = document.getElementById('key-modal-value');
+            if (keyValue) keyValue.textContent = data.key;
+
+            const copyBtn = document.getElementById('btn-copy-key');
+            if (copyBtn) {
+                copyBtn.textContent = 'Copy to clipboard';
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(data.key).then(() => {
+                        copyBtn.textContent = 'Copied!';
+                    });
+                };
+            }
+
+            const closeBtn = document.getElementById('btn-close-modal');
+            if (closeBtn) closeBtn.onclick = closeModal;
+
+        } catch (err) {
+            console.error('Create key error:', err);
+            if (createBtn) createBtn.textContent = 'Create';
+        }
+    }
+
+    // Wire up buttons
+    const createBtn = document.getElementById('btn-do-create');
+    const cancelBtn = document.getElementById('btn-cancel-create');
+    if (createBtn) {
+        createBtn.textContent = 'Create';
+        createBtn.onclick = doCreate;
+    }
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+
+    // Submit on Enter
+    labelInput.onkeydown = (e) => {
+        if (e.key === 'Enter') doCreate();
+        if (e.key === 'Escape') closeModal();
+    };
 }
 
 /**
