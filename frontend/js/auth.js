@@ -15,6 +15,7 @@
  */
 
 import { AUTH_ORIGIN } from '/js/config.js';
+import { clearCache } from '/js/api.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -62,6 +63,9 @@ export async function initAuth() {
             // Session expired or invalid — clear it
             localStorage.removeItem(STORAGE_KEY);
             _cachedSid = null;
+        } else {
+            // Auth state changed — flush stale anonymous API responses
+            clearCache();
         }
     }
 
@@ -105,6 +109,7 @@ export function logout() {
     localStorage.removeItem(STORAGE_KEY);
     _cachedSid = null;
     _cachedUser = null;
+    clearCache();
     renderAuthUI();
 
     // Redirect to auth worker logout to clean up KV

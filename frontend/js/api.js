@@ -33,15 +33,19 @@ const CACHE_TTL_MS = 60_000;
 async function cachedFetch(path, params) {
     const url = buildURL(path, params);
     const now = Date.now();
+    // Include auth state in the cache key so authenticated and anonymous
+    // responses are stored separately. Prevents stale anonymous data
+    // (e.g. missing poc_set) from being served after login.
+    const sid = getSessionId();
+    const cacheKey = sid ? `auth:${url}` : url;
 
-    const cached = _cache.get(url);
+    const cached = _cache.get(cacheKey);
     if (cached && (now - cached.ts) < CACHE_TTL_MS) {
         return cached.data;
     }
 
     /** @type {RequestInit} */
     const init = {};
-    const sid = getSessionId();
     if (sid) {
         init.headers = { 'Authorization': `Bearer ${sid}` };
     }
@@ -52,7 +56,7 @@ async function cachedFetch(path, params) {
     }
 
     const data = await res.json();
-    _cache.set(url, { data, ts: now });
+    _cache.set(cacheKey, { data, ts: now });
     return data;
 }
 
