@@ -182,6 +182,16 @@ body[data-page="home"] .site-logo {
     color: var(--accent-hover);
 }
 
+.header-external-link {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: color var(--transition-fast);
+}
+
+.header-external-link:hover {
+    color: var(--text-secondary);
+}
+
 /* ── API Key modal ─────────────────────────────────────────────── */
 
 .key-modal-overlay {
@@ -1158,7 +1168,7 @@ body[data-page="home"] .site-logo {
     }
 
     /* Hide the peeringdb.com external link on mobile */
-    .site-header__nav > a[target="_blank"] {
+    .header-external-link {
         display: none;
     }
 
