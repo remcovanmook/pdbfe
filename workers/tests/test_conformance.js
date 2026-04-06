@@ -7,7 +7,8 @@
  *
  * Environment variables:
  *   PDBFE_URL          - Mirror URL (default: https://pdbfe-api.remco-vanmook.workers.dev)
- *   PEERINGDB_API_KEY  - API key for authenticated PeeringDB requests
+ *   PEERINGDB_API_KEY  - API key for authenticated PeeringDB upstream requests
+ *   PDBFE_API_KEY      - pdbfe-issued API key (pdbfe.<hex>) for auth tests (optional)
  *
  * Usage:
  *   # Run all conformance tests
@@ -936,6 +937,123 @@ describe('Conformance: poc visibility', { concurrency: 1 }, () => {
         } else {
             assert.equal(res.status, 404,
                 'Non-Public poc detail should return 404');
+        }
+    });
+});
+
+// ==========================================================================
+// SECTION 11 — PDBFE API KEY AUTHENTICATION
+// ==========================================================================
+
+/**
+ * The pdbfe API key (pdbfe.<hex>) for testing authenticated access.
+ * Set PDBFE_API_KEY in the environment to enable these tests.
+ * These keys are managed via the /account page and stored in the
+ * USERS KV namespace.
+ */
+const PDBFE_API_KEY = process.env.PDBFE_API_KEY || '';
+
+/**
+ * Fetches from the mirror with a pdbfe API key in the Authorization header.
+ *
+ * @param {string} path - API path starting with /.
+ * @returns {Promise<{status: number, body: any, headers: Headers, elapsed: number}>}
+ */
+async function fetchMirrorAuth(path) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    const start = Date.now();
+
+    try {
+        const res = await fetch(`${PDBFE}${path}`, {
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `Api-Key ${PDBFE_API_KEY}`,
+            },
+        });
+        let body;
+        try {
+            body = await res.json();
+        } catch {
+            body = { _error: `Non-JSON response (status ${res.status})` };
+        }
+        return { status: res.status, body, headers: res.headers, elapsed: Date.now() - start };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+describe('Conformance: pdbfe API key auth', { concurrency: 1, skip: !PDBFE_API_KEY }, () => {
+
+    it('/api/poc — authenticated returns non-empty data', async () => {
+        const res = await fetchMirrorAuth('/api/poc?limit=5&depth=0');
+        assert.equal(res.status, 200);
+        const data = extractData(res.body, 'poc authenticated');
+        assert.ok(data.length > 0,
+            'Authenticated poc list should return data');
+    });
+
+    it('/api/poc — authenticated results include contact details', async () => {
+        const res = await fetchMirrorAuth('/api/poc?limit=5&depth=0');
+        const data = extractData(res.body, 'poc fields');
+        if (data.length === 0) return;
+
+        const rec = data[0];
+        assert.ok('email' in rec, 'poc should have email field');
+        assert.ok('name' in rec, 'poc should have name field');
+        assert.ok('role' in rec, 'poc should have role field');
+        assert.ok('visible' in rec, 'poc should have visible field');
+    });
+
+    it('/api/poc — anonymous vs authenticated returns different counts', async () => {
+        const anon = await fetchMirror('/api/poc?limit=0&skip=0&depth=0');
+        const auth = await fetchMirrorAuth('/api/poc?limit=0&skip=0&depth=0');
+
+        // Authenticated should have more poc records than anonymous (0)
+        const anonCount = anon.body?.meta?.count ?? anon.body?.data?.length ?? 0;
+        const authCount = auth.body?.meta?.count ?? auth.body?.data?.length ?? 0;
+        assert.ok(authCount > anonCount,
+            `Auth count (${authCount}) should exceed anon count (${anonCount})`);
+    });
+
+    it('depth=2 poc_set — authenticated includes non-Public contacts', async () => {
+        const res = await fetchMirrorAuth(
+            `/api/net?asn=${WELL_KNOWN.asn_cloudflare}&limit=1&depth=2`
+        );
+        const data = extractData(res.body, 'net depth=2 auth');
+        if (data.length === 0) return;
+
+        const poc = data[0].poc_set || [];
+        // Authenticated should see all visibility levels
+        // (we can't guarantee non-Public exists for Cloudflare, so
+        // just verify that poc_set is returned and records have visible field)
+        for (const contact of poc) {
+            assert.ok('visible' in contact,
+                'poc_set contacts should include visible field');
+            assert.ok(['Public', 'Users', 'Private'].includes(contact.visible),
+                `poc visible should be a known value, got: ${contact.visible}`);
+        }
+    });
+
+    it('invalid pdbfe key returns unauthenticated results', async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        try {
+            const res = await fetch(`${PDBFE}/api/poc?limit=5&depth=0`, {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': 'Api-Key pdbfe.0000000000000000000000000000dead',
+                },
+            });
+            const body = await res.json();
+            // Should behave like anonymous — empty poc data
+            assert.equal(res.status, 200);
+            assert.equal(body.data.length, 0,
+                'Invalid key should return empty poc data (anonymous fallback)');
+        } finally {
+            clearTimeout(timer);
         }
     });
 });
