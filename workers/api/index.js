@@ -122,9 +122,18 @@ async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
 
     // Determine authentication status. Two paths:
-    //   1. API-Key header (PeeringDB convention) → USERS KV lookup
+    //   1. API-Key header (pdbfe.* keys) → USERS KV lookup
     //   2. Session ID (from Bearer token or cookie) → SESSIONS KV lookup
     const apiKey = extractApiKey(request);
+
+    // Reject upstream PeeringDB keys early with a helpful error.
+    // Only pdbfe-issued keys (pdbfe.<hex>) are valid on this mirror.
+    if (apiKey !== null && !apiKey.startsWith('pdbfe.')) {
+        return jsonError(403,
+            'PeeringDB API keys are not valid on this mirror. ' +
+            'Create a key at /account after signing in.');
+    }
+
     let authenticated = apiKey !== null && await verifyApiKey(env.USERS, apiKey);
 
     if (!authenticated) {

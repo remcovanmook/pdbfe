@@ -1056,4 +1056,24 @@ describe('Conformance: pdbfe API key auth', { concurrency: 1, skip: !PDBFE_API_K
             clearTimeout(timer);
         }
     });
+
+    it('upstream PeeringDB key returns 403 with helpful message', async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        try {
+            const res = await fetch(`${PDBFE}/api/poc?limit=1&depth=0`, {
+                signal: controller.signal,
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': 'Api-Key notpdbfe.someupstreamkey',
+                },
+            });
+            const body = await res.json();
+            assert.equal(res.status, 403);
+            assert.ok(body.error.includes('not valid on this mirror'),
+                `Expected helpful error message, got: ${body.error}`);
+        } finally {
+            clearTimeout(timer);
+        }
+    });
 });
