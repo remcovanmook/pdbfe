@@ -122,10 +122,10 @@ async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
 
     // Determine authentication status. Two paths:
-    //   1. API-Key header (PeeringDB convention) — stub, always false for now
-    //   2. Session ID (from Bearer token or cookie) → KV lookup
+    //   1. API-Key header (PeeringDB convention) → USERS KV lookup
+    //   2. Session ID (from Bearer token or cookie) → SESSIONS KV lookup
     const apiKey = extractApiKey(request);
-    let authenticated = apiKey !== null && verifyApiKey(apiKey);
+    let authenticated = apiKey !== null && await verifyApiKey(env.USERS, apiKey);
 
     if (!authenticated) {
         const sid = extractSessionId(request);

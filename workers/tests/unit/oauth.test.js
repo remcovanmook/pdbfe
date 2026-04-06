@@ -96,8 +96,19 @@ describe('extractApiKey', () => {
 // ── verifyApiKey ─────────────────────────────────────────────────────────────
 
 describe('verifyApiKey', () => {
-    it('always returns false (stub)', () => {
-        assert.equal(verifyApiKey('any-key'), false);
+    it('returns false when key is not in KV', async () => {
+        const { kv } = mockKV({});
+        assert.equal(await verifyApiKey(kv, 'any-key'), false);
+    });
+
+    it('returns true when key exists in KV', async () => {
+        const { kv } = mockKV({ 'apikey:pdbfe.test1234': '{}' });
+        assert.equal(await verifyApiKey(kv, 'pdbfe.test1234'), true);
+    });
+
+    it('returns false for null', async () => {
+        const { kv } = mockKV({});
+        assert.equal(await verifyApiKey(kv, null), false);
     });
 });
 

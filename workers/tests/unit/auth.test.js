@@ -69,9 +69,21 @@ describe('extractApiKey', () => {
 });
 
 describe('verifyApiKey', () => {
-    it('should always return false (stub)', () => {
-        assert.equal(verifyApiKey('any-key'), false);
-        assert.equal(verifyApiKey(''), false);
-        assert.equal(verifyApiKey('valid-looking-key-12345'), false);
+    /** @returns {any} */
+    function emptyKV() {
+        return { get: async () => null };
+    }
+
+    it('should return false when key is not in KV', async () => {
+        assert.equal(await verifyApiKey(emptyKV(), 'any-key'), false);
+        assert.equal(await verifyApiKey(emptyKV(), ''), false);
+        assert.equal(await verifyApiKey(emptyKV(), 'valid-looking-key-12345'), false);
+    });
+
+    it('should return true when key exists in KV', async () => {
+        const kv = /** @type {any} */ ({
+            get: async (/** @type {string} */ key) => key === 'apikey:pdbfe.real' ? '{}' : null,
+        });
+        assert.equal(await verifyApiKey(kv, 'pdbfe.real'), true);
     });
 });

@@ -16,6 +16,7 @@ import { renderCarrier } from '/js/pages/carrier.js';
 import { renderCampus } from '/js/pages/campus.js';
 import { renderAbout } from '/js/pages/about.js';
 import { renderAsn } from '/js/pages/asn.js';
+import { renderAccount } from '/js/pages/account.js';
 import { fetchSyncStatus } from '/js/api.js';
 import { attachTypeahead } from '/js/typeahead.js';
 import { initAuth } from '/js/auth.js';
@@ -30,6 +31,7 @@ addRoute('/org/:id', renderOrg);
 addRoute('/carrier/:id', renderCarrier);
 addRoute('/campus/:id', renderCampus);
 addRoute('/asn/:asn', renderAsn);
+addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 
 // Expose navigate for the homepage search box

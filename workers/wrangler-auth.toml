@@ -6,6 +6,10 @@ compatibility_date = "2026-03-18"
 binding = "SESSIONS"
 id = "7519b86fa9914b5288ba261f91d87fa0"
 
+[[kv_namespaces]]
+binding = "USERS"
+id = "REPLACE_WITH_USERS_KV_NAMESPACE_ID"
+
 # Production: set secrets via wrangler secret put --config wrangler-auth.toml
 #   wrangler secret put OAUTH_CLIENT_ID --config wrangler-auth.toml
 #   wrangler secret put OAUTH_CLIENT_SECRET --config wrangler-auth.toml

@@ -44,17 +44,61 @@ export function extractApiKey(request) {
 }
 
 /**
- * Validates an API key. Stub — always returns false.
+ * Validates an API key by looking up the reverse-index entry in the
+ * USERS KV namespace. An in-memory per-isolate cache avoids repeated
+ * KV reads for the same key within a 5-minute window.
  *
- * Reserved for future direct API-key validation against an upstream
- * endpoint or a separate keys KV namespace. Not used for OAuth sessions.
+ * Key format: `pdbfe.<32 hex chars>`.
+ * KV key format: `apikey:<full_key>` → ApiKeyEntry JSON.
  *
- * @param {string} _apiKey - The API key to validate (unused).
- * @returns {boolean} Whether the key is valid. Always false for now.
+ * @param {KVNamespace} kv - The USERS KV namespace binding.
+ * @param {string} apiKey - The API key to validate.
+ * @returns {Promise<boolean>} Whether the key is valid.
  */
-export function verifyApiKey(_apiKey) {
-    return false;
+export async function verifyApiKey(kv, apiKey) {
+    if (!apiKey) return false;
+
+    const now = Date.now();
+
+    // Check in-memory cache first
+    const cached = _apiKeyCache.get(apiKey);
+    if (cached && (now - cached.ts) < APIKEY_CACHE_TTL) {
+        return cached.valid;
+    }
+
+    // KV lookup
+    const entry = await kv.get('apikey:' + apiKey);
+    const valid = entry !== null;
+
+    // Cache the result (both positive and negative)
+    _apiKeyCache.set(apiKey, { valid, ts: now });
+
+    // Evict stale entries periodically to prevent unbounded growth
+    if (_apiKeyCache.size > APIKEY_CACHE_MAX) {
+        for (const [key, val] of _apiKeyCache) {
+            if ((now - val.ts) > APIKEY_CACHE_TTL) {
+                _apiKeyCache.delete(key);
+            }
+        }
+    }
+
+    return valid;
 }
+
+/**
+ * Per-isolate cache for API key verification results.
+ * Maps full API key string → {valid: boolean, ts: number}.
+ * Entries expire after APIKEY_CACHE_TTL milliseconds.
+ *
+ * @type {Map<string, {valid: boolean, ts: number}>}
+ */
+const _apiKeyCache = new Map();
+
+/** API key cache TTL in milliseconds (5 minutes). */
+const APIKEY_CACHE_TTL = 5 * 60 * 1000;
+
+/** Maximum cache entries before triggering cleanup. */
+const APIKEY_CACHE_MAX = 200;
 
 /**
  * Extracts a session ID from the request. Checks two sources in order:

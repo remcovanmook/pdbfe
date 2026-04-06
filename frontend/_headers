@@ -2,7 +2,7 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://pdbfe-api.remco-vanmook.workers.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self';
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://pdbfe-api.remco-vanmook.workers.dev https://pdbfe-auth.remco-vanmook.workers.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self';
 
 /css/*
   Cache-Control: public, max-age=86400
