@@ -333,11 +333,11 @@ async function fetchProfile(accessToken) {
 
 /**
  * Builds a redirect response back to the frontend origin.
- * On success, appends the session ID as a URL fragment (#sid=...).
- * On error, appends the error message as a fragment (#auth_error=...).
+ * On success, appends the session ID as a query parameter (?sid=...).
+ * On error, appends the error message as a query parameter (?auth_error=...).
  *
- * Using URL fragments ensures the session ID is not sent to any
- * server as part of the URL — it stays client-side only.
+ * Query parameters survive Cloudflare Access redirect chains, while
+ * URL fragments (#) are stripped by Access during its auth flow.
  *
  * @param {string} frontendOrigin - The frontend origin URL.
  * @param {string|null} sid - The session ID on success, or null.
@@ -347,9 +347,9 @@ async function fetchProfile(accessToken) {
 function redirectToFrontend(frontendOrigin, sid, error) {
     let location = frontendOrigin;
     if (sid) {
-        location += `/#sid=${sid}`;
+        location += `/?sid=${sid}`;
     } else if (error) {
-        location += `/#auth_error=${encodeURIComponent(error)}`;
+        location += `/?auth_error=${encodeURIComponent(error)}`;
     }
 
     return new Response(null, {
