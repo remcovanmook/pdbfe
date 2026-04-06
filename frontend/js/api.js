@@ -6,9 +6,10 @@
  */
 
 import { getSessionId } from '/js/auth.js';
+import { API_ORIGIN } from '/js/config.js';
 
-/** Base URL for the API — empty string uses the /api/* same-origin proxy. */
-const API_BASE = '';
+/** Base URL for the API — configured in config.js. */
+const API_BASE = API_ORIGIN;
 
 /**
  * In-memory response cache. Maps URL → { data, timestamp }.

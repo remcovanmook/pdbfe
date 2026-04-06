@@ -9,4 +9,4 @@
 export const AUTH_ORIGIN = 'https://pdbfe-auth.remco-vanmook.workers.dev';
 
 /** Origin of the pdbfe-api worker (empty string = same-origin proxy via Pages). */
-export const API_ORIGIN = '';
+export const API_ORIGIN = 'https://pdbfe-api.remco-vanmook.workers.dev';

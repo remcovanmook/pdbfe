@@ -15,9 +15,12 @@ import { getSessionId, isAuthenticated, getUser } from '/js/auth.js';
  * Renders the /account page into the app container.
  * Shows profile information and API key management.
  *
- * @param {HTMLElement} container - The #app element.
+ * @param {Record<string, string>} _params - Route params (unused).
  */
-export async function renderAccount(container) {
+export async function renderAccount(_params) {
+    const container = /** @type {HTMLElement} */ (document.getElementById('app'));
+    document.title = 'Account — PeeringDB';
+
     if (!isAuthenticated()) {
         container.innerHTML = `
             <div class="card" style="max-width:480px;margin:var(--space-2xl) auto;text-align:center">
