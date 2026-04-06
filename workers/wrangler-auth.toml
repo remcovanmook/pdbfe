@@ -8,7 +8,7 @@ id = "7519b86fa9914b5288ba261f91d87fa0"
 
 [[kv_namespaces]]
 binding = "USERS"
-id = "REPLACE_WITH_USERS_KV_NAMESPACE_ID"
+id = "cfc99bea69eb415584e5b62542c1efd4"
 
 # Production: set secrets via wrangler secret put --config wrangler-auth.toml
 #   wrangler secret put OAUTH_CLIENT_ID --config wrangler-auth.toml
