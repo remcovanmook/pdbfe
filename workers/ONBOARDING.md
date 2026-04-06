@@ -140,19 +140,53 @@ Every API request follows this hierarchy:
 
 ## 9. Testing
 
-Tests are split by scope:
+### Unit tests (`npm test`) — 192 tests across 9 files
 
-| Suite | Location | Command | Description |
-|---|---|---|---|
-| Unit tests | `workers/tests/unit/*.test.js` | `npm test` | 9 files. Individual module tests with mock D1 (query, cache, depth, auth, OAuth, pipeline, visibility, status, account) |
-| Integration | `workers/tests/test_api.js` | `npm run test:integration` | Full router with mock D1: admin endpoints, CORS, entity routing, error handling |
-| Conformance | `workers/tests/test_conformance*.js` | `npm run test:conformance` | Validates API behavior against the live PeeringDB API |
-| Equivalence | `workers/tests/test_equivalence.js` | `npm run test:equivalence` | Side-by-side comparison of mirror vs upstream responses |
-| Frontend | `frontend/tests/*.test.js` | `cd frontend && npm test` | SPA rendering and markdown parser tests |
+Run locally with mock D1 bindings. No real database needed.
 
-The unit and integration tests use mock D1 bindings — no real database needed. See `tests/test_api.js` for the mock pattern.
+| File | Tests | Covers |
+|---|---|---|
+| `query.test.js` | 72 | Query builder: filters, operators, JOINs, cross-entity subqueries, COLLATE NOCASE, duplicate params, field validation |
+| `oauth.test.js` | 29 | OAuth flow: start redirect, callback token exchange, logout, error handling |
+| `cache.test.js` | 24 | LRU cache: eviction, TTL expiry, byte limits, stats, purge |
+| `pipeline.test.js` | 16 | cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation |
+| `visibility.test.js` | 14 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
+| `depth.test.js` | 11 | Depth 0/1/2 expansion: ID sets, full child objects, join columns |
+| `account.test.js` | 11 | API key CRUD: create, list, delete, validation |
+| `auth.test.js` | 11 | Session resolution, API key extraction and verification |
+| `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
 
-Conformance and equivalence tests require a running instance and `PDBFE_URL` / `PEERINGDB_API_KEY` environment variables.
+### Integration tests (`npm run test:integration`) — 24 tests
+
+Full router tests with mock D1. Covers admin endpoints, CORS preflight, entity routing, error responses, write method rejection.
+
+| File | Tests |
+|---|---|
+| `test_api.js` | 24 |
+
+### Conformance tests (`npm run test:conformance`) — 125 tests
+
+Validate API behavior against the live upstream PeeringDB API. Require `PDBFE_URL` and `PEERINGDB_API_KEY` environment variables.
+
+| File | Tests | Covers |
+|---|---|---|
+| `test_conformance.js` | 69 | Envelope structure, data types, filter operators, field selection, timestamps, error handling |
+| `test_conformance_extended.js` | 56 | Edge cases: boolean coercion, cross-entity filters, implicit filters, depth expansion, null handling |
+
+### Equivalence tests (`npm run test:equivalence`) — 16 tests
+
+Side-by-side comparison of mirror responses against upstream PeeringDB for a set of reference queries. Requires `PDBFE_URL` and `PEERINGDB_API_KEY`.
+
+| File | Tests |
+|---|---|
+| `test_equivalence.js` | 16 |
+
+### Frontend tests (`cd frontend && npm test`) — 31 tests
+
+| File | Tests | Covers |
+|---|---|---|
+| `markdown.test.js` | 24 | Markdown renderer: bold, italic, links, XSS escaping, HTML sanitisation |
+| `home.test.js` | 7 | Homepage and about page rendering: title, hero, sections, links |
 
 ## 10. Local Development
 
