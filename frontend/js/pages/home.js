@@ -8,6 +8,7 @@
 import { fetchList, fetchCount } from '../api.js';
 import { linkEntity, formatDate, escapeHTML, renderLoading } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
+import { t } from '../i18n.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -44,7 +45,7 @@ export async function renderHome(_params) {
                 </p>
             </div>
             <div class="home-recent">
-                <h2 class="home-recent__heading">Most Recent Updates</h2>
+                <h2 class="home-recent__heading">${escapeHTML(t('Most Recent Updates'))}</h2>
                 <div id="recent-updates">${renderLoading('Loading recent updates')}</div>
             </div>
         </div>
@@ -84,33 +85,33 @@ async function loadRecentUpdates() {
         //   Model.handleref.filter(status="ok").order_by("-updated")[:5]
         // Our API now supports the sort parameter for server-side ordering.
         const results = await Promise.all(
-            types.map(t => fetchList(t.type, { sort: '-updated', limit: 5 }).catch(/** @returns {any[]} */() => []))
+            types.map(typ => fetchList(typ.type, { sort: '-updated', limit: 5 }).catch(/** @returns {any[]} */() => []))
         );
 
-        const columns = types.map((t, i) => {
+        const columns = types.map((typ, i) => {
             const items = results[i].slice(0, 5).map(/** @param {any} item */ item => {
                 let displayName = item.name || item.org_name || `ID ${item.id}`;
 
                 // Show ASN in parentheses for networks
-                if (t.type === 'net' && item.asn) {
+                if (typ.type === 'net' && item.asn) {
                     displayName = `${displayName} (${item.asn})`;
                 }
 
                 return `<div class="recent-updates__item">
-                    ${linkEntity(t.type, item.id, displayName)}
+                    ${linkEntity(typ.type, item.id, displayName)}
                     <span class="recent-updates__time">${formatDate(item.updated)}</span>
                 </div>`;
             }).join('');
 
             return `<div class="recent-updates__column">
-                <div class="recent-updates__title">${escapeHTML(t.label)}</div>
-                ${items || '<div class="empty-state">No data</div>'}
+                <div class="recent-updates__title">${escapeHTML(t(typ.label))}</div>
+                ${items || `<div class="empty-state">${escapeHTML(t('No data'))}</div>`}
             </div>`;
         }).join('');
 
         container.innerHTML = `<div class="recent-updates">${columns}</div>`;
     } catch (err) {
-        container.innerHTML = `<div class="error-message">Failed to load recent updates</div>`;
+        container.innerHTML = `<div class="error-message">${escapeHTML(t('Failed to load recent updates'))}</div>`;
     }
 }
 
@@ -136,19 +137,19 @@ async function loadGlobalStats() {
 
     try {
         const counts = await Promise.all(
-            types.map(t => fetchCount(t.type).catch(() => 0))
+            types.map(typ => fetchCount(typ.type).catch(() => 0))
         );
 
-        const items = types.map((t, i) =>
+        const items = types.map((typ, i) =>
             `<li class="global-stats__item">
                 <span class="global-stats__count">${counts[i].toLocaleString()}</span>
-                ${escapeHTML(t.label)}
+                ${escapeHTML(t(typ.label))}
             </li>`
         ).join('');
 
         container.innerHTML = `
             <div class="global-stats">
-                <h3 class="global-stats__heading">Global System Statistics</h3>
+                <h3 class="global-stats__heading">${escapeHTML(t('Global System Statistics'))}</h3>
                 <ul class="global-stats__list">${items}</ul>
             </div>`;
     } catch (err) {
