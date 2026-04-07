@@ -83,7 +83,10 @@ export function renderFieldGroup(title, fields) {
  * @param {string} opts.title - Card header title.
  * @param {Array<{key: string, label: string, class?: string}>} opts.columns - Column definitions.
  * @param {any[]} opts.rows - Data rows.
- * @param {function(any, {key: string}): string} opts.cellRenderer - Returns HTML for a cell.
+ * @param {function(any, {key: string}): (string|{html: string, sortValue: string|number})} opts.cellRenderer
+ *     Returns HTML for a cell. May return a plain string or an object
+ *     with `html` (display) and `sortValue` (numeric/sortable value)
+ *     to embed a `data-sort-value` attribute on the `<td>`.
  * @param {boolean} [opts.filterable] - Show a filter input.
  * @param {string} [opts.filterPlaceholder] - Placeholder text for filter input.
  * @param {number} [opts.pageSize] - Rows per page (default: PAGE_SIZE).
@@ -106,9 +109,13 @@ export function renderTableCard(opts) {
     ).join('');
 
     const bodyHTML = rows.map(row => {
-        const cells = columns.map(col =>
-            `<td class="${col.class || ''}">${cellRenderer(row, col)}</td>`
-        ).join('');
+        const cells = columns.map(col => {
+            const rendered = cellRenderer(row, col);
+            if (typeof rendered === 'object' && rendered !== null) {
+                return `<td class="${col.class || ''}" data-sort-value="${rendered.sortValue}">${rendered.html}</td>`;
+            }
+            return `<td class="${col.class || ''}">${rendered}</td>`;
+        }).join('');
         return `<tr>${cells}</tr>`;
     }).join('');
 
@@ -294,8 +301,10 @@ function setMetaProperty(property, content) {
 function sortTable(tbody, colIdx, direction) {
     const rows = Array.from(tbody.querySelectorAll('tr'));
     rows.sort((a, b) => {
-        const aVal = a.children[colIdx]?.textContent?.trim() || '';
-        const bVal = b.children[colIdx]?.textContent?.trim() || '';
+        const aCell = a.children[colIdx];
+        const bCell = b.children[colIdx];
+        const aVal = aCell?.getAttribute('data-sort-value') ?? aCell?.textContent?.trim() ?? '';
+        const bVal = bCell?.getAttribute('data-sort-value') ?? bCell?.textContent?.trim() ?? '';
 
         const aNum = Number(aVal);
         const bNum = Number(bVal);
