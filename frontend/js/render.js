@@ -214,6 +214,24 @@ export function formatDate(iso) {
 }
 
 /**
+ * Formats an ISO date string as a locale-formatted absolute date
+ * (e.g. "7 Apr 2026"). Used where a fixed calendar date is more
+ * appropriate than a relative time.
+ *
+ * @param {string} iso - ISO 8601 date string.
+ * @returns {string} Locale-formatted date, or the raw string on parse failure.
+ */
+export function formatLocaleDate(iso) {
+    try {
+        return new Date(iso).toLocaleDateString('en-GB', {
+            year: 'numeric', month: 'short', day: 'numeric',
+        });
+    } catch {
+        return iso;
+    }
+}
+
+/**
  * Renders a boolean value as a styled yes/no indicator.
  *
  * @param {any} val - Value to check for truthiness.

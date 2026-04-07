@@ -18,6 +18,7 @@ import { renderAbout } from './pages/about.js';
 import { renderAsn } from './pages/asn.js';
 import { renderAccount } from './pages/account.js';
 import { fetchSyncStatus } from './api.js';
+import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
 import { initAuth } from './auth.js';
 
@@ -55,10 +56,11 @@ fetchSyncStatus().then(sync => {
     const el = document.getElementById('sync-status');
     if (!el || !sync?.last_sync_at) return;
 
-    const then = new Date(sync.last_sync_at.replace(' ', 'T') + 'Z');
+    const isoDate = sync.last_sync_at.replace(' ', 'T') + 'Z';
+    const then = new Date(isoDate);
     const diffMs = Date.now() - then.getTime();
     const isStale = diffMs > 3 * 3600 * 1000; // >3 hours
-    const timeText = formatRelativeTime(sync.last_sync_at);
+    const timeText = formatDate(isoDate);
     const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
 
     el.innerHTML = `Last synced <span class="site-footer__sync-time${staleClass}">${timeText}</span>`;
@@ -66,28 +68,3 @@ fetchSyncStatus().then(sync => {
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure
 });
-
-/**
- * Formats a UTC datetime string (e.g. "2026-04-01 14:30:00")
- * into a human-readable relative time like "12 minutes ago".
- *
- * @param {string} utcDateStr - UTC datetime from the _sync_meta table.
- * @returns {string} Relative time string.
- */
-function formatRelativeTime(utcDateStr) {
-    const then = new Date(utcDateStr.replace(' ', 'T') + 'Z');
-    const diffMs = Date.now() - then.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-
-    if (diffSec < 60)  return 'just now';
-    if (diffSec < 3600) {
-        const m = Math.floor(diffSec / 60);
-        return `${m} minute${m !== 1 ? 's' : ''} ago`;
-    }
-    if (diffSec < 86400) {
-        const h = Math.floor(diffSec / 3600);
-        return `${h} hour${h !== 1 ? 's' : ''} ago`;
-    }
-    const d = Math.floor(diffSec / 86400);
-    return `${d} day${d !== 1 ? 's' : ''} ago`;
-}

@@ -8,14 +8,10 @@
  * is surfaced at the top of the Networks section.
  */
 
-import { searchAll, fetchByAsn } from '../api.js';
+import { searchWithAsn, SEARCH_ENTITIES } from '../api.js';
 import { linkEntity, escapeHTML, renderLoading } from '../render.js';
 
-/**
- * Pattern matching ASN-shaped queries: bare digits or "AS" prefix + digits.
- * @type {RegExp}
- */
-const ASN_PATTERN = /^(?:as)?(\d+)$/i;
+
 
 /**
  * Renders the search results page.
@@ -45,41 +41,15 @@ export async function renderSearch(params) {
     if (headerInput) headerInput.value = query;
 
     try {
-        // Detect ASN-shaped queries for direct lookup
-        const asnMatch = query.trim().match(ASN_PATTERN);
-        const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
-
-        // Fire name-based search and optional ASN lookup in parallel
-        const [results, asnNet] = await Promise.all([
-            searchAll(query),
-            isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
-        ]);
-
-        // If we got an ASN match, inject it at the top of the networks list
-        // (deduplicate if it's already in the name search results)
-        if (asnNet) {
-            const existingIds = new Set(results.net.map(n => n.id));
-            if (!existingIds.has(asnNet.id)) {
-                results.net.unshift(asnNet);
-            } else {
-                // Move the match to the top
-                results.net = [
-                    asnNet,
-                    ...results.net.filter(n => n.id !== asnNet.id)
-                ];
-            }
-        }
+        const results = await searchWithAsn(query);
 
         const body = /** @type {HTMLElement} */ (document.getElementById('search-body'));
 
-        const sections = [
-            { key: 'net',     label: 'Networks',      items: results.net,     subtitle: /** @param {any} r */ (r) => `AS${r.asn}` },
-            { key: 'ix',      label: 'Exchanges',     items: results.ix,      subtitle: /** @param {any} r */ (r) => r.city || '' },
-            { key: 'fac',     label: 'Facilities',    items: results.fac,     subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` },
-            { key: 'org',     label: 'Organizations', items: results.org,     subtitle: () => '' },
-            { key: 'carrier', label: 'Carriers',      items: results.carrier, subtitle: () => '' },
-            { key: 'campus',  label: 'Campuses',      items: results.campus,  subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` }
-        ];
+        const /** @type {Record<string, any[]>} */ res = /** @type {any} */ (results);
+        const sections = SEARCH_ENTITIES.map(e => ({
+            ...e,
+            items: res[e.key] || []
+        }));
 
         let html = '';
         let totalCount = 0;
@@ -89,7 +59,7 @@ export async function renderSearch(params) {
             totalCount += count;
             if (count === 0) continue;
 
-            const itemsHTML = section.items.map(item => {
+            const itemsHTML = section.items.map(/** @param {any} item */ (item) => {
                 const name = item.name || `ID ${item.id}`;
                 const sub = section.subtitle(item);
                 return `<div class="search-dropdown__item">

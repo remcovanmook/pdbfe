@@ -8,6 +8,22 @@
 import { getSessionId } from './auth.js';
 import { API_ORIGIN } from './config.js';
 
+/**
+ * Search entity group definitions — single source of truth for the
+ * entity types, display labels, and subtitle formatters used by
+ * searchAll(), the search results page, and the typeahead dropdown.
+ *
+ * @type {ReadonlyArray<{key: string, label: string, subtitle: (r: any) => string}>}
+ */
+export const SEARCH_ENTITIES = Object.freeze([
+    { key: 'net',     label: 'Networks',      subtitle: /** @param {any} r */ (r) => `AS${r.asn}` },
+    { key: 'ix',      label: 'Exchanges',     subtitle: /** @param {any} r */ (r) => r.city || '' },
+    { key: 'fac',     label: 'Facilities',    subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` },
+    { key: 'org',     label: 'Organizations', subtitle: () => '' },
+    { key: 'carrier', label: 'Carriers',      subtitle: () => '' },
+    { key: 'campus',  label: 'Campuses',      subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` }
+]);
+
 /** Base URL for the API — configured in config.js. */
 const API_BASE = API_ORIGIN;
 
@@ -171,21 +187,16 @@ export async function fetchList(type, filters = {}) {
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
 export async function searchAll(query) {
-    const types = ['net', 'ix', 'fac', 'org', 'carrier', 'campus'];
     const params = { name__contains: query, limit: 20 };
 
     const results = await Promise.all(
-        types.map(type => fetchList(type, params).catch(/** @returns {any[]} */() => []))
+        SEARCH_ENTITIES.map(e => fetchList(e.key, params).catch(/** @returns {any[]} */() => []))
     );
 
-    return {
-        net:     results[0],
-        ix:      results[1],
-        fac:     results[2],
-        org:     results[3],
-        carrier: results[4],
-        campus:  results[5]
-    };
+    /** @type {Record<string, any[]>} */
+    const grouped = {};
+    SEARCH_ENTITIES.forEach((e, i) => { grouped[e.key] = results[i]; });
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
 }
 
 /**
@@ -236,6 +247,48 @@ export async function fetchCount(type) {
 export async function fetchSyncStatus() {
     const result = await cachedFetch('/status');
     return result?.sync || null;
+}
+
+/**
+ * Pattern matching ASN-shaped queries: bare digits or "AS" prefix + digits.
+ * Shared between the search page and typeahead dropdown.
+ * @type {RegExp}
+ */
+const ASN_PATTERN = /^(?:as)?(\d+)$/i;
+
+/**
+ * Performs a multi-entity search with ASN-aware injection.
+ *
+ * If the query looks like an ASN (bare number or "AS"-prefixed),
+ * a direct ASN lookup runs in parallel with the name-based search.
+ * The exact ASN match is deduplicated and injected at the top of
+ * the networks list.
+ *
+ * @param {string} query - Search term.
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ */
+export async function searchWithAsn(query) {
+    const asnMatch = query.trim().match(ASN_PATTERN);
+    const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
+
+    const [results, asnNet] = await Promise.all([
+        searchAll(query),
+        isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
+    ]);
+
+    if (asnNet) {
+        const existingIds = new Set(results.net.map(/** @param {any} n */ (n) => n.id));
+        if (!existingIds.has(asnNet.id)) {
+            results.net.unshift(asnNet);
+        } else {
+            results.net = [
+                asnNet,
+                ...results.net.filter(/** @param {any} n */ (n) => n.id !== asnNet.id)
+            ];
+        }
+    }
+
+    return results;
 }
 
 /**

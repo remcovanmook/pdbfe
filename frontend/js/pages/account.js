@@ -10,6 +10,7 @@
 
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
+import { escapeHTML as esc, formatLocaleDate as formatDate } from '../render.js';
 
 /**
  * Renders the /account page into the app container.
@@ -419,30 +420,3 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     if (cancelBtn) cancelBtn.onclick = closeModal;
 }
 
-/**
- * Formats an ISO date string for display.
- *
- * @param {string} iso - ISO 8601 date string.
- * @returns {string} Formatted date.
- */
-function formatDate(iso) {
-    try {
-        return new Date(iso).toLocaleDateString('en-GB', {
-            year: 'numeric', month: 'short', day: 'numeric',
-        });
-    } catch {
-        return iso;
-    }
-}
-
-/**
- * HTML-escapes a string.
- *
- * @param {string} str - Input string.
- * @returns {string} Escaped string.
- */
-function esc(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
