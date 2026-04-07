@@ -10,6 +10,7 @@ import {
     linkEntity, escapeHTML,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the carrier detail page.
@@ -87,13 +88,13 @@ function buildSidebar(carrier) {
  */
 function buildTables(carrier) {
     if (!carrier.carrierfac_set || carrier.carrierfac_set.length === 0) {
-        return '<div class="empty-state">No facilities listed</div>';
+        return `<div class="empty-state">${escapeHTML(t('No facilities listed'))}</div>`;
     }
 
     return renderTableCard({
         title: 'Facilities',
         filterable: true,
-        filterPlaceholder: 'Filter facilities...',
+        filterPlaceholder: t('Filter facilities...'),
         columns: [
             { key: 'name', label: 'Facility' },
         ],

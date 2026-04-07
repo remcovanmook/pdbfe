@@ -11,6 +11,7 @@
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
 import { escapeHTML as esc, formatLocaleDate as formatDate } from '../render.js';
+import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
 /**
  * Renders the /account page into the app container.
@@ -26,8 +27,8 @@ export async function renderAccount(_params) {
         container.innerHTML = `
             <div class="card" style="max-width:480px;margin:var(--space-2xl) auto;text-align:center">
                 <div class="card__body">
-                    <p style="color:var(--text-secondary);margin-bottom:var(--space-md)">Sign in to access your account.</p>
-                    <a href="${AUTH_ORIGIN}/auth/login" class="auth-link">Sign in with PeeringDB</a>
+                    <p style="color:var(--text-secondary);margin-bottom:var(--space-md)">${t('Sign in to access your account.')}</p>
+                    <a href="${AUTH_ORIGIN}/auth/login" class="auth-link">${t('Sign in with PeeringDB')}</a>
                 </div>
             </div>
         `;
@@ -38,27 +39,38 @@ export async function renderAccount(_params) {
     const user = getUser();
 
     container.innerHTML = `
-        <h1 class="detail-header__title" style="margin-bottom:var(--space-xl)">Account</h1>
+        <h1 class="detail-header__title" style="margin-bottom:var(--space-xl)">${t('Account')}</h1>
 
         <div class="detail-layout">
             <div class="detail-sidebar">
                 <div class="card">
                     <div class="card__header">
-                        <span class="card__title">Profile</span>
+                        <span class="card__title">${t('Profile')}</span>
                     </div>
                     <div class="card__body">
                         <div class="info-group" id="profile-info">
                             <div class="info-field">
-                                <span class="info-field__label">Name</span>
+                                <span class="info-field__label">${t('Name')}</span>
                                 <span class="info-field__value">${esc(user?.name || '')}</span>
                             </div>
                             <div class="info-field">
-                                <span class="info-field__label">Email</span>
+                                <span class="info-field__label">${t('Email')}</span>
                                 <span class="info-field__value">${esc(user?.email || '—')}</span>
                             </div>
                             <div class="info-field">
-                                <span class="info-field__label">User ID</span>
+                                <span class="info-field__label">${t('User ID')}</span>
                                 <span class="info-field__value info-field__value--muted">${user?.id || '—'}</span>
+                            </div>
+                            <div class="info-field">
+                                <span class="info-field__label">${t('Language')}</span>
+                                <span class="info-field__value">
+                                    <select id="account-lang-select" class="site-footer__lang-select">
+                                        <option value="en"${!getCurrentLang() || getCurrentLang() === 'en' ? ' selected' : ''}>English</option>
+                                        ${Object.entries(LANGUAGES).map(([code, name]) =>
+                                            `<option value="${code}"${getCurrentLang() === code ? ' selected' : ''}>${esc(name)}</option>`
+                                        ).join('')}
+                                    </select>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -70,11 +82,11 @@ export async function renderAccount(_params) {
             <div class="detail-main">
                 <div class="card">
                     <div class="card__header">
-                        <span class="card__title">API Keys</span>
-                        <button id="btn-create-key" class="auth-link" style="cursor:pointer;background:none">+ New Key</button>
+                        <span class="card__title">${t('API Keys')}</span>
+                        <button id="btn-create-key" class="auth-link" style="cursor:pointer;background:none">+ ${t('New Key')}</button>
                     </div>
                     <div class="card__body" id="keys-container">
-                        <p style="color:var(--text-muted);font-size:0.8125rem">Loading...</p>
+                        <p style="color:var(--text-muted);font-size:0.8125rem">${t('Loading')}...</p>
                     </div>
                 </div>
             </div>
@@ -83,28 +95,28 @@ export async function renderAccount(_params) {
         <div id="key-modal" style="display:none" class="key-modal-overlay">
             <div class="card key-modal">
                 <div class="card__header">
-                    <span class="card__title" id="key-modal-title">Create API Key</span>
+                    <span class="card__title" id="key-modal-title">${t('Create API Key')}</span>
                 </div>
                 <div class="card__body" id="key-modal-body">
                     <div id="key-modal-create">
-                        <label style="display:block;color:var(--text-secondary);font-size:0.8125rem;margin-bottom:var(--space-xs)">Label</label>
+                        <label style="display:block;color:var(--text-secondary);font-size:0.8125rem;margin-bottom:var(--space-xs)">${t('Label')}</label>
                         <input type="text" id="key-label-input" class="key-label-input"
                                placeholder='e.g. "curl scripts"' maxlength="64" autofocus>
                         <div style="display:flex;gap:var(--space-sm);margin-top:var(--space-md)">
-                            <button id="btn-do-create" class="auth-link" style="cursor:pointer;background:none;flex:1">Create</button>
-                            <button id="btn-cancel-create" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">Cancel</button>
+                            <button id="btn-do-create" class="auth-link" style="cursor:pointer;background:none;flex:1">${t('Create')}</button>
+                            <button id="btn-cancel-create" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">${t('Cancel')}</button>
                         </div>
                     </div>
                     <div id="key-modal-result" style="display:none">
                         <p style="color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)">
-                            Copy this key now — it will not be shown again.
+                            ${t('Copy this key now — it will not be shown again.')}
                         </p>
                         <code id="key-modal-value" class="key-display"></code>
                         <button id="btn-copy-key" class="auth-link" style="cursor:pointer;margin-top:var(--space-md);display:block;background:none;width:100%">
-                            Copy to clipboard
+                            ${t('Copy to clipboard')}
                         </button>
                         <button id="btn-close-modal" class="auth-link" style="cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%">
-                            Close
+                            ${t('Close')}
                         </button>
                     </div>
                 </div>
@@ -114,16 +126,16 @@ export async function renderAccount(_params) {
         <div id="revoke-modal" style="display:none" class="key-modal-overlay">
             <div class="card key-modal">
                 <div class="card__header">
-                    <span class="card__title">Revoke API Key</span>
+                    <span class="card__title">${t('Revoke API Key')}</span>
                 </div>
                 <div class="card__body">
                     <p style="color:var(--status-error);font-size:0.8125rem;margin-bottom:var(--space-md)">
-                        This will permanently revoke the key. Any client using it will lose access.
+                        ${t('This will permanently revoke the key. Any client using it will lose access.')}
                     </p>
                     <p id="revoke-key-info" style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)"></p>
                     <div style="display:flex;gap:var(--space-sm)">
-                        <button id="btn-do-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)">Revoke</button>
-                        <button id="btn-cancel-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">Cancel</button>
+                        <button id="btn-do-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)">${t('Revoke')}</button>
+                        <button id="btn-cancel-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">${t('Cancel')}</button>
                     </div>
                     <p id="revoke-error" class="modal-error" style="display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)"></p>
                 </div>
@@ -133,6 +145,14 @@ export async function renderAccount(_params) {
 
     // Wire up create key button
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
+
+    // Wire up language preference selector
+    const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('account-lang-select'));
+    if (langSelect) {
+        langSelect.addEventListener('change', () => {
+            setLanguage(langSelect.value, () => renderAccount(_params));
+        });
+    }
 
     // Load keys
     await loadKeys(sid);
@@ -158,7 +178,7 @@ function renderNetworks(user) {
     return `
         <div class="card">
             <div class="card__header">
-                <span class="card__title">Networks</span>
+                <span class="card__title">${t('Networks')}</span>
                 <span class="card__badge">${nets.length}</span>
             </div>
             <div class="card__body">
@@ -183,7 +203,7 @@ async function loadKeys(sid) {
         });
 
         if (!res.ok) {
-            keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">Failed to load API keys.</p>`;
+            keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">${t('Failed to load API keys.')}</p>`;
             return;
         }
 
@@ -193,10 +213,10 @@ async function loadKeys(sid) {
         if (keys.length === 0) {
             keysContainer.innerHTML = `
                 <p style="color:var(--text-muted);font-size:0.8125rem">
-                    No API keys yet. Create one to enable authenticated API access.
+                    ${t('No API keys yet. Create one to enable authenticated API access.')}
                 </p>
                 <p style="color:var(--text-muted);font-size:0.75rem;margin-top:var(--space-sm)">
-                    Use: <code style="color:var(--accent)">Authorization: Api-Key pdbfe.xxxxx</code>
+                    ${t('Use')}: <code style="color:var(--accent)">Authorization: Api-Key pdbfe.xxxxx</code>
                 </p>
             `;
             return;
@@ -207,9 +227,9 @@ async function loadKeys(sid) {
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Label</th>
-                            <th>Key Prefix</th>
-                            <th>Created</th>
+                            <th>${t('Label')}</th>
+                            <th>${t('Key Prefix')}</th>
+                            <th>${t('Created')}</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -225,7 +245,7 @@ async function loadKeys(sid) {
                                             data-key-label="${esc(k.label)}"
                                             data-key-prefix="${esc(k.prefix)}"
                                             style="cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)">
-                                        Revoke
+                                        ${t('Revoke')}
                                     </button>
                                 </td>
                             </tr>
@@ -234,7 +254,7 @@ async function loadKeys(sid) {
                 </table>
             </div>
             <p style="color:var(--text-muted);font-size:0.6875rem;margin-top:var(--space-sm)">
-                ${keys.length} / ${data.max_keys} keys used
+                ${t('{n} / {max} keys used', { n: keys.length, max: data.max_keys })}
             </p>
         `;
 
@@ -252,7 +272,7 @@ async function loadKeys(sid) {
 
     } catch (err) {
         console.error('Failed to load keys:', err);
-        keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">Error loading API keys.</p>`;
+        keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">${t('Error loading API keys.')}</p>`;
     }
 }
 
@@ -273,7 +293,7 @@ function showCreateDialog(sid) {
     if (!modal || !createView || !resultView || !titleEl || !labelInput) return;
 
     // Reset to input state
-    titleEl.textContent = 'Create API Key';
+    titleEl.textContent = t('Create API Key');
     createView.style.display = 'block';
     resultView.style.display = 'none';
     labelInput.value = '';
@@ -290,7 +310,7 @@ function showCreateDialog(sid) {
     async function doCreate() {
         const label = labelInput.value.trim() || 'Unnamed key';
         const createBtn = document.getElementById('btn-do-create');
-        if (createBtn) createBtn.textContent = 'Creating...';
+        if (createBtn) createBtn.textContent = t('Creating...');
 
         try {
             const res = await fetch(`${AUTH_ORIGIN}/account/keys`, {
@@ -304,20 +324,20 @@ function showCreateDialog(sid) {
 
             const data = await res.json();
             if (!res.ok) {
-                if (createBtn) createBtn.textContent = 'Create';
+                if (createBtn) createBtn.textContent = t('Create');
                 // Show inline error instead of alert
                 const existing = createView.querySelector('.modal-error');
                 if (existing) existing.remove();
                 const errEl = document.createElement('p');
                 errEl.className = 'modal-error';
                 errEl.style.cssText = 'color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)';
-                errEl.textContent = data.error || 'Failed to create key';
+                errEl.textContent = data.error || t('Failed to create key');
                 createView.appendChild(errEl);
                 return;
             }
 
             // Switch to result view
-            titleEl.textContent = 'API Key Created';
+            titleEl.textContent = t('API Key Created');
             createView.style.display = 'none';
             resultView.style.display = 'block';
 
@@ -326,10 +346,10 @@ function showCreateDialog(sid) {
 
             const copyBtn = document.getElementById('btn-copy-key');
             if (copyBtn) {
-                copyBtn.textContent = 'Copy to clipboard';
+                copyBtn.textContent = t('Copy to clipboard');
                 copyBtn.onclick = () => {
                     navigator.clipboard.writeText(data.key).then(() => {
-                        copyBtn.textContent = 'Copied!';
+                        copyBtn.textContent = t('Copied!');
                     });
                 };
             }
@@ -339,7 +359,7 @@ function showCreateDialog(sid) {
 
         } catch (err) {
             console.error('Create key error:', err);
-            if (createBtn) createBtn.textContent = 'Create';
+            if (createBtn) createBtn.textContent = t('Create');
         }
     }
 
@@ -347,7 +367,7 @@ function showCreateDialog(sid) {
     const createBtn = document.getElementById('btn-do-create');
     const cancelBtn = document.getElementById('btn-cancel-create');
     if (createBtn) {
-        createBtn.textContent = 'Create';
+        createBtn.textContent = t('Create');
         createBtn.onclick = doCreate;
     }
     if (cancelBtn) cancelBtn.onclick = closeModal;
@@ -385,7 +405,7 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     /** Performs the DELETE request and refreshes the list. */
     async function doRevoke() {
         const revokeBtn = document.getElementById('btn-do-revoke');
-        if (revokeBtn) revokeBtn.textContent = 'Revoking...';
+        if (revokeBtn) revokeBtn.textContent = t('Revoking...');
 
         try {
             const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}`, {
@@ -395,9 +415,9 @@ function showRevokeDialog(sid, keyId, label, prefix) {
 
             if (!res.ok) {
                 const data = await res.json();
-                errorEl.textContent = data.error || 'Failed to revoke key';
+                errorEl.textContent = data.error || t('Failed to revoke key');
                 errorEl.style.display = 'block';
-                if (revokeBtn) revokeBtn.textContent = 'Revoke';
+                if (revokeBtn) revokeBtn.textContent = t('Revoke');
                 return;
             }
 
@@ -405,16 +425,16 @@ function showRevokeDialog(sid, keyId, label, prefix) {
             await loadKeys(sid);
         } catch (err) {
             console.error('Delete key error:', err);
-            errorEl.textContent = 'Network error';
+            errorEl.textContent = t('Network error');
             errorEl.style.display = 'block';
-            if (revokeBtn) revokeBtn.textContent = 'Revoke';
+            if (revokeBtn) revokeBtn.textContent = t('Revoke');
         }
     }
 
     const revokeBtn = document.getElementById('btn-do-revoke');
     const cancelBtn = document.getElementById('btn-cancel-revoke');
     if (revokeBtn) {
-        revokeBtn.textContent = 'Revoke';
+        revokeBtn.textContent = t('Revoke');
         revokeBtn.onclick = doRevoke;
     }
     if (cancelBtn) cancelBtn.onclick = closeModal;

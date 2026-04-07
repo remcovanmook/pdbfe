@@ -10,6 +10,7 @@
 
 import { searchWithAsn, SEARCH_ENTITIES } from '../api.js';
 import { linkEntity, escapeHTML, renderLoading } from '../render.js';
+import { t } from '../i18n.js';
 
 
 
@@ -25,13 +26,13 @@ export async function renderSearch(params) {
     document.title = `Search: ${query} — PeeringDB`;
 
     if (!query) {
-        app.innerHTML = '<div class="empty-state">Enter a search term</div>';
+        app.innerHTML = `<div class="empty-state">${escapeHTML(t('Enter a search term'))}</div>`;
         return;
     }
 
     app.innerHTML = `
         <div class="search-results">
-            <h1 class="search-results__heading">Results for <strong>${escapeHTML(query)}</strong></h1>
+            <h1 class="search-results__heading">${t('Results for')} <strong>${escapeHTML(query)}</strong></h1>
             <div id="search-body">${renderLoading('Searching')}</div>
         </div>
     `;
@@ -80,14 +81,14 @@ export async function renderSearch(params) {
         }
 
         if (totalCount === 0) {
-            html = `<div class="empty-state">No results found for "${escapeHTML(query)}"</div>`;
+            html = `<div class="empty-state">${escapeHTML(t('No results found for "{q}"', { q: query }))}</div>`;
         }
 
         body.innerHTML = html;
     } catch (err) {
         const body = document.getElementById('search-body');
         if (body) {
-            body.innerHTML = `<div class="error-message">Search failed: ${escapeHTML(err.message)}</div>`;
+            body.innerHTML = `<div class="error-message">${escapeHTML(t('Search failed'))}: ${escapeHTML(err.message)}</div>`;
         }
     }
 }

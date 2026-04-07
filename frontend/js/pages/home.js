@@ -23,10 +23,10 @@ export async function renderHome(_params) {
     document.title = 'PeeringDB';
 
     _app.innerHTML = `
-        <h1 class="home-heading">The Interconnection Database</h1>
+        <h1 class="home-heading">${escapeHTML(t('The Interconnection Database'))}</h1>
         <div class="home-search">
             <div class="home-search__input-wrapper">
-                <input type="text" class="home-search__input" placeholder="Search networks, exchanges, facilities..." id="home-search-input" autofocus>
+                <input type="text" class="home-search__input" placeholder="${t('Search networks, exchanges, facilities...')}" id="home-search-input" autofocus>
             </div>
         </div>
         <div class="home-top">

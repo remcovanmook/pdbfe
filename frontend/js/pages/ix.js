@@ -11,6 +11,7 @@ import {
     linkEntity, formatSpeed, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the exchange detail page.
@@ -90,10 +91,10 @@ function buildSidebar(ix) {
         renderField('Organization', ix.org_name || ix.org_id, { linkType: 'org', linkId: ix.org_id }),
         renderField('City', ix.city),
         renderField('Country', ix.country),
-        renderField('Region', ix.region_continent),
-        renderField('Media Type', ix.media),
-        renderField('Service Level', ix.service_level),
-        renderField('Terms', ix.terms),
+        renderField('Region', ix.region_continent, { translate: true }),
+        renderField('Media Type', ix.media, { translate: true }),
+        renderField('Service Level', ix.service_level, { translate: true }),
+        renderField('Terms', ix.terms, { translate: true }),
         renderField('Website', ix.website, { href: ix.website, external: true }),
         renderField('URL Stats', ix.url_stats, { href: ix.url_stats, external: true }),
         renderField('Tech Email', ix.tech_email),
@@ -128,7 +129,7 @@ function buildTables(ix, peers) {
         peerTable = renderTableCard({
             title: 'Peers',
             filterable: true,
-            filterPlaceholder: 'Filter by name or ASN...',
+            filterPlaceholder: t('Filter by name or ASN...'),
             columns: [
                 { key: 'name',       label: 'Network' },
                 { key: 'asn',        label: 'ASN', class: 'td-right' },
@@ -176,5 +177,5 @@ function buildTables(ix, peers) {
         });
     }
 
-    return [peerTable, facTable].filter(s => s).join('') || '<div class="empty-state">No peers or facilities</div>';
+    return [peerTable, facTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No peers or facilities'))}</div>`;
 }

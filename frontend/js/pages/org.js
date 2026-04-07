@@ -10,6 +10,7 @@ import {
     linkEntity, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the organization detail page.
@@ -93,7 +94,7 @@ function buildTables(org) {
         netTable = renderTableCard({
             title: 'Networks',
             filterable: true,
-            filterPlaceholder: 'Filter networks...',
+            filterPlaceholder: t('Filter networks...'),
             columns: [
                 { key: 'name', label: 'Network' },
                 { key: 'asn',  label: 'ASN', class: 'td-right' },
@@ -141,5 +142,5 @@ function buildTables(org) {
         });
     }
 
-    return [netTable, facTable, ixTable].filter(s => s).join('') || '<div class="empty-state">No networks, facilities, or exchanges</div>';
+    return [netTable, facTable, ixTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No networks, facilities, or exchanges'))}</div>`;
 }
