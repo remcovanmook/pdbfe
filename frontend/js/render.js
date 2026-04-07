@@ -5,6 +5,7 @@
  */
 
 import { renderMarkdown } from './markdown.js';
+import { t } from './i18n.js';
 
 /**
  * Creates an internal SPA link element.
@@ -53,7 +54,7 @@ export function renderField(label, value, opts = {}) {
     }
 
     return `<div class="info-field">
-        <span class="info-field__label">${escapeHTML(label)}</span>
+        <span class="info-field__label">${escapeHTML(t(label))}</span>
         <span class="info-field__value">${valueHTML}</span>
     </div>`;
 }
@@ -70,7 +71,7 @@ export function renderFieldGroup(title, fields) {
     if (populated.length === 0) return '';
 
     return `<div class="info-group">
-        <div class="info-group__title">${escapeHTML(title)}</div>
+        <div class="info-group__title">${escapeHTML(t(title))}</div>
         ${populated.join('\n')}
     </div>`;
 }
@@ -105,7 +106,7 @@ export function renderTableCard(opts) {
         : '';
 
     const headerHTML = columns.map(col =>
-        `<th data-sort-key="${col.key}">${escapeHTML(col.label)}</th>`
+        `<th data-sort-key="${col.key}">${escapeHTML(t(col.label))}</th>`
     ).join('');
 
     const bodyHTML = rows.map(row => {
@@ -129,7 +130,7 @@ export function renderTableCard(opts) {
 
     return `<div class="card">
         <div class="card__header">
-            <span class="card__title">${escapeHTML(title)}</span>
+            <span class="card__title">${escapeHTML(t(title))}</span>
             <div style="display:flex;align-items:center;gap:var(--space-sm)">
                 ${filterHTML}
                 <span class="card__badge">${count}</span>
@@ -155,7 +156,7 @@ const PAGE_SIZE = 50;
  * @returns {string} HTML string.
  */
 export function renderLoading(message = 'Loading') {
-    return `<div class="loading">${escapeHTML(message)}</div>`;
+    return `<div class="loading">${escapeHTML(t(message))}</div>`;
 }
 
 /**

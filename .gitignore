@@ -1,4 +1,5 @@
 # Environment and secrets
+.venv/
 .env
 .env.*
 !.env.example
@@ -30,6 +31,7 @@ database/*.json
 
 # Legacy
 debthin_workers/
+peeringdb/
 
 # OS
 .DS_Store
