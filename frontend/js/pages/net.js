@@ -94,7 +94,7 @@ function buildSidebar(net) {
 
     let contacts = '';
     if (net.poc_set && net.poc_set.length > 0) {
-        const fields = net.poc_set.map(poc => {
+        const fields = net.poc_set.map(/** @param {any} poc */ (poc) => {
             const parts = [escapeHTML(poc.role || 'Contact')];
             if (poc.name) parts.push(escapeHTML(poc.name));
             if (poc.email) parts.push(`<a href="mailto:${escapeHTML(poc.email)}">${escapeHTML(poc.email)}</a>`);
@@ -134,7 +134,7 @@ function buildTables(net) {
             cellRenderer: (row, col) => {
                 switch (col.key) {
                     case 'name': return linkEntity('ix', row.ix_id, row.name || `IX ${row.ix_id}`);
-                    case 'speed': return formatSpeed(row.speed);
+                    case 'speed': return { html: formatSpeed(row.speed), sortValue: row.speed || 0 };
                     case 'ipaddr4': return row.ipaddr4 ? escapeHTML(row.ipaddr4) : '—';
                     case 'ipaddr6': return row.ipaddr6 ? escapeHTML(row.ipaddr6) : '—';
                     case 'is_rs_peer': return renderBool(row.is_rs_peer);

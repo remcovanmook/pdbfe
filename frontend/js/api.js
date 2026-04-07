@@ -8,22 +8,56 @@
 import { getSessionId } from './auth.js';
 import { API_ORIGIN } from './config.js';
 
+/**
+ * Search entity group definitions — single source of truth for the
+ * entity types, display labels, and subtitle formatters used by
+ * searchAll(), the search results page, and the typeahead dropdown.
+ *
+ * @type {ReadonlyArray<{key: string, label: string, subtitle: (r: any) => string}>}
+ */
+export const SEARCH_ENTITIES = Object.freeze([
+    { key: 'net',     label: 'Networks',      subtitle: /** @param {any} r */ (r) => `AS${r.asn}` },
+    { key: 'ix',      label: 'Exchanges',     subtitle: /** @param {any} r */ (r) => r.city || '' },
+    { key: 'fac',     label: 'Facilities',    subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` },
+    { key: 'org',     label: 'Organizations', subtitle: () => '' },
+    { key: 'carrier', label: 'Carriers',      subtitle: () => '' },
+    { key: 'campus',  label: 'Campuses',      subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` }
+]);
+
 /** Base URL for the API — configured in config.js. */
 const API_BASE = API_ORIGIN;
 
 /**
- * In-memory response cache. Maps URL → { data, timestamp }.
- * Entries expire after CACHE_TTL_MS milliseconds.
+ * In-memory response cache. Maps cache key → { data, timestamp }.
+ * Entries are served stale during the SWR window and refreshed
+ * in the background.
  * @type {Map<string, {data: any, ts: number}>}
  */
 const _cache = new Map();
 
-/** Cache entry lifetime in milliseconds. */
+/**
+ * Set of cache keys currently being revalidated in the background.
+ * Prevents duplicate concurrent fetches for the same stale entry.
+ * @type {Set<string>}
+ */
+const _pending = new Set();
+
+/** Fresh window — cached data returned without revalidation. */
 const CACHE_TTL_MS = 60_000;
 
+/** Stale-while-revalidate window — stale data returned, background refresh fired. */
+const CACHE_SWR_MS = 300_000;
+
 /**
- * Performs a cached fetch against the API. Returns cached data if the
- * entry exists and hasn't expired, otherwise fetches fresh data.
+ * Performs a cached fetch with stale-while-revalidate semantics.
+ *
+ * - **Fresh** (< 60s): returns cached data, no network request.
+ * - **Stale** (60s–5min): returns cached data immediately, fires a
+ *   background fetch to update the cache for subsequent calls.
+ * - **Expired** (> 5min) or **first request**: blocks on fetch.
+ *
+ * Cache keys include auth state so authenticated and anonymous
+ * responses are stored separately.
  *
  * @param {string} path - API path (e.g. "/api/net/694").
  * @param {Record<string, string|number>} [params] - Query parameters.
@@ -33,17 +67,40 @@ const CACHE_TTL_MS = 60_000;
 async function cachedFetch(path, params) {
     const url = buildURL(path, params);
     const now = Date.now();
-    // Include auth state in the cache key so authenticated and anonymous
-    // responses are stored separately. Prevents stale anonymous data
-    // (e.g. missing poc_set) from being served after login.
     const sid = getSessionId();
     const cacheKey = sid ? `auth:${url}` : url;
 
     const cached = _cache.get(cacheKey);
-    if (cached && (now - cached.ts) < CACHE_TTL_MS) {
-        return cached.data;
+    if (cached) {
+        const age = now - cached.ts;
+
+        // Fresh: return immediately
+        if (age < CACHE_TTL_MS) {
+            return cached.data;
+        }
+
+        // Stale but within SWR window: return stale, revalidate in background
+        if (age < CACHE_SWR_MS) {
+            revalidate(cacheKey, url, sid);
+            return cached.data;
+        }
     }
 
+    // Expired or first request: blocking fetch
+    return freshFetch(cacheKey, url, sid);
+}
+
+/**
+ * Fetches fresh data from the API and updates the cache.
+ * Used for both blocking fetches and background revalidation.
+ *
+ * @param {string} cacheKey - Cache key for storage.
+ * @param {string} url - Full API URL to fetch.
+ * @param {string|null} sid - Session ID for auth header, or null.
+ * @returns {Promise<any>} Parsed JSON response body.
+ * @throws {Error} On non-2xx status or network failure.
+ */
+async function freshFetch(cacheKey, url, sid) {
     /** @type {RequestInit} */
     const init = {};
     if (sid) {
@@ -56,8 +113,26 @@ async function cachedFetch(path, params) {
     }
 
     const data = await res.json();
-    _cache.set(cacheKey, { data, ts: now });
+    _cache.set(cacheKey, { data, ts: Date.now() });
     return data;
+}
+
+/**
+ * Fires a background fetch to refresh a stale cache entry.
+ * Deduplicates via _pending — only one in-flight revalidation
+ * per cache key at a time. Errors are silently swallowed since
+ * the caller already received stale data.
+ *
+ * @param {string} cacheKey - Cache key to revalidate.
+ * @param {string} url - Full API URL to fetch.
+ * @param {string|null} sid - Session ID for auth header, or null.
+ */
+function revalidate(cacheKey, url, sid) {
+    if (_pending.has(cacheKey)) return;
+    _pending.add(cacheKey);
+    freshFetch(cacheKey, url, sid)
+        .catch(() => {})
+        .finally(() => _pending.delete(cacheKey));
 }
 
 /**
@@ -112,21 +187,16 @@ export async function fetchList(type, filters = {}) {
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
 export async function searchAll(query) {
-    const types = ['net', 'ix', 'fac', 'org', 'carrier', 'campus'];
     const params = { name__contains: query, limit: 20 };
 
     const results = await Promise.all(
-        types.map(type => fetchList(type, params).catch(() => []))
+        SEARCH_ENTITIES.map(e => fetchList(e.key, params).catch(/** @returns {any[]} */() => []))
     );
 
-    return {
-        net:     results[0],
-        ix:      results[1],
-        fac:     results[2],
-        org:     results[3],
-        carrier: results[4],
-        campus:  results[5]
-    };
+    /** @type {Record<string, any[]>} */
+    const grouped = {};
+    SEARCH_ENTITIES.forEach((e, i) => { grouped[e.key] = results[i]; });
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
 }
 
 /**
@@ -177,6 +247,48 @@ export async function fetchCount(type) {
 export async function fetchSyncStatus() {
     const result = await cachedFetch('/status');
     return result?.sync || null;
+}
+
+/**
+ * Pattern matching ASN-shaped queries: bare digits or "AS" prefix + digits.
+ * Shared between the search page and typeahead dropdown.
+ * @type {RegExp}
+ */
+const ASN_PATTERN = /^(?:as)?(\d+)$/i;
+
+/**
+ * Performs a multi-entity search with ASN-aware injection.
+ *
+ * If the query looks like an ASN (bare number or "AS"-prefixed),
+ * a direct ASN lookup runs in parallel with the name-based search.
+ * The exact ASN match is deduplicated and injected at the top of
+ * the networks list.
+ *
+ * @param {string} query - Search term.
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ */
+export async function searchWithAsn(query) {
+    const asnMatch = query.trim().match(ASN_PATTERN);
+    const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
+
+    const [results, asnNet] = await Promise.all([
+        searchAll(query),
+        isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
+    ]);
+
+    if (asnNet) {
+        const existingIds = new Set(results.net.map(/** @param {any} n */ (n) => n.id));
+        if (!existingIds.has(asnNet.id)) {
+            results.net.unshift(asnNet);
+        } else {
+            results.net = [
+                asnNet,
+                ...results.net.filter(/** @param {any} n */ (n) => n.id !== asnNet.id)
+            ];
+        }
+    }
+
+    return results;
 }
 
 /**

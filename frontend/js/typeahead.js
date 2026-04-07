@@ -7,15 +7,11 @@
  * Results are grouped by entity type in a dropdown overlay.
  */
 
-import { searchAll, fetchByAsn } from './api.js';
+import { searchWithAsn, SEARCH_ENTITIES } from './api.js';
 import { escapeHTML } from './render.js';
 import { navigate } from './router.js';
 
-/**
- * Pattern matching ASN-shaped queries: bare digits or "AS" prefix + digits.
- * @type {RegExp}
- */
-const ASN_PATTERN = /^(?:as)?(\d+)$/i;
+
 
 /**
  * Minimum characters before triggering a search.
@@ -69,28 +65,7 @@ export function attachTypeahead(input, opts = {}) {
         }
 
         try {
-            // Detect ASN-shaped queries for direct lookup
-            const asnMatch = query.trim().match(ASN_PATTERN);
-            const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
-
-            const [results, asnNet] = await Promise.all([
-                searchAll(query),
-                isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
-            ]);
-
-            // Inject ASN match at top of networks
-            if (asnNet) {
-                const existingIds = new Set(results.net.map(n => n.id));
-                if (!existingIds.has(asnNet.id)) {
-                    results.net.unshift(asnNet);
-                } else {
-                    results.net = [
-                        asnNet,
-                        ...results.net.filter(n => n.id !== asnNet.id)
-                    ];
-                }
-            }
-
+            const results = await searchWithAsn(query);
             renderDropdown(results);
         } catch {
             closeDropdown();
@@ -103,14 +78,12 @@ export function attachTypeahead(input, opts = {}) {
      * @param {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} results
      */
     function renderDropdown(results) {
-        const groups = [
-            { key: 'net',     label: 'Networks',      items: results.net.slice(0, 5),     sub: (r) => `AS${r.asn}` },
-            { key: 'ix',      label: 'Exchanges',     items: results.ix.slice(0, 5),      sub: (r) => r.city || '' },
-            { key: 'fac',     label: 'Facilities',    items: results.fac.slice(0, 5),     sub: (r) => r.city || '' },
-            { key: 'org',     label: 'Organizations', items: results.org.slice(0, 3),     sub: () => '' },
-            { key: 'carrier', label: 'Carriers',      items: results.carrier.slice(0, 3), sub: () => '' },
-            { key: 'campus',  label: 'Campuses',      items: results.campus.slice(0, 3),  sub: () => '' }
-        ];
+        const /** @type {Record<string, any[]>} */ res = /** @type {any} */ (results);
+        const primaryKeys = new Set(['net', 'ix', 'fac']);
+        const groups = SEARCH_ENTITIES.map(e => ({
+            ...e,
+            items: (res[e.key] || []).slice(0, primaryKeys.has(e.key) ? 5 : 3)
+        }));
 
         let html = '';
         let hasResults = false;
@@ -124,7 +97,7 @@ export function attachTypeahead(input, opts = {}) {
 
             for (const item of group.items) {
                 const name = escapeHTML(item.name || `ID ${item.id}`);
-                const sub = group.sub(item);
+                const sub = group.subtitle(item);
                 html += `<div class="search-dropdown__item" data-href="/${group.key}/${item.id}" role="option">
                     <span>${name}</span>
                     ${sub ? `<span class="search-dropdown__item-sub">${escapeHTML(sub)}</span>` : ''}

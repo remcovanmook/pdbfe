@@ -106,7 +106,7 @@ function buildSidebar(ix) {
 
     let prefixes = '';
     if (ix.ixpfx_set && ix.ixpfx_set.length > 0) {
-        const pfxFields = ix.ixpfx_set.map(pfx =>
+        const pfxFields = ix.ixpfx_set.map(/** @param {any} pfx */ (pfx) =>
             renderField(pfx.protocol === 'IPv6' ? 'IPv6 Prefix' : 'IPv4 Prefix', pfx.prefix)
         );
         prefixes = renderFieldGroup('LAN Prefixes', pfxFields);
@@ -149,7 +149,7 @@ function buildTables(ix, peers) {
                             : escapeHTML(label);
                     }
                     case 'asn': return String(row.asn || '');
-                    case 'speed': return formatSpeed(row.speed);
+                    case 'speed': return { html: formatSpeed(row.speed), sortValue: row.speed || 0 };
                     case 'ipaddr4': return row.ipaddr4 ? escapeHTML(row.ipaddr4) : '—';
                     case 'ipaddr6': return row.ipaddr6 ? escapeHTML(row.ipaddr6) : '—';
                     case 'is_rs_peer': return renderBool(row.is_rs_peer);

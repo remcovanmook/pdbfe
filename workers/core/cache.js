@@ -1,10 +1,14 @@
 /**
  * @fileoverview TypedArray LRU isolate cache.
- * Provides contiguous high-performance RAM boundaries minimizing V8 garbage
- * collection overheads. Reused from debthin core/cache.js without modification.
+ * Provides contiguous high-performance RAM boundaries minimising V8 garbage
+ * collection overheads.
  *
  * Exports:
  * - LRUCache: Slot-based LRU backed by flat arrays for eviction speed.
+ *
+ * IMPORTANT: get() returns a shared mutable object. Callers MUST read
+ * its fields synchronously before the next get() call — the same object
+ * is overwritten on every invocation. See ANTI_PATTERNS.md §11.
  */
 
 
@@ -34,6 +38,14 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
   let clock = 0;
   let size = 0;
   let freeSlot = 0;
+
+  /**
+   * Shared return object for get(). Mutated in place to avoid allocating
+   * a fresh object on every cache hit. Callers must consume fields
+   * synchronously before the next get() call.
+   * @type {{buf: Uint8Array|null, meta: any, hits: number, addedAt: number}}
+   */
+  const _ret = { buf: null, meta: null, hits: 0, addedAt: 0 };
 
   function evict() {
     let lru = -1, lruTime = Infinity;
@@ -99,7 +111,11 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
       hitsArray[slot]++;
       usedArray[slot] = clock = (clock + 1) >>> 0;
       if (clock === 0) usedArray.fill(0);
-      return { buf: bufArray[slot], meta: metaArray[slot], hits: hitsArray[slot], addedAt: addedArray[slot] };
+      _ret.buf = bufArray[slot];
+      _ret.meta = metaArray[slot];
+      _ret.hits = hitsArray[slot];
+      _ret.addedAt = addedArray[slot];
+      return _ret;
     },
     has: (key) => index.has(key),
     updateTTL: (key, now) => {

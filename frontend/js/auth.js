@@ -16,6 +16,7 @@
 
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
+import { escapeHTML } from './render.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -155,7 +156,7 @@ function renderAuthUI() {
 
     if (_cachedUser) {
         container.innerHTML = `
-            <span class="auth-user">${escapeHtml(_cachedUser.given_name || _cachedUser.name)}</span>
+            <span class="auth-user">${escapeHTML(_cachedUser.given_name || _cachedUser.name)}</span>
             <a href="/account" class="auth-link" data-link>Account</a>
             <a href="#" id="auth-logout" class="auth-link">Sign out</a>
         `;
@@ -174,15 +175,3 @@ function renderAuthUI() {
     }
 }
 
-/**
- * HTML-escapes a string to prevent XSS when inserting user-supplied
- * text into the DOM via innerHTML.
- *
- * @param {string} str - The string to escape.
- * @returns {string} The escaped string.
- */
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}

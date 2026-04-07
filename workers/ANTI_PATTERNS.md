@@ -288,3 +288,32 @@ return serveJSON(buf);
 
 Exception: inside `ctx.waitUntil()` closures, awaiting is fine since
 the response has already been sent.
+
+---
+
+## 11. Holding LRU Cache Results Across Calls
+
+`cache.get()` returns a **shared mutable object** to avoid allocating a
+fresh object on every cache hit. The same object is overwritten on the
+next `get()` call.
+
+**Don't:**
+```js
+const a = cache.get("key-a");
+const b = cache.get("key-b");
+// BUG: a.buf now contains key-b's data — 'a' and 'b' are the same object
+return serveJSON(request, a.buf);
+```
+
+**Do:**
+```js
+const entry = cache.get("key-a");
+const buf = entry.buf;          // extract what you need
+const hits = entry.hits;
+// Safe to call get() again — buf and hits are primitive/reference copies
+const other = cache.get("key-b");
+```
+
+Rule: read all needed fields from the return object synchronously before
+calling `get()` again. This eliminates young-generation GC pressure on
+the hottest code path (L1 cache hits).

@@ -10,6 +10,7 @@
 
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
+import { escapeHTML as esc, formatLocaleDate as formatDate } from '../render.js';
 
 /**
  * Renders the /account page into the app container.
@@ -147,7 +148,7 @@ function renderNetworks(user) {
     const nets = user?.networks || [];
     if (nets.length === 0) return '';
 
-    const rows = nets.map(n =>
+    const rows = nets.map(/** @param {{id: number, asn: number, name: string}} n */ (n) =>
         `<div class="info-field">
             <span class="info-field__label">AS${n.asn}</span>
             <span class="info-field__value"><a href="/net/${n.id}" data-link>${esc(n.name)}</a></span>
@@ -213,7 +214,7 @@ async function loadKeys(sid) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${keys.map(k => `
+                        ${keys.map(/** @param {any} k */ (k) => `
                             <tr>
                                 <td>${esc(k.label)}</td>
                                 <td class="td-mono">pdbfe.${esc(k.prefix)}…</td>
@@ -419,30 +420,3 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     if (cancelBtn) cancelBtn.onclick = closeModal;
 }
 
-/**
- * Formats an ISO date string for display.
- *
- * @param {string} iso - ISO 8601 date string.
- * @returns {string} Formatted date.
- */
-function formatDate(iso) {
-    try {
-        return new Date(iso).toLocaleDateString('en-GB', {
-            year: 'numeric', month: 'short', day: 'numeric',
-        });
-    } catch {
-        return iso;
-    }
-}
-
-/**
- * HTML-escapes a string.
- *
- * @param {string} str - Input string.
- * @returns {string} Escaped string.
- */
-function esc(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
