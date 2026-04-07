@@ -57,6 +57,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "frontend", "locales")
 STRINGS_FILE = os.path.join(OUTPUT_DIR, "strings.json")
+OVERRIDES_DIR = os.path.join(OUTPUT_DIR, "overrides")
 
 
 def load_ui_strings():
@@ -133,11 +134,34 @@ def parse_po_to_dict(po_content):
     return result
 
 
+def load_overrides(short_code):
+    """
+    Loads local override translations for a given language from
+    frontend/locales/overrides/{short_code}.json. These provide
+    translations for pdbfe-specific strings not in upstream Weblate.
+
+    Args:
+        short_code: Frontend language code (e.g. 'de', 'pt').
+
+    Returns:
+        dict of override translations, or empty dict if no file exists.
+    """
+    override_path = os.path.join(OVERRIDES_DIR, f"{short_code}.json")
+    if not os.path.isfile(override_path):
+        return {}
+
+    with open(override_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Strip metadata keys (prefixed with _)
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
 def compile_locale(locale_dir, short_code, ui_strings):
     """
     Downloads and compiles both django.po and djangojs.po for a locale into
     a single flat JSON dictionary, filtered to only include strings the
-    frontend uses.
+    frontend uses. Merges local overrides on top to fill gaps.
 
     Args:
         locale_dir: Directory name in the upstream repo.
@@ -145,7 +169,8 @@ def compile_locale(locale_dir, short_code, ui_strings):
         ui_strings: Set of string keys to include, or None for no filtering.
 
     Returns:
-        Tuple of (included_count, total_upstream_count) or (-1, 0) on failure.
+        Tuple of (included_count, override_count, total_upstream_count)
+        or (-1, 0, 0) on failure.
     """
     all_upstream = {}
 
@@ -156,20 +181,35 @@ def compile_locale(locale_dir, short_code, ui_strings):
             entries = parse_po_to_dict(content)
             all_upstream.update(entries)
 
-    if not all_upstream:
-        return (-1, 0)
+    # Load local overrides
+    overrides = load_overrides(short_code)
 
-    # Filter to only include strings the frontend uses
+    # Even if upstream is empty, overrides alone can produce a valid locale
+    if not all_upstream and not overrides:
+        return (-1, 0, 0)
+
+    # Start with overrides as the base, then layer upstream on top.
+    # This means upstream translations take precedence where they exist,
+    # and overrides fill the gaps.
     if ui_strings is not None:
-        filtered = {k: v for k, v in all_upstream.items() if k in ui_strings}
+        filtered_upstream = {k: v for k, v in all_upstream.items() if k in ui_strings}
+        filtered_overrides = {k: v for k, v in overrides.items() if k in ui_strings}
     else:
-        filtered = all_upstream
+        filtered_upstream = all_upstream
+        filtered_overrides = overrides
+
+    # Merge: overrides first, upstream on top (upstream wins)
+    merged = {}
+    merged.update(filtered_overrides)
+    merged.update(filtered_upstream)
+
+    override_only_count = len([k for k in merged if k not in filtered_upstream])
 
     out_path = os.path.join(OUTPUT_DIR, f"{short_code}.json")
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(filtered, f, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dump(merged, f, ensure_ascii=False, indent=2, sort_keys=True)
 
-    return (len(filtered), len(all_upstream))
+    return (len(merged), override_only_count, len(all_upstream))
 
 
 def main():
@@ -189,12 +229,15 @@ def main():
 
     for locale_dir, short_code in sorted(LANGUAGES.items()):
         print(f"  {locale_dir} -> {short_code}.json ...", end=" ", flush=True)
-        included, upstream_total = compile_locale(locale_dir, short_code, ui_strings)
+        included, from_overrides, upstream_total = compile_locale(locale_dir, short_code, ui_strings)
         if included < 0:
             print("SKIP (no translations found)")
             skipped += 1
         else:
-            print(f"OK ({included} of {upstream_total} upstream entries)")
+            parts = [f"{included} entries"]
+            if from_overrides:
+                parts.append(f"{from_overrides} from overrides")
+            print(f"OK ({', '.join(parts)})")
             total += 1
             if ui_strings:
                 coverage_data.append((short_code, included, len(ui_strings)))

@@ -26,7 +26,6 @@ export const LANGUAGES = {
     'it': 'Italiano',
     'ja': '日本語',
     'lt': 'Lietuvių',
-    'oc': 'Occitan',
     'pt': 'Português',
     'ro': 'Română',
     'ru': 'Русский',

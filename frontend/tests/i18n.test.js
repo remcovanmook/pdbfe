@@ -191,7 +191,7 @@ describe('LANGUAGES', () => {
     it('contains the curated upstream language set', () => {
         const expected = [
             'en', 'cs', 'de', 'el', 'es', 'fr', 'it',
-            'ja', 'lt', 'oc', 'pt', 'ro', 'ru', 'zh-cn', 'zh-tw',
+            'ja', 'lt', 'pt', 'ro', 'ru', 'zh-cn', 'zh-tw',
         ];
         for (const code of expected) {
             assert.ok(code in LANGUAGES, `Missing language: ${code}`);
