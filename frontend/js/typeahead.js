@@ -104,9 +104,9 @@ export function attachTypeahead(input, opts = {}) {
      */
     function renderDropdown(results) {
         const groups = [
-            { key: 'net',     label: 'Networks',      items: results.net.slice(0, 5),     sub: (r) => `AS${r.asn}` },
-            { key: 'ix',      label: 'Exchanges',     items: results.ix.slice(0, 5),      sub: (r) => r.city || '' },
-            { key: 'fac',     label: 'Facilities',    items: results.fac.slice(0, 5),     sub: (r) => r.city || '' },
+            { key: 'net',     label: 'Networks',      items: results.net.slice(0, 5),     sub: /** @param {any} r */ (r) => `AS${r.asn}` },
+            { key: 'ix',      label: 'Exchanges',     items: results.ix.slice(0, 5),      sub: /** @param {any} r */ (r) => r.city || '' },
+            { key: 'fac',     label: 'Facilities',    items: results.fac.slice(0, 5),     sub: /** @param {any} r */ (r) => r.city || '' },
             { key: 'org',     label: 'Organizations', items: results.org.slice(0, 3),     sub: () => '' },
             { key: 'carrier', label: 'Carriers',      items: results.carrier.slice(0, 3), sub: () => '' },
             { key: 'campus',  label: 'Campuses',      items: results.campus.slice(0, 3),  sub: () => '' }

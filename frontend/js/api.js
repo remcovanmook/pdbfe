@@ -175,7 +175,7 @@ export async function searchAll(query) {
     const params = { name__contains: query, limit: 20 };
 
     const results = await Promise.all(
-        types.map(type => fetchList(type, params).catch(() => []))
+        types.map(type => fetchList(type, params).catch(/** @returns {any[]} */() => []))
     );
 
     return {

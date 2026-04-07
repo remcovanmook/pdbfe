@@ -73,12 +73,12 @@ export async function renderSearch(params) {
         const body = /** @type {HTMLElement} */ (document.getElementById('search-body'));
 
         const sections = [
-            { key: 'net',     label: 'Networks',      items: results.net,     subtitle: (r) => `AS${r.asn}` },
-            { key: 'ix',      label: 'Exchanges',     items: results.ix,      subtitle: (r) => r.city || '' },
-            { key: 'fac',     label: 'Facilities',    items: results.fac,     subtitle: (r) => `${r.city || ''}, ${r.country || ''}` },
+            { key: 'net',     label: 'Networks',      items: results.net,     subtitle: /** @param {any} r */ (r) => `AS${r.asn}` },
+            { key: 'ix',      label: 'Exchanges',     items: results.ix,      subtitle: /** @param {any} r */ (r) => r.city || '' },
+            { key: 'fac',     label: 'Facilities',    items: results.fac,     subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` },
             { key: 'org',     label: 'Organizations', items: results.org,     subtitle: () => '' },
             { key: 'carrier', label: 'Carriers',      items: results.carrier, subtitle: () => '' },
-            { key: 'campus',  label: 'Campuses',      items: results.campus,  subtitle: (r) => `${r.city || ''}, ${r.country || ''}` }
+            { key: 'campus',  label: 'Campuses',      items: results.campus,  subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` }
         ];
 
         let html = '';

@@ -147,7 +147,7 @@ function renderNetworks(user) {
     const nets = user?.networks || [];
     if (nets.length === 0) return '';
 
-    const rows = nets.map(n =>
+    const rows = nets.map(/** @param {{id: number, asn: number, name: string}} n */ (n) =>
         `<div class="info-field">
             <span class="info-field__label">AS${n.asn}</span>
             <span class="info-field__value"><a href="/net/${n.id}" data-link>${esc(n.name)}</a></span>
@@ -213,7 +213,7 @@ async function loadKeys(sid) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${keys.map(k => `
+                        ${keys.map(/** @param {any} k */ (k) => `
                             <tr>
                                 <td>${esc(k.label)}</td>
                                 <td class="td-mono">pdbfe.${esc(k.prefix)}…</td>

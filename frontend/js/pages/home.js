@@ -84,7 +84,7 @@ async function loadRecentUpdates() {
         //   Model.handleref.filter(status="ok").order_by("-updated")[:5]
         // Our API now supports the sort parameter for server-side ordering.
         const results = await Promise.all(
-            types.map(t => fetchList(t.type, { sort: '-updated', limit: 5 }).catch(() => []))
+            types.map(t => fetchList(t.type, { sort: '-updated', limit: 5 }).catch(/** @returns {any[]} */() => []))
         );
 
         const columns = types.map((t, i) => {

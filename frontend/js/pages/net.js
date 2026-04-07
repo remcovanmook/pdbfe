@@ -94,7 +94,7 @@ function buildSidebar(net) {
 
     let contacts = '';
     if (net.poc_set && net.poc_set.length > 0) {
-        const fields = net.poc_set.map(poc => {
+        const fields = net.poc_set.map(/** @param {any} poc */ (poc) => {
             const parts = [escapeHTML(poc.role || 'Contact')];
             if (poc.name) parts.push(escapeHTML(poc.name));
             if (poc.email) parts.push(`<a href="mailto:${escapeHTML(poc.email)}">${escapeHTML(poc.email)}</a>`);
