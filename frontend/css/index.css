@@ -944,6 +944,40 @@ body[data-page="home"] .site-logo {
     color: var(--status-error);
 }
 
+.site-footer__lang-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+}
+
+.site-footer__lang-label {
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.site-footer__lang-select {
+    height: 26px;
+    padding: 0 var(--space-sm);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.75rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+}
+
+.site-footer__lang-select:focus {
+    border-color: var(--accent);
+}
+
+.site-footer__lang-select:hover {
+    color: var(--text-primary);
+}
+
 .site-footer__heading {
     font-size: 0.6875rem;
     font-weight: 600;

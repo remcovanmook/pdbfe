@@ -7,7 +7,8 @@
     "test:integration": "node --test tests/test_api.js",
     "test:conformance": "node --test tests/test_conformance.js",
     "test:conformance-ext": "node --test tests/test_conformance_extended.js",
-    "test:equivalence": "node --test tests/test_equivalence.js"
+    "test:equivalence": "node --test tests/test_equivalence.js",
+    "test:upstream": "node --test tests/test_upstream_patterns.js"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260318.0",

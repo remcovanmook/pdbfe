@@ -2,7 +2,7 @@
  * @fileoverview Application bootstrap module.
  * Registers SPA routes, wires up the header search bar,
  * initialises the router, fetches sync status for the footer,
- * and bootstraps OAuth session state.
+ * bootstraps OAuth session state, and initializes i18n.
  */
 
 import { addRoute, initRouter, navigate } from './router.js';
@@ -21,6 +21,7 @@ import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
 import { initAuth } from './auth.js';
+import { initI18n, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -42,6 +43,9 @@ window.__router = { navigate };
 const headerSearch = /** @type {HTMLInputElement} */ (document.getElementById('header-search'));
 attachTypeahead(headerSearch);
 
+// Initialize i18n (loads locale dictionary if needed) before routing
+await initI18n();
+
 // Bootstrap OAuth session state before routing, so isAuthenticated()
 // returns the correct value when page handlers run.
 await initAuth().catch(() => {
@@ -50,6 +54,26 @@ await initAuth().catch(() => {
 
 // Boot the router (dispatches the current URL immediately)
 initRouter(document.getElementById('app'));
+
+// Wire up the footer language selector
+const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
+if (langSelect) {
+    // Populate options
+    for (const [code, name] of Object.entries(LANGUAGES)) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = `${name} (${code})`;
+        opt.selected = code === getCurrentLang();
+        langSelect.appendChild(opt);
+    }
+
+    langSelect.addEventListener('change', () => {
+        setLanguage(langSelect.value, () => {
+            // Re-render the current route by re-dispatching
+            window.location.reload();
+        });
+    });
+}
 
 // Fetch and display sync status in the footer
 fetchSyncStatus().then(sync => {
