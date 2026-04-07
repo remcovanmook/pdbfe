@@ -33,6 +33,9 @@ pass "workers typecheck"
 npm test --silent 2>&1 || fail "workers tests failed"
 pass "workers tests"
 
+npm run test:upstream --silent 2>&1 || fail "upstream pattern tests failed"
+pass "upstream pattern tests"
+
 cd ..
 
 # ── Frontend ─────────────────────────────────────────────────────────
