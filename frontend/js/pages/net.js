@@ -11,6 +11,7 @@ import {
     linkEntity, formatSpeed, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the network detail page.
@@ -73,23 +74,23 @@ function buildSidebar(net) {
         renderField('Website', net.website, { href: net.website, external: true }),
         renderField('Looking Glass', net.looking_glass, { href: net.looking_glass, external: true }),
         renderField('Route Server', net.route_server, { href: net.route_server, external: true }),
-        renderField('Network Type', net.info_type),
-        renderField('Traffic Levels', net.info_traffic),
-        renderField('Traffic Ratios', net.info_ratio),
-        renderField('Scope', net.info_scope),
+        renderField('Network Type', net.info_type, { translate: true }),
+        renderField('Traffic Levels', net.info_traffic, { translate: true }),
+        renderField('Traffic Ratios', net.info_ratio, { translate: true }),
+        renderField('Scope', net.info_scope, { translate: true }),
         renderField('Unicast Prefixes', net.info_prefixes4 || net.info_prefixes6
             ? `${net.info_prefixes4 || 0} IPv4 / ${net.info_prefixes6 || 0} IPv6` : null),
-        renderField('IPv6', net.info_ipv6 ? 'Yes' : 'No'),
-        renderField('Multicast', net.info_multicast ? 'Yes' : 'No'),
+        renderField('IPv6', net.info_ipv6 ? t('Yes') : t('No')),
+        renderField('Multicast', net.info_multicast ? t('Yes') : t('No')),
         renderField('Last Updated', net.updated),
     ]);
 
     const policy = renderFieldGroup('Peering Policy', [
-        renderField('General Policy', net.policy_general),
+        renderField('General Policy', net.policy_general, { translate: true }),
         renderField('Policy URL', net.policy_url, { href: net.policy_url, external: true }),
-        renderField('Ratio Requirement', net.policy_ratio ? 'Yes' : 'No'),
-        renderField('Contract Requirement', net.policy_contracts ? 'Yes' : 'No'),
-        renderField('Locations', net.policy_locations),
+        renderField('Ratio Requirement', net.policy_ratio ? t('Yes') : t('No')),
+        renderField('Contract Requirement', net.policy_contracts ? t('Yes') : t('No')),
+        renderField('Locations', net.policy_locations, { translate: true }),
     ]);
 
     let contacts = '';
@@ -122,7 +123,7 @@ function buildTables(net) {
         ixTable = renderTableCard({
             title: 'Exchange Points',
             filterable: true,
-            filterPlaceholder: 'Filter exchanges...',
+            filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
                 { key: 'speed',   label: 'Speed', class: 'td-right' },
@@ -149,7 +150,7 @@ function buildTables(net) {
         facTable = renderTableCard({
             title: 'Facilities',
             filterable: true,
-            filterPlaceholder: 'Filter facilities...',
+            filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
                 { key: 'city',    label: 'City' },
@@ -163,5 +164,5 @@ function buildTables(net) {
         });
     }
 
-    return [ixTable, facTable].filter(s => s).join('') || '<div class="empty-state">No exchange points or facilities</div>';
+    return [ixTable, facTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No exchange points or facilities'))}</div>`;
 }

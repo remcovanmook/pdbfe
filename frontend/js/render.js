@@ -31,6 +31,7 @@ export function linkEntity(type, id, label) {
  * @param {string} [opts.linkType] - Entity type for SPA link.
  * @param {number|string} [opts.linkId] - Entity ID for SPA link.
  * @param {boolean} [opts.markdown] - Render value as markdown.
+ * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
  * @returns {string} HTML string.
  */
 export function renderField(label, value, opts = {}) {
@@ -38,12 +39,14 @@ export function renderField(label, value, opts = {}) {
         return '';
     }
 
+    let displayValue = opts.translate ? t(String(value)) : String(value);
+
     let valueHTML;
 
     if (opts.markdown) {
-        valueHTML = renderMarkdown(String(value));
+        valueHTML = renderMarkdown(displayValue);
     } else {
-        valueHTML = escapeHTML(String(value));
+        valueHTML = escapeHTML(displayValue);
     }
 
     if (opts.linkType && opts.linkId) {
@@ -101,7 +104,7 @@ export function renderTableCard(opts) {
 
     const filterHTML = filterable
         ? `<div class="table-filter">
-               <input type="text" class="table-filter__input" placeholder="${filterPlaceholder || 'Filter...'}" data-table-filter>
+               <input type="text" class="table-filter__input" placeholder="${t(filterPlaceholder || 'Filter...')}" data-table-filter>
            </div>`
         : '';
 
@@ -122,9 +125,9 @@ export function renderTableCard(opts) {
 
     const pagingHTML = needsPaging
         ? `<div class="table-paging" data-page-size="${pageSize}">
-               <button class="table-paging__btn" data-page-prev disabled>&larr; Prev</button>
-               <span class="table-paging__info">Page <span data-page-num>1</span> of <span data-page-total>${Math.ceil(count / pageSize)}</span></span>
-               <button class="table-paging__btn" data-page-next>Next &rarr;</button>
+               <button class="table-paging__btn" data-page-prev disabled>&larr; ${t('Prev')}</button>
+               <span class="table-paging__info">${t('Page')} <span data-page-num>1</span> / <span data-page-total>${Math.ceil(count / pageSize)}</span></span>
+               <button class="table-paging__btn" data-page-next>${t('Next')} &rarr;</button>
            </div>`
         : '';
 
@@ -240,9 +243,9 @@ export function formatLocaleDate(iso) {
  */
 export function renderBool(val) {
     if (val === true || val === 1 || val === 'Yes') {
-        return '<span class="bool-yes">Yes</span>';
+        return `<span class="bool-yes">${t('Yes')}</span>`;
     }
-    return '<span class="bool-no">No</span>';
+    return `<span class="bool-no">${t('No')}</span>`;
 }
 
 /**
@@ -255,7 +258,7 @@ export function renderStatsBar(items) {
     const inner = items.map(item => `
         <div class="stats-bar__item">
             <span class="stats-bar__value">${escapeHTML(String(item.value))}</span>
-            <span class="stats-bar__label">${escapeHTML(item.label)}</span>
+            <span class="stats-bar__label">${escapeHTML(t(item.label))}</span>
         </div>
     `).join('');
 

@@ -10,6 +10,7 @@ import {
     linkEntity, escapeHTML, setOGTags,
     attachTableSort, attachTableFilter, attachTablePaging
 } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the facility detail page.
@@ -101,7 +102,7 @@ function buildTables(fac) {
         netTable = renderTableCard({
             title: 'Networks',
             filterable: true,
-            filterPlaceholder: 'Filter networks...',
+            filterPlaceholder: t('Filter networks...'),
             columns: [
                 { key: 'network',   label: 'Network' },
                 { key: 'local_asn', label: 'ASN', class: 'td-right' },
@@ -144,5 +145,5 @@ function buildTables(fac) {
         });
     }
 
-    return [netTable, ixTable].filter(s => s).join('') || '<div class="empty-state">No networks or exchanges</div>';
+    return [netTable, ixTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No networks or exchanges'))}</div>`;
 }
