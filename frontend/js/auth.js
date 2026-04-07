@@ -17,6 +17,7 @@
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
 import { escapeHTML } from './render.js';
+import { t } from './i18n.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -157,8 +158,8 @@ function renderAuthUI() {
     if (_cachedUser) {
         container.innerHTML = `
             <span class="auth-user">${escapeHTML(_cachedUser.given_name || _cachedUser.name)}</span>
-            <a href="/account" class="auth-link" data-link>Account</a>
-            <a href="#" id="auth-logout" class="auth-link">Sign out</a>
+            <a href="/account" class="auth-link" data-link>${t('Account')}</a>
+            <a href="#" id="auth-logout" class="auth-link">${t('Sign out')}</a>
         `;
         const logoutLink = document.getElementById('auth-logout');
         if (logoutLink) {
@@ -170,7 +171,7 @@ function renderAuthUI() {
     } else {
         const loginUrl = `${AUTH_ORIGIN}/auth/login`;
         container.innerHTML = `
-            <a href="${loginUrl}" class="auth-link">Sign in with PeeringDB</a>
+            <a href="${loginUrl}" class="auth-link">${t('Sign in with PeeringDB')}</a>
         `;
     }
 }

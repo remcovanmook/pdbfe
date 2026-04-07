@@ -21,7 +21,7 @@ import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
 import { initAuth } from './auth.js';
-import { initI18n, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
+import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -87,7 +87,7 @@ fetchSyncStatus().then(sync => {
     const timeText = formatDate(isoDate);
     const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
 
-    el.innerHTML = `Last synced <span class="site-footer__sync-time${staleClass}">${timeText}</span>`;
+    el.innerHTML = `${t('Last synced')} <span class="site-footer__sync-time${staleClass}">${timeText}</span>`;
     el.title = sync.last_sync_at;
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure

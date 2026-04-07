@@ -2,13 +2,13 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://pdbfe-api.<your-subdomain>.workers.dev https://pdbfe-auth.<your-subdomain>.workers.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self';
+  Content-Security-Policy: default-src 'self'; connect-src 'self' https://pdbfe-api.<your-subdomain>.workers.dev https://pdbfe-auth.<your-subdomain>.workers.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' https://static.cloudflareinsights.com;
 
 /css/*
   Cache-Control: public, max-age=86400
 
 /js/*
-  Cache-Control: public, max-age=86400
+  Cache-Control: public, max-age=3600
 
 /third_party/*
   Cache-Control: public, max-age=604800

@@ -5,7 +5,7 @@
  */
 
 import { renderMarkdown } from './markdown.js';
-import { t } from './i18n.js';
+import { t, getCurrentLang } from './i18n.js';
 
 /**
  * Creates an internal SPA link element.
@@ -197,21 +197,21 @@ export function formatDate(iso) {
     const diffMs = now - d.getTime();
     const diffMin = Math.floor(diffMs / 60_000);
 
-    if (diffMin < 1) return 'just now';
-    if (diffMin === 1) return '1 minute ago';
-    if (diffMin < 60) return `${diffMin} minutes ago`;
+    if (diffMin < 1) return t('just now');
+    if (diffMin === 1) return t('1 minute ago');
+    if (diffMin < 60) return t('{n} minutes ago', { n: diffMin });
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr === 1) return '1 hour ago';
-    if (diffHr < 24) return `${diffHr} hours ago`;
+    if (diffHr === 1) return t('1 hour ago');
+    if (diffHr < 24) return t('{n} hours ago', { n: diffHr });
     const diffDay = Math.floor(diffHr / 24);
-    if (diffDay === 1) return '1 day ago';
-    if (diffDay < 30) return `${diffDay} days ago`;
+    if (diffDay === 1) return t('1 day ago');
+    if (diffDay < 30) return t('{n} days ago', { n: diffDay });
     const diffMonth = Math.floor(diffDay / 30);
-    if (diffMonth === 1) return '1 month ago';
-    if (diffMonth < 12) return `${diffMonth} months ago`;
+    if (diffMonth === 1) return t('1 month ago');
+    if (diffMonth < 12) return t('{n} months ago', { n: diffMonth });
     const diffYear = Math.floor(diffDay / 365);
-    if (diffYear === 1) return '1 year ago';
-    return `${diffYear} years ago`;
+    if (diffYear === 1) return t('1 year ago');
+    return t('{n} years ago', { n: diffYear });
 }
 
 /**
@@ -224,7 +224,7 @@ export function formatDate(iso) {
  */
 export function formatLocaleDate(iso) {
     try {
-        return new Date(iso).toLocaleDateString('en-GB', {
+        return new Date(iso).toLocaleDateString(getCurrentLang() || 'en', {
             year: 'numeric', month: 'short', day: 'numeric',
         });
     } catch {
