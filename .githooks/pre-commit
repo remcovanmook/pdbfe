@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# Pre-commit hook: runs unit tests and TypeScript validation for both
+# workers and frontend. Rejects the commit if any check fails.
+#
+# Install: git config core.hooksPath .githooks
+#
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+fail() {
+    echo -e "${RED}✖ $1${NC}"
+    exit 1
+}
+
+pass() {
+    echo -e "${GREEN}✔ $1${NC}"
+}
+
+echo "Running pre-commit checks..."
+
+# ── Workers ──────────────────────────────────────────────────────────
+
+cd workers
+
+npm run typecheck --silent 2>&1 || fail "workers typecheck failed"
+pass "workers typecheck"
+
+npm test --silent 2>&1 || fail "workers tests failed"
+pass "workers tests"
+
+cd ..
+
+# ── Frontend ─────────────────────────────────────────────────────────
+
+cd frontend
+
+npm run typecheck --silent 2>&1 || fail "frontend typecheck failed"
+pass "frontend typecheck"
+
+npm test --silent 2>&1 || fail "frontend tests failed"
+pass "frontend tests"
+
+cd ..
+
+echo -e "${GREEN}All pre-commit checks passed.${NC}"
