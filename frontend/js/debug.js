@@ -23,6 +23,19 @@ import { t } from './i18n.js';
 /** Staleness threshold for sync data — 1 hour in milliseconds. */
 const STALE_THRESHOLD_MS = 3600_000;
 
+/**
+ * Normalizes a SQLite datetime string to ISO 8601 with UTC timezone.
+ * SQLite stores datetimes as "YYYY-MM-DD HH:MM:SS" with no timezone
+ * indicator. Browsers parse this as local time, which causes a clock
+ * offset equal to the user's UTC offset. Appending 'Z' forces UTC.
+ *
+ * @param {string} sqliteDatetime - e.g. "2026-04-08 09:45:47"
+ * @returns {string} ISO 8601 string, e.g. "2026-04-08T09:45:47Z"
+ */
+function toUTCISO(sqliteDatetime) {
+    return sqliteDatetime.replace(' ', 'T') + 'Z';
+}
+
 /** @type {HTMLElement|null} */
 let _overlay = null;
 
@@ -113,7 +126,7 @@ function buildOverlayHTML(syncStatus, localCache) {
 
             syncRows += `<tr class="${staleClass}">
                 <td>${escapeHTML(tag)}</td>
-                <td>${/* safe — formatDate output */ formatDate(m.updated_at)}</td>
+                <td>${/* safe — formatDate output */ formatDate(toUTCISO(m.updated_at))}</td>
                 <td class="debug-td--right">${/* safe — numeric */ m.row_count.toLocaleString()}</td>
                 <td>${/* safe — boolean-derived HTML */ isStale ? '<span class="debug-stale-badge" title="' + escapeHTML(t('Sync older than 1 hour')) + '">⚠</span>' : ''}</td>
             </tr>`;
@@ -123,7 +136,7 @@ function buildOverlayHTML(syncStatus, localCache) {
     const syncSection = `<div class="debug-section">
         <h4>${escapeHTML(t('D1 Edge Sync State'))}</h4>
         ${syncStatus?.last_sync_at
-            ? `<p class="debug-meta">${escapeHTML(t('Last sync'))}: ${/* safe — formatDate output */ formatDate(syncStatus.last_sync_at)}</p>`
+            ? `<p class="debug-meta">${escapeHTML(t('Last sync'))}: ${/* safe — formatDate output */ formatDate(toUTCISO(syncStatus.last_sync_at))}</p>`
             : `<p class="debug-meta debug-error">${escapeHTML(t('No sync data available'))}</p>`
         }
         <table class="debug-table">
