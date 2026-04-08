@@ -82,12 +82,21 @@ export async function ensureColumns(db, table, apiColumns) {
     ));
 
     for (const col of apiColumns) {
-        if (!existing.has(col)) {
-            console.warn(`[sync] auto-adding column "${col}" to ${table}`);
-            await db.prepare(
-                `ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`
-            ).run();
+        if (existing.has(col)) continue;
+
+        // Reject column names that don't look like valid SQL identifiers.
+        // Upstream PeeringDB JSON keys are trusted but not controlled — a
+        // compromised or buggy upstream could inject arbitrary keys that
+        // result in SQL injection via ALTER TABLE if not validated.
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(col)) {
+            console.error(`[sync] rejected invalid column name: ${JSON.stringify(col)} on ${table}`);
+            continue;
         }
+
+        console.warn(`[sync] auto-adding column "${col}" to ${table}`);
+        await db.prepare(
+            `ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`
+        ).run();
     }
 }
 
