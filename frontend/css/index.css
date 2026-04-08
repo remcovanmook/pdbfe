@@ -1446,11 +1446,17 @@ body[data-page="home"] .site-logo {
     font-size: 0.5625rem;
 }
 
-/* Cache tier colour coding */
+/* Cache tier colour coding (edge) */
 .debug-tier--L1   { color: var(--status-ok);    font-weight: 600; }
 .debug-tier--L2   { color: var(--status-warn);  font-weight: 600; }
 .debug-tier--MISS { color: var(--status-error); font-weight: 600; }
 .debug-tier--N\/A { color: var(--text-muted); }
+
+/* Browser SWR state colour coding */
+.debug-swr--FRESH        { color: var(--status-ok);    font-weight: 600; }
+.debug-swr--SWR          { color: var(--status-warn);  font-weight: 600; }
+.debug-swr--REVALIDATING { color: hsl(210, 80%, 60%);  font-weight: 600; }
+.debug-swr--EXPIRED      { color: var(--status-error); font-weight: 600; }
 
 /* Active row — current page's cache entries */
 .debug-row--active td {

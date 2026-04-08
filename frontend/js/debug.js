@@ -170,7 +170,7 @@ async function toggleOverlay() {
  * Builds the full overlay HTML from sync status and cache diagnostics.
  *
  * @param {any} syncStatus - Response from fetchSyncStatus().
- * @param {Array<{key: string, ageMs: number, telemetry: import('./api.js').CacheTelemetry}>} localCache - Browser cache entries.
+ * @param {Array<{key: string, ageMs: number, swrState: string, telemetry: import('./api.js').CacheTelemetry}>} localCache - Browser cache entries.
  * @returns {string} HTML string for the overlay content.
  */
 function buildOverlayHTML(syncStatus, localCache) {
@@ -198,6 +198,7 @@ function buildOverlayHTML(syncStatus, localCache) {
 
             return `<tr>
                 <td class="debug-td--truncate" title="${escapeHTML(c.key)}">${escapeHTML(path)}</td>
+                <td><span class="${/* safe — CSS class */ `debug-swr--${c.swrState}`}">${escapeHTML(c.swrState)}</span></td>
                 <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
                 <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
                 <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
@@ -212,7 +213,8 @@ function buildOverlayHTML(syncStatus, localCache) {
             <table class="debug-table">
                 <thead><tr>
                     <th>${escapeHTML(t('Request'))}</th>
-                    <th>${escapeHTML(t('Tier'))}</th>
+                    <th>${escapeHTML(t('Cache'))}</th>
+                    <th>${escapeHTML(t('Edge'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
@@ -280,6 +282,7 @@ function buildOverlayHTML(syncStatus, localCache) {
 
         cacheRows += `<tr class="${isCurrentPage ? 'debug-row--active' : ''}">
             <td class="debug-td--truncate" title="${escapeHTML(entry.key)}">${escapeHTML(path.split('?')[0])}</td>
+            <td><span class="${/* safe — CSS class */ `debug-swr--${entry.swrState}`}">${escapeHTML(entry.swrState)}</span></td>
             <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
             <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
             <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
@@ -298,13 +301,14 @@ function buildOverlayHTML(syncStatus, localCache) {
             <table class="debug-table">
                 <thead><tr>
                     <th>${escapeHTML(t('Path'))}</th>
-                    <th>${escapeHTML(t('Tier'))}</th>
+                    <th>${escapeHTML(t('Cache'))}</th>
+                    <th>${escapeHTML(t('Edge'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
                     <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
                     <th>${escapeHTML(t('Served By'))}</th>
                 </tr></thead>
-                <tbody>${/* safe — built from escapeHTML calls */ cacheRows || `<tr><td colspan="6">${escapeHTML(t('Cache empty'))}</td></tr>`}</tbody>
+                <tbody>${/* safe — built from escapeHTML calls */ cacheRows || `<tr><td colspan="7">${escapeHTML(t('Cache empty'))}</td></tr>`}</tbody>
             </table>
         </div>
     </div>`;

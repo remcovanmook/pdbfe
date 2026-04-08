@@ -318,19 +318,29 @@ export async function searchWithAsn(query) {
  * SWR cache for the debug overlay. Excludes auth-prefixed keys
  * to avoid surfacing session state.
  *
- * @returns {Array<{key: string, ageMs: number, telemetry: CacheTelemetry}>}
+ * Each entry includes a `swrState` indicating the browser-side cache
+ * state relative to the TTL/SWR thresholds:
+ *   - FRESH: within TTL, served without network request
+ *   - SWR: stale but within SWR window, background revalidation eligible
+ *   - REVALIDATING: stale, background fetch currently in flight
+ *   - EXPIRED: past SWR window, next access will block on fetch
+ *
+ * @returns {Array<{key: string, ageMs: number, swrState: string, telemetry: CacheTelemetry}>}
  */
 export function getCacheDiagnostics() {
-    /** @type {Array<{key: string, ageMs: number, telemetry: CacheTelemetry}>} */
+    /** @type {Array<{key: string, ageMs: number, swrState: string, telemetry: CacheTelemetry}>} */
     const stats = [];
     const now = Date.now();
     for (const [key, entry] of _cache.entries()) {
         if (key.startsWith('auth:')) continue;
-        stats.push({
-            key,
-            ageMs: now - entry.ts,
-            telemetry: entry.telemetry,
-        });
+        const ageMs = now - entry.ts;
+        let swrState = 'EXPIRED';
+        if (ageMs < CACHE_TTL_MS) {
+            swrState = 'FRESH';
+        } else if (ageMs < CACHE_SWR_MS) {
+            swrState = _pending.has(key) ? 'REVALIDATING' : 'SWR';
+        }
+        stats.push({ key, ageMs, swrState, telemetry: entry.telemetry });
     }
     return stats;
 }
