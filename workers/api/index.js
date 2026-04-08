@@ -221,7 +221,7 @@ async function handleRequest(request, env, ctx) {
         const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
         if (errorResponse) return errorResponse;
 
-        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString, authenticated);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -270,7 +270,7 @@ async function handleRequest(request, env, ctx) {
     const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
     if (errorResponse) return errorResponse;
 
-    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString, authenticated);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

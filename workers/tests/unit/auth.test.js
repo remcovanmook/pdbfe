@@ -7,6 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractApiKey, verifyApiKey } from '../../core/auth.js';
+import { hashKey } from '../../core/account.js';
 
 /**
  * Creates a minimal Request object with the given Authorization header.
@@ -68,6 +69,22 @@ describe('extractApiKey', () => {
     });
 });
 
+describe('hashKey', () => {
+    it('should produce a deterministic 64-char hex digest', async () => {
+        const h1 = await hashKey('pdbfe.test1234');
+        const h2 = await hashKey('pdbfe.test1234');
+        assert.equal(h1, h2);
+        assert.equal(h1.length, 64);
+        assert.match(h1, /^[0-9a-f]{64}$/);
+    });
+
+    it('should produce different hashes for different keys', async () => {
+        const h1 = await hashKey('pdbfe.aaaa');
+        const h2 = await hashKey('pdbfe.bbbb');
+        assert.notEqual(h1, h2);
+    });
+});
+
 describe('verifyApiKey', () => {
     /** @returns {any} */
     function emptyKV() {
@@ -80,10 +97,20 @@ describe('verifyApiKey', () => {
         assert.equal(await verifyApiKey(emptyKV(), 'valid-looking-key-12345'), false);
     });
 
-    it('should return true when key exists in KV', async () => {
+    it('should return true when hashed key exists in KV', async () => {
+        const testKey = 'pdbfe.real';
+        const testHash = await hashKey(testKey);
         const kv = /** @type {any} */ ({
-            get: async (/** @type {string} */ key) => key === 'apikey:pdbfe.real' ? '{}' : null,
+            get: async (/** @type {string} */ key) => key === 'apikey:' + testHash ? '{}' : null,
         });
-        assert.equal(await verifyApiKey(kv, 'pdbfe.real'), true);
+        assert.equal(await verifyApiKey(kv, testKey), true);
+    });
+
+    it('should return false when cleartext key is in KV but hash is not', async () => {
+        // Pre-hashing migration scenario: old cleartext entries should not match
+        const kv = /** @type {any} */ ({
+            get: async (/** @type {string} */ key) => key === 'apikey:pdbfe.old' ? '{}' : null,
+        });
+        assert.equal(await verifyApiKey(kv, 'pdbfe.old'), false);
     });
 });

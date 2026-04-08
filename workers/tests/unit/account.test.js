@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateApiKey } from '../../core/account.js';
+import { generateApiKey, hashKey } from '../../core/account.js';
 import { verifyApiKey, extractApiKey } from '../../core/auth.js';
 
 // ── Mock KV namespace ────────────────────────────────────────────────────────
@@ -71,16 +71,18 @@ describe('generateApiKey', () => {
 // ── verifyApiKey ─────────────────────────────────────────────────────────────
 
 describe('verifyApiKey', () => {
-    it('returns true for a key that exists in KV', async () => {
+    it('returns true for a key that exists in KV (hashed)', async () => {
+        const testKey = 'pdbfe.abcd1234abcd1234abcd1234abcd1234';
+        const hashed = await hashKey(testKey);
         const { kv } = mockKV({
-            'apikey:pdbfe.abcd1234abcd1234abcd1234abcd1234': JSON.stringify({
+            [`apikey:${hashed}`]: JSON.stringify({
                 user_id: 42,
                 label: 'test key',
                 created_at: '2026-04-06T10:00:00Z',
             }),
         });
 
-        const result = await verifyApiKey(kv, 'pdbfe.abcd1234abcd1234abcd1234abcd1234');
+        const result = await verifyApiKey(kv, testKey);
         assert.equal(result, true);
     });
 
@@ -126,8 +128,9 @@ describe('verifyApiKey', () => {
 describe('extractApiKey + verifyApiKey integration', () => {
     it('extracts and verifies a valid key from request header', async () => {
         const fullKey = generateApiKey();
+        const hashed = await hashKey(fullKey);
         const { kv } = mockKV({
-            [`apikey:${fullKey}`]: JSON.stringify({ user_id: 1, label: 'test', created_at: '' }),
+            [`apikey:${hashed}`]: JSON.stringify({ user_id: 1, label: 'test', created_at: '' }),
         });
 
         const request = new Request('https://api.example.com/api/net', {

@@ -12,11 +12,12 @@
  * All endpoints require a valid session (Authorization: Bearer header).
  *
  * Data is stored in the USERS KV namespace:
- *   user:<pdb_user_id>   → UserRecord (profile + key metadata)
- *   apikey:<full_key>    → ApiKeyEntry (reverse index for API worker lookups)
+ *   user:<pdb_user_id>       → UserRecord (profile + key metadata)
+ *   apikey:<sha256(full_key)> → ApiKeyEntry (reverse index for API worker lookups)
  *
  * API keys use the format `pdbfe.<32 hex chars>` for visual distinction
- * from upstream PeeringDB API keys.
+ * from upstream PeeringDB API keys. Keys are SHA-256 hashed before
+ * storage so the cleartext key is never persisted in KV.
  */
 
 import { extractSessionId, resolveSession, generateSessionId } from './auth.js';
@@ -169,6 +170,21 @@ export function generateApiKey() {
 }
 
 /**
+ * Computes the SHA-256 hex digest of an API key. Used to derive the
+ * KV storage key (`apikey:<hash>`) so the cleartext key is never
+ * persisted. The full key only exists in memory during creation
+ * (returned to the user) and verification (hashed before lookup).
+ *
+ * @param {string} key - The full API key string.
+ * @returns {Promise<string>} 64-character lowercase hex digest.
+ */
+export async function hashKey(key) {
+    const encoded = new TextEncoder().encode(key);
+    const digest = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Extracts the key ID from a full API key. The ID is the first 8 hex
  * characters after the prefix, used as the stable identifier in the
  * user record's api_keys array.
@@ -313,23 +329,25 @@ export async function handleCreateKey(request, env) {
     }
 
     const fullKey = generateApiKey();
+    const keyHash = await hashKey(fullKey);
     const now = new Date().toISOString();
 
-    // Write reverse-index entry (for pdbfe-api lookups)
+    // Write reverse-index entry keyed by hash (cleartext key is never stored)
     /** @type {ApiKeyEntry} */
     const entry = {
         user_id: session.id,
         label,
         created_at: now,
     };
-    await env.USERS.put(APIKEY_PREFIX + fullKey, JSON.stringify(entry));
+    await env.USERS.put(APIKEY_PREFIX + keyHash, JSON.stringify(entry));
 
-    // Update user record with key metadata
+    // Update user record with key metadata (hash stored for deletion)
     /** @type {ApiKeyMeta} */
     const meta = {
         id: keyId(fullKey),
         label,
         prefix: keyPrefix(fullKey),
+        hash: keyHash,
         created_at: now,
     };
     user.api_keys.push(meta);
@@ -371,17 +389,10 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
         return jsonResponse({ error: 'API key not found' }, 404, env.FRONTEND_ORIGIN);
     }
 
-    // Find and delete the reverse-index entry by listing keys with the prefix
-    // The full key starts with "pdbfe." followed by hex where first 8 chars match the ID
-    const listResult = await env.USERS.list({ prefix: APIKEY_PREFIX + KEY_VISUAL_PREFIX + deleteKeyId });
-    for (const key of listResult.keys) {
-        // Verify the entry belongs to this user before deleting
-        const entry = /** @type {ApiKeyEntry|null} */ (
-            await env.USERS.get(key.name, { type: 'json' })
-        );
-        if (entry && entry.user_id === session.id) {
-            await env.USERS.delete(key.name);
-        }
+    // Delete the reverse-index entry using the stored hash
+    const keyMeta = user.api_keys[keyIndex];
+    if (keyMeta.hash) {
+        await env.USERS.delete(APIKEY_PREFIX + keyMeta.hash);
     }
 
     // Remove from user record

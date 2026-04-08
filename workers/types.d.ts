@@ -227,6 +227,8 @@ interface ApiKeyMeta {
     label: string;
     /** First 4 hex characters of the key, for display (e.g. "a1b2"). */
     prefix: string;
+    /** SHA-256 hex digest of the full key. Used for KV reverse-index deletion. */
+    hash: string;
     /** ISO 8601 timestamp of key creation. */
     created_at: string;
 }

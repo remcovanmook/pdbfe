@@ -102,8 +102,11 @@ describe('verifyApiKey', () => {
     });
 
     it('returns true when key exists in KV', async () => {
-        const { kv } = mockKV({ 'apikey:pdbfe.test1234': '{}' });
-        assert.equal(await verifyApiKey(kv, 'pdbfe.test1234'), true);
+        const testKey = 'pdbfe.test1234';
+        const { hashKey } = await import('../../core/account.js');
+        const hashed = await hashKey(testKey);
+        const { kv } = mockKV({ [`apikey:${hashed}`]: '{}' });
+        assert.equal(await verifyApiKey(kv, testKey), true);
     });
 
     it('returns false for null', async () => {
