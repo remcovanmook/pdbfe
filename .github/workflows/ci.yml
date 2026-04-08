@@ -1,0 +1,134 @@
+# CI pipeline — mirrors the pre-commit hook checks so they run on
+# every push and PR, regardless of whether the contributor has the
+# local git hooks configured.
+#
+# Jobs are split by component (workers, frontend, security, integrity)
+# and run in parallel. Each job fails independently so you can see
+# exactly which layer broke.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Workers: type checking + unit tests + upstream conformance ────
+  workers:
+    name: Workers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+
+      - run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Upstream conformance
+        run: npm run test:upstream
+
+  # ── Frontend: type checking + unit tests ─────────────────────────
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+
+      # Frontend typecheck depends on tsc from workers/node_modules
+      - name: Install dependencies
+        run: npm ci
+        working-directory: workers
+
+      # config.js is gitignored (deployment-specific); use the example stub
+      - name: Create config stub
+        run: cp js/config.js.example js/config.js
+        working-directory: frontend
+
+      - name: TypeScript
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Unit tests
+        run: npm test
+        working-directory: frontend
+
+  # ── Security: XSS static analysis ────────────────────────────────
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: XSS lint
+        run: node scripts/lint_xss.js
+
+      - name: XSS lint self-test
+        run: node --test scripts/test_lint_xss.js
+
+  # ── Integrity: cross-component consistency checks ────────────────
+  integrity:
+    name: Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+
+      # Schema sync checker imports from workers/api/entities.js
+      # which needs @cloudflare/workers-types for tsc, but runs
+      # fine in plain Node.js without it. Install for safety.
+      - name: Install dependencies
+        run: npm ci
+        working-directory: workers
+
+      - name: Schema ↔ entities sync
+        run: node scripts/check_schema_sync.js
+
+      - name: Locale completeness
+        run: node scripts/check_locales.js
+
+      - name: Bundle size budget
+        run: |
+          JS_SIZE=$(find frontend/js -name '*.js' -not -path '*/tests/*' | xargs cat | wc -c)
+          CSS_SIZE=$(find frontend/css -name '*.css' -not -path '*/third_party/*' | xargs cat | wc -c)
+          TOTAL=$((JS_SIZE + CSS_SIZE))
+          echo "Frontend JS: ${JS_SIZE} bytes"
+          echo "Frontend CSS: ${CSS_SIZE} bytes"
+          echo "Total: ${TOTAL} bytes"
+          # Fail if total exceeds 250 KB (currently ~187 KB)
+          if [ "$TOTAL" -gt 256000 ]; then
+            echo "::error::Frontend bundle size ${TOTAL} exceeds 250 KB budget"
+            exit 1
+          fi
