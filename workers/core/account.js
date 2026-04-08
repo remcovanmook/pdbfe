@@ -296,7 +296,7 @@ export async function handleListKeys(request, env) {
  * stored in the user record — only the 4-char prefix is kept for display.
  *
  * Two KV writes happen atomically (sequentially):
- *   1. `apikey:<full_key>` — reverse index for pdbfe-api lookups
+ *   1. `apikey:<sha256(key)>` — reverse index for pdbfe-api lookups
  *   2. `user:<id>` — updated user record with new key metadata
  *
  * @param {Request} request - The inbound HTTP request.
