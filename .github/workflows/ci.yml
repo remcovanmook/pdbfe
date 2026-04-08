@@ -63,6 +63,11 @@ jobs:
         run: npm ci
         working-directory: workers
 
+      # config.js is gitignored (deployment-specific); use the example stub
+      - name: Create config stub
+        run: cp js/config.js.example js/config.js
+        working-directory: frontend
+
       - name: TypeScript
         run: npm run typecheck
         working-directory: frontend
