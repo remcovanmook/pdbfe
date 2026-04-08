@@ -1,10 +1,12 @@
 /**
  * @fileoverview Hidden diagnostic overlay for power users.
  *
- * Displays the state of the distributed cache pipeline:
- *   1. D1 Edge Sync — entity-level sync timestamps and row counts.
- *   2. Browser SWR Cache — local cache entries with edge telemetry
- *      (X-Cache tier, X-Timer, X-Served-By, X-Isolate-ID).
+ * Displays the state of the distributed cache pipeline in context:
+ *   1. Current Page — full telemetry for the API request(s) backing
+ *      the page you're looking at right now.
+ *   2. D1 Edge Sync — entity-level sync timestamps and row counts.
+ *   3. Browser SWR Cache — all local cache entries with full edge
+ *      telemetry (tier, hits, timer, served-by, isolate-id).
  *
  * Triggered by Ctrl+Shift+D. Invisible to normal users — no UI
  * footprint until activated. Designed for network engineers debugging
@@ -34,6 +36,29 @@ const STALE_THRESHOLD_MS = 3600_000;
  */
 function toUTCISO(sqliteDatetime) {
     return sqliteDatetime.replace(' ', 'T') + 'Z';
+}
+
+/**
+ * Parses the X-Timer header into a human-readable duration string.
+ * Format: S<epoch>,VS0,VE<ms>  →  "<ms>ms"
+ *
+ * @param {string} timer - Raw X-Timer header value.
+ * @returns {string} Duration string, e.g. "5ms", or the raw value on parse failure.
+ */
+function parseTimer(timer) {
+    if (!timer) return '—';
+    const match = timer.match(/VE(\d+)/);
+    return match ? `${match[1]}ms` : timer;
+}
+
+/**
+ * Extracts the path portion from a cache key URL, stripping the origin.
+ *
+ * @param {string} key - Full URL or cache key.
+ * @returns {string} Path string, e.g. "/api/net/694?depth=2".
+ */
+function keyToPath(key) {
+    return key.replace(/^https?:\/\/[^/]+/, '');
 }
 
 /** @type {HTMLElement|null} */
@@ -114,8 +139,61 @@ async function toggleOverlay() {
  */
 function buildOverlayHTML(syncStatus, localCache) {
     const now = Date.now();
+    const currentPath = window.location.pathname;
 
-    // ── Section 1: D1 Sync State ─────────────────────────────────
+    // ── Section 1: Current Page Context ──────────────────────────
+
+    // Find cache entries relevant to the current page by matching
+    // the URL path prefix. E.g. viewing /net/694 matches /api/net/694.
+    const pageEntries = localCache.filter(c => {
+        const path = keyToPath(c.key);
+        // Match /api/<entity>/<id> against /<entity>/<id>
+        return path.startsWith('/api' + currentPath) ||
+               path.startsWith('/status');
+    });
+
+    let currentPageSection = '';
+    if (pageEntries.length > 0) {
+        const rows = pageEntries.map(c => {
+            const path = keyToPath(c.key);
+            const tel = c.telemetry;
+            const tier = tel?.tier || 'N/A';
+            const ageSec = Math.floor(c.ageMs / 1000);
+
+            return `<tr>
+                <td class="debug-td--truncate" title="${escapeHTML(c.key)}">${escapeHTML(path)}</td>
+                <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
+                <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
+                <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
+                <td class="debug-td--right">${escapeHTML(parseTimer(tel?.timer || ''))}</td>
+                <td class="debug-td--muted">${escapeHTML(tel?.servedBy || '—')}</td>
+                <td class="debug-td--muted debug-td--truncate" title="${escapeHTML(tel?.isolateId || '')}">${escapeHTML(tel?.isolateId ? tel.isolateId.slice(0, 8) : '—')}</td>
+            </tr>`;
+        }).join('');
+
+        currentPageSection = `<div class="debug-section">
+            <h4>${escapeHTML(t('Current Page'))}: ${escapeHTML(currentPath)}</h4>
+            <table class="debug-table">
+                <thead><tr>
+                    <th>${escapeHTML(t('Request'))}</th>
+                    <th>${escapeHTML(t('Tier'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
+                    <th>${escapeHTML(t('Served By'))}</th>
+                    <th>${escapeHTML(t('Isolate'))}</th>
+                </tr></thead>
+                <tbody>${/* safe — built from escapeHTML calls */ rows}</tbody>
+            </table>
+        </div>`;
+    } else {
+        currentPageSection = `<div class="debug-section">
+            <h4>${escapeHTML(t('Current Page'))}: ${escapeHTML(currentPath)}</h4>
+            <p class="debug-meta">${escapeHTML(t('No cached API requests for this page'))}</p>
+        </div>`;
+    }
+
+    // ── Section 2: D1 Sync State ─────────────────────────────────
     let syncRows = '';
     if (syncStatus?.entities) {
         for (const [tag, meta] of Object.entries(syncStatus.entities)) {
@@ -133,52 +211,66 @@ function buildOverlayHTML(syncStatus, localCache) {
         }
     }
 
-    const syncSection = `<div class="debug-section">
-        <h4>${escapeHTML(t('D1 Edge Sync State'))}</h4>
-        ${syncStatus?.last_sync_at
-            ? `<p class="debug-meta">${escapeHTML(t('Last sync'))}: ${/* safe — formatDate output */ formatDate(toUTCISO(syncStatus.last_sync_at))}</p>`
-            : `<p class="debug-meta debug-error">${escapeHTML(t('No sync data available'))}</p>`
-        }
-        <table class="debug-table">
-            <thead><tr>
-                <th>${escapeHTML(t('Entity'))}</th>
-                <th>${escapeHTML(t('Updated'))}</th>
-                <th class="debug-td--right">${escapeHTML(t('Rows'))}</th>
-                <th></th>
-            </tr></thead>
-            <tbody>${/* safe — built from escapeHTML calls */ syncRows || `<tr><td colspan="4">${escapeHTML(t('No entities'))}</td></tr>`}</tbody>
-        </table>
+    const syncSection = `<div class="debug-section debug-section--collapsible">
+        <h4 class="debug-section__toggle" data-target="debug-sync-body">
+            ${escapeHTML(t('D1 Edge Sync State'))}
+            ${syncStatus?.last_sync_at
+                ? ` <span class="debug-meta--inline">${/* safe — formatDate output */ formatDate(toUTCISO(syncStatus.last_sync_at))}</span>`
+                : ''
+            }
+            <span class="debug-chevron">▸</span>
+        </h4>
+        <div class="debug-section__body" id="debug-sync-body" hidden>
+            <table class="debug-table">
+                <thead><tr>
+                    <th>${escapeHTML(t('Entity'))}</th>
+                    <th>${escapeHTML(t('Updated'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Rows'))}</th>
+                    <th></th>
+                </tr></thead>
+                <tbody>${/* safe — built from escapeHTML calls */ syncRows || `<tr><td colspan="4">${escapeHTML(t('No entities'))}</td></tr>`}</tbody>
+            </table>
+        </div>
     </div>`;
 
-    // ── Section 2: Browser SWR Cache ─────────────────────────────
+    // ── Section 3: Full Browser Cache ────────────────────────────
     let cacheRows = '';
     for (const entry of localCache) {
-        const path = entry.key.replace(/^https?:\/\/[^/]+/, '');
-        const tier = entry.telemetry?.tier || 'N/A';
-        const tierClass = `debug-tier--${tier}`;
+        const path = keyToPath(entry.key);
+        const tel = entry.telemetry;
+        const tier = tel?.tier || 'N/A';
         const ageSec = Math.floor(entry.ageMs / 1000);
-        const servedBy = entry.telemetry?.servedBy || '';
-        const colo = servedBy.replace(/^cache-/, '').split('-')[0] || '';
+        const isCurrentPage = pageEntries.some(p => p.key === entry.key);
 
-        cacheRows += `<tr>
+        cacheRows += `<tr class="${isCurrentPage ? 'debug-row--active' : ''}">
             <td class="debug-td--truncate" title="${escapeHTML(entry.key)}">${escapeHTML(path.split('?')[0])}</td>
+            <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
             <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
-            <td><span class="${/* safe — CSS class from header */ tierClass}">${escapeHTML(tier)}</span></td>
-            <td class="debug-td--muted">${escapeHTML(colo)}</td>
+            <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
+            <td class="debug-td--right">${escapeHTML(parseTimer(tel?.timer || ''))}</td>
+            <td class="debug-td--muted">${escapeHTML(tel?.servedBy || '—')}</td>
         </tr>`;
     }
 
-    const cacheSection = `<div class="debug-section">
-        <h4>${escapeHTML(t('Browser SWR Cache'))}</h4>
-        <table class="debug-table">
-            <thead><tr>
-                <th>${escapeHTML(t('Path'))}</th>
-                <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
-                <th>${escapeHTML(t('Edge Tier'))}</th>
-                <th>${escapeHTML(t('Colo'))}</th>
-            </tr></thead>
-            <tbody>${/* safe — built from escapeHTML calls */ cacheRows || `<tr><td colspan="4">${escapeHTML(t('Cache empty'))}</td></tr>`}</tbody>
-        </table>
+    const cacheSection = `<div class="debug-section debug-section--collapsible">
+        <h4 class="debug-section__toggle" data-target="debug-cache-body">
+            ${escapeHTML(t('All Cached Requests'))}
+            <span class="debug-meta--inline">${/* safe — numeric */ localCache.length} ${escapeHTML(t('entries'))}</span>
+            <span class="debug-chevron">▸</span>
+        </h4>
+        <div class="debug-section__body" id="debug-cache-body" hidden>
+            <table class="debug-table">
+                <thead><tr>
+                    <th>${escapeHTML(t('Path'))}</th>
+                    <th>${escapeHTML(t('Tier'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
+                    <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
+                    <th>${escapeHTML(t('Served By'))}</th>
+                </tr></thead>
+                <tbody>${/* safe — built from escapeHTML calls */ cacheRows || `<tr><td colspan="6">${escapeHTML(t('Cache empty'))}</td></tr>`}</tbody>
+            </table>
+        </div>
     </div>`;
 
     // ── Actions ──────────────────────────────────────────────────
@@ -193,6 +285,7 @@ function buildOverlayHTML(syncStatus, localCache) {
             <h3>${t('Pipeline Diagnostics')}</h3>
             <span class="debug-header__hint">Ctrl+Shift+D</span>
         </div>
+        ${currentPageSection}
         ${syncSection}
         ${cacheSection}
         ${actions}
@@ -200,8 +293,8 @@ function buildOverlayHTML(syncStatus, localCache) {
 }
 
 /**
- * Wires up click handlers on the overlay action buttons.
- * Called after the overlay HTML is inserted into the DOM.
+ * Wires up click handlers on the overlay action buttons and
+ * collapsible section toggles.
  */
 function wireButtons() {
     document.getElementById('debug-close')?.addEventListener('click', toggleOverlay);
@@ -215,4 +308,18 @@ function wireButtons() {
         clearCache();
         window.location.reload();
     });
+
+    // Collapsible section toggles
+    for (const toggle of document.querySelectorAll('.debug-section__toggle')) {
+        toggle.addEventListener('click', () => {
+            const targetId = toggle.getAttribute('data-target');
+            if (!targetId) return;
+            const body = document.getElementById(targetId);
+            if (!body) return;
+            const isHidden = body.hidden;
+            body.hidden = !isHidden;
+            const chevron = toggle.querySelector('.debug-chevron');
+            if (chevron) chevron.textContent = isHidden ? '▾' : '▸';
+        });
+    }
 }
