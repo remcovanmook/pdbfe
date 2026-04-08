@@ -269,7 +269,7 @@ describe("expandDepth", () => {
         const { db } = mockD1({
             peeringdb_ixlan: [
                 // SQLite returns 0/1 for booleans; these should become false/true
-                { id: 10, ix_id: 1, name: "LAN 1", descr: "", mtu: 1500, dot1q_support: 1, rs_asn: 0, arp_sponge: null, ixf_ixp_member_list_url_visible: "", ixf_ixp_import_enabled: 0, created: "2024-01-01", updated: "2024-01-01", status: "ok" }
+                { id: 10, ix_id: 1, name: "LAN 1", descr: "", mtu: 1500, dot1q_support: 1, rs_asn: 0, arp_sponge: null, ixf_ixp_member_list_url: null, ixf_ixp_member_list_url_visible: "", ixf_ixp_import_enabled: 0, created: "2024-01-01", updated: "2024-01-01", status: "ok" }
             ]
         });
 

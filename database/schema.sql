@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS "peeringdb_ixlan" (
     "dot1q_support" BOOL NOT NULL DEFAULT 0,
     "rs_asn" INTEGER NOT NULL DEFAULT 0,
     "arp_sponge" TEXT,
+    "ixf_ixp_member_list_url" TEXT,
     "ixf_ixp_member_list_url_visible" TEXT NOT NULL DEFAULT '',
     "ixf_ixp_import_enabled" BOOL NOT NULL DEFAULT 0,
     "created" DATETIME NOT NULL DEFAULT '',
