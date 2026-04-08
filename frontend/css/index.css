@@ -1298,3 +1298,177 @@ body[data-page="home"] .site-logo {
     }
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Debug Overlay (Ctrl+Shift+D)
+   Hidden diagnostic panel for inspecting the distributed cache state.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.debug-overlay {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 480px;
+    max-height: 80vh;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px hsl(0 0% 0% / 0.4);
+    border-radius: var(--radius-md);
+    z-index: 9999;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.6875rem;
+    color: var(--text-primary);
+}
+
+.debug-overlay__inner {
+    padding: var(--space-md);
+}
+
+.debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-md);
+}
+
+.debug-header h3 {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: -0.01em;
+}
+
+.debug-header__hint {
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    padding: 2px var(--space-xs);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+}
+
+.debug-section {
+    margin-bottom: var(--space-md);
+}
+
+.debug-section h4 {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: var(--space-xs);
+}
+
+.debug-meta {
+    font-size: 0.625rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.debug-loading {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.debug-error {
+    color: var(--status-error);
+}
+
+.debug-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: var(--space-sm);
+}
+
+.debug-table th,
+.debug-table td {
+    text-align: left;
+    padding: 3px var(--space-xs);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.debug-table th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.debug-td--right {
+    text-align: right;
+}
+
+.debug-td--truncate {
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.debug-td--muted {
+    color: var(--text-muted);
+}
+
+/* Cache tier colour coding */
+.debug-tier--L1   { color: var(--status-ok);    font-weight: 600; }
+.debug-tier--L2   { color: var(--status-warn);  font-weight: 600; }
+.debug-tier--MISS { color: var(--status-error); font-weight: 600; }
+.debug-tier--N\/A { color: var(--text-muted); }
+
+/* Staleness indicator for sync rows */
+.debug-row--stale td {
+    color: var(--status-error);
+}
+
+.debug-stale-badge {
+    color: var(--status-error);
+    font-size: 0.75rem;
+    cursor: help;
+}
+
+/* Action buttons */
+.debug-actions {
+    display: flex;
+    gap: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.debug-btn {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.625rem;
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.debug-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.debug-btn--close {
+    margin-left: auto;
+    font-size: 0.75rem;
+    line-height: 1;
+}
+
+/* Responsive: overlay goes full-width on narrow screens */
+@media (max-width: 520px) {
+    .debug-overlay {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        width: auto;
+    }
+}

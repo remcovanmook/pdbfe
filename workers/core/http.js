@@ -19,7 +19,8 @@ export const H_CORS = Object.freeze({
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Max-Age": "86400"
+    "Access-Control-Max-Age": "86400",
+    "Access-Control-Expose-Headers": "X-Cache, X-Cache-Hits, X-Timer, X-Served-By, X-Isolate-ID, ETag"
 });
 
 /**

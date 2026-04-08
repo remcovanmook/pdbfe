@@ -28,10 +28,20 @@ export const SEARCH_ENTITIES = Object.freeze([
 const API_BASE = API_ORIGIN;
 
 /**
- * In-memory response cache. Maps cache key → { data, timestamp }.
+ * @typedef {Object} CacheTelemetry
+ * @property {string} tier  - Edge cache tier from X-Cache (L1, L2, MISS).
+ * @property {string} hits  - Hit count from X-Cache-Hits.
+ * @property {string} timer - Timing info from X-Timer.
+ * @property {string} servedBy - Edge colo + service from X-Served-By.
+ * @property {string} isolateId - V8 isolate ID from X-Isolate-ID.
+ */
+
+/**
+ * In-memory response cache. Maps cache key → { data, timestamp, telemetry }.
  * Entries are served stale during the SWR window and refreshed
- * in the background.
- * @type {Map<string, {data: any, ts: number}>}
+ * in the background. Telemetry is captured from edge response headers
+ * for the diagnostic overlay.
+ * @type {Map<string, {data: any, ts: number, telemetry: CacheTelemetry}>}
  */
 const _cache = new Map();
 
@@ -113,7 +123,19 @@ async function freshFetch(cacheKey, url, sid) {
     }
 
     const data = await res.json();
-    _cache.set(cacheKey, { data, ts: Date.now() });
+
+    // Capture edge telemetry from response headers for the diagnostic overlay.
+    // These headers are only visible if the worker sets Access-Control-Expose-Headers.
+    /** @type {CacheTelemetry} */
+    const telemetry = {
+        tier: res.headers.get('X-Cache') || 'MISS',
+        hits: res.headers.get('X-Cache-Hits') || '0',
+        timer: res.headers.get('X-Timer') || '',
+        servedBy: res.headers.get('X-Served-By') || '',
+        isolateId: res.headers.get('X-Isolate-ID') || '',
+    };
+
+    _cache.set(cacheKey, { data, ts: Date.now(), telemetry });
     return data;
 }
 
@@ -289,6 +311,28 @@ export async function searchWithAsn(query) {
     }
 
     return results;
+}
+
+/**
+ * Returns diagnostic information about each entry in the browser
+ * SWR cache for the debug overlay. Excludes auth-prefixed keys
+ * to avoid surfacing session state.
+ *
+ * @returns {Array<{key: string, ageMs: number, telemetry: CacheTelemetry}>}
+ */
+export function getCacheDiagnostics() {
+    /** @type {Array<{key: string, ageMs: number, telemetry: CacheTelemetry}>} */
+    const stats = [];
+    const now = Date.now();
+    for (const [key, entry] of _cache.entries()) {
+        if (key.startsWith('auth:')) continue;
+        stats.push({
+            key,
+            ageMs: now - entry.ts,
+            telemetry: entry.telemetry,
+        });
+    }
+    return stats;
 }
 
 /**

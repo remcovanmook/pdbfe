@@ -22,6 +22,7 @@ import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
 import { initAuth } from './auth.js';
 import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
+import { initDebugger } from './debug.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -54,6 +55,9 @@ await initAuth().catch(() => {
 
 // Boot the router (dispatches the current URL immediately)
 initRouter(document.getElementById('app'));
+
+// Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
+initDebugger();
 
 // Wire up the footer language selector
 const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
