@@ -5,7 +5,7 @@
 If you discover a security vulnerability in this project, please report
 it responsibly. **Do not open a public GitHub issue.**
 
-Email: **security@vanmook.net**
+Email: **noc@asteroidhq.com**
 
 Include:
 - Description of the vulnerability
