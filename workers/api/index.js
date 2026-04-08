@@ -218,10 +218,17 @@ async function handleRequest(request, env, ctx) {
 
         resolveImplicitFilters(entity, filters);
 
-        const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+        // Partition cache keys by authentication state to prevent cache
+        // poisoning. Anonymous users see restricted poc_set filtered to
+        // visible=Public; authenticated users see all visibility levels.
+        // Without partitioning, whichever request populates the cache
+        // first determines what the other group sees until TTL expires.
+        const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
+
+        const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
         if (errorResponse) return errorResponse;
 
-        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString, authenticated);
+        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -267,10 +274,12 @@ async function handleRequest(request, env, ctx) {
 
     resolveImplicitFilters(entity, filters);
 
-    const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+    const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
+
+    const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
     if (errorResponse) return errorResponse;
 
-    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString, authenticated);
+    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

@@ -66,7 +66,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache)
+                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated)
                 );
             }
         }
@@ -333,13 +333,14 @@ function countRows(payload) {
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<void>}
  */
-async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache) {
+async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated) {
     try {
         await cachedQuery({
             cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-            queryFn: () => executeListQuery(db, entity, filters, opts, false)
+            queryFn: () => executeListQuery(db, entity, filters, opts, authenticated)
         });
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);
