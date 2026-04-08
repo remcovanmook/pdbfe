@@ -4,6 +4,8 @@
  * to the appropriate page renderer via registered route patterns.
  */
 
+import { escapeHTML } from './render.js';
+
 /**
  * @typedef {Object} Route
  * @property {RegExp} pattern - URL pattern to match.
@@ -132,7 +134,7 @@ async function dispatch(fullPath) {
                 await route.handler(params);
             } catch (err) {
                 console.error('Route handler error:', err);
-                _appContainer.innerHTML = `<div class="error-message">Failed to load page: ${err.message}</div>`;
+                _appContainer.innerHTML = `<div class="error-message">Failed to load page: ${escapeHTML(err.message)}</div>`;
             }
 
             // Reset scroll after content is rendered

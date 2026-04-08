@@ -38,6 +38,11 @@ pass "upstream pattern tests"
 
 cd ..
 
+# ── XSS Linter ───────────────────────────────────────────────────────
+
+node scripts/lint_xss.js 2>&1 || fail "XSS linting failed"
+pass "XSS linting"
+
 # ── Frontend ─────────────────────────────────────────────────────────
 
 cd frontend

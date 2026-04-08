@@ -317,3 +317,56 @@ const other = cache.get("key-b");
 Rule: read all needed fields from the return object synchronously before
 calling `get()` again. This eliminates young-generation GC pressure on
 the hottest code path (L1 cache hits).
+
+## §12 — Raw `cache.get()` + `cachedQuery()` in Handlers
+
+**Anti-pattern:** Writing manual L1 cache check → TTL test → `cachedQuery()`
+boilerplate in API handlers. Every instance is a place where a developer can:
+- Forget to synchronously destructure the `_ret` object (§11),
+- Apply the wrong TTL constant,
+- Miss the negative cache TTL override,
+- Skip the `ctx.waitUntil()` background refresh.
+
+**Preferred pattern:** Use `withEdgeSWR()` from `core/swr.js`. It encapsulates
+the full L1 read → stale-while-revalidate → `cachedQuery()` miss flow.
+
+**Don't:**
+```js
+import { getEntityCache } from '../cache.js';
+import { cachedQuery } from '../pipeline.js';
+
+const cache = getEntityCache(entityTag);
+const cacheKey = normaliseCacheKey(rawPath, queryString);
+const cached = cache.get(cacheKey);
+if (cached && (Date.now() - cached.addedAt) < LIST_TTL) {
+    return serveJSON(request, cached.buf, { tier: 'L1', hits: cached.hits });
+}
+const { buf, tier } = await cachedQuery({
+    cacheKey, cache, entityTag, ttlMs: LIST_TTL,
+    queryFn: () => executeListQuery(db, entity, filters, opts)
+});
+return serveJSON(request, buf, { tier, hits: 0 });
+```
+
+**Do:**
+```js
+import { withEdgeSWR } from '../../core/swr.js';
+
+const cacheKey = normaliseCacheKey(rawPath, queryString);
+const { buf, tier, hits } = await withEdgeSWR(
+    entityTag, cacheKey, ctx, LIST_TTL,
+    () => executeListQuery(db, entity, filters, opts)
+);
+return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits });
+```
+
+`withEdgeSWR` handles cache resolution from `entityTag`, synchronous field
+extraction (§11), negative cache TTL override, and SWR background refresh.
+`cachedQuery()` is still the internal miss-resolution engine (coalescing,
+L2, D1 write) — it is not deprecated, just no longer called directly from
+handler code.
+
+The only exception is `prefetchPage()` in `handlers/index.js`, which calls
+`cachedQuery()` directly because it is already running inside a
+`ctx.waitUntil()` background task and operates on a different cache key
+than the primary request.

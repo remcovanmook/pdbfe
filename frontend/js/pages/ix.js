@@ -105,6 +105,29 @@ function buildSidebar(ix) {
         renderField('Last Updated', ix.updated),
     ]);
 
+    // LAN parameters from ixlan_set — 1:1 relationship with IX.
+    // Surfaces MTU, route server ASN, 802.1Q support, and the
+    // IX-F Member Export URL when publicly visible.
+    let lanInfo = '';
+    const lan = ix.ixlan_set?.[0];
+    if (lan) {
+        const lanFields = [
+            renderField('MTU', lan.mtu),
+            `<div class="info-field">
+                <span class="info-field__label">${escapeHTML(t('802.1Q'))}</span>
+                <span class="info-field__value">${/* safe — renderBool returns a known HTML badge */ renderBool(lan.dot1q_support)}</span>
+            </div>`,
+            lan.rs_asn ? renderField('Route Server ASN', lan.rs_asn) : '',
+        ];
+        // Only show the IX-F URL when visibility is Public
+        if (lan.ixf_ixp_member_list_url_visible === 'Public' && lan.ixf_ixp_member_list_url) {
+            lanFields.push(renderField('IX-F Member Export', lan.ixf_ixp_member_list_url, {
+                href: lan.ixf_ixp_member_list_url, external: true
+            }));
+        }
+        lanInfo = renderFieldGroup('LAN', lanFields.filter(s => s));
+    }
+
     let prefixes = '';
     if (ix.ixpfx_set && ix.ixpfx_set.length > 0) {
         const pfxFields = ix.ixpfx_set.map(/** @param {any} pfx */ (pfx) =>
@@ -113,7 +136,7 @@ function buildSidebar(ix) {
         prefixes = renderFieldGroup('LAN Prefixes', pfxFields);
     }
 
-    return [general, prefixes].filter(s => s).join('');
+    return [general, lanInfo, prefixes].filter(s => s).join('');
 }
 
 /**
@@ -161,7 +184,7 @@ function buildTables(ix, peers) {
     }
 
     let facTable = '';
-    if (ix.fac_set && ix.fac_set.length > 0) {
+    if (ix.ixfac_set && ix.ixfac_set.length > 0) {
         facTable = renderTableCard({
             title: 'Local Facilities',
             columns: [
@@ -169,9 +192,9 @@ function buildTables(ix, peers) {
                 { key: 'city',    label: 'City' },
                 { key: 'country', label: 'Country' },
             ],
-            rows: ix.fac_set,
+            rows: ix.ixfac_set,
             cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('fac', row.id, row.name || `Fac ${row.id}`);
+                if (col.key === 'name') return linkEntity('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
                 return escapeHTML(String(row[col.key] ?? '—'));
             }
         });

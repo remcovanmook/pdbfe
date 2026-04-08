@@ -142,7 +142,7 @@ async function loadGlobalStats() {
 
         const items = types.map((typ, i) =>
             `<li class="global-stats__item">
-                <span class="global-stats__count">${counts[i].toLocaleString()}</span>
+                <span class="global-stats__count">${/* safe — numeric */ counts[i].toLocaleString()}</span>
                 ${escapeHTML(t(typ.label))}
             </li>`
         ).join('');

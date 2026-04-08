@@ -304,6 +304,7 @@ export const ENTITIES = {
         .boolean('dot1q_support')
         .number('rs_asn')
         .string('arp_sponge', { queryable: false })
+        .string('ixf_ixp_member_list_url', { queryable: false })
         .string('ixf_ixp_member_list_url_visible', { queryable: false })
         .boolean('ixf_ixp_import_enabled', { queryable: false })
         .done(),

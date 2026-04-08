@@ -8,19 +8,21 @@
  *   depth>0 (cold path): D1 returns individual rows, expanded with
  *           relationship sets in V8, then JSON.stringify'd and cached.
  *
- * D1 query pipeline:
- *   All D1 queries flow through cachedQuery() (pipeline.js) which owns
- *   promise coalescing, the L2→D1→cache-write lifecycle, and
- *   negative caching. Handlers provide only a queryFn closure containing
- *   the D1-specific logic.
+ * Cache lifecycle:
+ *   All handlers use withEdgeSWR() (core/swr.js) which encapsulates the
+ *   full L1 read → stale-while-revalidate → cachedQuery miss flow.
+ *   Handlers provide only the D1 query closure. Cache resolution,
+ *   synchronous field extraction, SWR background refresh, promise
+ *   coalescing, L2, and negative caching are all handled internally.
  */
 
 import { ENTITIES, getJsonColumns, getBoolColumns } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, NEGATIVE_TTL, normaliseCacheKey } from '../cache.js';
-import { cachedQuery, EMPTY_ENVELOPE, isNegative } from '../pipeline.js';
+import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
+import { cachedQuery, EMPTY_ENVELOPE } from '../pipeline.js';
 import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
+import { withEdgeSWR } from '../../core/swr.js';
 
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
@@ -43,26 +45,18 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
 
     // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
     if (opts.limit === 0 && opts.skip === 0) {
-        return handleCount(request, db, entity, entityTag, filters, opts, rawPath, queryString);
+        return handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString);
     }
 
-    const cache = getEntityCache(entityTag);
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const now = Date.now();
-
-    // L1 cache check
-    const cached = cache.get(cacheKey);
-    if (cached && (now - cached.addedAt) < LIST_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
-    }
-
-    const { buf, tier } = await cachedQuery({
-        cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-        queryFn: () => executeListQuery(db, entity, filters, opts)
-    });
+    const { buf, tier, hits } = await withEdgeSWR(
+        entityTag, cacheKey, ctx, LIST_TTL,
+        () => executeListQuery(db, entity, filters, opts)
+    );
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
     // Pre-fetch next page in background if paginated
+    const cache = getEntityCache(entityTag);
     const rowCount = countRows(new TextDecoder().decode(effectiveBuf));
     if (rowCount > 0) {
         const nextPage = nextPageParams(filters, opts, rowCount);
@@ -77,7 +71,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits: 0 });
+    return serveJSON(request, effectiveBuf, { tier, hits });
 }
 
 /**
@@ -99,21 +93,15 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
-    const cache = getEntityCache(entityTag);
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const notFoundMsg = `${entityTag} with id ${id} not found`;
+    const { buf, tier, hits } = await withEdgeSWR(
+        entityTag, cacheKey, ctx, DETAIL_TTL,
+        () => executeDetailQuery(db, entity, filters, opts, id)
+    );
 
-    const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
-    if (l1Hit) return l1Hit;
+    if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    const { buf, tier } = await cachedQuery({
-        cacheKey, cache, entityTag, ttlMs: DETAIL_TTL,
-        queryFn: () => executeDetailQuery(db, entity, filters, opts, id)
-    });
-
-    if (!buf) return jsonError(404, notFoundMsg);
-
-    return serveJSON(request, buf, { tier, hits: 0 });
+    return serveJSON(request, buf, { tier, hits });
 }
 
 /**
@@ -122,20 +110,15 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
+ * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {number} asn - The ASN to look up.
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleAsSet(request, db, asn) {
-    const cache = getEntityCache("as_set");
+export async function handleAsSet(request, db, ctx, asn) {
     const cacheKey = `as_set/${asn}`;
-    const notFoundMsg = `No network found for ASN ${asn}`;
-
-    const l1Hit = serveCachedDetail(request, cache, cacheKey, notFoundMsg);
-    if (l1Hit) return l1Hit;
-
-    const { buf, tier } = await cachedQuery({
-        cacheKey, cache, entityTag: "as_set", ttlMs: DETAIL_TTL,
-        queryFn: async () => {
+    const { buf, tier, hits } = await withEdgeSWR(
+        "as_set", cacheKey, ctx, DETAIL_TTL,
+        async () => {
             const result = await db.prepare(
                 `SELECT json_object('data', json_array(json_object('asn', "asn", 'irr_as_set', "irr_as_set", 'name', "name")), 'meta', json_object()) AS payload FROM "peeringdb_network" WHERE "asn" = ?`
             ).bind(asn).first();
@@ -143,11 +126,11 @@ export async function handleAsSet(request, db, asn) {
             if (!result || !result.payload) return null;
             return encoder.encode(/** @type {string} */(result.payload));
         }
-    });
+    );
 
-    if (!buf) return jsonError(404, notFoundMsg);
+    if (!buf) return jsonError(404, `No network found for ASN ${asn}`);
 
-    return serveJSON(request, buf, { tier, hits: 0 });
+    return serveJSON(request, buf, { tier, hits });
 }
 
 /**
@@ -233,39 +216,14 @@ async function executeDetailQuery(db, entity, filters, opts, id) {
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
 /**
- * Checks the L1 cache for a detail-type entry (with negative TTL awareness).
- * Returns a Response on hit (including 404 for negative entries), or null
- * on miss. Caches the isNegative check result to avoid duplicate byte
- * comparisons.
- *
- * Used by handleDetail and handleAsSet to de-duplicate the L1 check pattern.
- *
- * @param {Request} request - The inbound HTTP request (for ETag headers).
- * @param {LocalCache} cache - Per-entity LRU cache instance.
- * @param {string} cacheKey - Normalised cache key.
- * @param {string} notFoundMsg - 404 message if the entry is a negative cache hit.
- * @returns {Response|null} Cached response, or null on miss/expired.
- */
-function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
-    const cached = cache.get(cacheKey);
-    if (!cached) return null;
-
-    const neg = isNegative(/** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)));
-    const ttl = neg ? NEGATIVE_TTL : DETAIL_TTL;
-    if ((Date.now() - cached.addedAt) >= ttl) return null;
-
-    if (neg) return jsonError(404, notFoundMsg);
-    return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
-}
-
-/**
  * Handles count requests (limit=0, skip=0).
  * Tries to derive count from a cached unfiltered list response first.
- * Falls back to a cachedQuery() pipeline with SELECT COUNT(*).
+ * Falls back to withEdgeSWR() pipeline with SELECT COUNT(*).
  * Caches the count envelope with COUNT_TTL (15 min).
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
+ * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Parsed query filters.
@@ -274,25 +232,23 @@ function serveCachedDetail(request, cache, cacheKey, notFoundMsg) {
  * @param {string} queryString - Original query string.
  * @returns {Promise<Response>} JSON response with count in meta.
  */
-async function handleCount(request, db, entity, entityTag, filters, opts, rawPath, queryString) {
-    const cache = getEntityCache(entityTag);
+async function handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const now = Date.now();
-
-    // Check if the count itself is cached (L1)
-    const cached = cache.get(cacheKey);
-    if (cached && (now - cached.addedAt) < COUNT_TTL) {
-        return serveJSON(request, /** @type {Uint8Array} */(/** @type {unknown} */(cached.buf)), { tier: 'L1', hits: cached.hits });
-    }
 
     // Try to derive count from a cached unfiltered list for this entity.
     // Only possible when there are no user-supplied filters and no since param.
     // This avoids a D1 query entirely when we already have the data.
+    // Note: this reads cache.get() directly — it's a cross-key optimisation
+    // (reading a *different* cache key) that doesn't fit the withEdgeSWR
+    // single-key model. The synchronous destructure is safe because we
+    // extract buf immediately.
     if (filters.length === 0 && opts.since === 0) {
+        const cache = getEntityCache(entityTag);
         const listKey = normaliseCacheKey(rawPath, '');
         const listCached = cache.get(listKey);
-        if (listCached && listCached.buf) {
-            const payload = new TextDecoder().decode(/** @type {Uint8Array} */(/** @type {unknown} */(listCached.buf)));
+        const listBuf = listCached ? listCached.buf : null;
+        if (listBuf) {
+            const payload = new TextDecoder().decode(/** @type {Uint8Array} */(/** @type {unknown} */(listBuf)));
             const count = countRows(payload);
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
@@ -302,18 +258,18 @@ async function handleCount(request, db, entity, entityTag, filters, opts, rawPat
         }
     }
 
-    // Fall back to cachedQuery pipeline with COUNT(*) query
-    const { buf, tier } = await cachedQuery({
-        cacheKey, cache, entityTag, ttlMs: COUNT_TTL,
-        queryFn: async () => {
+    // Fall back to withEdgeSWR pipeline with COUNT(*) query
+    const { buf, tier, hits } = await withEdgeSWR(
+        entityTag, cacheKey, ctx, COUNT_TTL,
+        async () => {
             const { sql, params } = buildCountQuery(entity, filters, opts);
             const result = await db.prepare(sql).bind(...params).first();
             const count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
             return encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
         }
-    });
+    );
 
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits: 0 });
+    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits });
 }
 
 

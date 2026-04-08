@@ -7,6 +7,9 @@
  * Architecture:
  *   - Reads `_sync_meta` for each entity's last sync timestamp.
  *   - Fetches `GET /api/{tag}?since={epoch}&depth=0` from PeeringDB.
+ *   - Auto-evolves the D1 schema: if the API response contains columns
+ *     that don't exist in the table, runs ALTER TABLE ADD COLUMN (as
+ *     nullable TEXT) before inserting. Logs a warning for each addition.
  *   - Upserts returned rows into D1 via INSERT OR REPLACE.
  *   - Updates `_sync_meta` with the new timestamp and row count.
  *   - Handles deleted rows by checking status='deleted' and removing them.
@@ -54,6 +57,38 @@ function buildUpsert(table, columns, row, notNullStrings) {
     });
 
     return { sql, params };
+}
+
+/**
+ * Ensures all columns from the API response exist in the D1 table.
+ * If the upstream PeeringDB API adds new fields, this auto-evolves
+ * the schema by running ALTER TABLE ADD COLUMN for each missing one.
+ *
+ * New columns are added as nullable TEXT — compatible with any SQLite
+ * storage class and safe for unknown upstream types.
+ *
+ * Logs a warning for each column added so developers know to update
+ * the entity definition and schema.sql.
+ *
+ * @param {D1Database} db - D1 database binding.
+ * @param {string} table - D1 table name.
+ * @param {string[]} apiColumns - Column names from the API response.
+ * @returns {Promise<void>}
+ */
+export async function ensureColumns(db, table, apiColumns) {
+    const info = await db.prepare(`PRAGMA table_info("${table}")`).all();
+    const existing = new Set(info.results.map(
+        (/** @type {{name: string}} */ r) => r.name
+    ));
+
+    for (const col of apiColumns) {
+        if (!existing.has(col)) {
+            console.warn(`[sync] auto-adding column "${col}" to ${table}`);
+            await db.prepare(
+                `ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`
+            ).run();
+        }
+    }
 }
 
 /**
@@ -107,8 +142,11 @@ async function syncEntity(db, tag, meta, apiKey) {
             return result;
         }
 
-        // Determine columns from first row
+        // Use all columns from the API response. If the upstream API has
+        // added new fields that don't exist in the D1 table, ensureColumns
+        // will ALTER TABLE to add them before the INSERT runs.
         const columns = Object.keys(rows[0]);
+        await ensureColumns(db, meta.table, columns);
 
         // Derive NOT NULL string columns from entity field definitions.
         // The D1 schema uses NOT NULL DEFAULT '' for string/datetime fields
