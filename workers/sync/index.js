@@ -212,6 +212,27 @@ async function syncEntity(db, tag, meta, apiKey) {
     }
 }
 
+/**
+ * Validates a secret from the URL path against ADMIN_SECRET.
+ * Uses constant-time comparison to prevent timing side-channels.
+ *
+ * @param {PdbSyncEnv} env - Environment bindings.
+ * @param {string} provided - The secret from the URL.
+ * @returns {boolean} Whether the secret is valid.
+ */
+function isValidSyncSecret(env, provided) {
+    if (typeof env.ADMIN_SECRET !== 'string' || env.ADMIN_SECRET.length === 0) {
+        return false;
+    }
+    if (provided.length !== env.ADMIN_SECRET.length) {
+        return false;
+    }
+    const enc = new TextEncoder();
+    const a = enc.encode(provided);
+    const b = enc.encode(env.ADMIN_SECRET);
+    return crypto.subtle.timingSafeEqual(a, b);
+}
+
 export default {
     /**
      * Cron trigger handler. Syncs all entities sequentially to avoid
@@ -242,8 +263,8 @@ export default {
 
     /**
      * HTTP handler for manual sync trigger and status.
-     * GET /sync/status — returns last sync times and row counts.
-     * POST /sync/trigger — runs a full sync cycle.
+     * GET  /sync/status            — returns last sync times and row counts.
+     * POST /sync/trigger.\<secret\>  — runs a full sync cycle (requires ADMIN_SECRET).
      *
      * @param {Request} request - The inbound HTTP request.
      * @param {PdbSyncEnv} env - Environment bindings.
@@ -262,7 +283,15 @@ export default {
             });
         }
 
-        if (url.pathname === '/sync/trigger' && request.method === 'POST') {
+        if (url.pathname.startsWith('/sync/trigger.') && request.method === 'POST') {
+            const secret = url.pathname.slice('/sync/trigger.'.length);
+            if (!isValidSyncSecret(env, secret)) {
+                return new Response(JSON.stringify({ error: 'Forbidden' }), {
+                    status: 403,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
+
             // Run sync in background, return immediately
             const promise = this.scheduled(
                 /** @type {ScheduledEvent} */ ({ cron: 'manual', scheduledTime: Date.now() }),

@@ -16,6 +16,15 @@ interface ExecutionContext {
     passThroughOnException(): void;
 }
 
+/**
+ * Cloudflare Workers extension to SubtleCrypto.
+ * timingSafeEqual is not in the standard WebCrypto spec but is
+ * available in the Workers runtime for constant-time comparisons.
+ */
+interface SubtleCrypto {
+    timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
+}
+
 // ── D1 Database ──────────────────────────────────────────────────────────────
 
 interface D1Meta {
