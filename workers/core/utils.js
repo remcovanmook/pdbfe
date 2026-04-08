@@ -79,7 +79,7 @@ export function parseQueryFilters(queryString) {
         }
         if (rawKey === "limit") {
             const parsed = parseInt(rawValue, 10);
-            limit = isNaN(parsed) ? -1 : Math.max(parsed, 0);
+            limit = isNaN(parsed) ? -1 : parsed;
             continue;
         }
         if (rawKey === "skip") {

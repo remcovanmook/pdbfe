@@ -70,16 +70,24 @@ function handleRobots() {
 
 /**
  * Validates the admin secret from a path segment against the ADMIN_SECRET
- * env var. Returns true only when the env var is set and matches.
+ * env var. Uses constant-time comparison to prevent timing side-channels.
+ * Returns true only when the env var is set and matches.
  *
  * @param {PdbEnv} env - Cloudflare environment bindings.
  * @param {string} provided - The secret extracted from the URL.
  * @returns {boolean} Whether the secret is valid.
  */
 function isValidSecret(env, provided) {
-    return typeof env.ADMIN_SECRET === "string"
-        && env.ADMIN_SECRET.length > 0
-        && provided === env.ADMIN_SECRET;
+    if (typeof env.ADMIN_SECRET !== "string" || env.ADMIN_SECRET.length === 0) {
+        return false;
+    }
+    if (provided.length !== env.ADMIN_SECRET.length) {
+        return false;
+    }
+    const enc = new TextEncoder();
+    const a = enc.encode(provided);
+    const b = enc.encode(env.ADMIN_SECRET);
+    return crypto.subtle.timingSafeEqual(a, b);
 }
 
 /**

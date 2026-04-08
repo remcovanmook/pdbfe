@@ -17,6 +17,8 @@
  * The KV key format is `session:<sid>` and values are JSON SessionData objects.
  */
 
+import { hashKey } from './account.js';
+
 /** @type {string} KV key prefix for session entries. */
 const SESSION_PREFIX = 'session:';
 
@@ -44,12 +46,14 @@ export function extractApiKey(request) {
 }
 
 /**
- * Validates an API key by looking up the reverse-index entry in the
- * USERS KV namespace. An in-memory per-isolate cache avoids repeated
- * KV reads for the same key within a 5-minute window.
+ * Validates an API key by hashing it and looking up the reverse-index
+ * entry in the USERS KV namespace. Keys are stored as `apikey:<sha256(key)>`
+ * so the cleartext key is never persisted. An in-memory per-isolate cache
+ * (keyed on the cleartext key) avoids repeated KV reads within a 5-minute
+ * window.
  *
  * Key format: `pdbfe.<32 hex chars>`.
- * KV key format: `apikey:<full_key>` → ApiKeyEntry JSON.
+ * KV key format: `apikey:<sha256(full_key)>` → ApiKeyEntry JSON.
  *
  * @param {KVNamespace} kv - The USERS KV namespace binding.
  * @param {string} apiKey - The API key to validate.
@@ -60,24 +64,39 @@ export async function verifyApiKey(kv, apiKey) {
 
     const now = Date.now();
 
-    // Check in-memory cache first
+    // Check in-memory cache first (keyed on cleartext, ephemeral per-isolate)
     const cached = _apiKeyCache.get(apiKey);
     if (cached && (now - cached.ts) < APIKEY_CACHE_TTL) {
         return cached.valid;
     }
 
-    // KV lookup
-    const entry = await kv.get('apikey:' + apiKey);
+    // Hash the key, then look up in KV
+    const hashed = await hashKey(apiKey);
+    const entry = await kv.get('apikey:' + hashed);
     const valid = entry !== null;
 
     // Cache the result (both positive and negative)
     _apiKeyCache.set(apiKey, { valid, ts: now });
 
-    // Evict stale entries periodically to prevent unbounded growth
+    // Enforce hard size cap to prevent unbounded growth from brute-force
+    // floods of invalid keys. First pass: evict stale entries. If still
+    // over the limit, delete the oldest entries regardless of TTL.
     if (_apiKeyCache.size > APIKEY_CACHE_MAX) {
         for (const [key, val] of _apiKeyCache) {
             if ((now - val.ts) > APIKEY_CACHE_TTL) {
                 _apiKeyCache.delete(key);
+            }
+        }
+        // Hard eviction: if stale cleanup wasn't enough, drop oldest
+        // entries. Map iteration order is insertion order, so the
+        // first entries are the oldest.
+        if (_apiKeyCache.size > APIKEY_CACHE_MAX) {
+            const excess = _apiKeyCache.size - APIKEY_CACHE_MAX;
+            let deleted = 0;
+            for (const key of _apiKeyCache.keys()) {
+                if (deleted >= excess) break;
+                _apiKeyCache.delete(key);
+                deleted++;
             }
         }
     }

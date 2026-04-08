@@ -37,9 +37,10 @@ import { withEdgeSWR } from '../../core/swr.js';
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleList(request, db, ctx, entityTag, filters, opts, rawPath, queryString) {
+export async function handleList(request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
@@ -51,7 +52,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const { buf, tier, hits } = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
-        () => executeListQuery(db, entity, filters, opts)
+        () => executeListQuery(db, entity, filters, opts, authenticated)
     );
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
@@ -65,7 +66,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache)
+                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated)
                 );
             }
         }
@@ -87,16 +88,17 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Depth option.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleDetail(request, db, ctx, entityTag, id, filters, opts, rawPath, queryString) {
+export async function handleDetail(request, db, ctx, entityTag, id, filters, opts, rawPath, queryString, authenticated) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const { buf, tier, hits } = await withEdgeSWR(
         entityTag, cacheKey, ctx, DETAIL_TTL,
-        () => executeDetailQuery(db, entity, filters, opts, id)
+        () => executeDetailQuery(db, entity, filters, opts, id, authenticated)
     );
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
@@ -156,17 +158,18 @@ export function handleNotImplemented(method, path) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for empty result.
  *          Note: empty lists return EMPTY_ENVELOPE (not null) since an empty
  *          list is valid data, not a 404.
  */
-async function executeListQuery(db, entity, filters, opts) {
+async function executeListQuery(db, entity, filters, opts, authenticated) {
     if (opts.depth > 0) {
         const { sql, params } = buildRowQuery(entity, filters, opts);
         const result = await db.prepare(sql).bind(...params).all();
         const rows = result.results || [];
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(db, entity, rows, opts.depth);
+        await expandDepth(db, entity, rows, opts.depth, authenticated);
         return encodeJSON({ data: rows, meta: {} });
     }
 
@@ -189,9 +192,10 @@ async function executeListQuery(db, entity, filters, opts) {
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @param {number} id - Entity ID.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for 404.
  */
-async function executeDetailQuery(db, entity, filters, opts, id) {
+async function executeDetailQuery(db, entity, filters, opts, id, authenticated) {
     if (opts.depth > 0) {
         const { sql, params } = buildRowQuery(entity, filters, opts, id);
         const result = await db.prepare(sql).bind(...params).all();
@@ -200,7 +204,7 @@ async function executeDetailQuery(db, entity, filters, opts, id) {
         if (rows.length === 0) return null;
 
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(db, entity, rows, opts.depth);
+        await expandDepth(db, entity, rows, opts.depth, authenticated);
         return encodeJSON({ data: rows, meta: {} });
     }
 
@@ -329,13 +333,14 @@ function countRows(payload) {
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<void>}
  */
-async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache) {
+async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated) {
     try {
         await cachedQuery({
             cacheKey, cache, entityTag, ttlMs: LIST_TTL,
-            queryFn: () => executeListQuery(db, entity, filters, opts)
+            queryFn: () => executeListQuery(db, entity, filters, opts, authenticated)
         });
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);

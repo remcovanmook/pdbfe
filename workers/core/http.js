@@ -14,6 +14,14 @@ export const encoder = new TextEncoder();
 /**
  * Precompiled CORS headers applied to every API response.
  * Frozen to prevent accidental mutation.
+ *
+ * Uses wildcard origin (`*`) deliberately:
+ *   - Browser requests go through the Cloudflare Pages proxy (same-origin),
+ *     so CORS is never triggered for the primary frontend.
+ *   - Cross-origin API consumers use `Authorization: Api-Key` headers,
+ *     not cookies, so `Access-Control-Allow-Credentials` is not needed.
+ *   - Session cookies (pdbfe_sid) are handled by the auth worker, which
+ *     sets its own CORS headers with the specific frontend origin.
  */
 export const H_CORS = Object.freeze({
     "Access-Control-Allow-Origin": "*",

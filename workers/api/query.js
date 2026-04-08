@@ -394,9 +394,11 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         }
     }
 
-    // Pagination: limit=-1 means no limit was specified by the user.
-    // depth>0 caps at 250 (matching upstream); depth=0 returns all rows.
-    let effectiveLimit = limit < 0 ? 0 : limit;
+    // Pagination: limit <= 0 means no user-specified limit (the router
+    // rejects negative limits with 400, so we only see -1 sentinel or 0).
+    // depth>0 caps at 250 (matching upstream PeeringDB). depth=0 has no
+    // artificial cap — upstream allows full table reads.
+    let effectiveLimit = limit > 0 ? limit : 0;
     if (opts.depth > 0 && (effectiveLimit === 0 || effectiveLimit > 250)) {
         effectiveLimit = 250;
     }
@@ -410,7 +412,8 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             params.push(skip);
         }
     } else if (skip > 0) {
-        // Skip without limit requires a large limit in SQLite
+        // Skip without limit requires LIMIT -1 in SQLite (unbounded).
+        // This is safe because negative limits are rejected at the router.
         pagination += ` LIMIT -1 OFFSET ?`;
         params.push(skip);
     }
@@ -441,11 +444,19 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
  * @returns {BuiltQuery} Parameterised SQL returning { cnt: number }.
  */
 export function buildCountQuery(entity, filters, opts) {
-    // Count queries never use JOINs or pagination — just filter clauses
+    // Count queries never use JOINs or pagination — just filter clauses.
+    // The pagination builder may append LIMIT/OFFSET params that a COUNT
+    // query doesn't use. Extract only the WHERE-related params.
     const { clauses, params } = buildWherePagination(entity, filters, opts, null);
+
+    const whereParamCount = clauses.reduce(
+        (/** @type {number} */ n, /** @type {string} */ c) => n + (c.match(/\?/g) || []).length, 0
+    );
+    const whereParams = params.slice(0, whereParamCount);
+
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
     const sql = `SELECT COUNT(*) AS cnt FROM "${entity.table}"${where}`;
-    return { sql, params };
+    return { sql, params: whereParams };
 }
 
 /**

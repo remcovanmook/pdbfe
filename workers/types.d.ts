@@ -16,6 +16,15 @@ interface ExecutionContext {
     passThroughOnException(): void;
 }
 
+/**
+ * Cloudflare Workers extension to SubtleCrypto.
+ * timingSafeEqual is not in the standard WebCrypto spec but is
+ * available in the Workers runtime for constant-time comparisons.
+ */
+interface SubtleCrypto {
+    timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
+}
+
 // ── D1 Database ──────────────────────────────────────────────────────────────
 
 interface D1Meta {
@@ -227,6 +236,8 @@ interface ApiKeyMeta {
     label: string;
     /** First 4 hex characters of the key, for display (e.g. "a1b2"). */
     prefix: string;
+    /** SHA-256 hex digest of the full key. Used for KV reverse-index deletion. */
+    hash: string;
     /** ISO 8601 timestamp of key creation. */
     created_at: string;
 }

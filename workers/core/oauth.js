@@ -100,11 +100,16 @@ export async function handleLogin(request, env) {
         state,
     });
 
+    // Bind the state nonce to this browser via a cookie. The callback
+    // handler will verify the cookie matches the URL state parameter,
+    // preventing login CSRF attacks where an attacker sends their own
+    // authorization URL to a victim.
     return new Response(null, {
         status: 302,
         headers: {
             'Location': `${PDB_AUTHORIZE_URL}?${params.toString()}`,
             'Cache-Control': 'no-store',
+            'Set-Cookie': `pdbfe_oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`,
         },
     });
 }
@@ -140,7 +145,15 @@ export async function handleCallback(request, env) {
         return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Missing code or state parameter');
     }
 
-    // Validate CSRF state nonce
+    // Validate CSRF state nonce: verify both KV (server-side) and cookie
+    // (client-side). The cookie binding prevents login CSRF where an
+    // attacker generates a valid state in KV then sends the authorization
+    // URL to a victim.
+    const cookieState = extractCookie(request, 'pdbfe_oauth_state');
+    if (!cookieState || cookieState !== state) {
+        return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'State mismatch (possible CSRF)');
+    }
+
     const stateKey = STATE_PREFIX + state;
     const storedState = await env.SESSIONS.get(stateKey);
     if (!storedState) {
@@ -263,6 +276,21 @@ export function handleAuthPreflight(env) {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Extracts a named cookie value from the request's Cookie header.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {string} name - Cookie name to extract.
+ * @returns {string|null} The cookie value, or null if not found.
+ */
+function extractCookie(request, name) {
+    const header = request.headers.get('Cookie');
+    if (!header) return null;
+    const re = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`);
+    const match = header.match(re);
+    return match ? match[1].trim() : null;
+}
 
 /**
  * Exchanges an OAuth2 authorization code for an access token by

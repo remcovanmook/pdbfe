@@ -6,60 +6,37 @@
 
 import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API, H_NOCACHE, encoder } from '../core/http.js';
+import { handlePreflight, jsonError, H_API, H_NOCACHE } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, enforceAnonFilter } from './entities.js';
-import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
-import { putL2 } from './l2cache.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
+import { getCacheStats, purgeAllCaches } from './cache.js';
 import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
 
-/** Cache metadata tag for 400 error entries, distinguishing them from data. */
-const ERROR_META_TAG = '_error';
-
 /**
- * Checks the entity cache for a cached 400 error response. If found and
- * within TTL, returns the Response directly. If not cached, runs
- * validation; on failure, caches the error body in L1 + L2 and returns
- * the Response. Returns null if validation passes.
+ * Validates query filters and sort parameter against the entity schema.
+ * Returns a 400 Response if validation fails, or null if valid.
  *
- * This prevents repeated schema validation for the same invalid query
- * string (bot traffic, retries, scrapers with broken filters).
+ * Validation errors are deliberately NOT cached in the entity LRU.
+ * The CPU cost of re-validating is negligible (a Set.has() per filter
+ * field), and caching errors would allow attackers to evict legitimate
+ * data entries by flooding with randomised invalid query parameters.
  *
- * @param {string} entityTag - Entity tag for cache lookup.
- * @param {string} rawPath - URL path for cache key.
- * @param {string} queryString - Query string for cache key.
+ * @param {string} _entityTag - Entity tag (unused, kept for call-site compat).
+ * @param {string} _rawPath - URL path (unused, kept for call-site compat).
+ * @param {string} _queryString - Query string (unused, kept for call-site compat).
  * @param {EntityMeta} entity - Entity schema for validation.
  * @param {ParsedFilter[]} filters - Parsed filters to validate.
  * @param {string} sort - Sort parameter to validate.
- * @returns {Response|null} Cached or fresh 400 Response, or null if valid.
+ * @returns {Response|null} 400 Response on validation failure, or null if valid.
  */
-function checkCachedError(entityTag, rawPath, queryString, entity, filters, sort) {
-    const cache = getEntityCache(entityTag);
-    const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const now = Date.now();
-
-    // L1 check: if we've already cached a 400 for this exact query, return it
-    const cached = cache.get(cacheKey);
-    if (cached && cached.meta?.entityTag === ERROR_META_TAG && (now - cached.addedAt) < ERROR_TTL) {
-        return new Response(
-            /** @type {BodyInit} */(/** @type {unknown} */(cached.buf)),
-            { status: 400, headers: H_NOCACHE }
-        );
-    }
-
-    // Run validation
+function checkCachedError(_entityTag, _rawPath, _queryString, entity, filters, sort) {
     const queryError = validateQuery(entity, filters, sort);
     if (!queryError) return null;
 
-    // Cache the error body in L1 + L2
     const errorJson = JSON.stringify({ error: queryError }) + '\n';
-    const errorBody = encoder.encode(errorJson);
-    cache.add(cacheKey, errorBody, { entityTag: ERROR_META_TAG }, now);
-    putL2(cacheKey, errorBody, ERROR_TTL / 1000);
-
     return new Response(errorJson, { status: 400, headers: H_NOCACHE });
 }
 
@@ -205,6 +182,13 @@ async function handleRequest(request, env, ctx) {
         }
 
         const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
+
+        // Reject nonsensical negative values. limit=-1 is the internal
+        // sentinel for "not specified"; any lower value is invalid user input.
+        if (limit < -1 || skip < 0) {
+            return jsonError(400, 'limit and skip must be non-negative integers');
+        }
+
         const entity = ENTITIES[entityTag];
         const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
@@ -218,10 +202,17 @@ async function handleRequest(request, env, ctx) {
 
         resolveImplicitFilters(entity, filters);
 
-        const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+        // Partition cache keys by authentication state to prevent cache
+        // poisoning. Anonymous users see restricted poc_set filtered to
+        // visible=Public; authenticated users see all visibility levels.
+        // Without partitioning, whichever request populates the cache
+        // first determines what the other group sees until TTL expires.
+        const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
+
+        const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
         if (errorResponse) return errorResponse;
 
-        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -257,6 +248,11 @@ async function handleRequest(request, env, ctx) {
     }
 
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
+
+    if (limit < -1 || skip < 0) {
+        return jsonError(400, 'limit and skip must be non-negative integers');
+    }
+
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
@@ -267,10 +263,12 @@ async function handleRequest(request, env, ctx) {
 
     resolveImplicitFilters(entity, filters);
 
-    const errorResponse = checkCachedError(entityTag, rawPath, queryString, entity, filters, sort);
+    const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
+
+    const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
     if (errorResponse) return errorResponse;
 
-    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, rawPath, queryString);
+    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");
