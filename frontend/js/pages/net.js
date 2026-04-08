@@ -101,8 +101,8 @@ function buildSidebar(net) {
             if (poc.email) parts.push(`<a href="mailto:${escapeHTML(poc.email)}">${escapeHTML(poc.email)}</a>`);
             if (poc.phone) parts.push(escapeHTML(poc.phone));
             return `<div class="info-field">
-                <span class="info-field__label">${parts[0]}</span>
-                <span class="info-field__value">${parts.slice(1).join(' · ')}</span>
+                <span class="info-field__label">${/* safe — built from escapeHTML() */ parts[0]}</span>
+                <span class="info-field__value">${/* safe — built from escapeHTML() */ parts.slice(1).join(' · ')}</span>
             </div>`;
         });
         contacts = renderFieldGroup('Contacts', fields);

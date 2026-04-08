@@ -87,7 +87,7 @@ fetchSyncStatus().then(sync => {
     const timeText = formatDate(isoDate);
     const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
 
-    el.innerHTML = `${t('Last synced')} <span class="site-footer__sync-time${staleClass}">${timeText}</span>`;
+    el.innerHTML = `${t('Last synced')} <span class="site-footer__sync-time${staleClass}">${/* safe — formatDate() output */ timeText}</span>`;
     el.title = sync.last_sync_at;
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure

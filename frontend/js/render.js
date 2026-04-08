@@ -116,7 +116,7 @@ export function renderTableCard(opts) {
         const cells = columns.map(col => {
             const rendered = cellRenderer(row, col);
             if (typeof rendered === 'object' && rendered !== null) {
-                return `<td class="${col.class || ''}" data-sort-value="${rendered.sortValue}">${rendered.html}</td>`;
+                return `<td class="${col.class || ''}" data-sort-value="${rendered.sortValue}">${/* safe — cellRenderer output */ rendered.html}</td>`;
             }
             return `<td class="${col.class || ''}">${rendered}</td>`;
         }).join('');

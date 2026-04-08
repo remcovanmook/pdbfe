@@ -99,7 +99,7 @@ export function attachTypeahead(input, opts = {}) {
                 const name = escapeHTML(item.name || `ID ${item.id}`);
                 const sub = group.subtitle(item);
                 html += `<div class="search-dropdown__item" data-href="/${group.key}/${item.id}" role="option">
-                    <span>${name}</span>
+                    <span>${/* safe — escapeHTML() on line 99 */ name}</span>
                     ${sub ? `<span class="search-dropdown__item-sub">${escapeHTML(sub)}</span>` : ''}
                 </div>`;
             }

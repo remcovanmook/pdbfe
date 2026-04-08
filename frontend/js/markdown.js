@@ -190,7 +190,7 @@ export function renderMarkdown(text) {
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;
-        return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${label}</a>`;
+        return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
     });
 
     // Step 8: Bare URLs (http/https only, not already in an href or <a> tag)
@@ -213,7 +213,7 @@ export function renderMarkdown(text) {
                 result.push('<ul>');
                 inList = true;
             }
-            result.push(`<li>${trimmed.replace(/^[-*]\s+/, '')}</li>`);
+            result.push(`<li>${/* safe — already escaped by escapeForMarkdown */ trimmed.replace(/^[-*]\s+/, '')}</li>`);
             continue;
         }
 

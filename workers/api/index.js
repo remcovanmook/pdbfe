@@ -237,7 +237,7 @@ async function handleRequest(request, env, ctx) {
         if (isNaN(asn)) {
             return jsonError(400, "Invalid ASN");
         }
-        return handleAsSet(request, db, asn);
+        return handleAsSet(request, db, ctx, asn);
     }
 
     // api/{entity}/{id} — detail endpoint

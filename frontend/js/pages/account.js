@@ -10,7 +10,7 @@
 
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
-import { escapeHTML as esc, formatLocaleDate as formatDate } from '../render.js';
+import { escapeHTML, formatLocaleDate as formatDate } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
 /**
@@ -51,15 +51,15 @@ export async function renderAccount(_params) {
                         <div class="info-group" id="profile-info">
                             <div class="info-field">
                                 <span class="info-field__label">${t('Name')}</span>
-                                <span class="info-field__value">${esc(user?.name || '')}</span>
+                                <span class="info-field__value">${escapeHTML(user?.name || '')}</span>
                             </div>
                             <div class="info-field">
                                 <span class="info-field__label">${t('Email')}</span>
-                                <span class="info-field__value">${esc(user?.email || '—')}</span>
+                                <span class="info-field__value">${escapeHTML(user?.email || '—')}</span>
                             </div>
                             <div class="info-field">
                                 <span class="info-field__label">${t('User ID')}</span>
-                                <span class="info-field__value info-field__value--muted">${user?.id || '—'}</span>
+                                <span class="info-field__value info-field__value--muted">${/* safe — numeric id */ user?.id || '—'}</span>
                             </div>
                             <div class="info-field">
                                 <span class="info-field__label">${t('Language')}</span>
@@ -67,7 +67,7 @@ export async function renderAccount(_params) {
                                     <select id="account-lang-select" class="site-footer__lang-select">
                                         <option value="en"${!getCurrentLang() || getCurrentLang() === 'en' ? ' selected' : ''}>English</option>
                                         ${Object.entries(LANGUAGES).map(([code, name]) =>
-                                            `<option value="${code}"${getCurrentLang() === code ? ' selected' : ''}>${esc(name)}</option>`
+                                            `<option value="${code}"${getCurrentLang() === code ? ' selected' : ''}>${escapeHTML(name)}</option>`
                                         ).join('')}
                                     </select>
                                 </span>
@@ -171,7 +171,7 @@ function renderNetworks(user) {
     const rows = nets.map(/** @param {{id: number, asn: number, name: string}} n */ (n) =>
         `<div class="info-field">
             <span class="info-field__label">AS${n.asn}</span>
-            <span class="info-field__value"><a href="/net/${n.id}" data-link>${esc(n.name)}</a></span>
+            <span class="info-field__value"><a href="/net/${n.id}" data-link>${escapeHTML(n.name)}</a></span>
         </div>`
     ).join('');
 
@@ -236,14 +236,14 @@ async function loadKeys(sid) {
                     <tbody>
                         ${keys.map(/** @param {any} k */ (k) => `
                             <tr>
-                                <td>${esc(k.label)}</td>
-                                <td class="td-mono">pdbfe.${esc(k.prefix)}…</td>
+                                <td>${escapeHTML(k.label)}</td>
+                                <td class="td-mono">pdbfe.${escapeHTML(k.prefix)}…</td>
                                 <td>${formatDate(k.created_at)}</td>
                                 <td>
                                     <button class="auth-link btn-delete-key"
-                                            data-key-id="${esc(k.id)}"
-                                            data-key-label="${esc(k.label)}"
-                                            data-key-prefix="${esc(k.prefix)}"
+                                            data-key-id="${escapeHTML(k.id)}"
+                                            data-key-label="${escapeHTML(k.label)}"
+                                            data-key-prefix="${escapeHTML(k.prefix)}"
                                             style="cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)">
                                         ${t('Revoke')}
                                     </button>
@@ -393,7 +393,7 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     const errorEl = document.getElementById('revoke-error');
     if (!modal || !infoEl || !errorEl) return;
 
-    infoEl.innerHTML = `<strong>${esc(label)}</strong> <span class="td-mono" style="display:inline">(pdbfe.${esc(prefix)}…)</span>`;
+    infoEl.innerHTML = `<strong>${escapeHTML(label)}</strong> <span class="td-mono" style="display:inline">(pdbfe.${escapeHTML(prefix)}…)</span>`;
     errorEl.style.display = 'none';
     modal.style.display = 'flex';
 
