@@ -11,7 +11,6 @@
     "test:upstream": "node --test tests/test_upstream_patterns.js"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260318.0",
     "typescript": "^5.8.2"
   }
 }

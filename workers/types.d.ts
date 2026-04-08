@@ -1,7 +1,129 @@
 /**
  * Shared type definitions for the pdbfe Cloudflare Workers codebase.
  * Consumed by tsc --noEmit via tsconfig.json. Never imported at runtime.
+ *
+ * Cloudflare Workers runtime types (D1, KV, ExecutionContext, etc.) are
+ * defined here instead of importing @cloudflare/workers-types (11 MB).
+ * Only the interfaces actually used in source code are included.
  */
+
+// ── Cloudflare Workers Runtime Types ─────────────────────────────────────────
+// Extracted from @cloudflare/workers-types. Only the subset used by this
+// project is included. Update these if new CF APIs are adopted.
+
+interface ExecutionContext {
+    waitUntil(promise: Promise<any>): void;
+    passThroughOnException(): void;
+}
+
+// ── D1 Database ──────────────────────────────────────────────────────────────
+
+interface D1Meta {
+    duration: number;
+    size_after: number;
+    rows_read: number;
+    rows_written: number;
+    last_row_id: number;
+    changed_db: boolean;
+    changes: number;
+}
+
+interface D1Response {
+    success: true;
+    meta: D1Meta & Record<string, unknown>;
+}
+
+type D1Result<T = unknown> = D1Response & {
+    results: T[];
+};
+
+interface D1ExecResult {
+    count: number;
+    duration: number;
+}
+
+declare abstract class D1Database {
+    prepare(query: string): D1PreparedStatement;
+    batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
+    exec(query: string): Promise<D1ExecResult>;
+    withSession(constraintOrBookmark?: string): D1DatabaseSession;
+}
+
+declare abstract class D1DatabaseSession {
+    prepare(query: string): D1PreparedStatement;
+    batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
+    getBookmark(): string | null;
+}
+
+declare abstract class D1PreparedStatement {
+    bind(...values: unknown[]): D1PreparedStatement;
+    first<T = unknown>(colName: string): Promise<T | null>;
+    first<T = Record<string, unknown>>(): Promise<T | null>;
+    run<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+    all<T = Record<string, unknown>>(): Promise<D1Result<T>>;
+    raw<T = unknown[]>(options?: { columnNames?: boolean }): Promise<T[]>;
+}
+
+// ── KV Namespace ─────────────────────────────────────────────────────────────
+
+interface KVNamespacePutOptions {
+    expiration?: number;
+    expirationTtl?: number;
+    metadata?: any | null;
+}
+
+interface KVNamespace<Key extends string = string> {
+    get(key: Key, options?: { type?: "text"; cacheTtl?: number }): Promise<string | null>;
+    get<T = unknown>(key: Key, type: "json"): Promise<T | null>;
+    get<T = unknown>(key: Key, options: { type: "json"; cacheTtl?: number }): Promise<T | null>;
+    get(key: Key, type: "arrayBuffer"): Promise<ArrayBuffer | null>;
+    put(key: Key, value: string | ArrayBuffer | ArrayBufferView | ReadableStream, options?: KVNamespacePutOptions): Promise<void>;
+    delete(key: Key): Promise<void>;
+    list<Metadata = unknown>(options?: { limit?: number; prefix?: string | null; cursor?: string | null }): Promise<{
+        keys: { name: Key; expiration?: number; metadata?: Metadata }[];
+        list_complete: boolean;
+        cursor?: string;
+    }>;
+}
+
+// ── Scheduled Events ─────────────────────────────────────────────────────────
+
+interface ScheduledEvent {
+    readonly scheduledTime: number;
+    readonly cron: string;
+    noRetry(): void;
+}
+
+interface ScheduledController {
+    readonly scheduledTime: number;
+    readonly cron: string;
+    noRetry(): void;
+}
+
+// ── Request.cf Extension ─────────────────────────────────────────────────────
+// Cloudflare-specific properties on incoming Request objects.
+
+interface IncomingRequestCfProperties {
+    colo?: string;
+    country?: string;
+    city?: string;
+    continent?: string;
+    latitude?: string;
+    longitude?: string;
+    region?: string;
+    regionCode?: string;
+    timezone?: string;
+    asn?: number;
+    asOrganization?: string;
+    httpProtocol?: string;
+    tlsVersion?: string;
+    tlsCipher?: string;
+    [key: string]: unknown;
+}
+
+interface Request {
+    readonly cf?: IncomingRequestCfProperties;
+}
 
 // ── Environment Bindings ─────────────────────────────────────────────────────
 

@@ -35,3 +35,4 @@ peeringdb/
 
 # OS
 .DS_Store
+.agent/workflows/sandbox-limitations.md
