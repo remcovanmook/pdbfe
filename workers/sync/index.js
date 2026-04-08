@@ -162,10 +162,12 @@ async function syncEntity(db, tag, meta, apiKey) {
         // that Django models define as CharField(blank=True, null=False).
         // When the API sends null for these columns, coerce to "" to
         // satisfy the constraint and match Django's convention.
+        // Fields marked nullable in the entity registry are excluded — they
+        // use nullable TEXT in D1 and should store null to match upstream.
         /** @type {Set<string>} */
         const notNullStrings = new Set();
         for (const field of meta.fields) {
-            if (field.type === 'string' || field.type === 'datetime') {
+            if ((field.type === 'string' || field.type === 'datetime') && !field.nullable) {
                 notNullStrings.add(field.name);
             }
         }

@@ -163,6 +163,7 @@ class Entity {
         const def = { name, type };
         if (opts?.queryable === false) def.queryable = false;
         if (opts?.json === true) def.json = true;
+        if (opts?.nullable === true) def.nullable = true;
         if (opts?.foreignKey) {
             def.foreignKey = opts.foreignKey;
             if (opts.resolve) def.resolve = opts.resolve;
@@ -216,10 +217,10 @@ export const ENTITIES = {
         .boolean('policy_ratio')
         .string('policy_contracts')
         .boolean('allow_ixp_update', { queryable: false })
-        .string('status_dashboard', { queryable: false })
-        .string('rir_status', { queryable: false })
+        .string('status_dashboard', { queryable: false, nullable: true })
+        .string('rir_status', { queryable: false, nullable: true })
         .datetime('rir_status_updated', { queryable: false })
-        .string('logo', { queryable: false })
+        .string('logo', { queryable: false, nullable: true })
         .done(),
 
     org: new Entity('org', 'peeringdb_organization')
@@ -229,7 +230,7 @@ export const ENTITIES = {
         .string('website', { queryable: false })
         .json('social_media')
         .string('notes', { queryable: false })
-        .string('logo', { queryable: false })
+        .string('logo', { queryable: false, nullable: true })
         .address()
         .done(),
 
@@ -255,10 +256,10 @@ export const ENTITIES = {
         .string('tech_phone', { queryable: false })
         .json('available_voltage_services')
         .boolean('diverse_serving_substations', { queryable: false })
-        .string('property', { queryable: false })
+        .string('property', { queryable: false, nullable: true })
         .string('region_continent')
-        .string('status_dashboard', { queryable: false })
-        .string('logo', { queryable: false })
+        .string('status_dashboard', { queryable: false, nullable: true })
+        .string('logo', { queryable: false, nullable: true })
         .address()
         .done(),
 
@@ -287,13 +288,13 @@ export const ENTITIES = {
         .number('net_count', { queryable: false })
         .number('fac_count', { queryable: false })
         .number('ixf_net_count', { queryable: false })
-        .datetime('ixf_last_import', { queryable: false })
-        .string('ixf_import_request', { queryable: false })
+        .datetime('ixf_last_import', { queryable: false, nullable: true })
+        .string('ixf_import_request', { queryable: false, nullable: true })
         .string('ixf_import_request_status', { queryable: false })
         .string('service_level', { queryable: false })
         .string('terms', { queryable: false })
-        .string('status_dashboard', { queryable: false })
-        .string('logo', { queryable: false })
+        .string('status_dashboard', { queryable: false, nullable: true })
+        .string('logo', { queryable: false, nullable: true })
         .done(),
 
     ixlan: new Entity('ixlan', 'peeringdb_ixlan')
@@ -303,8 +304,8 @@ export const ENTITIES = {
         .number('mtu')
         .boolean('dot1q_support')
         .number('rs_asn')
-        .string('arp_sponge', { queryable: false })
-        .string('ixf_ixp_member_list_url', { queryable: false })
+        .string('arp_sponge', { queryable: false, nullable: true })
+        .string('ixf_ixp_member_list_url', { queryable: false, nullable: true })
         .string('ixf_ixp_member_list_url_visible', { queryable: false })
         .boolean('ixf_ixp_import_enabled', { queryable: false })
         .done(),
@@ -334,7 +335,7 @@ export const ENTITIES = {
         .number('speed')
         .number('asn')
         .string('ipaddr4')
-        .string('ipaddr6')
+        .string('ipaddr6', { nullable: true })
         .boolean('is_rs_peer')
         .boolean('bfd_support')
         .boolean('operational')
@@ -385,16 +386,16 @@ export const ENTITIES = {
         .number('org_id', { foreignKey: 'org' })
         .string('org_name', { queryable: false })
         .string('name')
-        .string('name_long')
+        .string('name_long', { nullable: true })
         .string('notes', { queryable: false })
-        .string('aka')
+        .string('aka', { nullable: true })
         .string('website', { queryable: false })
         .json('social_media')
         .string('country')
         .string('city')
         .string('zipcode')
         .string('state')
-        .string('logo', { queryable: false })
+        .string('logo', { queryable: false, nullable: true })
         .done(),
 };
 
@@ -500,11 +501,12 @@ export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
  * allocations. Runs once at module load after deriveRelationships.
  *
  * Caches:
- *   _columns:     string[]       (ordered column names)
- *   _jsonColumns:  Set<string>    (json: true column names)
- *   _boolColumns:  Set<string>    (boolean-typed column names)
- *   _fieldNames:   Set<string>    (all column names for validation)
- *   _filterTypes:  Map<string, string>  (queryable field → type)
+ *   _columns:        string[]       (ordered column names)
+ *   _jsonColumns:     Set<string>    (json: true column names)
+ *   _boolColumns:     Set<string>    (boolean-typed column names)
+ *   _nullableColumns: Set<string>    (nullable column names)
+ *   _fieldNames:      Set<string>    (all column names for validation)
+ *   _filterTypes:     Map<string, string>  (queryable field → type)
  *
  * @param {Record<string, EntityMeta>} entities
  */
@@ -517,6 +519,8 @@ function cacheFieldLookups(entities) {
         /** @type {Set<string>} */
         const boolColumns = new Set();
         /** @type {Set<string>} */
+        const nullableColumns = new Set();
+        /** @type {Set<string>} */
         const fieldNames = new Set();
         /** @type {Map<string, string>} */
         const filterTypes = new Map();
@@ -526,12 +530,14 @@ function cacheFieldLookups(entities) {
             fieldNames.add(field.name);
             if (field.json) jsonColumns.add(field.name);
             if (field.type === 'boolean') boolColumns.add(field.name);
+            if (field.nullable) nullableColumns.add(field.name);
             if (field.queryable !== false) filterTypes.set(field.name, field.type);
         }
 
         /** @type {any} */ (entity)._columns = columns;
         /** @type {any} */ (entity)._jsonColumns = jsonColumns;
         /** @type {any} */ (entity)._boolColumns = boolColumns;
+        /** @type {any} */ (entity)._nullableColumns = nullableColumns;
         /** @type {any} */ (entity)._fieldNames = fieldNames;
         /** @type {any} */ (entity)._filterTypes = filterTypes;
     }
@@ -577,6 +583,21 @@ export function getBoolColumns(entity) {
     if (/** @type {any} */ (entity)._boolColumns) return /** @type {any} */ (entity)._boolColumns;
     const s = new Set();
     for (const field of entity.fields) { if (field.type === 'boolean') s.add(field.name); }
+    return s;
+}
+
+/**
+ * Returns Set of nullable column names. Used by the query builder to
+ * emit NULLIF(col, '') so that empty strings stored in D1 are returned
+ * as JSON null, matching upstream PeeringDB behaviour.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} Column names with nullable: true.
+ */
+export function getNullableColumns(entity) {
+    if (/** @type {any} */ (entity)._nullableColumns) return /** @type {any} */ (entity)._nullableColumns;
+    const s = new Set();
+    for (const field of entity.fields) { if (field.nullable) s.add(field.name); }
     return s;
 }
 

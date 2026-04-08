@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # migrate-to-d1.sh — Populate a Cloudflare D1 database from PeeringDB JSON dumps.
 #
-# Reads entity JSON files from database/ (downloaded from the PeeringDB API),
+# Reads entity JSON files from database/ (downloaded from public.peeringdb.com),
 # converts them to INSERT statements via json_to_sql.py, and bulk-loads into D1.
 #
 # Prerequisites:
@@ -14,8 +14,7 @@
 #   ./database/migrate-to-d1.sh [--remote] [--fetch]
 #
 # --remote   Push to production D1 (default: local dev database)
-# --fetch    Download fresh JSON from the PeeringDB API before importing.
-#            Requires PEERINGDB_API_KEY in .env or environment.
+# --fetch    Download fresh JSON dumps from public.peeringdb.com before importing.
 
 set -euo pipefail
 
@@ -25,13 +24,9 @@ export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$(cd "$(dirname "$0")/.." && pwd)/w
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Source .env from repo root if present (contains PEERINGDB_API_KEY)
-if [[ -f "$REPO_ROOT/.env" ]]; then
-    set -a; source "$REPO_ROOT/.env"; set +a
-fi
 SCHEMA_SQL="$SCRIPT_DIR/schema.sql"
 WRANGLER_CONFIG="$REPO_ROOT/workers/wrangler.toml"
-API_BASE="https://www.peeringdb.com/api"
+PUBLIC_BASE="https://public.peeringdb.com"
 JSON_TO_SQL="$SCRIPT_DIR/json_to_sql.py"
 
 # Parse flags
@@ -59,16 +54,7 @@ TMPDIR_EXPORT="$REPO_ROOT/.d1-migration-tmp"
 mkdir -p "$TMPDIR_EXPORT"
 trap 'rm -rf "$TMPDIR_EXPORT"' EXIT
 
-# ── API auth ──────────────────────────────────────────────────────────────────
 
-if [[ -z "${PEERINGDB_API_KEY:-}" ]]; then
-    CURL_AUTH=()
-    if $DO_FETCH; then
-        echo "WARNING: PEERINGDB_API_KEY not set. Downloads may be rate-limited." >&2
-    fi
-else
-    CURL_AUTH=(-H "Authorization: Api-Key ${PEERINGDB_API_KEY}")
-fi
 
 # ── Apply schema ──────────────────────────────────────────────────────────────
 
@@ -76,6 +62,7 @@ echo "==> Applying schema..."
 npx wrangler d1 execute peeringdb \
     --config "$WRANGLER_CONFIG" \
     $REMOTE_FLAG \
+    --yes \
     --file "$SCHEMA_SQL"
 
 # ── Entity definitions ────────────────────────────────────────────────────────
@@ -104,12 +91,11 @@ for ENTITY_DEF in "${ENTITIES[@]}"; do
 
     JSON_FILE="$SCRIPT_DIR/${TAG}.json"
 
-    # Optionally fetch fresh data from the API
+    # Optionally fetch fresh data from the public PeeringDB dumps
     if $DO_FETCH; then
-        echo "==> Fetching $TAG from API..."
+        echo "==> Fetching $TAG from public.peeringdb.com..."
         curl -sf --retry 3 --retry-delay 5 --max-time 120 \
-            "${CURL_AUTH[@]}" \
-            "${API_BASE}/${TAG}?depth=0" -o "$JSON_FILE"
+            "${PUBLIC_BASE}/${TAG}-0.json" -o "$JSON_FILE"
     fi
 
     if [[ ! -f "$JSON_FILE" ]]; then
@@ -130,20 +116,12 @@ for ENTITY_DEF in "${ENTITIES[@]}"; do
         continue
     fi
 
-    # Split into batches of 500 lines and import
-    BATCH_DIR="$TMPDIR_EXPORT/${TABLE}_batches"
-    mkdir -p "$BATCH_DIR"
-    split -l 500 "$EXPORT_FILE" "$BATCH_DIR/batch_"
-
-    BATCH_NUM=0
-    for BATCH_FILE in "$BATCH_DIR"/batch_*; do
-        BATCH_NUM=$((BATCH_NUM + 1))
-        echo "    batch $BATCH_NUM ($(wc -l < "$BATCH_FILE" | tr -d ' ') rows)..."
-        npx wrangler d1 execute peeringdb \
-            --config "$WRANGLER_CONFIG" \
-            $REMOTE_FLAG \
-            --file "$BATCH_FILE"
-    done
+    # Import directly — wrangler handles internal batching for large files
+    npx wrangler d1 execute peeringdb \
+        --config "$WRANGLER_CONFIG" \
+        $REMOTE_FLAG \
+        --yes \
+        --file "$EXPORT_FILE"
 done
 
 # ── Populate _sync_meta ──────────────────────────────────────────────────────
@@ -162,6 +140,7 @@ done
 npx wrangler d1 execute peeringdb \
     --config "$WRANGLER_CONFIG" \
     $REMOTE_FLAG \
+    --yes \
     --file "$SYNC_FILE"
 
 echo "==> Migration complete."
