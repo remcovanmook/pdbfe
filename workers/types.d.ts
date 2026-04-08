@@ -333,6 +333,8 @@ interface FieldDef {
     queryable?: boolean;
     /** Whether D1 stores this as a JSON TEXT column (needs json() wrapping). Defaults to false. */
     json?: boolean;
+    /** Whether this column is nullable in D1 (TEXT without NOT NULL). Defaults to false. */
+    nullable?: boolean;
     /** Target entity tag if this field is a foreign key (e.g. "org"). id column implied. */
     foreignKey?: string;
     /** Columns to resolve via LEFT JOIN when this FK is present (e.g. { name: "org_name" }). */
@@ -345,6 +347,7 @@ interface FieldDef {
 interface FieldOpts {
     queryable?: boolean;
     json?: boolean;
+    nullable?: boolean;
     foreignKey?: string;
     resolve?: Record<string, string>;
 }

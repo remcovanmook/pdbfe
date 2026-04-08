@@ -16,7 +16,7 @@
  *   coalescing, L2, and negative caching are all handled internally.
  */
 
-import { ENTITIES, getJsonColumns, getBoolColumns } from '../entities.js';
+import { ENTITIES, getJsonColumns, getBoolColumns, getNullableColumns } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
@@ -295,6 +295,11 @@ function parseJsonFields(entity, row) {
     }
     for (const col of getBoolColumns(entity)) {
         if (col in row) row[col] = !!row[col];
+    }
+    // Convert empty strings to null for nullable columns.
+    // D1 may store '' for fields that upstream sends as null.
+    for (const col of getNullableColumns(entity)) {
+        if (row[col] === '') row[col] = null;
     }
 }
 
