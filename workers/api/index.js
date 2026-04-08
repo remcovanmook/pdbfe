@@ -8,7 +8,7 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API, H_NOCACHE, encoder } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, enforceAnonFilter } from './entities.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches, getEntityCache, normaliseCacheKey, ERROR_TTL } from './cache.js';
 import { putL2 } from './l2cache.js';
 import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';

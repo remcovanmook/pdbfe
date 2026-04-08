@@ -490,31 +490,6 @@ deriveRelationships(ENTITIES);
  */
 export const ENTITY_TAGS = new Set(Object.keys(ENTITIES));
 
-/**
- * Enforces the anonymous visibility filter on a restricted entity.
- * Strips any user-supplied filters on the anonFilter field (preventing
- * injection of ?visible=Private to bypass access control), then injects
- * the mandatory system filter.
- *
- * No-op if the entity is not restricted or has no anonFilter defined.
- *
- * @param {EntityMeta} entity - Entity metadata.
- * @param {ParsedFilter[]} filters - Parsed query filters (mutated in place).
- */
-export function enforceAnonFilter(entity, filters) {
-    const anon = /** @type {any} */ (entity)._anonFilter;
-    if (!anon) return;
-
-    // Strip all user-supplied filters on the restricted field
-    for (let i = filters.length - 1; i >= 0; i--) {
-        if (filters[i].field === anon.field && !filters[i].entity) {
-            filters.splice(i, 1);
-        }
-    }
-
-    // Inject the mandatory system filter
-    filters.push({ field: anon.field, op: 'eq', value: anon.value });
-}
 
 
 // ── Boot-time caches ─────────────────────────────────────────────────────────

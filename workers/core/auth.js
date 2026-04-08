@@ -78,11 +78,25 @@ export async function verifyApiKey(kv, apiKey) {
     // Cache the result (both positive and negative)
     _apiKeyCache.set(apiKey, { valid, ts: now });
 
-    // Evict stale entries periodically to prevent unbounded growth
+    // Enforce hard size cap to prevent unbounded growth from brute-force
+    // floods of invalid keys. First pass: evict stale entries. If still
+    // over the limit, delete the oldest entries regardless of TTL.
     if (_apiKeyCache.size > APIKEY_CACHE_MAX) {
         for (const [key, val] of _apiKeyCache) {
             if ((now - val.ts) > APIKEY_CACHE_TTL) {
                 _apiKeyCache.delete(key);
+            }
+        }
+        // Hard eviction: if stale cleanup wasn't enough, drop oldest
+        // entries. Map iteration order is insertion order, so the
+        // first entries are the oldest.
+        if (_apiKeyCache.size > APIKEY_CACHE_MAX) {
+            const excess = _apiKeyCache.size - APIKEY_CACHE_MAX;
+            let deleted = 0;
+            for (const key of _apiKeyCache.keys()) {
+                if (deleted >= excess) break;
+                _apiKeyCache.delete(key);
+                deleted++;
             }
         }
     }

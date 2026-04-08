@@ -1,150 +1,21 @@
 /**
- * @fileoverview Unit tests for poc visibility filtering.
+ * @fileoverview Unit tests for poc visibility filtering during depth expansion.
  *
  * Verifies that:
- *   - enforceAnonFilter strips user-supplied visible= parameters
- *   - enforceAnonFilter injects the mandatory system filter
  *   - Depth expansion (both depth=1 and depth=2) applies the visibility
  *     filter on restricted child entities for anonymous callers
  *   - Authenticated callers are not filtered
+ *
+ * Note: Direct queries to /api/poc are handled by a short-circuit in
+ * api/index.js that returns an empty response for anonymous callers.
+ * There is no filter-injection function to test for that path.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { enforceAnonFilter, ENTITIES } from '../../api/entities.js';
+import { ENTITIES } from '../../api/entities.js';
 import { expandDepth } from '../../api/depth.js';
 
-// ── enforceAnonFilter tests ──────────────────────────────────────────────────
-
-describe('enforceAnonFilter', () => {
-    const pocEntity = ENTITIES['poc'];
-
-    it('should inject visible=Public filter on empty filter list', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].field, 'visible');
-        assert.equal(filters[0].op, 'eq');
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should strip user-supplied visible=Private and inject Public', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'eq', value: 'Private' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].field, 'visible');
-        assert.equal(filters[0].op, 'eq');
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should strip user-supplied visible=Users and inject Public', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'eq', value: 'Users' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should strip visible__contains injection attempts', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'contains', value: 'Priv' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].field, 'visible');
-        assert.equal(filters[0].op, 'eq');
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should strip visible__in injection attempts', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'in', value: 'Public,Private,Users' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].op, 'eq');
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should strip multiple user-supplied visible filters', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'eq', value: 'Private' },
-            { field: 'visible', op: 'eq', value: 'Users' },
-            { field: 'visible', op: 'contains', value: '' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].value, 'Public');
-    });
-
-    it('should preserve non-visible filters', () => {
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'role', op: 'eq', value: 'Abuse' },
-            { field: 'visible', op: 'eq', value: 'Private' },
-            { field: 'net_id', op: 'eq', value: '694' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        assert.equal(filters.length, 3);
-        // The two non-visible filters should be untouched
-        const role = filters.find(f => f.field === 'role');
-        assert.ok(role);
-        assert.equal(role.value, 'Abuse');
-        const netId = filters.find(f => f.field === 'net_id');
-        assert.ok(netId);
-        assert.equal(netId.value, '694');
-        // The visible filter should be the forced one
-        const vis = filters.find(f => f.field === 'visible');
-        assert.ok(vis);
-        assert.equal(vis.value, 'Public');
-    });
-
-    it('should not touch cross-entity visible filters', () => {
-        // A cross-entity filter on visible (e.g. from another entity)
-        // should not be stripped since it targets a different table
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'visible', op: 'eq', value: 'Private', entity: 'net' },
-        ];
-        enforceAnonFilter(pocEntity, filters);
-
-        // Cross-entity filter preserved, system filter added
-        assert.equal(filters.length, 2);
-        assert.equal(filters[0].entity, 'net');
-        assert.equal(filters[0].value, 'Private');
-        assert.equal(filters[1].field, 'visible');
-        assert.equal(filters[1].value, 'Public');
-    });
-
-    it('should be a no-op for entities without anonFilter', () => {
-        const netEntity = ENTITIES['net'];
-        /** @type {ParsedFilter[]} */
-        const filters = [
-            { field: 'asn', op: 'eq', value: '13335' },
-        ];
-        enforceAnonFilter(netEntity, filters);
-
-        // Should not modify filters
-        assert.equal(filters.length, 1);
-        assert.equal(filters[0].field, 'asn');
-    });
-});
 
 // ── Depth expansion visibility tests ─────────────────────────────────────────
 
