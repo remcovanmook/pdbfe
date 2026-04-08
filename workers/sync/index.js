@@ -107,8 +107,12 @@ async function syncEntity(db, tag, meta, apiKey) {
             return result;
         }
 
-        // Determine columns from first row
-        const columns = Object.keys(rows[0]);
+        // Determine columns from first row, filtered against the entity's
+        // known field definitions. The upstream API may return columns that
+        // don't exist in the D1 schema (e.g. ixf_ixp_member_list_url on ixlan),
+        // which causes INSERT OR REPLACE to fail. Drop unknown columns.
+        const entityFields = new Set(meta.fields.map(f => f.name));
+        const columns = Object.keys(rows[0]).filter(c => entityFields.has(c));
 
         // Derive NOT NULL string columns from entity field definitions.
         // The D1 schema uses NOT NULL DEFAULT '' for string/datetime fields
