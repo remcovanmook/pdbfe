@@ -1,0 +1,17 @@
+# Default owner for everything
+* @remcovanmook
+
+# Workers — API, sync, auth
+/workers/ @remcovanmook
+
+# Frontend
+/frontend/ @remcovanmook
+
+# CI and tooling
+/.github/ @remcovanmook
+/scripts/ @remcovanmook
+
+# Database schema changes require explicit review
+/database/schema.sql @remcovanmook
+/database/migrations/ @remcovanmook
+/workers/api/entities.js @remcovanmook
