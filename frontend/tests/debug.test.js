@@ -49,8 +49,11 @@ function createMockDOM() {
     globalThis.window = /** @type {any} */ ({
         __router: { navigate: () => {} },
         scrollTo: () => {},
-        location: { href: 'http://localhost/', reload: () => {} },
+        location: { href: 'http://localhost/', pathname: '/', reload: () => {} },
+        addEventListener: () => {},
+        history: { pushState: () => {} },
     });
+    globalThis.history = globalThis.window.history;
     return { listeners };
 }
 

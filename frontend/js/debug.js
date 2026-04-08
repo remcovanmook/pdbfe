@@ -65,7 +65,10 @@ function keyToPath(key) {
 let _overlay = null;
 
 /**
- * Registers the keyboard shortcut listener for the debug overlay.
+ * Registers the keyboard shortcut listener for the debug overlay
+ * and hooks into SPA navigation so the overlay auto-refreshes
+ * when the user clicks between pages.
+ *
  * Call once at boot time. Does not create any DOM elements until
  * the shortcut is pressed.
  */
@@ -81,6 +84,39 @@ export function initDebugger() {
             toggleOverlay();
         }
     });
+
+    // Re-render overlay on SPA navigation (popstate = back/forward,
+    // pushState = link clicks via the router).
+    window.addEventListener('popstate', () => refreshOverlay());
+
+    const origPush = history.pushState.bind(history);
+    history.pushState = function(...args) {
+        origPush(...args);
+        // Small delay so the page renderer has time to fire its fetches,
+        // which populate the SWR cache that we read for diagnostics.
+        setTimeout(() => refreshOverlay(), 300);
+    };
+}
+
+/**
+ * Re-renders the overlay content if it's currently visible.
+ * Called on SPA navigation so the "Current Page" section stays
+ * in sync with whatever the user is looking at.
+ */
+async function refreshOverlay() {
+    if (!_overlay) return;
+
+    try {
+        const [syncStatus, localCache] = await Promise.all([
+            fetchSyncStatus(),
+            Promise.resolve(getCacheDiagnostics()),
+        ]);
+        if (!_overlay) return;
+        _overlay.innerHTML = buildOverlayHTML(syncStatus, localCache);
+        wireButtons();
+    } catch {
+        // Non-critical — leave current content on failure
+    }
 }
 
 /**
