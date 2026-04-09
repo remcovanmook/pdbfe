@@ -130,7 +130,7 @@ export async function handleLogin(request, env) {
  * @returns {Promise<Response>} 302 redirect to the frontend, or error response.
  */
 export async function handleCallback(request, env) {
-    const url = new URL(request.url);
+    const url = new URL(request.url); // ap-ok: auth worker only, not API hot path
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
@@ -287,7 +287,7 @@ export function handleAuthPreflight(env) {
 function extractCookie(request, name) {
     const header = request.headers.get('Cookie');
     if (!header) return null;
-    const re = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`);
+    const re = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`); // ap-ok: auth worker only, not API hot path
     const match = header.match(re);
     return match ? match[1].trim() : null;
 }

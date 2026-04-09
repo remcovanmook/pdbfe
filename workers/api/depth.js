@@ -71,7 +71,7 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
  * @returns {Promise<void>}
  */
 async function expandDepthOne(db, entity, rows, authenticated) {
-    const parentIds = rows.map(r => r.id);
+    const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
     if (parentIds.length === 0) return;
 
     /** @type {Map<number, Record<string, any>>} */
@@ -80,12 +80,12 @@ async function expandDepthOne(db, entity, rows, authenticated) {
         rowMap.set(row.id, row);
     }
 
-    const tasks = entity.relationships.map(async (rel) => {
+    const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
         for (const row of rows) {
             row[rel.field] = [];
         }
 
-        const placeholders = parentIds.map(() => "?").join(", ");
+        const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
 
         // For restricted child entities, add visibility filter for anonymous callers
         const childTag = TABLE_TO_TAG.get(rel.table);
@@ -94,7 +94,7 @@ async function expandDepthOne(db, entity, rows, authenticated) {
 
         let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted'`;
         /** @type {any[]} */
-        const params = [...parentIds];
+        const params = [...parentIds]; // ap-ok: SQL bind params
 
         if (anonFilter) {
             sql += ` AND "${anonFilter.field}" = ?`;
@@ -139,7 +139,7 @@ async function expandDepthOne(db, entity, rows, authenticated) {
  * @returns {Promise<void>}
  */
 async function expandDepthTwo(db, entity, rows, authenticated) {
-    const parentIds = rows.map(r => r.id);
+    const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
     if (parentIds.length === 0) return;
 
     /** @type {Map<number, Record<string, any>>} */
@@ -148,7 +148,7 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
         rowMap.set(row.id, row);
     }
 
-    const tasks = entity.relationships.map(async (rel) => {
+    const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
         // Initialise empty arrays
         for (const row of rows) {
             row[rel.field] = [];
@@ -170,7 +170,7 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
         /** @type {Set<string>} */
         let childBoolCols;
         if (childEntity) {
-            childColumns = getColumns(childEntity).filter(c => c !== rel.fk);
+            childColumns = getColumns(childEntity).filter(c => c !== rel.fk); // ap-ok: SQL construction
             childJsonCols = getJsonColumns(childEntity);
             childBoolCols = getBoolColumns(childEntity);
         } else {
@@ -179,14 +179,14 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
             childBoolCols = new Set();
         }
 
-        const placeholders = parentIds.map(() => "?").join(", ");
+        const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
         /** @type {any[]} */
-        const params = [...parentIds];
+        const params = [...parentIds]; // ap-ok: SQL bind params
         let sql;
 
         if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
             // JOIN path: alias the child table, add LEFT JOINs for cross-entity names
-            const baseCols = childColumns.map(c => `t."${c}"`).join(", ");
+            const baseCols = childColumns.map(c => `t."${c}"`).join(", "); // ap-ok: SQL construction
 
             /** @type {string[]} */
             const joinParts = [];
@@ -219,7 +219,7 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
             sql += ` ORDER BY t."id" ASC`;
         } else if (childColumns.length > 0) {
             // Standard path: no JOINs
-            const colExpr = childColumns.map(c => `"${c}"`).join(", ");
+            const colExpr = childColumns.map(c => `"${c}"`).join(", "); // ap-ok: SQL construction
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" IN (${placeholders})` +
                 ` AND "status" != 'deleted'`;

@@ -97,8 +97,8 @@ export function generateETag(buf) {
 export function isNotModified(requestHeaders, etag) {
     const reqEtag = requestHeaders.get("if-none-match");
     if (!reqEtag) return false;
-    const cleanReq = reqEtag.replace(/^W\//, "").replace(/"/g, "");
-    const cleanObj = etag.replace(/^W\//, "").replace(/"/g, "");
+    const cleanReq = reqEtag.replace(/^W\//, "").replace(/"/g, ""); // ap-ok: fixed pattern on short ETag string
+    const cleanObj = etag.replace(/^W\//, "").replace(/"/g, ""); // ap-ok: fixed pattern on short ETag string
     return reqEtag === "*" || cleanReq === cleanObj;
 }
 
