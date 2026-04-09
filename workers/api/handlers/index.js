@@ -249,7 +249,7 @@ async function handleCount(request, db, ctx, entity, entityTag, filters, opts, r
     if (filters.length === 0 && opts.since === 0) {
         const cache = getEntityCache(entityTag);
         const listKey = normaliseCacheKey(rawPath, '');
-        const listCached = cache.get(listKey);
+        const listCached = cache.get(listKey); // ap-ok: cross-key optimization, synchronous destructure follows
         const listBuf = listCached ? listCached.buf : null;
         if (listBuf) {
             const payload = new TextDecoder().decode(/** @type {Uint8Array} */(/** @type {unknown} */(listBuf)));
@@ -290,7 +290,7 @@ async function handleCount(request, db, ctx, entity, entityTag, filters, opts, r
 function parseJsonFields(entity, row) {
     for (const col of getJsonColumns(entity)) {
         if (typeof row[col] === "string" && row[col]) {
-            try { row[col] = JSON.parse(row[col]); } catch { /* keep as string */ }
+            try { row[col] = JSON.parse(row[col]); } catch { /* keep as string */ } // ap-ok: depth>0 cold path only
         }
     }
     for (const col of getBoolColumns(entity)) {
@@ -343,7 +343,7 @@ function countRows(payload) {
  */
 async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated) {
     try {
-        await cachedQuery({
+        await cachedQuery({ // ap-ok: background prefetch in waitUntil, not handler flow
             cacheKey, cache, entityTag, ttlMs: LIST_TTL,
             queryFn: () => executeListQuery(db, entity, filters, opts, authenticated)
         });
