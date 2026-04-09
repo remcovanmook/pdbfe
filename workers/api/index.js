@@ -10,6 +10,7 @@ import { handlePreflight, jsonError, H_API, H_NOCACHE } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
+import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
 import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -121,6 +122,12 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // In-memory rate limiting — drop abusive IPs before touching D1.
+    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
+    if (isRateLimited(clientIP, authenticated)) {
+        return jsonError(429, 'Too Many Requests');
+    }
+
     // Create a D1 session for read replication. "first-unconstrained" allows
     // queries to hit any replica (including the primary). This is optimal for
     // read-only workloads where eventual consistency is acceptable.
@@ -142,8 +149,11 @@ async function handleRequest(request, env, ctx) {
         const adminResponse = routeAdminPath(rawPath, env, {
             db,
             serviceName: "pdbfe-api",
-            getStats: getCacheStats,
-            flush: purgeAllCaches,
+            getStats: () => ({
+                ...getCacheStats(),
+                rateLimit: getRateLimitStats(),
+            }),
+            flush: () => { purgeAllCaches(); purgeRateLimit(); },
         });
         if (adminResponse) return adminResponse;
 
