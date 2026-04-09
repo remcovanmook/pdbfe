@@ -9,6 +9,8 @@ The API worker serves a read-only mirror of the PeeringDB database from Cloudfla
 ```
 Client → wrapHandler (error trap + telemetry headers)
        → validateRequest (method, traversal, scanner probes)
+       → extractApiKey / extractSessionId → authenticated
+       → isRateLimited (isolate-level, per-IP or per-identity)
        → env.PDB.withSession("first-unconstrained") → db
        → OPTIONS? → handlePreflight (precompiled CORS 204)
        → admin path? → routeAdminPath (robots.txt, health, cache status/flush)
@@ -32,13 +34,16 @@ api/index.js (router)
 ├── core/admin.js         (validateRequest, wrapHandler, routeAdminPath)
 ├── core/http.js          (encoder, serveJSON, handlePreflight, jsonError, encodeJSON)
 ├── core/utils.js         (parseURL, parseQueryFilters)
+├── core/auth.js          (extractApiKey, verifyApiKey, extractSessionId, resolveSession)
+├── api/ratelimit.js      (isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit)
 ├── api/handlers/index.js (handleList, handleDetail, handleAsSet, handleNotImplemented)
+│   ├── core/swr.js       (withEdgeSWR — L1 read + SWR + cachedQuery miss flow)
 │   ├── api/pipeline.js   (cachedQuery, EMPTY_ENVELOPE, isNegative)
 │   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
 │   ├── api/depth.js      (expandDepth)
 │   ├── api/cache.js      (getEntityCache, normaliseCacheKey, TTL constants)
 │   └── api/entities.js   (ENTITIES, ENTITY_TAGS, JSON_STORED_COLUMNS)
-└── core/cache.js         (LRUCache — instantiated 14 times by api/cache.js)
+└── core/cache.js         (LRUCache — instantiated 14× by api/cache.js + 1× by api/ratelimit.js)
 ```
 
 Handlers live in `api/handlers/` for consistency with the debthin worker set.
@@ -80,9 +85,27 @@ When a paginated list response fills its limit, `handleList` fires a background 
 
 Cache keys are normalised: URL path + alphabetically sorted query string. This ensures `?limit=10&asn=13335` and `?asn=13335&limit=10` hit the same cache slot.
 
-### ETag / 304
+Cache keys are **partitioned by authentication state** (prefixed with `auth:` or `anon:`) to prevent cache poisoning. Anonymous users see restricted `poc_set` filtered to `visible=Public`; authenticated users see all visibility levels. Without partitioning, whichever request populates the cache first determines what the other group sees until TTL expires.
 
-Every response gets a weak ETag generated via DJB2 hash of the payload bytes. Clients sending `If-None-Match` get a `304 Not Modified` without retransmitting the payload.
+### SWR (Stale-While-Revalidate)
+
+Handlers use `withEdgeSWR()` (`core/swr.js`) instead of raw `cache.get()` + `cachedQuery()`. This encapsulates:
+1. L1 cache hit with synchronous field extraction (respects the shared `_ret` contract)
+2. Fresh entry → serve immediately
+3. Stale entry (within SWR window) → serve stale, fire `ctx.waitUntil()` background refresh
+4. Expired/miss → block on `cachedQuery()` (L2 → D1 fallback)
+5. Negative cache TTL override for 404 entries
+
+See ANTI_PATTERNS.md §12 for rationale.
+
+### Rate Limiting
+
+`api/ratelimit.js` provides isolate-level rate limiting using a dedicated LRU cache instance (4000 slots, 60s window). No KV reads, no external dependencies, sub-millisecond overhead.
+
+- **Anonymous callers**: Keyed by client IP (IPv6 truncated to /64 prefix), 60 req/min per isolate
+- **Authenticated callers**: Keyed by API key or session ID, 600 req/min per isolate
+- 429 responses include guidance for anonymous callers to authenticate for higher limits
+- Stats and flush integrated into the admin `/_cache_status` and `/_cache_flush` endpoints
 
 ## Query Builder
 
@@ -125,6 +148,14 @@ Precompiled frozen headers on every response:
 
 ## Authentication & Access Control
 
+### Authentication Methods
+
+The API worker supports two authentication methods, resolved in order:
+1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — SHA-256 hashed and verified against the USERS KV namespace with a per-isolate 5-minute cache. Upstream PeeringDB API keys are rejected with a 403.
+2. **Session token** (`Authorization: Bearer <sid>` or cookie) — verified against the SESSIONS KV namespace.
+
+Both authentication checks complete before rate limiting, so authenticated vs anonymous limits are applied correctly.
+
 ### Restricted Entities
 
 Some PeeringDB entities contain sensitive data gated behind authentication upstream. The entity registry supports this via two builder methods:
@@ -147,15 +178,11 @@ Restricted entities have two layers of access control:
 **Depth expansion** (`poc_set` in `/api/net?depth=1` or `depth=2`):
 - Anonymous callers see only `visible=Public` contacts
 - `expandDepth()` adds `WHERE "visible" = ?` to `poc_set` child queries
-- `enforceAnonFilter()` strips user-supplied `visible=` parameters and injects the mandatory `visible=Public` filter (prevents `?visible=Private` injection in depth expansion contexts)
+- `enforceAnonFilter()` strips user-supplied `visible=` parameters and injects the mandatory `visible=Public` filter
 
-### Auth Scaffolding
+## Nullable Fields
 
-`core/auth.js` provides:
-- `extractApiKey(request)` — parses `Authorization: Api-Key <key>` headers
-- `verifyApiKey(key)` — stub, always returns `false`
-
-The router calls both on every request. When auth is needed, replace `verifyApiKey()` with a KV namespace lookup. Authenticated callers bypass both the endpoint block and the depth expansion filter.
+Upstream PeeringDB represents absent values as `null`, but D1 stores them as empty strings after bulk import. The query builder applies `NULLIF(column, '')` at query time for all columns marked `nullable: true` in the entity registry, restoring API parity without requiring a D1 rebuild.
 
 ## Entity Registry
 
