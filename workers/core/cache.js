@@ -26,9 +26,9 @@
  */
 export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
   const index = new Map();
-  let bufArray = new Array(maxSlots).fill(null);
-  let metaArray = new Array(maxSlots).fill(null);
-  let keyArray = new Array(maxSlots).fill(null);
+  let bufArray = new Array(maxSlots).fill(null); // ap-ok: cold-boot, runs once per isolate
+  let metaArray = new Array(maxSlots).fill(null); // ap-ok: cold-boot, runs once per isolate
+  let keyArray = new Array(maxSlots).fill(null); // ap-ok: cold-boot, runs once per isolate
   let hitsArray = new Int32Array(maxSlots);
   let usedArray = new Uint32Array(maxSlots);
   let bytesArray = new Int32Array(maxSlots);
@@ -139,9 +139,9 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
         }
       } else {
         index.clear();
-        bufArray = new Array(maxSlots).fill(null);
-        metaArray = new Array(maxSlots).fill(null);
-        keyArray = new Array(maxSlots).fill(null);
+        bufArray = new Array(maxSlots).fill(null); // ap-ok: admin flush, not hot path
+        metaArray = new Array(maxSlots).fill(null); // ap-ok: admin flush, not hot path
+        keyArray = new Array(maxSlots).fill(null); // ap-ok: admin flush, not hot path
         hitsArray = new Int32Array(maxSlots);
         usedArray = new Uint32Array(maxSlots);
         bytesArray = new Int32Array(maxSlots);

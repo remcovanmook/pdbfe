@@ -62,7 +62,7 @@ export function parseQueryFilters(queryString) {
 
     if (!queryString) return { filters, depth, limit, skip, since, sort, fields };
 
-    const pairs = queryString.split("&");
+    const pairs = queryString.split("&"); // ap-ok: query string parsing, bounded by URL length
     for (let i = 0; i < pairs.length; i++) {
         const eqIdx = pairs[i].indexOf("=");
         if (eqIdx === -1) continue;
@@ -96,7 +96,7 @@ export function parseQueryFilters(queryString) {
             continue;
         }
         if (rawKey === "fields") {
-            fields = rawValue.split(",").map(s => s.trim()).filter(Boolean);
+            fields = rawValue.split(",").map(s => s.trim()).filter(Boolean); // ap-ok: ?fields= parsing, small input
             continue;
         }
 

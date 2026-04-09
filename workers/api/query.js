@@ -51,8 +51,8 @@ const OPS = {
         params: [value]
     }),
     in: (col, value) => {
-        const parts = value.split(",");
-        const placeholders = parts.map(() => "?").join(", ");
+        const parts = value.split(","); // ap-ok: SQL IN clause construction
+        const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
         return {
             clause: `"${col}" IN (${placeholders})`,
             params: parts
@@ -221,7 +221,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
-        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', ');
+        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', '); // ap-ok: SQL construction
         const allSelectCols = hasExplicitFields
             ? baseCols
             : baseCols + ', ' + selectCols.join(', ');
@@ -276,7 +276,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         const { joinSql, selectCols } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
-        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", ");
+        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", "); // ap-ok: SQL construction
         const allCols = hasExplicitFields
             ? baseCols
             : baseCols + ', ' + selectCols.join(', ');
@@ -285,7 +285,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         return { sql, params };
     }
 
-    const cols = columns.map((/** @type {string} */ c) => `"${c}"`).join(", ");
+    const cols = columns.map((/** @type {string} */ c) => `"${c}"`).join(", "); // ap-ok: SQL construction
     const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination}`;
     return { sql, params };
 }
@@ -349,10 +349,10 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             // Build the inner WHERE clause using the standard OPS functions
             // (they operate on unaliased column names, which is what we want)
             if (f.op === 'in') {
-                const parts = f.value.split(',');
-                const placeholders = parts.map(() => '?').join(', ');
+                const parts = f.value.split(','); // ap-ok: SQL IN clause
+                const placeholders = parts.map(() => '?').join(', '); // ap-ok: SQL placeholders
                 clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (${placeholders}))`);
-                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))));
+                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)))); // ap-ok: SQL bind params
             } else {
                 const inner = opFn(f.field, f.value);
                 clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause})`);
@@ -373,13 +373,13 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         // For 'in' operator, coerce each comma-separated value
         if (f.op === "in") {
             if (pfx) {
-                const parts = f.value.split(",");
-                const placeholders = parts.map(() => "?").join(", ");
+                const parts = f.value.split(","); // ap-ok: SQL IN clause
+                const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
                 clauses.push(`${sqlCol} IN (${placeholders})`);
-                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), fieldType)));
+                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), fieldType))); // ap-ok: SQL bind params
             } else {
                 const result = opFn(f.field, f.value);
-                result.params = result.params.map(v => coerceValue(/** @type {string} */(v), fieldType));
+                result.params = result.params.map(v => coerceValue(/** @type {string} */(v), fieldType)); // ap-ok: SQL bind params
                 clauses.push(result.clause);
                 params.push(...result.params);
             }
@@ -456,7 +456,7 @@ export function buildCountQuery(entity, filters, opts) {
     const { clauses, params } = buildWherePagination(entity, filters, opts, null);
 
     const whereParamCount = clauses.reduce(
-        (/** @type {number} */ n, /** @type {string} */ c) => n + (c.match(/\?/g) || []).length, 0
+        (/** @type {number} */ n, /** @type {string} */ c) => n + (c.match(/\?/g) || []).length, 0 // ap-ok: param counting at query build time
     );
     const whereParams = params.slice(0, whereParamCount);
 
