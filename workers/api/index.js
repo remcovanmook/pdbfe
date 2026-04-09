@@ -10,7 +10,7 @@ import { handlePreflight, jsonError, H_API, H_NOCACHE } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
-import { isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
+import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
 import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -130,7 +130,7 @@ async function handleRequest(request, env, ctx) {
     // Authenticated users are keyed by their identity (API key or session ID)
     // so multiple keys behind the same NAT each get independent quotas.
     // Anonymous callers share a single bucket per source IP.
-    const clientIP = normaliseIP(request.headers.get('cf-connecting-ip') || 'unknown');
+    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
     const rlKey = authIdentity || clientIP;
     if (isRateLimited(rlKey, authenticated)) {
         return authenticated

@@ -106,20 +106,16 @@ const rlCache = LRUCache(4000, 1024 * 1024, WINDOW_MS);
  * Checks whether a caller has exceeded its per-isolate request quota for
  * the current 60-second window.
  *
- * The key should encode the caller's identity:
- *   - Anonymous: client IP (e.g. "203.0.113.1")
- *   - API key auth: "key:<apikey>" — each key gets its own bucket
- *   - Session auth: "sid:<session_id>" — each session gets its own bucket
- *
- * This means multiple API keys behind the same NAT each get independent
- * quotas, while anonymous requests from the same IP share one bucket.
+ * For anonymous callers, pass the raw client IP as the key — it is
+ * normalised internally (IPv6 truncated to /64). For authenticated
+ * callers, pass the API key or session ID directly.
  *
  * On first request, a counter entry is created in the LRU. Subsequent
  * requests increment the counter in-place on the meta object (zero
  * allocation). If the window has expired (addedAt > 60s ago), the
  * counter resets.
  *
- * @param {string} key - Rate limit bucket key (IP, or identity-prefixed string).
+ * @param {string} key - Rate limit bucket key (raw IP for anonymous, identity for authenticated).
  * @param {boolean} authenticated - Whether the caller has a valid session or API key.
  * @param {number} [now] - Current timestamp in ms. Defaults to Date.now().
  *     Exposed for testing — production callers should omit this.
@@ -127,12 +123,15 @@ const rlCache = LRUCache(4000, 1024 * 1024, WINDOW_MS);
  */
 export function isRateLimited(key, authenticated, now = Date.now()) {
     const limit = authenticated ? LIMIT_AUTHENTICATED : LIMIT_ANONYMOUS;
+    // Anonymous keys are raw IPs — normalise IPv6 to /64 so address
+    // rotation within a subscriber's allocation shares one bucket.
+    const k = authenticated ? key : normaliseIP(key);
 
-    const entry = rlCache.get(key);
+    const entry = rlCache.get(k);
     if (entry) {
         // Window expired — reset counter for a fresh window.
         if (now - entry.addedAt > WINDOW_MS) {
-            rlCache.add(key, EMPTY_BUF, { count: 1 }, now);
+            rlCache.add(k, EMPTY_BUF, { count: 1 }, now);
             return false;
         }
 
@@ -141,7 +140,7 @@ export function isRateLimited(key, authenticated, now = Date.now()) {
     }
 
     // First request from this caller in this isolate.
-    rlCache.add(key, EMPTY_BUF, { count: 1 }, now);
+    rlCache.add(k, EMPTY_BUF, { count: 1 }, now);
     return false;
 }
 
