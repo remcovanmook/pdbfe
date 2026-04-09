@@ -6,7 +6,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { isRateLimited, getRateLimitStats, purgeRateLimit } from '../../api/ratelimit.js';
+import { isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit } from '../../api/ratelimit.js';
 
 /**
  * Reset rate limiter state between tests to prevent cross-contamination.
@@ -162,5 +162,49 @@ describe('purgeRateLimit', () => {
         purgeRateLimit();
         assert.equal(isRateLimited('10.0.0.1', false, now), false,
             'should be allowed after purge');
+    });
+});
+
+describe('normaliseIP', () => {
+    it('should pass through IPv4 addresses unchanged', () => {
+        assert.equal(normaliseIP('192.168.1.1'), '192.168.1.1');
+        assert.equal(normaliseIP('10.0.0.1'), '10.0.0.1');
+    });
+
+    it('should truncate full IPv6 to /64 prefix', () => {
+        assert.equal(
+            normaliseIP('2001:0db8:85a3:0000:0000:8a2e:0370:7334'),
+            '2001:0db8:85a3:0000'
+        );
+    });
+
+    it('should group addresses in the same /64 together', () => {
+        const a = normaliseIP('2001:db8:85a3:0:1::1');
+        const b = normaliseIP('2001:db8:85a3:0:ffff::9999');
+        assert.equal(a, b, 'same /64 should produce same key');
+    });
+
+    it('should handle :: compressed notation', () => {
+        // 2001:db8::1 expands to 2001:db8:0:0:0:0:0:1
+        assert.equal(normaliseIP('2001:db8::1'), '2001:db8:0:0');
+    });
+
+    it('should handle leading :: (loopback)', () => {
+        // ::1 expands to 0:0:0:0:0:0:0:1
+        assert.equal(normaliseIP('::1'), '0:0:0:0');
+    });
+
+    it('should handle trailing ::', () => {
+        // 2001:db8:: expands to 2001:db8:0:0:0:0:0:0
+        assert.equal(normaliseIP('2001:db8::'), '2001:db8:0:0');
+    });
+
+    it('should handle :: in the middle with groups on both sides', () => {
+        // fe80::1:2 expands to fe80:0:0:0:0:0:1:2
+        assert.equal(normaliseIP('fe80::1:2'), 'fe80:0:0:0');
+    });
+
+    it('should pass through unknown as-is', () => {
+        assert.equal(normaliseIP('unknown'), 'unknown');
     });
 });

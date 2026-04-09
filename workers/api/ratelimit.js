@@ -3,9 +3,13 @@
  *
  * Exploits the fact that abusive traffic (scrapers, runaway scripts) tends
  * to hit a small number of Cloudflare PoPs, so the V8 isolate handling
- * those connections sees the full request volume. By tracking per-IP
+ * those connections sees the full request volume. By tracking per-caller
  * request counts in isolate RAM, we can drop floods in sub-millisecond
  * time without any KV reads, external API calls, or billing.
+ *
+ * IPv6 addresses are truncated to /64 prefixes before rate limiting.
+ * A typical subscriber receives a /48 to /64 allocation, so individual
+ * addresses within the block should share one rate limit bucket.
  *
  * This will not stop a highly distributed botnet across thousands of IPs
  * and PoPs — that requires an enterprise WAF. It does neutralise the
@@ -13,7 +17,7 @@
  *
  * Implementation notes:
  * - Uses a dedicated LRUCache instance (4000 slots, 1 MB, 60s TTL).
- * - Stores an empty buffer per IP; the count lives on the meta object.
+ * - Stores an empty buffer per entry; the count lives on the meta object.
  * - The LRU does not actively evict on TTL, so we check addedAt manually
  *   and reset the counter when the 60-second window expires.
  * - The shared _ret object from get() is consumed synchronously — no
@@ -21,6 +25,44 @@
  */
 
 import { LRUCache } from '../core/cache.js';
+
+/**
+ * Normalises a client IP address for rate limiting.
+ * IPv6 addresses are truncated to their /64 prefix (first 4 groups)
+ * because a single subscriber typically receives a /48 to /64 block
+ * and can rotate freely within it. Grouping by /64 ensures address
+ * rotation within an allocation shares one rate limit bucket.
+ *
+ * IPv4 addresses are returned unchanged.
+ *
+ * Handles :: compressed notation by expanding to the full 8-group form
+ * before truncating.
+ *
+ * @param {string} ip - Raw IP address from cf-connecting-ip.
+ * @returns {string} Normalised rate limit key (IPv4 as-is, IPv6 /64 prefix).
+ */
+export function normaliseIP(ip) {
+    if (!ip.includes(':')) return ip;
+
+    // Split on :: to expand compressed notation.
+    // "2001:db8::1" → halves ["2001:db8", "1"]
+    // "::1"         → halves ["", "1"]
+    // "2001:db8::"  → halves ["2001:db8", ""]
+    const halves = ip.split('::');
+    /** @type {string[]} */
+    let groups;
+
+    if (halves.length === 2) {
+        const head = halves[0] ? halves[0].split(':') : [];
+        const tail = halves[1] ? halves[1].split(':') : [];
+        const missing = 8 - head.length - tail.length;
+        groups = [...head, ...Array(missing).fill('0'), ...tail];
+    } else {
+        groups = ip.split(':');
+    }
+
+    return groups.slice(0, 4).join(':');
+}
 
 /**
  * Rate limit window duration in milliseconds (60 seconds).
