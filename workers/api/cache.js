@@ -33,24 +33,27 @@ import { ENTITY_TAGS } from './entities.js';
 const MB = 1024 * 1024;
 
 /**
- * TTL for list endpoint responses (5 minutes).
+ * TTL for list endpoint responses (60 minutes).
+ * With background sync invalidation (sync_state.js), data freshness
+ * is handled by the 15s poll loop. TTL is an upper bound for entries
+ * that survive without invalidation (e.g. if polling is delayed).
  * @type {number}
  */
-export const LIST_TTL = 5 * 60 * 1000;
+export const LIST_TTL = 60 * 60 * 1000;
 
 /**
- * TTL for detail (single-row) responses (15 minutes).
+ * TTL for detail (single-row) responses (60 minutes).
  * @type {number}
  */
-export const DETAIL_TTL = 15 * 60 * 1000;
+export const DETAIL_TTL = 60 * 60 * 1000;
 
 /**
- * TTL for count responses (15 minutes).
- * Counts are eventually consistent — they change slowly enough
- * that a longer TTL is acceptable.
+ * TTL for count responses (60 minutes).
+ * Counts are derived from the same entity data; invalidation
+ * purges them along with list/detail entries.
  * @type {number}
  */
-export const COUNT_TTL = 15 * 60 * 1000;
+export const COUNT_TTL = 60 * 60 * 1000;
 
 /**
  * TTL for negative (404) responses (5 minutes).

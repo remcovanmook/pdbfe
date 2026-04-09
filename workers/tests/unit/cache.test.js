@@ -180,8 +180,8 @@ describe("Negative cache TTL constants", () => {
         assert.equal(NEGATIVE_TTL, 5 * 60 * 1000);
     });
 
-    it("DETAIL_TTL should be 15 minutes", () => {
-        assert.equal(DETAIL_TTL, 15 * 60 * 1000);
+    it("DETAIL_TTL should be 60 minutes", () => {
+        assert.equal(DETAIL_TTL, 60 * 60 * 1000);
     });
 });
 

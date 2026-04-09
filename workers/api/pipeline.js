@@ -21,6 +21,7 @@
  */
 
 import { getL2, putL2 } from './l2cache.js';
+import { getEntityVersion } from './sync_state.js';
 import { encoder } from '../core/http.js';
 import { NEGATIVE_TTL } from './cache.js';
 
@@ -123,7 +124,14 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }
  */
 async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
     // ── L2 per-PoP cache check ───────────────────────────────────
-    const l2Buf = await getL2(cacheKey);
+    // L2 keys are version-tagged with the entity's last_modified_at.
+    // When data changes, the version advances and old L2 entries are
+    // orphaned — they expire via Cache-Control TTL without requiring
+    // enumeration or explicit deletion.
+    const version = getEntityVersion(entityTag);
+    const l2Key = version ? `v/${version}/${cacheKey}` : cacheKey;
+
+    const l2Buf = await getL2(l2Key);
     if (l2Buf) {
         if (isNegative(l2Buf)) {
             cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
@@ -140,11 +148,11 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
     if (buf === null) {
         // Negative result: store sentinel with shorter TTL
         cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
-        putL2(cacheKey, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
+        putL2(l2Key, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
         return { buf: null, tier: 'MISS' };
     }
 
     cache.add(cacheKey, buf, { entityTag }, Date.now());
-    putL2(cacheKey, buf, ttlMs / 1000);
+    putL2(l2Key, buf, ttlMs / 1000);
     return { buf, tier: 'MISS' };
 }

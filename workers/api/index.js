@@ -8,6 +8,7 @@ import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API, H_NOCACHE } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
+import { ensureSyncFreshness, handleSyncStatusCached } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
@@ -41,50 +42,7 @@ function checkCachedError(_entityTag, _rawPath, _queryString, entity, filters, s
     return new Response(errorJson, { status: 400, headers: H_NOCACHE });
 }
 
-/**
- * Returns database sync status from the _sync_meta table.
- * Reports the most recent sync timestamp across all entities,
- * plus a per-entity breakdown of last_sync epoch, row_count,
- * and updated_at datetime.
- *
- * This endpoint lives outside /api/ so it does not interfere
- * with the PeeringDB-compatible API schema.
- *
- * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
- * @returns {Promise<Response>} JSON response with sync metadata.
- */
-async function handleSyncStatus(db) {
-    const rows = await db.prepare(
-        'SELECT entity, last_sync, row_count, updated_at FROM "_sync_meta" ORDER BY entity'
-    ).all();
 
-    const entities = /** @type {Record<string, {last_sync: number, row_count: number, updated_at: string}>} */ ({});
-    let latestUpdatedAt = '';
-
-    for (const row of (rows.results || [])) {
-        const entity = /** @type {string} */ (row.entity);
-        entities[entity] = {
-            last_sync: /** @type {number} */ (row.last_sync),
-            row_count: /** @type {number} */ (row.row_count),
-            updated_at: /** @type {string} */ (row.updated_at),
-        };
-        if (/** @type {string} */ (row.updated_at) > latestUpdatedAt) {
-            latestUpdatedAt = /** @type {string} */ (row.updated_at);
-        }
-    }
-
-    const body = {
-        sync: {
-            last_sync_at: latestUpdatedAt,
-            entities,
-        },
-    };
-
-    return new Response(JSON.stringify(body, null, 2) + "\n", {
-        status: 200,
-        headers: H_API,
-    });
-}
 
 /**
  * Validates and routes incoming API requests.
@@ -169,9 +127,8 @@ async function handleRequest(request, env, ctx) {
         });
         if (adminResponse) return adminResponse;
 
-        // /status — public sync metadata (outside /api/ namespace)
         if (rawPath === "status") {
-            return handleSyncStatus(db);
+            return handleSyncStatusCached(request, db, ctx);
         }
 
         return jsonError(404, "Not found");
@@ -183,6 +140,11 @@ async function handleRequest(request, env, ctx) {
     }
 
     const apiPath = rawPath.slice(4); // strip "api/"
+
+    // O(1) hot-path hook: trigger background D1 poll if 15s have passed.
+    // Scoped to entity routes only — admin/health/status don't need it.
+    const now = Date.now();
+    ensureSyncFreshness(db, ctx, now);
 
     // Write methods on API paths → 501 Not Implemented
     if (WRITE_METHODS.has(request.method)) {
