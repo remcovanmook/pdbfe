@@ -84,7 +84,7 @@ The `LRUCache` (`core/cache.js`) uses contiguous typed arrays (`Uint32Array`, `F
 | Low | poc | 256 | 1 MB |
 | Light | ixlan, ixpfx, ixfac, carrier, carrierfac, campus, as_set | 128 | 1 MB each |
 
-Total: ~59 MB. Remaining ~69 MB of the 128 MB isolate budget is for working memory, V8 heap, and the D1 query pipeline.
+Total: ~59 MB. Remaining ~69 MB of the 128 MB isolate budget is for working memory, V8 heap, the D1 query pipeline, and the rate limiter's LRU (~1 MB).
 
 **Zero-serialisation serving:** D1 results are JSON-encoded *once* into a `Uint8Array` via `encodeJSON()`, then stored in the LRU cache. On cache hits, the bytes are forwarded directly as the `Response` body — no `JSON.parse` or `JSON.stringify` round-trip.
 
@@ -120,17 +120,23 @@ We use `ctx.waitUntil()` for:
 
 Every API request follows this hierarchy:
 
-1. **Authentication:** Resolve API key or session token. Reject upstream PeeringDB keys.
-2. **Routing:** Parse entity tag and optional ID from the path. Validate method, entity, filters.
-3. **Error cache:** Check L1 for a cached 400 for this query string. If found, return it.
-4. **L1 (RAM):** Is it in the entity's LRU cache and not expired? Serve instantly (<1ms). For negative entries (`EMPTY_ENVELOPE`), return 404.
-5. **`cachedQuery()` pipeline** (pipeline.js):
+1. **Authentication:** Resolve API key or session token. Reject upstream PeeringDB keys with 403.
+2. **Rate limiting:** Check per-isolate request count for this caller. Anonymous callers are keyed by source IP (IPv6 truncated to /64); authenticated callers by API key or session ID. Returns 429 if over quota (60/min anonymous, 600/min authenticated).
+3. **Routing:** Parse entity tag and optional ID from the path. Validate method, entity, filters.
+4. **Error cache:** Check L1 for a cached 400 for this query string. If found, return it.
+5. **SWR (Stale-While-Revalidate):** `withEdgeSWR()` handles the L1 read → serve-if-fresh → background-refresh-if-stale → block-on-miss flow:
+   - **L1 fresh** (<TTL): Serve instantly (<1ms). For negative entries (`EMPTY_ENVELOPE`), return 404.
+   - **L1 stale** (TTL–2×TTL): Serve stale response immediately, fire `ctx.waitUntil()` to refresh in background.
+   - **L1 miss / expired:** Fall through to `cachedQuery()` pipeline.
+6. **`cachedQuery()` pipeline** (pipeline.js):
    - **Coalesce:** Is the same cache key in `cache.pending`? Await the in-flight promise.
    - **L2 PoP cache:** Is it in `caches.default`? Populate L1 from L2, return.
    - **D1:** Execute the handler's `queryFn` closure.
    - **Write-back:** Store result in L1 + L2 (fire-and-forget), return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
-6. **Background:** If paginated, `waitUntil` to pre-fetch next page.
+7. **Background:** If paginated, `waitUntil` to pre-fetch next page.
+
+Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix) to prevent cache poisoning between authenticated and anonymous responses.
 
 ## 8. Type Safety
 
@@ -140,7 +146,7 @@ Every API request follows this hierarchy:
 
 ## 9. Testing
 
-### Unit tests (`npm test`) — 192 tests across 9 files
+### Unit tests (`npm test`) — 224 tests across 12 files
 
 Run locally with mock D1 bindings. No real database needed.
 
@@ -148,13 +154,16 @@ Run locally with mock D1 bindings. No real database needed.
 |---|---|---|
 | `query.test.js` | 72 | Query builder: filters, operators, JOINs, cross-entity subqueries, COLLATE NOCASE, duplicate params, field validation |
 | `oauth.test.js` | 29 | OAuth flow: start redirect, callback token exchange, logout, error handling |
-| `cache.test.js` | 24 | LRU cache: eviction, TTL expiry, byte limits, stats, purge |
+| `cache.test.js` | 26 | LRU cache: eviction, TTL expiry, byte limits, stats, purge, shared return object |
+| `ratelimit.test.js` | 22 | Rate limiter: per-IP/per-identity limits, window expiry, IPv6 /64 normalisation, stats, purge |
 | `pipeline.test.js` | 16 | cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation |
-| `visibility.test.js` | 14 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
-| `depth.test.js` | 11 | Depth 0/1/2 expansion: ID sets, full child objects, join columns |
+| `auth.test.js` | 14 | API key extraction/verification (SHA-256), session resolution, key hashing |
 | `account.test.js` | 11 | API key CRUD: create, list, delete, validation |
-| `auth.test.js` | 11 | Session resolution, API key extraction and verification |
+| `depth.test.js` | 11 | Depth 0/1/2 expansion: ID sets, full child objects, join columns |
+| `swr.test.js` | 10 | withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling |
+| `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
+| `sync.test.js` | 4 | Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields |
 
 ### Integration tests (`npm run test:integration`) — 24 tests
 
@@ -181,12 +190,14 @@ Side-by-side comparison of mirror responses against upstream PeeringDB for a set
 |---|---|
 | `test_equivalence.js` | 16 |
 
-### Frontend tests (`cd frontend && npm test`) — 31 tests
+### Frontend tests (`cd frontend && npm test`) — 4 test files
 
-| File | Tests | Covers |
-|---|---|---|
-| `markdown.test.js` | 24 | Markdown renderer: bold, italic, links, XSS escaping, HTML sanitisation |
-| `home.test.js` | 7 | Homepage and about page rendering: title, hero, sections, links |
+| File | Covers |
+|---|---|
+| `markdown.test.js` | Markdown renderer: bold, italic, links, XSS escaping, HTML sanitisation |
+| `home.test.js` | Homepage and about page rendering: title, hero, sections, links |
+| `i18n.test.js` | Internationalisation: translation coverage, locale completeness |
+| `debug.test.js` | Debug overlay rendering and state display |
 
 ## 10. Local Development
 
