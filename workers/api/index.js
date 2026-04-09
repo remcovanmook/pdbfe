@@ -131,9 +131,7 @@ async function handleRequest(request, env, ctx) {
     // so multiple keys behind the same NAT each get independent quotas.
     // Anonymous callers share a single bucket per source IP.
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    const rlKey = authIdentity
-        ? `${clientIP}:${authIdentity}`
-        : clientIP;
+    const rlKey = authIdentity || clientIP;
     if (isRateLimited(rlKey, authenticated)) {
         return authenticated
             ? jsonError(429, 'Too Many Requests')

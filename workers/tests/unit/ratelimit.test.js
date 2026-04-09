@@ -111,13 +111,13 @@ describe('isRateLimited', () => {
         const now = Date.now();
         // Key A exhausts its quota
         for (let i = 0; i < 601; i++) {
-            isRateLimited('10.0.0.1:key:pdbfe.aaa', true, now);
+            isRateLimited('pdbfe.aaa', true, now);
         }
-        assert.equal(isRateLimited('10.0.0.1:key:pdbfe.aaa', true, now), true,
+        assert.equal(isRateLimited('pdbfe.aaa', true, now), true,
             'key A should be blocked');
-        // Key B on the same IP should still be allowed
-        assert.equal(isRateLimited('10.0.0.1:key:pdbfe.bbb', true, now), false,
-            'key B on same IP should be allowed');
+        // Key B should still be allowed (identity-only keying)
+        assert.equal(isRateLimited('pdbfe.bbb', true, now), false,
+            'key B should be allowed');
     });
 });
 
