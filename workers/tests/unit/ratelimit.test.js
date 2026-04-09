@@ -22,15 +22,15 @@ describe('isRateLimited', () => {
 
     it('should allow requests under the anonymous limit', () => {
         const now = Date.now();
-        for (let i = 0; i < 300; i++) {
+        for (let i = 0; i < 60; i++) {
             assert.equal(isRateLimited('10.0.0.1', false, now), false,
                 `request ${i + 1} should be allowed`);
         }
     });
 
-    it('should block the 301st anonymous request within window', () => {
+    it('should block the 61st anonymous request within window', () => {
         const now = Date.now();
-        for (let i = 0; i < 300; i++) {
+        for (let i = 0; i < 60; i++) {
             isRateLimited('10.0.0.1', false, now);
         }
         assert.equal(isRateLimited('10.0.0.1', false, now), true);
@@ -38,24 +38,24 @@ describe('isRateLimited', () => {
 
     it('should allow requests under the authenticated limit', () => {
         const now = Date.now();
-        for (let i = 0; i < 5000; i++) {
-            assert.equal(isRateLimited('10.0.0.1', true, now), false,
+        for (let i = 0; i < 600; i++) {
+            assert.equal(isRateLimited('key:pdbfe.abc123', true, now), false,
                 `request ${i + 1} should be allowed`);
         }
     });
 
-    it('should block the 5001st authenticated request within window', () => {
+    it('should block the 601st authenticated request within window', () => {
         const now = Date.now();
-        for (let i = 0; i < 5000; i++) {
-            isRateLimited('10.0.0.1', true, now);
+        for (let i = 0; i < 600; i++) {
+            isRateLimited('key:pdbfe.abc123', true, now);
         }
-        assert.equal(isRateLimited('10.0.0.1', true, now), true);
+        assert.equal(isRateLimited('key:pdbfe.abc123', true, now), true);
     });
 
-    it('should track IPs independently', () => {
+    it('should track keys independently', () => {
         const now = Date.now();
         // Exhaust quota for IP A
-        for (let i = 0; i < 301; i++) {
+        for (let i = 0; i < 61; i++) {
             isRateLimited('10.0.0.1', false, now);
         }
         // IP B should still be allowed
@@ -66,7 +66,7 @@ describe('isRateLimited', () => {
         const t0 = 1_000_000;
 
         // Exhaust the anonymous quota
-        for (let i = 0; i < 301; i++) {
+        for (let i = 0; i < 61; i++) {
             isRateLimited('10.0.0.1', false, t0);
         }
         assert.equal(isRateLimited('10.0.0.1', false, t0), true,
@@ -81,7 +81,7 @@ describe('isRateLimited', () => {
     it('should start a fresh counter after window reset', () => {
         const t0 = 1_000_000;
         // Exhaust and block
-        for (let i = 0; i < 301; i++) {
+        for (let i = 0; i < 61; i++) {
             isRateLimited('10.0.0.1', false, t0);
         }
 
@@ -89,22 +89,35 @@ describe('isRateLimited', () => {
         const t1 = t0 + 60_001;
         isRateLimited('10.0.0.1', false, t1);
 
-        // Should tolerate another 299 requests in the new window
-        for (let i = 1; i < 300; i++) {
+        // Should tolerate another 59 requests in the new window
+        for (let i = 1; i < 60; i++) {
             assert.equal(isRateLimited('10.0.0.1', false, t1), false,
                 `post-reset request ${i + 1} should be allowed`);
         }
-        // 301st should block again
+        // 61st should block again
         assert.equal(isRateLimited('10.0.0.1', false, t1), true);
     });
 
     it('should use anonymous limit when authenticated is false', () => {
         const now = Date.now();
-        for (let i = 0; i < 300; i++) {
+        for (let i = 0; i < 60; i++) {
             isRateLimited('10.0.0.1', false, now);
         }
         assert.equal(isRateLimited('10.0.0.1', false, now), true,
-            'anonymous should be blocked at 301');
+            'anonymous should be blocked at 61');
+    });
+
+    it('should give independent buckets to different API keys on same IP', () => {
+        const now = Date.now();
+        // Key A exhausts its quota
+        for (let i = 0; i < 601; i++) {
+            isRateLimited('10.0.0.1:key:pdbfe.aaa', true, now);
+        }
+        assert.equal(isRateLimited('10.0.0.1:key:pdbfe.aaa', true, now), true,
+            'key A should be blocked');
+        // Key B on the same IP should still be allowed
+        assert.equal(isRateLimited('10.0.0.1:key:pdbfe.bbb', true, now), false,
+            'key B on same IP should be allowed');
     });
 });
 
@@ -139,9 +152,9 @@ describe('purgeRateLimit', () => {
         assert.equal(stats.items, 0);
     });
 
-    it('should allow previously blocked IPs after purge', () => {
+    it('should allow previously blocked keys after purge', () => {
         const now = Date.now();
-        for (let i = 0; i < 301; i++) {
+        for (let i = 0; i < 61; i++) {
             isRateLimited('10.0.0.1', false, now);
         }
         assert.equal(isRateLimited('10.0.0.1', false, now), true);

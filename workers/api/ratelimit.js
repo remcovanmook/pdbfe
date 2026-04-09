@@ -30,15 +30,19 @@ const WINDOW_MS = 60_000;
 
 /**
  * Max requests per window for authenticated callers (per isolate).
+ * With ~50-60 req/s isolate throughput, 600/min is roughly 10 req/s
+ * sustained — generous for legitimate use, tight enough to protect D1.
  * @type {number}
  */
-const LIMIT_AUTHENTICATED = 5000;
+const LIMIT_AUTHENTICATED = 600;
 
 /**
  * Max requests per window for anonymous callers (per isolate).
+ * One request per second sustained. Enough for casual browsing and
+ * light scripting; anything heavier should use an API key.
  * @type {number}
  */
-const LIMIT_ANONYMOUS = 300;
+const LIMIT_ANONYMOUS = 60;
 
 /**
  * Shared empty buffer used for all rate limit entries.
@@ -57,28 +61,36 @@ const EMPTY_BUF = new Uint8Array(0);
 const rlCache = LRUCache(4000, 1024 * 1024, WINDOW_MS);
 
 /**
- * Checks whether an IP has exceeded its per-isolate request quota for the
- * current 60-second window.
+ * Checks whether a caller has exceeded its per-isolate request quota for
+ * the current 60-second window.
  *
- * On first request from an IP, a counter entry is created in the LRU.
- * Subsequent requests increment the counter in-place on the meta object
- * (zero allocation). If the window has expired (addedAt > 60s ago), the
+ * The key should encode the caller's identity:
+ *   - Anonymous: client IP (e.g. "203.0.113.1")
+ *   - API key auth: "key:<apikey>" — each key gets its own bucket
+ *   - Session auth: "sid:<session_id>" — each session gets its own bucket
+ *
+ * This means multiple API keys behind the same NAT each get independent
+ * quotas, while anonymous requests from the same IP share one bucket.
+ *
+ * On first request, a counter entry is created in the LRU. Subsequent
+ * requests increment the counter in-place on the meta object (zero
+ * allocation). If the window has expired (addedAt > 60s ago), the
  * counter resets.
  *
- * @param {string} ip - Client IP address (typically from cf-connecting-ip).
+ * @param {string} key - Rate limit bucket key (IP, or identity-prefixed string).
  * @param {boolean} authenticated - Whether the caller has a valid session or API key.
  * @param {number} [now] - Current timestamp in ms. Defaults to Date.now().
  *     Exposed for testing — production callers should omit this.
  * @returns {boolean} True if the request should be rejected (rate limited).
  */
-export function isRateLimited(ip, authenticated, now = Date.now()) {
+export function isRateLimited(key, authenticated, now = Date.now()) {
     const limit = authenticated ? LIMIT_AUTHENTICATED : LIMIT_ANONYMOUS;
 
-    const entry = rlCache.get(ip);
+    const entry = rlCache.get(key);
     if (entry) {
         // Window expired — reset counter for a fresh window.
         if (now - entry.addedAt > WINDOW_MS) {
-            rlCache.add(ip, EMPTY_BUF, { count: 1 }, now);
+            rlCache.add(key, EMPTY_BUF, { count: 1 }, now);
             return false;
         }
 
@@ -86,8 +98,8 @@ export function isRateLimited(ip, authenticated, now = Date.now()) {
         return entry.meta.count > limit;
     }
 
-    // First request from this IP in this isolate.
-    rlCache.add(ip, EMPTY_BUF, { count: 1 }, now);
+    // First request from this caller in this isolate.
+    rlCache.add(key, EMPTY_BUF, { count: 1 }, now);
     return false;
 }
 

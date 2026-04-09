@@ -113,19 +113,33 @@ async function handleRequest(request, env, ctx) {
     }
 
     let authenticated = apiKey !== null && await verifyApiKey(env.USERS, apiKey);
+    let authIdentity = authenticated ? apiKey : null;
 
     if (!authenticated) {
         const sid = extractSessionId(request);
         if (sid) {
             const session = await resolveSession(env.SESSIONS, sid);
-            authenticated = session !== null;
+            if (session !== null) {
+                authenticated = true;
+                authIdentity = sid;
+            }
         }
     }
 
-    // In-memory rate limiting — drop abusive IPs before touching D1.
+    // In-memory rate limiting — drop abusive callers before touching D1.
+    // Authenticated users are keyed by their identity (API key or session ID)
+    // so multiple keys behind the same NAT each get independent quotas.
+    // Anonymous callers share a single bucket per source IP.
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    if (isRateLimited(clientIP, authenticated)) {
-        return jsonError(429, 'Too Many Requests');
+    const rlKey = authIdentity
+        ? `${clientIP}:${authIdentity}`
+        : clientIP;
+    if (isRateLimited(rlKey, authenticated)) {
+        return authenticated
+            ? jsonError(429, 'Too Many Requests')
+            : jsonError(429,
+                'Too Many Requests. Sign in or use an API key ' +
+                'for higher rate limits — see /account');
     }
 
     // Create a D1 session for read replication. "first-unconstrained" allows
