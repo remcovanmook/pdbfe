@@ -59,6 +59,24 @@ function sanitiseURL(url) {
 }
 
 /**
+ * Validates a URL for use in image src attributes.
+ * Allows the same protocols as sanitiseURL plus data:image URIs
+ * (base64-encoded inline images commonly found in PeeringDB notes).
+ *
+ * @param {string} url - URL to validate.
+ * @returns {string} Sanitised URL or empty string.
+ */
+function sanitiseImageURL(url) {
+    const trimmed = url.trim();
+    // Strip optional dimension suffix (e.g. " =410x300")
+    const cleaned = trimmed.replace(/\s*=[0-9]+x[0-9]+$/, '');
+    if (/^data:image\/[a-z+]+;base64,/i.test(cleaned)) {
+        return cleaned;
+    }
+    return sanitiseURL(cleaned);
+}
+
+/**
  * Escapes characters that have special meaning inside an HTML attribute
  * value (double-quoted). Used for href values in sanitised anchor tags.
  *
@@ -186,7 +204,28 @@ export function renderMarkdown(text) {
     html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     html = html.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
 
-    // Step 7: Markdown links [text](url) — only if not already inside an <a> tag
+    // Step 7a: Linked images [![alt](img-src)](link-url)
+    html = html.replace(/\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g, (_, alt, imgSrc, linkUrl) => {
+        const safeSrc = sanitiseImageURL(imgSrc);
+        const safeHref = sanitiseURL(linkUrl);
+        if (!safeSrc) return alt || '';
+        const loading = safeSrc.startsWith('data:') ? ' loading="lazy"' : '';
+        const img = `<img src="${/* safe — escapeAttr */ escapeAttr(safeSrc)}" alt="${/* safe — escapeAttr */ escapeAttr(alt)}"${/* safe — static string */ loading} style="max-width:100%">`;
+        if (safeHref) {
+            return `<a href="${/* safe — escapeAttr */ escapeAttr(safeHref)}" rel="noopener noreferrer" target="_blank">${/* safe — built from escapeAttr calls */ img}</a>`;
+        }
+        return img;
+    });
+
+    // Step 7b: Standalone images ![alt](src)
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+        const safeSrc = sanitiseImageURL(src);
+        if (!safeSrc) return alt || '';
+        const loading = safeSrc.startsWith('data:') ? ' loading="lazy"' : '';
+        return `<img src="${/* safe — escapeAttr */ escapeAttr(safeSrc)}" alt="${/* safe — escapeAttr */ escapeAttr(alt)}"${/* safe — static string */ loading} style="max-width:100%">`;
+    });
+
+    // Step 7c: Markdown links [text](url) — only if not already inside an <a> tag
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;

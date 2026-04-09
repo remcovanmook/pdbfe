@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# migrate-to-d1.sh — Populate a Cloudflare D1 database from PeeringDB JSON dumps.
+# migrate-to-d1.sh — Build a clean PeeringDB database and import into Cloudflare D1.
 #
-# Reads entity JSON files from database/ (downloaded from public.peeringdb.com),
-# converts them to INSERT statements via json_to_sql.py, and bulk-loads into D1.
+# Pipeline:
+#   1. Download JSON dumps from public.peeringdb.com (--fetch)
+#   2. Build a local SQLite database from the dumps
+#   3. Fix referential integrity (delete orphans, null dangling FKs)
+#   4. Verify — count remaining violations (must be zero)
+#   5. Push the clean data to D1 (--remote for production)
 #
 # Prerequisites:
 #   - wrangler CLI installed and authenticated
 #   - D1 database already created (wrangler d1 create peeringdb)
-#   - python3 available
+#   - python3 and sqlite3 available
 #   - JSON files in database/ (download with --fetch, or manually via curl)
 #
 # Usage:
@@ -25,9 +29,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SCHEMA_SQL="$SCRIPT_DIR/schema.sql"
+FK_CLEANUP_SQL="$SCRIPT_DIR/fk_cleanup.sql"
+FK_VERIFY_SQL="$SCRIPT_DIR/fk_verify.sql"
 WRANGLER_CONFIG="$REPO_ROOT/workers/wrangler.toml"
 PUBLIC_BASE="https://public.peeringdb.com"
 JSON_TO_SQL="$SCRIPT_DIR/json_to_sql.py"
+LOCAL_DB="$SCRIPT_DIR/database.sqlite"
 
 # Parse flags
 REMOTE_FLAG=""
@@ -54,19 +61,8 @@ TMPDIR_EXPORT="$REPO_ROOT/.d1-migration-tmp"
 mkdir -p "$TMPDIR_EXPORT"
 trap 'rm -rf "$TMPDIR_EXPORT"' EXIT
 
-
-
-# ── Apply schema ──────────────────────────────────────────────────────────────
-
-echo "==> Applying schema..."
-npx wrangler d1 execute peeringdb \
-    --config "$WRANGLER_CONFIG" \
-    $REMOTE_FLAG \
-    --yes \
-    --file "$SCHEMA_SQL"
-
 # ── Entity definitions ────────────────────────────────────────────────────────
-# tag:table — columns are auto-detected from the JSON file by json_to_sql.py
+# tag:table — order matters: parents before children for FK integrity.
 
 ENTITIES=(
     "org:peeringdb_organization"
@@ -84,19 +80,27 @@ ENTITIES=(
     "carrierfac:peeringdb_ix_carrier_facility"
 )
 
-# ── Download and import each entity ──────────────────────────────────────────
+# ── Step 1: Fetch JSON dumps ─────────────────────────────────────────────────
+
+if $DO_FETCH; then
+    echo "==> Fetching JSON dumps from public.peeringdb.com..."
+    for ENTITY_DEF in "${ENTITIES[@]}"; do
+        IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
+        echo "    $TAG..."
+        curl -sf --retry 3 --retry-delay 5 --max-time 120 \
+            "${PUBLIC_BASE}/${TAG}-0.json" -o "$SCRIPT_DIR/${TAG}.json"
+    done
+fi
+
+# ── Step 2: Build local SQLite ────────────────────────────────────────────────
+
+echo "==> Building local SQLite database..."
+rm -f "$LOCAL_DB"
+sqlite3 "$LOCAL_DB" < "$SCHEMA_SQL"
 
 for ENTITY_DEF in "${ENTITIES[@]}"; do
     IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
-
     JSON_FILE="$SCRIPT_DIR/${TAG}.json"
-
-    # Optionally fetch fresh data from the public PeeringDB dumps
-    if $DO_FETCH; then
-        echo "==> Fetching $TAG from public.peeringdb.com..."
-        curl -sf --retry 3 --retry-delay 5 --max-time 120 \
-            "${PUBLIC_BASE}/${TAG}-0.json" -o "$JSON_FILE"
-    fi
 
     if [[ ! -f "$JSON_FILE" ]]; then
         echo "ERROR: $JSON_FILE not found. Run with --fetch or download manually."
@@ -104,25 +108,81 @@ for ENTITY_DEF in "${ENTITIES[@]}"; do
     fi
 
     EXPORT_FILE="$TMPDIR_EXPORT/${TABLE}.sql"
-
-    echo "==> Importing $TAG..."
     python3 "$JSON_TO_SQL" "$JSON_FILE" "$TABLE" > "$EXPORT_FILE"
+    ROW_COUNT=$(wc -l < "$EXPORT_FILE" | tr -d ' ')
+    echo "    $TAG: $ROW_COUNT rows"
+
+    if [[ "$ROW_COUNT" -gt 0 ]]; then
+        sqlite3 "$LOCAL_DB" < "$EXPORT_FILE"
+    fi
+done
+
+# ── Step 3: Fix referential integrity ─────────────────────────────────────────
+
+echo "==> Fixing referential integrity..."
+sqlite3 "$LOCAL_DB" < "$FK_CLEANUP_SQL"
+echo "    Done."
+
+# ── Step 4: Verify ────────────────────────────────────────────────────────────
+
+echo "==> Verifying referential integrity..."
+VIOLATIONS=$(sqlite3 "$LOCAL_DB" < "$FK_VERIFY_SQL")
+echo "$VIOLATIONS" | while IFS='|' read -r fk count; do
+    if [[ "$count" -gt 0 ]]; then
+        echo "    FAIL: $fk = $count violations"
+    fi
+done
+
+TOTAL=$(echo "$VIOLATIONS" | awk -F'|' '{s+=$2} END {print s}')
+if [[ "$TOTAL" -gt 0 ]]; then
+    echo "ERROR: $TOTAL FK violations remain after cleanup. Aborting D1 import."
+    exit 1
+fi
+echo "    Clean (0 violations)."
+
+# ── Step 5: Row counts after cleanup ─────────────────────────────────────────
+
+echo "==> Row counts after cleanup:"
+for ENTITY_DEF in "${ENTITIES[@]}"; do
+    IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
+    COUNT=$(sqlite3 "$LOCAL_DB" "SELECT COUNT(*) FROM \"$TABLE\"")
+    printf "    %-12s %s\n" "$TAG" "$COUNT"
+done
+
+# ── Step 6: Push to D1 ───────────────────────────────────────────────────────
+
+echo "==> Applying schema to D1..."
+npx wrangler d1 execute peeringdb \
+    --config "$WRANGLER_CONFIG" \
+    $REMOTE_FLAG \
+    --yes \
+    --file "$SCHEMA_SQL"
+
+echo "==> Importing data to D1..."
+for ENTITY_DEF in "${ENTITIES[@]}"; do
+    IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
+    EXPORT_FILE="$TMPDIR_EXPORT/${TABLE}.sql"
 
     ROW_COUNT=$(wc -l < "$EXPORT_FILE" | tr -d ' ')
-    echo "    $ROW_COUNT rows"
-
     if [[ "$ROW_COUNT" -eq 0 ]]; then
-        echo "    (empty, skipping)"
+        echo "    $TAG: (empty, skipping)"
         continue
     fi
 
-    # Import directly — wrangler handles internal batching for large files
+    echo "    $TAG: $ROW_COUNT rows..."
     npx wrangler d1 execute peeringdb \
         --config "$WRANGLER_CONFIG" \
         $REMOTE_FLAG \
         --yes \
         --file "$EXPORT_FILE"
 done
+
+echo "==> Applying FK cleanup to D1..."
+npx wrangler d1 execute peeringdb \
+    --config "$WRANGLER_CONFIG" \
+    $REMOTE_FLAG \
+    --yes \
+    --file "$FK_CLEANUP_SQL"
 
 # ── Populate _sync_meta ──────────────────────────────────────────────────────
 
@@ -132,9 +192,9 @@ SYNC_FILE="$TMPDIR_EXPORT/sync_meta.sql"
 
 for ENTITY_DEF in "${ENTITIES[@]}"; do
     IFS=':' read -r TAG TABLE _ <<< "$ENTITY_DEF"
-    JSON_FILE="$SCRIPT_DIR/${TAG}.json"
-    ROW_COUNT=$(python3 -c "import json; print(len(json.load(open('$JSON_FILE')).get('data',[])))")
-    echo "INSERT OR REPLACE INTO _sync_meta (entity, last_sync, row_count, updated_at) VALUES ('${TAG}', strftime('%s','now'), ${ROW_COUNT}, datetime('now'));" >> "$SYNC_FILE"
+    # Use the local SQLite row count (after cleanup) for accuracy
+    ROW_COUNT=$(sqlite3 "$LOCAL_DB" "SELECT COUNT(*) FROM \"$TABLE\"")
+    echo "INSERT OR REPLACE INTO _sync_meta (entity, last_sync, row_count, updated_at, last_modified_at) VALUES ('${TAG}', strftime('%s','now'), ${ROW_COUNT}, datetime('now'), 0);" >> "$SYNC_FILE"
 done
 
 npx wrangler d1 execute peeringdb \

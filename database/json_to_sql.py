@@ -66,35 +66,52 @@ def main():
     else:
         cols = list(rows[0].keys())
 
-    # D1 max SQL statement size is ~100KB. If a row generates a
-    # statement exceeding 90KB, truncate the longest text column.
+    # D1 max SQL statement size is ~100KB. If a row generates a statement
+    # exceeding MAX_STMT, insert it with the oversized column empty, then
+    # append the full value in chunks via UPDATE ... SET col = col || 'chunk'.
     MAX_STMT = 90_000
+    # Leave room for the UPDATE boilerplate when calculating chunk size.
+    CHUNK_SIZE = MAX_STMT - 200
     skipped = 0
 
     for row in rows:
         vals = [to_sql_value(row.get(col)) for col in cols]
         stmt = f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({','.join(vals)});"
 
-        if len(stmt) > MAX_STMT:
-            # Find the longest string column and truncate it
-            longest_idx = max(range(len(cols)), key=lambda i: len(vals[i]))
-            excess = len(stmt) - MAX_STMT + 100  # 100 bytes margin
-            original = row.get(cols[longest_idx], "")
-            if isinstance(original, str) and len(original) > excess:
-                truncated = original[: len(original) - excess] + "...[truncated]"
-                row[cols[longest_idx]] = truncated
-                vals[longest_idx] = to_sql_value(truncated)
-                stmt = f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({','.join(vals)});"
-                print(
-                    f"    WARNING: truncated {cols[longest_idx]} for id={row.get('id')} ({len(original)}→{len(truncated)} chars)",
-                    file=sys.stderr,
-                )
-            else:
-                skipped += 1
-                print(f"    WARNING: skipped id={row.get('id')} (statement {len(stmt)} bytes)", file=sys.stderr)
-                continue
+        if len(stmt) <= MAX_STMT:
+            print(stmt)
+            continue
 
+        # Find the oversized column (longest SQL value)
+        longest_idx = max(range(len(cols)), key=lambda i: len(vals[i]))
+        col_name = cols[longest_idx]
+        original = row.get(col_name, "")
+        row_id = row.get("id", "?")
+
+        if not isinstance(original, str):
+            skipped += 1
+            print(f"    WARNING: skipped id={row_id} (non-string overflow in {col_name}, {len(stmt)} bytes)", file=sys.stderr)
+            continue
+
+        # Insert the row with the oversized column set to empty string
+        vals[longest_idx] = "''"
+        stmt = f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({','.join(vals)});"
         print(stmt)
+
+        # Append the full value in chunks via concatenation
+        escaped = original.replace("'", "''")
+        offset = 0
+        chunk_num = 0
+        while offset < len(escaped):
+            chunk = escaped[offset:offset + CHUNK_SIZE]
+            print(f"UPDATE {table} SET {col_name} = {col_name} || '{chunk}' WHERE id = {row_id};")
+            offset += CHUNK_SIZE
+            chunk_num += 1
+
+        print(
+            f"    INFO: chunked {col_name} for id={row_id} ({len(original)} chars, {chunk_num} chunks)",
+            file=sys.stderr,
+        )
 
     print(f"    {len(rows)} rows", file=sys.stderr)
 
