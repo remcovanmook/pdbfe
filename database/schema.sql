@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS "_sync_meta" (
     "entity" TEXT NOT NULL PRIMARY KEY,
     "last_sync" INTEGER NOT NULL DEFAULT 0,
     "row_count" INTEGER NOT NULL DEFAULT 0,
-    "updated_at" TEXT NOT NULL DEFAULT ''
+    "updated_at" TEXT NOT NULL DEFAULT '',
+    "last_modified_at" INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS "peeringdb_organization" (

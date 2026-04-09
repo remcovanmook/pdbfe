@@ -144,10 +144,11 @@ async function syncEntity(db, tag, meta, apiKey) {
         const rows = data.data || [];
 
         if (rows.length === 0) {
-            // Nothing changed — just update the timestamp
+            // Nothing changed — just update the timestamp.
+            // NULLIF handles existing '' default from the initial ALTER TABLE.
             await db.prepare(
-                'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at) VALUES (?, ?, (SELECT COALESCE(row_count, 0) FROM "_sync_meta" WHERE entity = ?), datetime(\'now\'))'
-            ).bind(tag, now, tag).run();
+                `INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, (SELECT COALESCE(row_count, 0) FROM "_sync_meta" WHERE entity = ?), datetime('now'), (SELECT COALESCE(NULLIF(last_modified_at, ''), 0) FROM "_sync_meta" WHERE entity = ?))`
+            ).bind(tag, now, tag, tag).run();
             return result;
         }
 
@@ -204,8 +205,8 @@ async function syncEntity(db, tag, meta, apiKey) {
         const rowCount = totalCount ? /** @type {number} */ (totalCount.cnt) : 0;
 
         await db.prepare(
-            'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at) VALUES (?, ?, ?, datetime(\'now\'))'
-        ).bind(tag, now, rowCount).run();
+            'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, ?, datetime(\'now\'), ?)'
+        ).bind(tag, now, rowCount, now).run();
 
         return result;
     } catch (err) {

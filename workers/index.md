@@ -31,9 +31,10 @@ The primary traffic handler serving read-only PeeringDB API responses.
   - `buildRowQuery()` — traditional SELECT returning individual rows (for depth>0 expansion).
   - Both share `buildWherePagination()` for filter/pagination SQL construction.
 - **`depth.js`**: Depth expansion for `_set` fields. depth=0 is a no-op; depth=1 returns child IDs via batched IN queries.
-- **`cache.js`**: Creates and configures 14 per-entity LRU cache instances across three tiers (1024/256/128 slots). Exposes `getCacheStats()`, `purgeAllCaches()`, `purgeEntityCache()`, `normaliseCacheKey()`. Defines TTL constants: `LIST_TTL` (5 min), `DETAIL_TTL` (15 min), `COUNT_TTL` (15 min), `NEGATIVE_TTL` (5 min).
+- **`cache.js`**: Creates and configures 14 per-entity LRU cache instances across three tiers (1024/256/128 slots). Exposes `getCacheStats()`, `purgeAllCaches()`, `purgeEntityCache()`, `normaliseCacheKey()`. Defines TTL constants: `LIST_TTL` (60 min), `DETAIL_TTL` (60 min), `COUNT_TTL` (60 min), `NEGATIVE_TTL` (5 min). TTLs are upper bounds — data freshness is handled by the 15s invalidation poll in `sync_state.js`.
 - **`ratelimit.js`**: Isolate-level rate limiter using a dedicated LRU cache (4000 slots, 60s window). IPv6 addresses normalised to /64 prefixes. Anonymous callers keyed by IP (60/min), authenticated by API key or session ID (600/min). Exports `isRateLimited()`, `normaliseIP()`, `getRateLimitStats()`, `purgeRateLimit()`.
-- **`l2cache.js`**: Per-PoP L2 cache using Cloudflare's Cache API (`caches.default`). Functions `getL2(cacheKey)` and `putL2(cacheKey, buf, ttlSeconds)` store/retrieve `Uint8Array` payloads keyed by synthetic URLs under `https://pdbfe-l2.internal/`. Errors silently degrade to D1 fallback.
+- **`l2cache.js`**: Per-PoP L2 cache using Cloudflare's Cache API (`caches.default`). Functions `getL2(cacheKey)` and `putL2(cacheKey, buf, ttlSeconds)` store/retrieve `Uint8Array` payloads keyed by synthetic URLs under `https://pdbfe-l2.internal/`. L2 keys are version-tagged via `getEntityVersion()` from `sync_state.js` — when entity data changes, old L2 entries are orphaned without enumeration. Errors silently degrade to D1 fallback.
+- **`sync_state.js`**: Background D1 polling for granular cache invalidation and zero-allocation `/status` serving. Polls `_sync_meta` every 15s via `ctx.waitUntil()`. Compares `last_modified_at` per entity — if changed, purges only that entity's L1 cache. Exports `ensureSyncFreshness(db, ctx, now)` (O(1) hot-path hook), `handleSyncStatusCached()` (pre-encoded `/status` response), and `getEntityVersion(tag)` (L2 version tagging).
 
 ## 3. Sync Domain (`workers/sync/`)
 Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min).
@@ -53,7 +54,8 @@ Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (ev
 - **`tests/unit/pipeline.test.js`**: cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation
 - **`tests/unit/swr.test.js`**: withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling
 - **`tests/unit/visibility.test.js`**: Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering
-- **`tests/unit/status.test.js`**: /status endpoint: sync metadata, Content-Type, CORS
+- **`tests/unit/status.test.js`**: /status endpoint: sync metadata, Content-Type, CORS, static entity structure, buffer consistency
+- **`tests/unit/sync_state.test.js`**: sync_state.js: getEntityVersion, L2 version tagging contract
 - **`tests/unit/sync.test.js`**: Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields
 - **`tests/test_api.js`**: Integration — full router with mock D1, admin endpoints, CORS, 501s, scanner blocking
 - **`tests/test_conformance.js`**: Envelope, schema, query parameter, data type, cross-endpoint, and error handling conformance against live upstream PeeringDB

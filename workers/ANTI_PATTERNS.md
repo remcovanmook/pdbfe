@@ -266,6 +266,8 @@ Exceptions:
 - Admin endpoints (`/health`, `/_cache_status`) query D1 directly.
   These are low-traffic diagnostic paths where caching would defeat
   the purpose.
+- `sync_state.js` polls `_sync_meta` every 15s in a background task
+  via `ctx.waitUntil()`. Not on the response path.
 
 ---
 
