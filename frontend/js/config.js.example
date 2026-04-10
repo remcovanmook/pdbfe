@@ -8,5 +8,5 @@
 /** Origin of the pdbfe-auth worker (no trailing slash). */
 export const AUTH_ORIGIN = 'https://pdbfe-auth.<your-subdomain>.workers.dev';
 
-/** Origin of the pdbfe-api worker (empty string = same-origin proxy via Pages). */
-export const API_ORIGIN = 'https://pdbfe-api.<your-subdomain>.workers.dev';
+/** Origin of the pdbfe-api worker (no trailing slash). */
+export const API_ORIGIN = 'https://api.<your-domain>';

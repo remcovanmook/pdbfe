@@ -13,6 +13,7 @@
 #   OAUTH_REDIRECT_URI     — OAuth redirect URI for auth worker
 #   FRONTEND_ORIGIN        — Frontend origin URL
 #   WORKERS_DOMAIN         — Workers subdomain (e.g. "remco-vanmook.workers.dev")
+#   API_DOMAIN             — Custom domain for the API worker (e.g. "pdbfe.dev")
 
 name: Deploy
 
@@ -77,6 +78,7 @@ jobs:
           # Frontend config (also gitignored)
           sed \
             -e "s|<your-subdomain>|${{ secrets.WORKERS_DOMAIN }}|g" \
+            -e "s|<your-domain>|${{ secrets.API_DOMAIN }}|g" \
             frontend/js/config.js.example > frontend/js/config.js
 
       - name: Deploy
