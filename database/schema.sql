@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS "peeringdb_ixlan" (
     "name" TEXT NOT NULL DEFAULT '',
     "descr" TEXT NOT NULL DEFAULT '',
     "mtu" INTEGER NOT NULL DEFAULT 0,
+    "vlan" INTEGER,
     "dot1q_support" BOOL NOT NULL DEFAULT 0,
     "rs_asn" INTEGER NOT NULL DEFAULT 0,
     "arp_sponge" TEXT,
@@ -187,6 +188,7 @@ CREATE INDEX IF NOT EXISTS "peeringdb_ixlan_ix_id_idx" ON "peeringdb_ixlan" ("ix
 CREATE TABLE IF NOT EXISTS "peeringdb_ixlan_prefix" (
     "id" INTEGER NOT NULL PRIMARY KEY,
     "ixlan_id" INTEGER NOT NULL DEFAULT 0,
+    "notes" TEXT NOT NULL DEFAULT '',
     "protocol" TEXT NOT NULL DEFAULT '',
     "prefix" TEXT NOT NULL DEFAULT '',
     "in_dfz" BOOL NOT NULL DEFAULT 0,
@@ -222,6 +224,7 @@ CREATE TABLE IF NOT EXISTS "peeringdb_network" (
     "ix_count" INTEGER NOT NULL DEFAULT 0,
     "fac_count" INTEGER NOT NULL DEFAULT 0,
     "notes" TEXT NOT NULL DEFAULT '',
+    "notes_private" TEXT NOT NULL DEFAULT '',
     "netixlan_updated" DATETIME,
     "netfac_updated" DATETIME,
     "poc_updated" DATETIME,
@@ -261,6 +264,9 @@ CREATE INDEX IF NOT EXISTS "peeringdb_network_contact_net_id_idx" ON "peeringdb_
 
 CREATE TABLE IF NOT EXISTS "peeringdb_network_facility" (
     "id" INTEGER NOT NULL PRIMARY KEY,
+    "avail_sonet" BOOL NOT NULL DEFAULT 0,
+    "avail_ethernet" BOOL NOT NULL DEFAULT 0,
+    "avail_atm" BOOL NOT NULL DEFAULT 0,
     "name" TEXT NOT NULL DEFAULT '',
     "city" TEXT NOT NULL DEFAULT '',
     "country" TEXT NOT NULL DEFAULT '',
