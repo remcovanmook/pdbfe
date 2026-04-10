@@ -1,0 +1,80 @@
+# Deploy workflow — triggered on push to main (after PR merge).
+#
+# Runs the deploy script to apply pending D1 migrations and deploy
+# all workers + frontend to Cloudflare. Uses --force since we can't
+# persist hash files between CI runs.
+#
+# Required secrets:
+#   CLOUDFLARE_API_TOKEN   — Wrangler API token with Workers + D1 + Pages permissions
+#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID (optional if token is single-account)
+#   D1_DATABASE_ID         — PeeringDB D1 database ID
+#   KV_SESSIONS_ID         — Sessions KV namespace ID
+#   KV_USERS_ID            — Users KV namespace ID
+#   OAUTH_REDIRECT_URI     — OAuth redirect URI for auth worker
+#   FRONTEND_ORIGIN        — Frontend origin URL
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare
+    runs-on: ubuntu-latest
+    environment: deploy env
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml
+          npm ci --prefix workers
+
+      # Generate wrangler configs from examples + secrets.
+      # The real configs are gitignored (contain deployment-specific IDs).
+      - name: Generate wrangler configs
+        run: |
+          sed \
+            -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
+            -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
+            -e 's/<your-users-kv-namespace-id>/${{ secrets.KV_USERS_ID }}/' \
+            workers/wrangler.toml.example > workers/wrangler.toml
+
+          sed \
+            -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
+            workers/wrangler-sync.toml.example > workers/wrangler-sync.toml
+
+          sed \
+            -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
+            -e 's/<your-users-kv-namespace-id>/${{ secrets.KV_USERS_ID }}/' \
+            -e "s|https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback|${{ secrets.OAUTH_REDIRECT_URI }}|" \
+            -e "s|https://<your-pages-project>.pages.dev|${{ secrets.FRONTEND_ORIGIN }}|" \
+            workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
+
+      - name: Deploy
+        run: ./scripts/deploy.sh --remote --apply-migrations --force
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

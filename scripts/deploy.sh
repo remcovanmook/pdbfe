@@ -64,8 +64,18 @@ fi
 
 section "Validation"
 
+# Use PYTHON from env, .venv if available, or system python
+PYTHON="${PYTHON:-}"
+if [[ -z "$PYTHON" ]]; then
+    if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+        PYTHON="$REPO_ROOT/.venv/bin/python"
+    else
+        PYTHON="python"
+    fi
+fi
+
 # Check generated artifacts are fresh
-"$REPO_ROOT/.venv/bin/python" "$SCRIPT_DIR/parse_django_models.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/parse_django_models.py" 2>&1
 pass "Pipeline up to date"
 
 # Cross-check schema ↔ entities
