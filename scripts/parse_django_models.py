@@ -1222,10 +1222,11 @@ def generate_worker_entities_js(merged_entities, overrides):
 def main():
     """
     Fetch all upstream sources, parse and merge them, emit:
-      - extracted/entities.json
-      - extracted/entities.js  (ES module for frontend import)
-      - extracted/schema.sql
-      - extracted/src/ (cached fetched sources)
+      - extracted/entities.json       (version tracking + merged schema)
+      - extracted/entities-worker.js  (precompiled worker entity registry)
+      - extracted/schema.sql          (D1 migration DDL)
+      - frontend/js/entities.js       (ES module for frontend import)
+      - extracted/src/                (cached fetched sources)
 
     Version checking: compares both the django-peeringdb tag and the PeeringDB
     server Ctl/VERSION against the versions stored in the current output file.
@@ -1318,16 +1319,10 @@ def main():
     schema_path.write_text(sql)
     print(f"Wrote {schema_path}")
 
-    # ── Output: entities.js (ES module for browser + node) ────────────────
+    # ── Output: entities.js (ES module for frontend) ──────────────────────
+    # The frontend is served from frontend/ as root, so the module must
+    # live within that tree for browser ES module imports to resolve.
     entities_js = generate_entities_js(output)
-
-    js_path = extracted_dir / "entities.js"
-    js_path.write_text(entities_js)
-    print(f"Wrote {js_path}")
-
-    # Also write to frontend/js/ so browser ES module imports work.
-    # The frontend is served from frontend/ as root, so imports must
-    # stay within that tree.
     frontend_js_path = project_root / "frontend" / "js" / "entities.js"
     frontend_js_path.write_text(entities_js)
     print(f"Wrote {frontend_js_path}")
