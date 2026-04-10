@@ -109,10 +109,9 @@ if [[ -n "$APPLY_MIGRATIONS" ]]; then
             fi
 
             echo "  Applying: $MIGRATION_NAME"
-            MIGRATION_SQL="$(cat "$MIGRATION_FILE")"
             npx wrangler d1 execute peeringdb \
                 --config "$WRANGLER_CONFIG" $D1_REMOTE \
-                --command "$MIGRATION_SQL" \
+                --file "$MIGRATION_FILE" \
                 2>&1 || fail "Migration failed: $MIGRATION_NAME"
 
             # Record as applied
@@ -204,7 +203,7 @@ section "Frontend"
 
 if [[ -n "$REMOTE" ]]; then
     echo "  Deploying frontend to Cloudflare Pages..."
-    npx wrangler pages deploy "$REPO_ROOT/frontend/" --project-name=pdbfe 2>&1 || \
+    npx wrangler pages deploy "$REPO_ROOT/frontend/" --project-name=pdbfe-frontend 2>&1 || \
         fail "Frontend deploy failed"
     pass "Frontend deployed"
 else
