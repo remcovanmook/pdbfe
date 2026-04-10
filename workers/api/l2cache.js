@@ -17,7 +17,7 @@
  * Never hits the network — only used as a namespace for cache lookups.
  * @type {string}
  */
-const CACHE_ORIGIN = 'https://pdbfe-l2.internal/';
+const CACHE_ORIGIN = 'https://api.pdbfe.dev/__l2/';
 
 /**
  * Attempts to retrieve a cached payload from the per-PoP L2 cache.

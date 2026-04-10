@@ -169,6 +169,7 @@ for WORKER_DEF in "${WORKERS[@]}"; do
     LOCAL_HASH=$( {
         find "$WORKER_DIR" "$REPO_ROOT/workers/core" -type f -name '*.js' | grep -v node_modules | sort
         echo "$REPO_ROOT/extracted/entities.json"
+        echo "$REPO_ROOT/extracted/entities-worker.js"
         echo "$REPO_ROOT/workers/package-lock.json"
     } | xargs cat 2>/dev/null | shasum -a 256 | awk '{print $1}' )
 

@@ -91,10 +91,13 @@ export function isNegative(buf) {
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query function to execute on
  *        cache miss. Must return a Uint8Array payload for positive results, or null for
  *        404/empty.
+ * @param {ExecutionContext} [opts.ctx] - Worker execution context. When provided, L2 cache
+ *        writes are wrapped in ctx.waitUntil() to ensure the async cache.put() completes
+ *        before isolate recycling.
  * @returns {Promise<CachedResult>} Cached or fresh payload with the tier that served it.
  *          buf is null for negative results (EMPTY_ENVELOPE was stored, caller should 404).
  */
-export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }) {
+export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn, ctx }) {
     // ── Promise coalescing ───────────────────────────────────────
     // If another request is already resolving this key, piggyback on
     // that in-flight promise. This prevents N identical D1 queries
@@ -103,7 +106,7 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }
     let inflight = cache.pending.get(cacheKey);
 
     if (!inflight) {
-        inflight = _resolve(cacheKey, cache, entityTag, ttlMs, queryFn);
+        inflight = _resolve(cacheKey, cache, entityTag, ttlMs, queryFn, ctx);
         cache.pending.set(cacheKey, inflight);
         inflight.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
@@ -120,9 +123,10 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn }
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {number} ttlMs - TTL in milliseconds for positive results.
  * @param {() => Promise<Uint8Array|null>} queryFn - D1 query closure.
+ * @param {ExecutionContext} [ctx] - Worker execution context for L2 write-back.
  * @returns {Promise<CachedResult>}
  */
-async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
+async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn, ctx) {
     // ── L2 per-PoP cache check ───────────────────────────────────
     // L2 keys are version-tagged with the entity's last_modified_at.
     // When data changes, the version advances and old L2 entries are
@@ -148,11 +152,13 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, queryFn) {
     if (buf === null) {
         // Negative result: store sentinel with shorter TTL
         cache.add(cacheKey, EMPTY_ENVELOPE, { entityTag }, Date.now());
-        putL2(l2Key, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
+        const negWrite = putL2(l2Key, EMPTY_ENVELOPE, NEGATIVE_TTL / 1000);
+        if (ctx) ctx.waitUntil(negWrite);
         return { buf: null, tier: 'MISS' };
     }
 
     cache.add(cacheKey, buf, { entityTag }, Date.now());
-    putL2(l2Key, buf, ttlMs / 1000);
+    const posWrite = putL2(l2Key, buf, ttlMs / 1000);
+    if (ctx) ctx.waitUntil(posWrite);
     return { buf, tier: 'MISS' };
 }

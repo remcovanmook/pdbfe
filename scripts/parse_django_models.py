@@ -839,6 +839,384 @@ export function getLabel(tag) {{
 """
 
 
+# ── Worker entities precompilation ───────────────────────────────────────────
+
+# Address field names handled by the Entity.address() builder method.
+# When an entity has address: true, these fields are emitted by .address()
+# with fixed queryable/non-queryable settings rather than per-field overrides.
+_ADDRESS_FIELDS = {
+    "address1", "address2", "city", "country", "state", "zipcode",
+    "floor", "suite", "latitude", "longitude",
+}
+
+# Cache tier configuration per entity — mirrors the TIERS map in cache.js.
+# Entities not listed here get DEFAULT_TIER.
+_CACHE_TIERS = {
+    "net":      {"slots": 1024, "maxSize": 16 * 1024 * 1024},
+    "netixlan": {"slots": 2048, "maxSize": 16 * 1024 * 1024},
+    "netfac":   {"slots": 512,  "maxSize":  8 * 1024 * 1024},
+    "fac":      {"slots": 512,  "maxSize":  4 * 1024 * 1024},
+    "ix":       {"slots": 512,  "maxSize":  4 * 1024 * 1024},
+    "org":      {"slots": 512,  "maxSize":  8 * 1024 * 1024},
+    "poc":      {"slots": 256,  "maxSize":  1 * 1024 * 1024},
+}
+
+_DEFAULT_TIER = {"slots": 128, "maxSize": 1 * 1024 * 1024}
+
+
+def _build_worker_entities(merged_entities, overrides):
+    """
+    Replicate the Entity builder pipeline (buildEntities + overrides +
+    deriveRelationships + cacheFieldLookups) in Python.
+
+    Takes the merged entity schema dict and entity-overrides.json dict.
+    Returns a dict of tag → fully-built entity data ready for JS emission.
+    """
+    # ── Phase 1: build fields (mirrors buildEntities in entities.js) ────────
+
+    entities = {}
+    for tag, schema in merged_entities.items():
+        tag_overrides = overrides.get(tag, {}).get("fieldOverrides", {})
+
+        # Start with id field
+        fields = [{"name": "id", "type": "number"}]
+
+        # Track which fields are address fields handled by .address()
+        has_address = schema.get("address", False)
+        address_done = set()
+
+        for field in schema["fields"]:
+            name = field["name"]
+
+            # Skip address fields if the entity uses .address()
+            if has_address and name in _ADDRESS_FIELDS:
+                address_done.add(name)
+                continue
+
+            field_override = tag_overrides.get(name, {})
+
+            # Allow overrides to fix type or queryable
+            effective_type = field_override.get("type", field.get("type", "string"))
+            effective_queryable = field_override.get("queryable", field.get("queryable"))
+
+            f = {"name": name, "type": effective_type}
+
+            if effective_type == "json":
+                f["queryable"] = False
+                f["json"] = True
+            else:
+                if effective_queryable is False:
+                    f["queryable"] = False
+                if field.get("nullable"):
+                    f["nullable"] = True
+                if field.get("foreignKey"):
+                    f["foreignKey"] = field["foreignKey"]
+                    if field_override.get("resolve"):
+                        f["resolve"] = field_override["resolve"]
+
+            fields.append(f)
+
+        # Add address group (mirrors Entity.address() — fixed order & queryable flags)
+        if has_address:
+            fields.append({"name": "address1", "type": "string", "queryable": False})
+            fields.append({"name": "address2", "type": "string", "queryable": False})
+            fields.append({"name": "city", "type": "string"})
+            fields.append({"name": "country", "type": "string"})
+            fields.append({"name": "state", "type": "string"})
+            fields.append({"name": "zipcode", "type": "string"})
+            fields.append({"name": "floor", "type": "string", "queryable": False})
+            fields.append({"name": "suite", "type": "string", "queryable": False})
+            fields.append({"name": "latitude", "type": "number", "queryable": False})
+            fields.append({"name": "longitude", "type": "number", "queryable": False})
+
+        # Seal: add standard timestamp fields (mirrors Entity.done())
+        fields.append({"name": "created", "type": "datetime"})
+        fields.append({"name": "updated", "type": "datetime"})
+        fields.append({"name": "status", "type": "string"})
+
+        entity = {
+            "tag": tag,
+            "table": schema["table"],
+            "fields": fields,
+            "_restricted": schema.get("restricted", False),
+            "_anonFilter": schema.get("anonFilter"),
+            "joinColumns": None,
+            "relationships": [],
+        }
+        entities[tag] = entity
+
+    # ── Phase 2: derive joinColumns (mirrors deriveRelationships pass 1) ────
+
+    for entity in entities.values():
+        joins = []
+        for field in entity["fields"]:
+            fk = field.get("foreignKey")
+            resolve = field.get("resolve")
+            if not fk or not resolve:
+                continue
+            target = entities.get(fk)
+            if not target:
+                continue
+            joins.append({
+                "table": target["table"],
+                "localFk": field["name"],
+                "columns": resolve,
+            })
+        entity["joinColumns"] = joins if joins else None
+
+    # ── Phase 3: derive relationships (mirrors deriveRelationships pass 2) ──
+
+    for entity in entities.values():
+        entity["relationships"] = []
+
+    for child_tag, child_entity in entities.items():
+        for field in child_entity["fields"]:
+            fk = field.get("foreignKey")
+            if not fk:
+                continue
+            parent = entities.get(fk)
+            if not parent:
+                continue
+
+            rel = {
+                "field": f"{child_tag}_set",
+                "table": child_entity["table"],
+                "fk": field["name"],
+            }
+
+            # Sibling FK fields with resolve specs → joinColumns on relationship
+            sibling_joins = []
+            for sibling in child_entity["fields"]:
+                if sibling is field:
+                    continue
+                s_fk = sibling.get("foreignKey")
+                s_resolve = sibling.get("resolve")
+                if not s_fk or not s_resolve:
+                    continue
+                s_target = entities.get(s_fk)
+                if not s_target:
+                    continue
+                sibling_joins.append({
+                    "table": s_target["table"],
+                    "localFk": sibling["name"],
+                    "columns": s_resolve,
+                })
+            if sibling_joins:
+                rel["joinColumns"] = sibling_joins
+
+            parent["relationships"].append(rel)
+
+    # ── Phase 4: compute field lookup caches ────────────────────────────────
+
+    for entity in entities.values():
+        columns = []
+        json_columns = set()
+        bool_columns = set()
+        nullable_columns = set()
+        field_names = set()
+        filter_types = {}
+
+        for field in entity["fields"]:
+            name = field["name"]
+            columns.append(name)
+            field_names.add(name)
+            if field.get("json"):
+                json_columns.add(name)
+            if field["type"] == "boolean":
+                bool_columns.add(name)
+            if field.get("nullable"):
+                nullable_columns.add(name)
+            if field.get("queryable") is not False:
+                filter_types[name] = field["type"]
+
+        entity["_columns"] = columns
+        entity["_jsonColumns"] = sorted(json_columns)
+        entity["_boolColumns"] = sorted(bool_columns)
+        entity["_nullableColumns"] = sorted(nullable_columns)
+        entity["_fieldNames"] = sorted(field_names)
+        entity["_filterTypes"] = filter_types
+
+    return entities
+
+
+def _emit_js_field(field):
+    """Emit a single field definition as a JS object literal string."""
+    parts = [f'name: {json.dumps(field["name"])}', f'type: {json.dumps(field["type"])}']
+    if field.get("queryable") is False:
+        parts.append("queryable: false")
+    if field.get("json"):
+        parts.append("json: true")
+    if field.get("nullable"):
+        parts.append("nullable: true")
+    if field.get("foreignKey"):
+        parts.append(f'foreignKey: {json.dumps(field["foreignKey"])}')
+    if field.get("resolve"):
+        resolve_parts = ", ".join(
+            f"{json.dumps(k)}: {json.dumps(v)}"
+            for k, v in field["resolve"].items()
+        )
+        parts.append(f"resolve: {{ {resolve_parts} }}")
+    return "{ " + ", ".join(parts) + " }"
+
+
+def _emit_js_join(join):
+    """Emit a joinColumn def as a JS object literal string."""
+    cols = ", ".join(
+        f"{json.dumps(k)}: {json.dumps(v)}"
+        for k, v in join["columns"].items()
+    )
+    return (
+        f'{{ table: {json.dumps(join["table"])}, '
+        f'localFk: {json.dumps(join["localFk"])}, '
+        f'columns: {{ {cols} }} }}'
+    )
+
+
+def _emit_js_relationship(rel):
+    """Emit a relationship def as a JS object literal string."""
+    parts = [
+        f'field: {json.dumps(rel["field"])}',
+        f'table: {json.dumps(rel["table"])}',
+        f'fk: {json.dumps(rel["fk"])}',
+    ]
+    if rel.get("joinColumns"):
+        joins_str = ", ".join(_emit_js_join(j) for j in rel["joinColumns"])
+        parts.append(f"joinColumns: [{joins_str}]")
+    return "{ " + ", ".join(parts) + " }"
+
+
+def generate_worker_entities_js(merged_entities, overrides):
+    """
+    Generate a precompiled ES module for the API and sync workers.
+
+    Runs the full Entity building pipeline (build + overrides + derive
+    relationships + cache field lookups) at generation time and emits
+    the results as static JS object literals. The workers import this
+    module directly — no JSON.parse, no Entity class, no runtime
+    derivation.
+
+    Returns the JS source string.
+    """
+    entities = _build_worker_entities(merged_entities, overrides)
+
+    lines = [
+        "// Auto-generated by parse_django_models.py — do not edit by hand.",
+        "// Regenerate with: .venv/bin/python scripts/parse_django_models.py --force",
+        "",
+        "/**",
+        " * @fileoverview Precompiled entity registry for API and sync workers.",
+        " *",
+        " * All entity metadata — fields, relationships, joinColumns, and cached",
+        " * field lookups — are computed at generation time. Zero runtime derivation.",
+        " */",
+        "",
+    ]
+
+    # Emit each entity as a const
+    entity_names = []
+    for tag, entity in entities.items():
+        var_name = f"_entity_{tag}"
+        entity_names.append((tag, var_name))
+
+        fields_str = ",\n        ".join(_emit_js_field(f) for f in entity["fields"])
+
+        joins_str = "undefined"
+        if entity["joinColumns"]:
+            joins_items = ", ".join(_emit_js_join(j) for j in entity["joinColumns"])
+            joins_str = f"[{joins_items}]"
+
+        rels_str = "[]"
+        if entity["relationships"]:
+            rels_items = ",\n        ".join(
+                _emit_js_relationship(r) for r in entity["relationships"]
+            )
+            rels_str = f"[\n        {rels_items}\n    ]"
+
+        columns_str = json.dumps(entity["_columns"])
+        json_cols_str = json.dumps(entity["_jsonColumns"])
+        bool_cols_str = json.dumps(entity["_boolColumns"])
+        nullable_cols_str = json.dumps(entity["_nullableColumns"])
+        field_names_str = json.dumps(entity["_fieldNames"])
+
+        # filterTypes as a Map initialiser array
+        ft_pairs = ", ".join(
+            f'[{json.dumps(k)}, {json.dumps(v)}]'
+            for k, v in entity["_filterTypes"].items()
+        )
+
+        anon_filter_str = "undefined"
+        if entity["_anonFilter"]:
+            af = entity["_anonFilter"]
+            anon_filter_str = f'{{ field: {json.dumps(af["field"])}, value: {json.dumps(af["value"])} }}'
+
+        lines.append(f"/** @type {{EntityMeta}} */")
+        lines.append(f"const {var_name} = {{")
+        lines.append(f"    tag: {json.dumps(tag)},")
+        lines.append(f"    table: {json.dumps(entity['table'])},")
+        lines.append(f"    _restricted: {json.dumps(entity['_restricted'])},")
+        lines.append(f"    _anonFilter: {anon_filter_str},")
+        lines.append(f"    fields: [")
+        lines.append(f"        {fields_str}")
+        lines.append(f"    ],")
+        lines.append(f"    joinColumns: {joins_str},")
+        lines.append(f"    relationships: {rels_str},")
+        lines.append(f"    _columns: {columns_str},")
+        lines.append(f"    _jsonColumns: new Set({json_cols_str}),")
+        lines.append(f"    _boolColumns: new Set({bool_cols_str}),")
+        lines.append(f"    _nullableColumns: new Set({nullable_cols_str}),")
+        lines.append(f"    _fieldNames: new Set({field_names_str}),")
+        lines.append(f"    _filterTypes: new Map([{ft_pairs}]),")
+        lines.append(f"}};")
+        lines.append("")
+
+    # ENTITIES record
+    lines.append("/**")
+    lines.append(" * Maps an API endpoint tag to its precompiled entity metadata.")
+    lines.append(" * @type {Record<string, EntityMeta>}")
+    lines.append(" */")
+    entries_str = ", ".join(f'{json.dumps(tag)}: {var}' for tag, var in entity_names)
+    lines.append(f"export const ENTITIES = {{ {entries_str} }};")
+    lines.append("")
+
+    # ENTITY_TAGS set
+    tags_str = ", ".join(json.dumps(tag) for tag, _ in entity_names)
+    lines.append("/**")
+    lines.append(" * Set of valid entity tags for fast lookup in the router.")
+    lines.append(" * @type {Set<string>}")
+    lines.append(" */")
+    lines.append(f"export const ENTITY_TAGS = new Set([{tags_str}]);")
+    lines.append("")
+
+    # Cache tiers
+    lines.append("// ── Cache tier configuration ─────────────────────────────────────────────")
+    lines.append("")
+    lines.append("const MB = 1024 * 1024;")
+    lines.append("")
+    lines.append("/**")
+    lines.append(" * Default cache tier for entities not in CACHE_TIERS.")
+    lines.append(" * New entities from upstream automatically get this bucket.")
+    lines.append(" * @type {{slots: number, maxSize: number}}")
+    lines.append(" */")
+    lines.append(f"export const DEFAULT_TIER = {{ slots: {_DEFAULT_TIER['slots']}, maxSize: {_DEFAULT_TIER['maxSize'] // (1024*1024)} * MB }};")
+    lines.append("")
+
+    lines.append("/**")
+    lines.append(" * Per-entity cache tier configuration.")
+    lines.append(" * Sized by query cardinality (slots) and measured response outliers (maxSize).")
+    lines.append(" * @type {Record<string, {slots: number, maxSize: number}>}")
+    lines.append(" */")
+    tier_entries = []
+    for tag, tier in _CACHE_TIERS.items():
+        mb = tier["maxSize"] // (1024 * 1024)
+        tier_entries.append(f"    {json.dumps(tag)}: {{ slots: {tier['slots']}, maxSize: {mb} * MB }}")
+    lines.append("export const CACHE_TIERS = {")
+    lines.append(",\n".join(tier_entries))
+    lines.append("};")
+    lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -953,6 +1331,17 @@ def main():
     frontend_js_path = project_root / "frontend" / "js" / "entities.js"
     frontend_js_path.write_text(entities_js)
     print(f"Wrote {frontend_js_path}")
+
+    # ── Output: entities-worker.js (precompiled worker registry) ─────────
+    overrides_path = project_root / "workers" / "api" / "entity-overrides.json"
+    overrides = {}
+    if overrides_path.exists():
+        overrides = json.loads(overrides_path.read_text())
+
+    worker_js = generate_worker_entities_js(merged, overrides)
+    worker_js_path = extracted_dir / "entities-worker.js"
+    worker_js_path.write_text(worker_js)
+    print(f"Wrote {worker_js_path}")
 
     # Summary of API-injected fields
     for tag in sorted(merged.keys()):
