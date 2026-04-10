@@ -9,6 +9,7 @@ import { fetchList, fetchCount } from '../api.js';
 import { linkEntity, formatDate, escapeHTML, renderLoading } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
+import { getLabel } from '../entities.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -73,12 +74,8 @@ async function loadRecentUpdates() {
     const container = document.getElementById('recent-updates');
     if (!container) return;
 
-    const types = [
-        { type: 'ix',      label: 'Exchanges' },
-        { type: 'net',     label: 'Networks' },
-        { type: 'fac',     label: 'Facilities' },
-        { type: 'carrier', label: 'Carriers' }
-    ];
+    const types = ['ix', 'net', 'fac', 'carrier']
+        .map(tag => ({ type: tag, label: getLabel(tag) }));
 
     try {
         // Match upstream Django query exactly:
@@ -124,16 +121,13 @@ async function loadGlobalStats() {
     const container = document.getElementById('global-stats');
     if (!container) return;
 
-    const types = [
-        { type: 'ix',       label: 'Exchanges' },
-        { type: 'net',      label: 'Networks' },
-        { type: 'fac',      label: 'Facilities' },
-        { type: 'campus',   label: 'Campuses' },
-        { type: 'carrier',  label: 'Carriers' },
-        { type: 'netixlan', label: 'Connections to Exchanges' },
-        { type: 'netfac',   label: 'Connections to Facilities' },
-        { type: 'org',      label: 'Organizations' }
-    ];
+    /** @type {Record<string, string>} */
+    const statLabels = {
+        netixlan: 'Connections to Exchanges',
+        netfac: 'Connections to Facilities',
+    };
+    const types = ['ix', 'net', 'fac', 'campus', 'carrier', 'netixlan', 'netfac', 'org']
+        .map(tag => ({ type: tag, label: statLabels[tag] || getLabel(tag) }));
 
     try {
         const counts = await Promise.all(

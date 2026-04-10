@@ -7,22 +7,42 @@
 
 import { getSessionId } from './auth.js';
 import { API_ORIGIN } from './config.js';
+import { ENTITIES, getLabel } from './entities.js';
 
 /**
- * Search entity group definitions — single source of truth for the
- * entity types, display labels, and subtitle formatters used by
- * searchAll(), the search results page, and the typeahead dropdown.
+ * Subtitle formatters for search results.
+ * Keyed by entity tag. Returns a one-line string shown below the entity name
+ * in search results and typeahead dropdowns.
+ * @type {Record<string, (r: any) => string>}
+ */
+const SUBTITLE_FORMATTERS = {
+    net:     /** @param {any} r */ (r) => `AS${r.asn}`,
+    ix:      /** @param {any} r */ (r) => r.city || '',
+    fac:     /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
+    org:     () => '',
+    carrier: () => '',
+    campus:  /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
+};
+
+/**
+ * Search entity group definitions — navigable entity types, derived from
+ * extracted/entities.json. Used by searchAll(), the search results page,
+ * and the typeahead dropdown.
+ *
+ * Includes only top-level entities with detail pages (excludes join tables
+ * like netfac, netixlan, ixfac, etc.).
  *
  * @type {ReadonlyArray<{key: string, label: string, subtitle: (r: any) => string}>}
  */
-export const SEARCH_ENTITIES = Object.freeze([
-    { key: 'net',     label: 'Networks',      subtitle: /** @param {any} r */ (r) => `AS${r.asn}` },
-    { key: 'ix',      label: 'Exchanges',     subtitle: /** @param {any} r */ (r) => r.city || '' },
-    { key: 'fac',     label: 'Facilities',    subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` },
-    { key: 'org',     label: 'Organizations', subtitle: () => '' },
-    { key: 'carrier', label: 'Carriers',      subtitle: () => '' },
-    { key: 'campus',  label: 'Campuses',      subtitle: /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}` }
-]);
+export const SEARCH_ENTITIES = Object.freeze(
+    ['net', 'ix', 'fac', 'org', 'carrier', 'campus']
+        .filter(tag => tag in ENTITIES)
+        .map(tag => ({
+            key: tag,
+            label: getLabel(tag),
+            subtitle: SUBTITLE_FORMATTERS[tag] || (() => ''),
+        }))
+);
 
 /** Base URL for the API — configured in config.js. */
 const API_BASE = API_ORIGIN;

@@ -1,0 +1,27 @@
+{
+  "net": {
+    "fieldOverrides": {
+      "org_id": { "resolve": { "name": "org_name" } }
+    }
+  },
+  "ix": {
+    "fieldOverrides": {
+      "org_id": { "resolve": { "name": "org_name" } }
+    }
+  },
+  "netfac": {
+    "fieldOverrides": {
+      "net_id": { "resolve": { "name": "net_name", "asn": "net_asn" } }
+    }
+  },
+  "netixlan": {
+    "fieldOverrides": {
+      "net_id": { "resolve": { "name": "net_name" } }
+    }
+  },
+  "ixfac": {
+    "fieldOverrides": {
+      "ix_id": { "resolve": { "name": "ix_name" } }
+    }
+  }
+}

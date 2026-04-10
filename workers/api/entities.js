@@ -175,229 +175,119 @@ class Entity {
 
 // ── Entity definitions ───────────────────────────────────────────────────────
 
+import entitySchema from '../../extracted/entities.json' with { type: 'json' };
+import entityOverrides from './entity-overrides.json' with { type: 'json' };
+
+/**
+ * Type-method lookup: maps the type strings used in entity-schema.json
+ * to the corresponding Entity builder method name.
+ * @type {Record<string, string>}
+ */
+const TYPE_METHODS = {
+    string: 'string',
+    number: 'number',
+    boolean: 'boolean',
+    datetime: 'datetime',
+    json: 'json',
+};
+
+/**
+ * Set of field names that are part of the standard address group.
+ * When an entity has address: true in its schema, AddressModel fields
+ * found in the schema are handled by the .address() builder call instead
+ * of individual field calls.
+ * @type {Set<string>}
+ */
+const ADDRESS_FIELDS = new Set([
+    'address1', 'address2', 'city', 'country', 'state', 'zipcode',
+    'floor', 'suite', 'latitude', 'longitude',
+]);
+
+/**
+ * Builds the ENTITIES registry from entity-schema.json (auto-generated)
+ * and entity-overrides.json (manually maintained resolve specs).
+ *
+ * For each entity in the schema:
+ *   1. Creates a new Entity(tag, table)
+ *   2. Applies .restricted() and .anonFilter() if flagged
+ *   3. Calls .address() if the entity uses the AddressModel mixin
+ *   4. Adds each field via the type-appropriate builder method
+ *   5. Merges resolve specs from overrides onto FK fields
+ *   6. Calls .done() to seal
+ *
+ * @returns {Record<string, EntityMeta>}
+ */
+function buildEntities() {
+    /** @type {Record<string, EntityMeta>} */
+    const entities = {};
+
+    for (const [tag, schema] of Object.entries(
+        /** @type {Record<string, any>} */ (entitySchema.entities)
+    )) {
+        const entity = new Entity(tag, schema.table);
+        const overrides = /** @type {Record<string, any>} */ (entityOverrides)[tag]?.fieldOverrides || {};
+
+        // Apply access control
+        if (schema.restricted) {
+            entity.restricted();
+        }
+        if (schema.anonFilter) {
+            entity.anonFilter(schema.anonFilter.field, schema.anonFilter.value);
+        }
+
+        // Collect address field names to skip when processing individual fields
+        const addressFieldsDone = new Set();
+
+        // Add fields from schema
+        for (const field of schema.fields) {
+            // Skip address fields if address() will handle them
+            if (schema.address && ADDRESS_FIELDS.has(field.name)) {
+                addressFieldsDone.add(field.name);
+                continue;
+            }
+
+            const fieldOverride = overrides[field.name] || {};
+
+            if (field.type === 'json') {
+                // json() handles queryable:false and json:true internally
+                entity.json(field.name);
+            } else {
+                /** @type {FieldOpts} */
+                const opts = {};
+                if (field.queryable === false) opts.queryable = false;
+                if (field.nullable === true) opts.nullable = true;
+                if (field.foreignKey) {
+                    opts.foreignKey = field.foreignKey;
+                    if (fieldOverride.resolve) {
+                        opts.resolve = fieldOverride.resolve;
+                    }
+                }
+                const method = TYPE_METHODS[field.type];
+                if (method && typeof /** @type {any} */ (entity)[method] === 'function') {
+                    /** @type {any} */ (entity)[method](field.name, opts);
+                }
+            }
+        }
+
+        // Add address group if schema says so
+        if (schema.address) {
+            entity.address();
+        }
+
+        entity.done();
+        entities[tag] = entity;
+    }
+
+    return entities;
+}
+
 /**
  * Maps an API endpoint tag to its entity metadata.
  * Keys are the URL path segments (e.g. "net" for /api/net).
  *
  * @type {Record<string, EntityMeta>}
  */
-export const ENTITIES = {
-
-    net: new Entity('net', 'peeringdb_network')
-        .number('org_id', { foreignKey: 'org', resolve: { name: 'org_name' } })
-        .string('name')
-        .string('aka')
-        .string('name_long')
-        .string('website', { queryable: false })
-        .json('social_media')
-        .number('asn')
-        .string('looking_glass', { queryable: false })
-        .string('route_server', { queryable: false })
-        .string('irr_as_set')
-        .string('info_type')
-        .json('info_types')
-        .number('info_prefixes4')
-        .number('info_prefixes6')
-        .string('info_traffic')
-        .string('info_ratio')
-        .string('info_scope')
-        .boolean('info_unicast')
-        .boolean('info_multicast')
-        .boolean('info_ipv6')
-        .boolean('info_never_via_route_servers')
-        .number('ix_count', { queryable: false })
-        .number('fac_count', { queryable: false })
-        .string('notes', { queryable: false })
-        .datetime('netixlan_updated', { queryable: false })
-        .datetime('netfac_updated', { queryable: false })
-        .datetime('poc_updated', { queryable: false })
-        .string('policy_url', { queryable: false })
-        .string('policy_general')
-        .string('policy_locations')
-        .boolean('policy_ratio')
-        .string('policy_contracts')
-        .boolean('allow_ixp_update', { queryable: false })
-        .string('status_dashboard', { queryable: false, nullable: true })
-        .string('rir_status', { queryable: false, nullable: true })
-        .datetime('rir_status_updated', { queryable: false })
-        .string('logo', { queryable: false, nullable: true })
-        .done(),
-
-    org: new Entity('org', 'peeringdb_organization')
-        .string('name')
-        .string('aka')
-        .string('name_long')
-        .string('website', { queryable: false })
-        .json('social_media')
-        .string('notes', { queryable: false })
-        .string('logo', { queryable: false, nullable: true })
-        .address()
-        .done(),
-
-    fac: new Entity('fac', 'peeringdb_facility')
-        .number('org_id', { foreignKey: 'org' })
-        .string('org_name', { queryable: false })
-        .number('campus_id', { foreignKey: 'campus' })
-        .string('name')
-        .string('aka')
-        .string('name_long')
-        .string('website', { queryable: false })
-        .json('social_media')
-        .string('clli')
-        .string('rencode', { queryable: false })
-        .string('npanxx', { queryable: false })
-        .string('notes', { queryable: false })
-        .number('net_count', { queryable: false })
-        .number('ix_count', { queryable: false })
-        .number('carrier_count', { queryable: false })
-        .string('sales_email', { queryable: false })
-        .string('sales_phone', { queryable: false })
-        .string('tech_email', { queryable: false })
-        .string('tech_phone', { queryable: false })
-        .json('available_voltage_services')
-        .boolean('diverse_serving_substations', { queryable: false })
-        .string('property', { queryable: false, nullable: true })
-        .string('region_continent')
-        .string('status_dashboard', { queryable: false, nullable: true })
-        .string('logo', { queryable: false, nullable: true })
-        .address()
-        .done(),
-
-    ix: new Entity('ix', 'peeringdb_ix')
-        .number('org_id', { foreignKey: 'org', resolve: { name: 'org_name' } })
-        .string('name')
-        .string('aka')
-        .string('name_long')
-        .string('city')
-        .string('country')
-        .string('region_continent')
-        .string('media', { queryable: false })
-        .string('notes', { queryable: false })
-        .boolean('proto_unicast')
-        .boolean('proto_multicast')
-        .boolean('proto_ipv6')
-        .string('website', { queryable: false })
-        .json('social_media')
-        .string('url_stats', { queryable: false })
-        .string('tech_email', { queryable: false })
-        .string('tech_phone', { queryable: false })
-        .string('policy_email', { queryable: false })
-        .string('policy_phone', { queryable: false })
-        .string('sales_phone', { queryable: false })
-        .string('sales_email', { queryable: false })
-        .number('net_count', { queryable: false })
-        .number('fac_count', { queryable: false })
-        .number('ixf_net_count', { queryable: false })
-        .datetime('ixf_last_import', { queryable: false, nullable: true })
-        .string('ixf_import_request', { queryable: false, nullable: true })
-        .string('ixf_import_request_status', { queryable: false })
-        .string('service_level', { queryable: false })
-        .string('terms', { queryable: false })
-        .string('status_dashboard', { queryable: false, nullable: true })
-        .string('logo', { queryable: false, nullable: true })
-        .done(),
-
-    ixlan: new Entity('ixlan', 'peeringdb_ixlan')
-        .number('ix_id', { foreignKey: 'ix' })
-        .string('name')
-        .string('descr')
-        .number('mtu')
-        .boolean('dot1q_support')
-        .number('rs_asn')
-        .string('arp_sponge', { queryable: false, nullable: true })
-        .string('ixf_ixp_member_list_url', { queryable: false, nullable: true })
-        .string('ixf_ixp_member_list_url_visible', { queryable: false })
-        .boolean('ixf_ixp_import_enabled', { queryable: false })
-        .done(),
-
-    ixpfx: new Entity('ixpfx', 'peeringdb_ixlan_prefix')
-        .number('ixlan_id', { foreignKey: 'ixlan' })
-        .string('protocol')
-        .string('prefix')
-        .boolean('in_dfz')
-        .done(),
-
-    netfac: new Entity('netfac', 'peeringdb_network_facility')
-        .string('name', { queryable: false })
-        .string('city', { queryable: false })
-        .string('country', { queryable: false })
-        .number('net_id', { foreignKey: 'net', resolve: { name: 'net_name', asn: 'net_asn' } })
-        .number('fac_id', { foreignKey: 'fac' })
-        .number('local_asn')
-        .done(),
-
-    netixlan: new Entity('netixlan', 'peeringdb_network_ixlan')
-        .number('net_id', { foreignKey: 'net', resolve: { name: 'net_name' } })
-        .number('ix_id')
-        .string('name', { queryable: false })
-        .number('ixlan_id', { foreignKey: 'ixlan' })
-        .string('notes', { queryable: false })
-        .number('speed')
-        .number('asn')
-        .string('ipaddr4')
-        .string('ipaddr6', { nullable: true })
-        .boolean('is_rs_peer')
-        .boolean('bfd_support')
-        .boolean('operational')
-        .number('net_side_id', { queryable: false })
-        .number('ix_side_id', { queryable: false })
-        .done(),
-
-    poc: new Entity('poc', 'peeringdb_network_contact')
-        .restricted()
-        .anonFilter('visible', 'Public')
-        .number('net_id', { foreignKey: 'net' })
-        .string('role')
-        .string('visible')
-        .string('name')
-        .string('phone', { queryable: false })
-        .string('email')
-        .string('url', { queryable: false })
-        .done(),
-
-    carrier: new Entity('carrier', 'peeringdb_carrier')
-        .number('org_id', { foreignKey: 'org' })
-        .string('org_name', { queryable: false })
-        .string('name')
-        .string('aka')
-        .string('name_long')
-        .string('website', { queryable: false })
-        .json('social_media')
-        .string('notes', { queryable: false })
-        .number('fac_count', { queryable: false })
-        .string('logo', { queryable: false })
-        .done(),
-
-    carrierfac: new Entity('carrierfac', 'peeringdb_ix_carrier_facility')
-        .string('name', { queryable: false })
-        .number('carrier_id', { foreignKey: 'carrier' })
-        .number('fac_id', { foreignKey: 'fac' })
-        .done(),
-
-    ixfac: new Entity('ixfac', 'peeringdb_ix_facility')
-        .string('name', { queryable: false })
-        .string('city', { queryable: false })
-        .string('country', { queryable: false })
-        .number('ix_id', { foreignKey: 'ix', resolve: { name: 'ix_name' } })
-        .number('fac_id', { foreignKey: 'fac' })
-        .done(),
-
-    campus: new Entity('campus', 'peeringdb_campus')
-        .number('org_id', { foreignKey: 'org' })
-        .string('org_name', { queryable: false })
-        .string('name')
-        .string('name_long', { nullable: true })
-        .string('notes', { queryable: false })
-        .string('aka', { nullable: true })
-        .string('website', { queryable: false })
-        .json('social_media')
-        .string('country')
-        .string('city')
-        .string('zipcode')
-        .string('state')
-        .string('logo', { queryable: false, nullable: true })
-        .done(),
-};
+export const ENTITIES = buildEntities();
 
 // ── Relationship derivation ──────────────────────────────────────────────────
 
