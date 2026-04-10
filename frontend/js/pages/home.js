@@ -121,6 +121,7 @@ async function loadGlobalStats() {
     const container = document.getElementById('global-stats');
     if (!container) return;
 
+    /** @type {Record<string, string>} */
     const statLabels = {
         netixlan: 'Connections to Exchanges',
         netfac: 'Connections to Facilities',

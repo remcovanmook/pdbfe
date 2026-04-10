@@ -15,14 +15,16 @@ import entitySchema from '../../extracted/entities.json' with { type: 'json' };
  * Lightweight entity registry for the sync worker.
  * Maps entity tag → { table, fields } for use by syncEntity().
  *
- * @type {Record<string, { table: string, fields: Array<{ name: string, type: string, nullable?: boolean }> }>}
+ * @type {Record<string, Pick<EntityMeta, 'table' | 'fields'>>}
  */
 export const ENTITIES = Object.fromEntries(
-    Object.entries(entitySchema.entities).map(([tag, entity]) => [
-        tag,
-        {
-            table: entity.table,
-            fields: entity.fields,
-        },
-    ])
+    Object.entries(/** @type {Record<string, any>} */ (entitySchema.entities)).map(
+        ([tag, entity]) => [
+            tag,
+            {
+                table: entity.table,
+                fields: /** @type {FieldDef[]} */ (entity.fields),
+            },
+        ]
+    )
 );

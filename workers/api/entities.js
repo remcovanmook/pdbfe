@@ -221,9 +221,11 @@ function buildEntities() {
     /** @type {Record<string, EntityMeta>} */
     const entities = {};
 
-    for (const [tag, schema] of Object.entries(entitySchema.entities)) {
+    for (const [tag, schema] of Object.entries(
+        /** @type {Record<string, any>} */ (entitySchema.entities)
+    )) {
         const entity = new Entity(tag, schema.table);
-        const overrides = entityOverrides[tag]?.fieldOverrides || {};
+        const overrides = /** @type {Record<string, any>} */ (entityOverrides)[tag]?.fieldOverrides || {};
 
         // Apply access control
         if (schema.restricted) {
@@ -261,8 +263,8 @@ function buildEntities() {
                     }
                 }
                 const method = TYPE_METHODS[field.type];
-                if (method && typeof entity[method] === 'function') {
-                    entity[method](field.name, opts);
+                if (method && typeof /** @type {any} */ (entity)[method] === 'function') {
+                    /** @type {any} */ (entity)[method](field.name, opts);
                 }
             }
         }

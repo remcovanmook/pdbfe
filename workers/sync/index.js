@@ -106,7 +106,7 @@ export async function ensureColumns(db, table, apiColumns) {
  *
  * @param {D1Database} db - D1 database binding.
  * @param {string} tag - Entity tag (e.g. "net").
- * @param {EntityMeta} meta - Entity metadata (table, columns).
+ * @param {Pick<EntityMeta, 'table' | 'fields'>} meta - Entity metadata (table, fields).
  * @param {string} apiKey - PeeringDB API key.
  * @returns {Promise<{ tag: string, updated: number, deleted: number, error: string }>}
  */
