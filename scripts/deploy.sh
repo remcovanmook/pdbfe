@@ -64,8 +64,18 @@ fi
 
 section "Validation"
 
+# Use PYTHON from env, .venv if available, or system python
+PYTHON="${PYTHON:-}"
+if [[ -z "$PYTHON" ]]; then
+    if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+        PYTHON="$REPO_ROOT/.venv/bin/python"
+    else
+        PYTHON="python"
+    fi
+fi
+
 # Check generated artifacts are fresh
-"$REPO_ROOT/.venv/bin/python" "$SCRIPT_DIR/parse_django_models.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/parse_django_models.py" 2>&1
 pass "Pipeline up to date"
 
 # Cross-check schema ↔ entities
@@ -152,31 +162,23 @@ for WORKER_DEF in "${WORKERS[@]}"; do
         continue
     fi
 
-    # Check if source has changed vs last deploy.
-    # Uses git to detect changes since last tag or deploy marker.
+    # Check if source has changed vs last deploy by comparing
+    # a hash of local source files against the stored deploy hash.
     if [[ -z "$FORCE" ]]; then
-        # Hash the worker source files to compare with deployed version
-        WORKER_NAME=$(grep '^name' "$CONFIG_PATH" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+        MAIN_FILE=$(grep '^main' "$CONFIG_PATH" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+        WORKER_DIR="$REPO_ROOT/workers/$(dirname "$MAIN_FILE")"
 
-        # Get the last deployed version ID from wrangler
-        DEPLOYED_ID=$(npx wrangler deployments list \
-            --config "$CONFIG_PATH" 2>/dev/null | \
-            grep -m1 "Version ID:" | awk '{print $3}' || echo "")
+        # Include worker source, shared core, generated schema, and package deps
+        LOCAL_HASH=$( {
+            find "$WORKER_DIR" "$REPO_ROOT/workers/core" -type f -name '*.js' | grep -v node_modules | sort
+            echo "$REPO_ROOT/extracted/entities.json"
+            echo "$REPO_ROOT/workers/package-lock.json"
+        } | xargs cat 2>/dev/null | shasum -a 256 | awk '{print $1}' )
 
-        if [[ -n "$DEPLOYED_ID" ]]; then
-            # Compute a hash of local source files for this worker
-            MAIN_FILE=$(grep '^main' "$CONFIG_PATH" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-            WORKER_DIR="$REPO_ROOT/workers/$(dirname "$MAIN_FILE")"
-
-            LOCAL_HASH=$(find "$WORKER_DIR" -name '*.js' -not -path '*/node_modules/*' | \
-                sort | xargs cat | shasum -a 256 | awk '{print $1}')
-
-            # Store/check hash (we use a simple marker file)
-            HASH_FILE="$REPO_ROOT/.wrangler/.deploy-hash-$LABEL"
-            if [[ -f "$HASH_FILE" ]] && [[ "$(cat "$HASH_FILE")" == "$LOCAL_HASH" ]]; then
-                pass "pdbfe-$LABEL unchanged, skipping"
-                continue
-            fi
+        HASH_FILE="$REPO_ROOT/.wrangler/.deploy-hash-$LABEL"
+        if [[ -f "$HASH_FILE" ]] && [[ "$(cat "$HASH_FILE")" == "$LOCAL_HASH" ]]; then
+            pass "pdbfe-$LABEL unchanged, skipping"
+            continue
         fi
     fi
 
@@ -186,10 +188,6 @@ for WORKER_DEF in "${WORKERS[@]}"; do
 
     # Store hash for future comparison
     if [[ -n "$REMOTE" ]]; then
-        MAIN_FILE=$(grep '^main' "$CONFIG_PATH" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-        WORKER_DIR="$REPO_ROOT/workers/$(dirname "$MAIN_FILE")"
-        LOCAL_HASH=$(find "$WORKER_DIR" -name '*.js' -not -path '*/node_modules/*' | \
-            sort | xargs cat | shasum -a 256 | awk '{print $1}')
         mkdir -p "$REPO_ROOT/.wrangler"
         echo "$LOCAL_HASH" > "$REPO_ROOT/.wrangler/.deploy-hash-$LABEL"
     fi
