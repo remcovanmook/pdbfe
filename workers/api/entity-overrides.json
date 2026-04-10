@@ -16,7 +16,8 @@
   },
   "netixlan": {
     "fieldOverrides": {
-      "net_id": { "resolve": { "name": "net_name" } }
+      "net_id": { "resolve": { "name": "net_name" } },
+      "ix_id": { "type": "number", "queryable": true }
     }
   },
   "ixfac": {

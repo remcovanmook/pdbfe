@@ -248,13 +248,19 @@ function buildEntities() {
 
             const fieldOverride = overrides[field.name] || {};
 
-            if (field.type === 'json') {
+            // Allow overrides to fix the type or queryable flag
+            const effectiveType = fieldOverride.type || field.type;
+            const effectiveQueryable = fieldOverride.queryable !== undefined
+                ? fieldOverride.queryable
+                : field.queryable;
+
+            if (effectiveType === 'json') {
                 // json() handles queryable:false and json:true internally
                 entity.json(field.name);
             } else {
                 /** @type {FieldOpts} */
                 const opts = {};
-                if (field.queryable === false) opts.queryable = false;
+                if (effectiveQueryable === false) opts.queryable = false;
                 if (field.nullable === true) opts.nullable = true;
                 if (field.foreignKey) {
                     opts.foreignKey = field.foreignKey;
@@ -262,7 +268,7 @@ function buildEntities() {
                         opts.resolve = fieldOverride.resolve;
                     }
                 }
-                const method = TYPE_METHODS[field.type];
+                const method = TYPE_METHODS[effectiveType];
                 if (method && typeof /** @type {any} */ (entity)[method] === 'function') {
                     /** @type {any} */ (entity)[method](field.name, opts);
                 }
