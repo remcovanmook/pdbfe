@@ -6,18 +6,34 @@
  * if another isolate at the same PoP already fetched the same key.
  *
  * The Cache API stores full Response objects keyed by URL. We construct
- * a synthetic URL from the normalised cache key. TTL is controlled by
- * the Cache-Control header on the stored Response.
+ * a synthetic URL from the normalised cache key, using the worker's own
+ * origin (derived from the first incoming request) as the namespace.
+ * TTL is controlled by the Cache-Control header on the stored Response.
  *
  * Flow: L1 (per-isolate) → L2 (per-PoP) → D1 (global)
  */
 
 /**
- * Base URL used to construct synthetic cache keys for the Cache API.
- * Never hits the network — only used as a namespace for cache lookups.
+ * Base URL prefix for synthetic cache keys. Derived from the first
+ * incoming request's origin so the worker doesn't hardcode its own
+ * domain. The /__l2/ path segment namespaces cache entries away from
+ * real request paths.
  * @type {string}
  */
-const CACHE_ORIGIN = 'https://api.pdbfe.dev/__l2/';
+let _cachePrefix = '';
+
+/**
+ * Initialises the L2 cache origin from an incoming request URL.
+ * Called once per isolate from the main fetch handler. Subsequent
+ * calls are no-ops.
+ *
+ * @param {string} requestUrl - Any incoming request URL (e.g. "https://api.pdbfe.dev/api/net").
+ */
+export function initL2(requestUrl) {
+    if (_cachePrefix) return;
+    const origin = new URL(requestUrl).origin; // ap-ok: once per isolate, guarded by _cachePrefix
+    _cachePrefix = origin + '/__l2/';
+}
 
 /**
  * Attempts to retrieve a cached payload from the per-PoP L2 cache.
@@ -27,9 +43,10 @@ const CACHE_ORIGIN = 'https://api.pdbfe.dev/__l2/';
  * @returns {Promise<Uint8Array|null>} Cached payload bytes, or null on miss.
  */
 export async function getL2(cacheKey) {
+    if (!_cachePrefix) return null;
     try {
         const cfCache = /** @type {any} */(caches).default;
-        const url = CACHE_ORIGIN + cacheKey;
+        const url = _cachePrefix + cacheKey;
         const response = await cfCache.match(url);
         if (!response) return null;
 
@@ -51,9 +68,10 @@ export async function getL2(cacheKey) {
  * @returns {Promise<void>}
  */
 export async function putL2(cacheKey, buf, ttlSeconds) {
+    if (!_cachePrefix) return;
     try {
         const cfCache = /** @type {any} */(caches).default;
-        const url = CACHE_ORIGIN + cacheKey;
+        const url = _cachePrefix + cacheKey;
         const response = new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
