@@ -66,7 +66,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated)
+                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated, ctx)
                 );
             }
         }
@@ -339,12 +339,13 @@ function countRows(payload) {
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
+ * @param {ExecutionContext} ctx - Worker execution context for L2 write-back.
  * @returns {Promise<void>}
  */
-async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated) {
+async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated, ctx) {
     try {
         await cachedQuery({ // ap-ok: background prefetch in waitUntil, not handler flow
-            cacheKey, cache, entityTag, ttlMs: LIST_TTL,
+            cacheKey, cache, entityTag, ttlMs: LIST_TTL, ctx,
             queryFn: () => executeListQuery(db, entity, filters, opts, authenticated)
         });
     } catch (err) {

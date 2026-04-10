@@ -86,7 +86,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
                 // Negative entries are not refreshed in SWR — they expire
                 // and get re-queried on the next request past NEGATIVE_TTL.
                 ctx.waitUntil(
-                    cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn })
+                    cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn, ctx })
                         .catch(err => {
                             console.error(`[SWR] Background refresh failed for ${cacheKey}:`, err);
                         })
@@ -103,6 +103,6 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
     }
 
     // ── CACHE MISS (blocking) ────────────────────────────────────────
-    const result = await cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn });
+    const result = await cachedQuery({ cacheKey, cache, entityTag, ttlMs, queryFn, ctx });
     return { buf: result.buf, tier: result.tier, hits: 0 };
 }

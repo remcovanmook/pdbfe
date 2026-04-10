@@ -13,6 +13,7 @@ import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFi
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
 import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
+import { initL2 } from './l2cache.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
@@ -55,6 +56,7 @@ function checkCachedError(_entityTag, _rawPath, _queryString, entity, filters, s
  * @returns {Promise<Response>} The HTTP response.
  */
 async function handleRequest(request, env, ctx) {
+    initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
     // Determine authentication status. Two paths:

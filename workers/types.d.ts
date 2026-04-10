@@ -328,7 +328,7 @@ interface FieldDef {
     /** Column name in D1 (e.g. "asn", "name"). */
     name: string;
     /** Data type for filter coercion and validation. */
-    type: 'string' | 'number' | 'boolean' | 'datetime';
+    type: 'string' | 'number' | 'boolean' | 'datetime' | 'json';
     /** Whether this field can be used in query filters. Defaults to true. */
     queryable?: boolean;
     /** Whether D1 stores this as a JSON TEXT column (needs json() wrapping). Defaults to false. */
@@ -370,6 +370,18 @@ interface EntityMeta {
     _restricted?: boolean;
     /** Mandatory filter applied to anonymous queries (e.g. {field: 'visible', value: 'Public'}). */
     _anonFilter?: { field: string; value: string };
+    /** Precompiled ordered column names. */
+    _columns?: string[];
+    /** Precompiled set of JSON-stored column names. */
+    _jsonColumns?: Set<string>;
+    /** Precompiled set of boolean-typed column names. */
+    _boolColumns?: Set<string>;
+    /** Precompiled set of nullable column names. */
+    _nullableColumns?: Set<string>;
+    /** Precompiled set of all field names. */
+    _fieldNames?: Set<string>;
+    /** Precompiled map of filterable field name → field type. */
+    _filterTypes?: Map<string, string>;
 }
 
 

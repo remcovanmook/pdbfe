@@ -28,7 +28,7 @@
  */
 
 import { LRUCache } from '../core/cache.js';
-import { ENTITY_TAGS } from './entities.js';
+import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
 
 const MB = 1024 * 1024;
 
@@ -65,63 +65,16 @@ export const NEGATIVE_TTL = 5 * 60 * 1000;
 
 
 /**
- * Cache tier configuration per entity. Sized by two factors:
- *
- *   slots:   query cardinality — how many unique filter combinations
- *            are expected. Entities queryable by ASN, net_id, ix_id,
- *            fac_id, and cross-entity filters get more slots.
- *
- *   maxSize: byte budget — based on measured response outliers.
- *            A single netixlan?asn=13335 (Cloudflare) is 157 KB.
- *            A single net?asn=13335&depth=2 is 200 KB.
- *            A single org?id=X&depth=2 can reach 314 KB.
- *
- * Entities not listed here use the light tier (128 slots, 1 MB).
- *
- * @type {Record<string, {slots: number, maxSize: number}>}
- */
-const TIERS = {
-    // High cardinality: ASN lookups, IX participant lists, cross-entity filters.
-    // depth=2 produces 200KB responses; filtered lists average 1-24KB.
-    net:      { slots: 1024, maxSize: 16 * MB },
-
-    // Highest cardinality: queried by asn, net_id, ix_id, ixlan_id.
-    // Big-ASN responses reach 157KB (Cloudflare: 411 IX connections).
-    netixlan: { slots: 2048, maxSize: 16 * MB },
-
-    // High cardinality: queried by net_id, fac_id. Big-carrier
-    // responses reach 37KB (167 facilities for a single network).
-    netfac:   { slots: 512,  maxSize: 8 * MB },
-
-    // Mid cardinality: cross-entity filter target (fac__state, fac__country).
-    // Filtered lists average 1-19KB; detail pages ~4KB with depth.
-    fac:      { slots: 512,  maxSize: 4 * MB },
-
-    // Mid cardinality: regional queries (region_continent), cross-entity
-    // filter target (ix__name). Filtered lists average 1-20KB.
-    ix:       { slots: 512,  maxSize: 4 * MB },
-
-    // Lower cardinality but depth=2 outlier: a single large org
-    // expands to 314KB with all nets/facs/IXs. Most responses <10KB.
-    org:      { slots: 512,  maxSize: 8 * MB },
-
-    // Low cardinality: queried by net_id + role. Responses are tiny
-    // (0.05-0.5KB). 1MB is enough for 2000+ entries.
-    poc:      { slots: 256,  maxSize: 1 * MB },
-};
-
-/** Light tier for low-traffic entities: ixlan, ixpfx, ixfac, carrier, carrierfac, campus. */
-const DEFAULT_TIER = { slots: 128, maxSize: 1 * MB };
-
-/**
  * Per-entity cache instances. Keyed by entity tag.
+ * Uses precompiled CACHE_TIERS for known entities and DEFAULT_TIER
+ * for any new entities not yet assigned a dedicated tier.
  * @type {Record<string, LocalCache>}
  */
 const caches = {};
 
 // Initialise one LRU cache per entity tag
 for (const tag of ENTITY_TAGS) {
-    const tier = TIERS[tag] || DEFAULT_TIER;
+    const tier = CACHE_TIERS[tag] || DEFAULT_TIER;
     caches[tag] = LRUCache(tier.slots, tier.maxSize, LIST_TTL);
 }
 

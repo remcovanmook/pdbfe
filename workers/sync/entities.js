@@ -1,30 +1,12 @@
 /**
- * @fileoverview Entity registry for the sync worker.
+ * @fileoverview Entity registry for the PeeringDB sync worker.
  *
- * Consumes extracted/entities.json directly instead of re-exporting
- * from the API worker. The sync worker only needs { table, fields }
- * per entity — it doesn't use the Entity class, relationships,
- * joinColumns, or query builder logic from api/entities.js.
+ * Re-exports entity metadata from the precompiled registry. The sync
+ * worker only needs the entity tags, table names, and field definitions
+ * for data import — it does not use relationships, field caching, or
+ * query validation logic.
  *
- * This keeps the sync worker fully decoupled from the API worker.
+ * Regenerate with: .venv/bin/python scripts/parse_django_models.py --force
  */
 
-import entitySchema from '../../extracted/entities.json' with { type: 'json' };
-
-/**
- * Lightweight entity registry for the sync worker.
- * Maps entity tag → { table, fields } for use by syncEntity().
- *
- * @type {Record<string, Pick<EntityMeta, 'table' | 'fields'>>}
- */
-export const ENTITIES = Object.fromEntries(
-    Object.entries(/** @type {Record<string, any>} */ (entitySchema.entities)).map(
-        ([tag, entity]) => [
-            tag,
-            {
-                table: entity.table,
-                fields: /** @type {FieldDef[]} */ (entity.fields),
-            },
-        ]
-    )
-);
+export { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
