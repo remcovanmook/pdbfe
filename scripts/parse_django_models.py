@@ -8,13 +8,17 @@ Combines two upstream inputs:
   2. PeeringDB OpenAPI api-schema.yaml (parsed via pyyaml)
      → queryable fields, restricted/anonFilter, API-injected fields
 
-Outputs to the extracted/ directory:
-  - extracted/entities.json   — consolidated entity definitions
-  - extracted/schema.sql      — D1 CREATE TABLE statements
-  - extracted/src/            — cached upstream source files (gitignored)
+Outputs:
+  - extracted/entities.json       — merged schema with version tracking
+  - extracted/entities-worker.js  — precompiled entity registry for API + sync workers
+  - extracted/schema.sql          — D1 CREATE TABLE statements
+  - frontend/js/entities.js       — ES module for browser frontend
+  - extracted/src/                — cached upstream source files (gitignored)
 
-Both entities.json and schema.sql are consumed by the API worker and
-frontend respectively.
+The worker module (entities-worker.js) runs the full entity builder pipeline
+at generation time — field building, relationship derivation, field lookup
+caching, cache tier configuration — so the workers import only static data
+with zero runtime derivation.
 
 Requires pyyaml (install via: .venv/bin/pip install pyyaml).
 
