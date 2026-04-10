@@ -175,7 +175,7 @@ class Entity {
 
 // ── Entity definitions ───────────────────────────────────────────────────────
 
-import entitySchema from './entity-schema.json' with { type: 'json' };
+import entitySchema from '../../extracted/entities.json' with { type: 'json' };
 import entityOverrides from './entity-overrides.json' with { type: 'json' };
 
 /**

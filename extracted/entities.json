@@ -667,7 +667,7 @@
         },
         {
           "name": "fac_count",
-          "type": "string",
+          "type": "number",
           "queryable": false
         },
         {

@@ -29,6 +29,9 @@ database/*.sqlite
 database/*.json
 *.sqlite
 
+# Extracted upstream sources (fetched by the pipeline)
+extracted/src/
+
 # Legacy
 debthin_workers/
 peeringdb/

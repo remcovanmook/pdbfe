@@ -15,7 +15,7 @@
 #   - JSON files in database/ (download with --fetch, or manually via curl)
 #
 # Usage:
-#   ./database/migrate-to-d1.sh [--remote] [--fetch]
+#   ./scripts/migrate-to-d1.sh [--remote] [--fetch]
 #
 # --remote   Push to production D1 (default: local dev database)
 # --fetch    Download fresh JSON dumps from public.peeringdb.com before importing.
@@ -28,13 +28,14 @@ export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-$(cd "$(dirname "$0")/.." && pwd)/w
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SCHEMA_SQL="$SCRIPT_DIR/schema.sql"
-FK_CLEANUP_SQL="$SCRIPT_DIR/fk_cleanup.sql"
-FK_VERIFY_SQL="$SCRIPT_DIR/fk_verify.sql"
+SCHEMA_SQL="$REPO_ROOT/extracted/schema.sql"
+FK_CLEANUP_SQL="$REPO_ROOT/database/fk_cleanup.sql"
+FK_VERIFY_SQL="$REPO_ROOT/database/fk_verify.sql"
 WRANGLER_CONFIG="$REPO_ROOT/workers/wrangler.toml"
 PUBLIC_BASE="https://public.peeringdb.com"
 JSON_TO_SQL="$SCRIPT_DIR/json_to_sql.py"
-LOCAL_DB="$SCRIPT_DIR/database.sqlite"
+DB_DIR="$REPO_ROOT/database"
+LOCAL_DB="$DB_DIR/database.sqlite"
 
 # Parse flags
 REMOTE_FLAG=""
@@ -88,7 +89,7 @@ if $DO_FETCH; then
         IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
         echo "    $TAG..."
         curl -sf --retry 3 --retry-delay 5 --max-time 120 \
-            "${PUBLIC_BASE}/${TAG}-0.json" -o "$SCRIPT_DIR/${TAG}.json"
+            "${PUBLIC_BASE}/${TAG}-0.json" -o "$DB_DIR/${TAG}.json"
     done
 fi
 
@@ -100,7 +101,7 @@ sqlite3 "$LOCAL_DB" < "$SCHEMA_SQL"
 
 for ENTITY_DEF in "${ENTITIES[@]}"; do
     IFS=':' read -r TAG TABLE <<< "$ENTITY_DEF"
-    JSON_FILE="$SCRIPT_DIR/${TAG}.json"
+    JSON_FILE="$DB_DIR/${TAG}.json"
 
     if [[ ! -f "$JSON_FILE" ]]; then
         echo "ERROR: $JSON_FILE not found. Run with --fetch or download manually."

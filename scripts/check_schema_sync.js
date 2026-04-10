@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import { ENTITIES } from '../workers/api/entities.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_FILE = path.resolve(__dirname, '../database/schema.sql');
+const SCHEMA_FILE = path.resolve(__dirname, '../extracted/schema.sql');
 
 if (!fs.existsSync(SCHEMA_FILE)) {
     console.error(`Schema file not found: ${SCHEMA_FILE}`);
