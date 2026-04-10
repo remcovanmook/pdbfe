@@ -1,7 +1,11 @@
 name = "pdbfe-api"
 main = "api/index.js"
 compatibility_date = "2026-03-18"
+workers_dev = true
 
+routes = [
+  { pattern = "api.<your-domain>/*", zone_name = "<your-domain>" }
+]
 [[d1_databases]]
 binding = "PDB"
 database_name = "peeringdb"

@@ -62,6 +62,7 @@ jobs:
             -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
             -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
             -e 's/<your-users-kv-namespace-id>/${{ secrets.KV_USERS_ID }}/' \
+            -e 's/<your-domain>/${{ secrets.API_DOMAIN }}/g' \
             workers/wrangler.toml.example > workers/wrangler.toml
 
           sed \
