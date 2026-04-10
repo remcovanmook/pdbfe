@@ -168,12 +168,12 @@ for WORKER_DEF in "${WORKERS[@]}"; do
         MAIN_FILE=$(grep '^main' "$CONFIG_PATH" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
         WORKER_DIR="$REPO_ROOT/workers/$(dirname "$MAIN_FILE")"
 
-        # Include shared code (core/) that all workers import
-        LOCAL_HASH=$(find "$WORKER_DIR" "$REPO_ROOT/workers/core" \
-            "$REPO_ROOT/extracted/entities.json" \
-            -name '*.js' -o -name '*.json' 2>/dev/null | \
-            grep -v node_modules | sort | xargs cat 2>/dev/null | \
-            shasum -a 256 | awk '{print $1}')
+        # Include worker source, shared core, generated schema, and package deps
+        LOCAL_HASH=$( {
+            find "$WORKER_DIR" "$REPO_ROOT/workers/core" -type f -name '*.js' | grep -v node_modules | sort
+            echo "$REPO_ROOT/extracted/entities.json"
+            echo "$REPO_ROOT/workers/package-lock.json"
+        } | xargs cat 2>/dev/null | shasum -a 256 | awk '{print $1}' )
 
         HASH_FILE="$REPO_ROOT/.wrangler/.deploy-hash-$LABEL"
         if [[ -f "$HASH_FILE" ]] && [[ "$(cat "$HASH_FILE")" == "$LOCAL_HASH" ]]; then

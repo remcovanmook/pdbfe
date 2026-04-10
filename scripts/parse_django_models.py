@@ -39,23 +39,24 @@ except ImportError:
 # ── Configuration ────────────────────────────────────────────────────────────
 
 DJANGO_PEERINGDB_REPO = "peeringdb/django-peeringdb"
-DJANGO_PEERINGDB_BRANCH = "main"
+DJANGO_PEERINGDB_BRANCHES = ["main", "master"]
 PEERINGDB_REPO = "peeringdb/peeringdb"
+PEERINGDB_BRANCHES = ["master", "main"]
 
-ABSTRACT_URL = (
-    f"https://raw.githubusercontent.com/{DJANGO_PEERINGDB_REPO}/"
-    f"{DJANGO_PEERINGDB_BRANCH}/src/django_peeringdb/models/abstract.py"
-)
-CONCRETE_URL = (
-    f"https://raw.githubusercontent.com/{DJANGO_PEERINGDB_REPO}/"
-    f"{DJANGO_PEERINGDB_BRANCH}/src/django_peeringdb/models/concrete.py"
-)
+
+def _raw_url(repo, branch, path):
+    """Build a raw.githubusercontent.com URL."""
+    return f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
+
+
+DJANGO_PEERINGDB_FILES = [
+    "src/django_peeringdb/models/abstract.py",
+    "src/django_peeringdb/models/concrete.py",
+]
 DJANGO_PEERINGDB_TAGS_URL = (
     f"https://api.github.com/repos/{DJANGO_PEERINGDB_REPO}/tags?per_page=1"
 )
-PEERINGDB_VERSION_URL = (
-    f"https://raw.githubusercontent.com/{PEERINGDB_REPO}/master/Ctl/VERSION"
-)
+PEERINGDB_VERSION_PATH = "Ctl/VERSION"
 API_SCHEMA_URL_TEMPLATE = "https://www.peeringdb.com/s/{version}/api-schema.yaml"
 
 # Django field type → our simplified type system
@@ -92,6 +93,26 @@ def fetch_url(url):
         return resp.read().decode("utf-8")
 
 
+def fetch_with_branch_fallback(repo, branches, path):
+    """
+    Fetch a file from a GitHub repo, trying each branch name in order.
+
+    This guards against upstream branch renames (e.g. master → main).
+    Returns the content string. Raises on failure if all branches 404.
+    """
+    last_err = None
+    for branch in branches:
+        url = _raw_url(repo, branch, path)
+        try:
+            return fetch_url(url)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                last_err = e
+                continue
+            raise
+    raise last_err or RuntimeError(f"Could not fetch {path} from {repo}")
+
+
 def fetch_latest_django_peeringdb_tag():
     """
     Fetch the latest release tag from the django-peeringdb GitHub repo.
@@ -108,9 +129,12 @@ def fetch_peeringdb_version():
     """
     Fetch the PeeringDB server version from the Ctl/VERSION file.
 
+    Tries each branch in PEERINGDB_BRANCHES to handle renames.
     Returns a version string (e.g. '2.77.1').
     """
-    return fetch_url(PEERINGDB_VERSION_URL).strip()
+    return fetch_with_branch_fallback(
+        PEERINGDB_REPO, PEERINGDB_BRANCHES, PEERINGDB_VERSION_PATH
+    ).strip()
 
 
 # ── AST parsing helpers ──────────────────────────────────────────────────────
@@ -862,13 +886,16 @@ def main():
             pass
 
     # ── Stage 1: Django models ──────────────────────────────────────────
-    print("Fetching abstract.py...")
-    abstract_source = fetch_url(ABSTRACT_URL)
-    (src_dir / "abstract.py").write_text(abstract_source)
+    for filename in DJANGO_PEERINGDB_FILES:
+        short = Path(filename).name
+        print(f"Fetching {short}...")
+        source = fetch_with_branch_fallback(
+            DJANGO_PEERINGDB_REPO, DJANGO_PEERINGDB_BRANCHES, filename
+        )
+        (src_dir / short).write_text(source)
 
-    print("Fetching concrete.py...")
-    concrete_source = fetch_url(CONCRETE_URL)
-    (src_dir / "concrete.py").write_text(concrete_source)
+    abstract_source = (src_dir / "abstract.py").read_text()
+    concrete_source = (src_dir / "concrete.py").read_text()
 
     print("Parsing Django models...")
     abstract_models = parse_abstract_models(abstract_source)
