@@ -132,3 +132,41 @@ jobs:
             echo "::error::Frontend bundle size ${TOTAL} exceeds 250 KB budget"
             exit 1
           fi
+
+  # ── Schema: generated artifact freshness ──────────────────────────
+  schema:
+    name: Schema Freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/package-lock.json
+
+      - name: Install Python dependencies
+        run: pip install pyyaml
+
+      - name: Install Node dependencies
+        run: npm ci
+        working-directory: workers
+
+      - name: Regenerate schema artifacts
+        run: python scripts/parse_django_models.py --force
+
+      - name: Validate entity ↔ schema sync
+        run: node scripts/check_schema_sync.js
+
+      - name: Check for drift
+        run: |
+          if ! git diff --exit-code extracted/ frontend/js/entities.js; then
+            echo "::error::Generated files are stale. Run: .venv/bin/python scripts/parse_django_models.py --force"
+            exit 1
+          fi
+
