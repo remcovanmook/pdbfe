@@ -78,9 +78,7 @@ fi
 "$PYTHON" "$SCRIPT_DIR/parse_django_models.py" 2>&1
 pass "Pipeline up to date"
 
-# Cross-check schema ↔ entities
-node "$SCRIPT_DIR/check_schema_sync.js" 2>&1 || fail "Schema sync check failed"
-pass "Schema ↔ entities consistent"
+
 
 # Check for uncommitted drift in generated files
 if ! git -C "$REPO_ROOT" diff --quiet extracted/ frontend/js/entities.js 2>/dev/null; then

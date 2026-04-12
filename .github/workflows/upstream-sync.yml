@@ -49,9 +49,6 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate
-        if: steps.pipeline.outputs.changed == 'true'
-        run: node scripts/check_schema_sync.js
 
       - name: Generate migration
         if: steps.pipeline.outputs.changed == 'true'

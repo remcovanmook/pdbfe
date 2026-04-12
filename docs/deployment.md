@@ -101,10 +101,10 @@ Download entity JSON from the PeeringDB API and populate D1:
 
 ```bash
 # Local dev database
-./database/migrate-to-d1.sh --fetch
+./scripts/migrate-to-d1.sh --fetch
 
 # Production D1
-./database/migrate-to-d1.sh --fetch --remote
+./scripts/migrate-to-d1.sh --fetch --remote
 ```
 
 This downloads all 13 entity types from the PeeringDB API, converts them to INSERT statements, and loads them into D1 in batches. The `--fetch` flag downloads fresh JSON; without it, the script expects pre-existing JSON files in `database/`.

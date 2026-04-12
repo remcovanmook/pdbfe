@@ -41,10 +41,17 @@ pdbfe/
 │   │   ├── router.js              # SPA router
 │   │   └── ...
 │   └── third_party/inter/         # Vendored Inter font (with LICENSE)
-├── database/                      # D1 population tooling
-│   ├── schema.sql                 # D1 schema definition
+├── scripts/                       # Build and ops tooling
 │   ├── migrate-to-d1.sh           # Cold start: fetch PeeringDB JSON → populate D1
 │   ├── json_to_sql.py             # JSON → INSERT statement converter
+│   ├── parse_django_models.py     # Upstream schema parser → entity definitions
+│   ├── deploy.sh                  # Pre-flight checks + deploy all workers
+│   └── lib/                       # Static input files for scripts
+├── extracted/                     # Generated pipeline output (do not edit)
+│   ├── schema.sql                 # D1 schema definition
+│   ├── entities.json              # Merged entity schema
+│   └── entities-worker.js         # Precompiled worker entity registry
+├── database/                      # D1 data and migrations
 │   └── migrations/                # Schema migrations
 ├── docs/                          # Documentation index
 └── .env.example                   # Environment variable template
@@ -85,7 +92,7 @@ See [docs/deployment.md](docs/deployment.md) for the full setup walkthrough.
 
 ```bash
 # Populate local D1 from PeeringDB API
-./database/migrate-to-d1.sh --fetch
+./scripts/migrate-to-d1.sh --fetch
 
 # Run API worker locally
 cd workers
