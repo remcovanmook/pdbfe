@@ -8,6 +8,16 @@
  * field lookups — are computed at generation time. Zero runtime derivation.
  */
 
+/**
+ * Upstream version metadata from the entity extraction pipeline.
+ * Used by the API worker for the X-App-Version response header.
+ * @type {{django_peeringdb: string, api_schema: string}}
+ */
+export const VERSIONS = Object.freeze({
+    django_peeringdb: "3.7.0",
+    api_schema: "2.77.1",
+});
+
 /** @type {EntityMeta} */
 const _entity_org = {
     tag: "org",

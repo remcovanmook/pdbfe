@@ -18,7 +18,7 @@ Shared code lives in `workers/core/` — the generic cache, HTTP, auth, and rout
 
 For a per-file breakdown, see [`index.md`](./index.md).
 
-**Entry point:** Every worker's `index.js` exports `wrapHandler(handler, serviceName)` (from `core/admin.js`). This is the function Cloudflare calls, the error boundary, and the source of `X-Timer`/`X-Served-By` headers. The env type flows end-to-end via a `@template E` generic — if your handler declares `@param {PdbApiEnv} env`, tsc enforces that at the module boundary.
+**Entry point:** Every worker's `index.js` exports `wrapHandler(handler, serviceName)` (from `core/admin.js`). This is the function Cloudflare calls, the error boundary, and the source of `X-Timer`/`X-Served-By`/`X-Auth-Status` headers. If the inner handler does not set `X-Auth-Status`, `wrapHandler` defaults it to `unauthenticated`. The env type flows end-to-end via a `@template E` generic — if your handler declares `@param {PdbApiEnv} env`, tsc enforces that at the module boundary.
 
 ---
 
@@ -120,21 +120,23 @@ We use `ctx.waitUntil()` for:
 
 Every API request follows this hierarchy:
 
-1. **Authentication:** Resolve API key or session token. Reject upstream PeeringDB keys with 403.
+1. **Authentication:** Resolve API key or session token. Reject upstream PeeringDB keys with 403. Select pre-cooked header sets (`H_API_AUTH`/`H_API_ANON`, `H_NOCACHE_AUTH`/`H_NOCACHE_ANON`) based on result.
 2. **Rate limiting:** Check per-isolate request count for this caller. Anonymous callers are keyed by source IP (IPv6 truncated to /64); authenticated callers by API key or session ID. Returns 429 if over quota (60/min anonymous, 600/min authenticated).
 3. **Routing:** Parse entity tag and optional ID from the path. Validate method, entity, filters.
 4. **Error cache:** Check L1 for a cached 400 for this query string. If found, return it.
-5. **SWR (Stale-While-Revalidate):** `withEdgeSWR()` handles the L1 read → serve-if-fresh → background-refresh-if-stale → block-on-miss flow:
+5. **If-Modified-Since shortcut:** Compare request `If-Modified-Since` against `getEntityVersion()` from `sync_state.js`. If the entity data hasn't changed, return 304 with `Last-Modified` — no cache or D1 work.
+6. **SWR (Stale-While-Revalidate):** `withEdgeSWR()` handles the L1 read → serve-if-fresh → background-refresh-if-stale → block-on-miss flow:
    - **L1 fresh** (<TTL): Serve instantly (<1ms). For negative entries (`EMPTY_ENVELOPE`), return 404.
    - **L1 stale** (TTL–2×TTL): Serve stale response immediately, fire `ctx.waitUntil()` to refresh in background.
    - **L1 miss / expired:** Fall through to `cachedQuery()` pipeline.
-6. **`cachedQuery()` pipeline** (pipeline.js):
+7. **`cachedQuery()` pipeline** (pipeline.js):
    - **Coalesce:** Is the same cache key in `cache.pending`? Await the in-flight promise.
    - **L2 PoP cache:** Is it in `caches.default`? Populate L1 from L2, return.
    - **D1:** Execute the handler's `queryFn` closure.
    - **Write-back:** Store result in L1 + L2 (fire-and-forget), return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
-7. **Background:** If paginated, `waitUntil` to pre-fetch next page.
+8. **Last-Modified:** Entity responses get a `Last-Modified` header derived from the per-entity `last_modified_at` in `_sync_meta`.
+9. **Background:** If paginated, `waitUntil` to pre-fetch next page.
 
 Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix) to prevent cache poisoning between authenticated and anonymous responses.
 
@@ -146,7 +148,7 @@ Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix
 
 ## 9. Testing
 
-### Unit tests (`npm test`) — 224 tests across 12 files
+### Unit tests (`npm test`) — 367 tests across 13 files
 
 Run locally with mock D1 bindings. No real database needed.
 
@@ -162,6 +164,7 @@ Run locally with mock D1 bindings. No real database needed.
 | `depth.test.js` | 11 | Depth 0/1/2 expansion: ID sets, full child objects, join columns |
 | `swr.test.js` | 10 | withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling |
 | `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
+| `headers.test.js` | 25 | HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers, pre-cooked auth header sets |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
 | `sync.test.js` | 4 | Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields |
 

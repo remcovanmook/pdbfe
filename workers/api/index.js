@@ -6,9 +6,9 @@
 
 import { parseURL, parseQueryFilters } from '../core/utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API, H_NOCACHE } from '../core/http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from '../core/http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ensureSyncFreshness, handleSyncStatusCached } from './sync_state.js';
+import { ensureSyncFreshness, getEntityVersion, handleSyncStatusCached } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
@@ -27,23 +27,39 @@ const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
  * field), and caching errors would allow attackers to evict legitimate
  * data entries by flooding with randomised invalid query parameters.
  *
- * @param {string} _entityTag - Entity tag (unused, kept for call-site compat).
- * @param {string} _rawPath - URL path (unused, kept for call-site compat).
- * @param {string} _queryString - Query string (unused, kept for call-site compat).
  * @param {EntityMeta} entity - Entity schema for validation.
  * @param {ParsedFilter[]} filters - Parsed filters to validate.
  * @param {string} sort - Sort parameter to validate.
+ * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Response|null} 400 Response on validation failure, or null if valid.
  */
-function checkCachedError(_entityTag, _rawPath, _queryString, entity, filters, sort) {
+function checkCachedError(entity, filters, sort, hNocache) {
     const queryError = validateQuery(entity, filters, sort);
     if (!queryError) return null;
 
     const errorJson = JSON.stringify({ error: queryError }) + '\n';
-    return new Response(errorJson, { status: 400, headers: H_NOCACHE });
+    return new Response(errorJson, { status: 400, headers: hNocache });
 }
 
-
+/**
+ * Adds Last-Modified header to an entity response using the per-entity
+ * version timestamp from _sync_meta. Clones into a new Response to
+ * work around frozen header objects.
+ *
+ * @param {Response} response - The original response.
+ * @param {number} epochMs - Last-modified epoch in milliseconds.
+ * @returns {Response} New response with Last-Modified header.
+ */
+function withLastModified(response, epochMs) {
+    if (!epochMs) return response;
+    const h = new Headers(response.headers);
+    h.set('Last-Modified', lastModifiedHeader(epochMs));
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: h
+    });
+}
 
 /**
  * Validates and routes incoming API requests.
@@ -86,6 +102,11 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
+    // Pre-select header sets based on auth state. These frozen objects
+    // are used for all Response construction — no per-request cloning.
+    const hApi = authenticated ? H_API_AUTH : H_API_ANON;
+    const hNocache = authenticated ? H_NOCACHE_AUTH : H_NOCACHE_ANON;
+
     // In-memory rate limiting — drop abusive callers before touching D1.
     // Authenticated users are keyed by their identity (API key or session ID)
     // so multiple keys behind the same NAT each get independent quotas.
@@ -94,10 +115,10 @@ async function handleRequest(request, env, ctx) {
     const rlKey = authIdentity || clientIP;
     if (isRateLimited(rlKey, authenticated)) {
         return authenticated
-            ? jsonError(429, 'Too Many Requests')
+            ? jsonError(429, 'Too Many Requests', hNocache)
             : jsonError(429,
                 'Too Many Requests. Sign in or use an API key ' +
-                'for higher rate limits — see /account');
+                'for higher rate limits \u2014 see /account', hNocache);
     }
 
     // Create a D1 session for read replication. "first-unconstrained" allows
@@ -164,7 +185,7 @@ async function handleRequest(request, env, ctx) {
         // api/{entity} — list endpoint
         const entityTag = apiPath;
         if (!ENTITY_TAGS.has(entityTag)) {
-            return jsonError(404, `Unknown entity: ${entityTag}`);
+            return jsonError(404, `Unknown entity: ${entityTag}`, hNocache);
         }
 
         const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
@@ -172,7 +193,7 @@ async function handleRequest(request, env, ctx) {
         // Reject nonsensical negative values. limit=-1 is the internal
         // sentinel for "not specified"; any lower value is invalid user input.
         if (limit < -1 || skip < 0) {
-            return jsonError(400, 'limit and skip must be non-negative integers');
+            return jsonError(400, 'limit and skip must be non-negative integers', hNocache);
         }
 
         const entity = ENTITIES[entityTag];
@@ -183,7 +204,21 @@ async function handleRequest(request, env, ctx) {
         // requests. The anonFilter (visible=Public) is only applied during
         // depth expansion (poc_set), not on the direct endpoint.
         if (!authenticated && entity._restricted) {
-            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: H_API });
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
+        }
+
+        // If-Modified-Since shortcut: if the entity data hasn't changed
+        // since the client's cached copy, return 304 without touching
+        // any cache or D1. Uses the per-entity last_modified_at from _sync_meta.
+        const entityVersionMs = getEntityVersion(entityTag) * 1000;
+        if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
+            return new Response(null, {
+                status: 304,
+                headers: {
+                    ...hApi,
+                    'Last-Modified': lastModifiedHeader(entityVersionMs),
+                }
+            });
         }
 
         resolveImplicitFilters(entity, filters);
@@ -195,10 +230,11 @@ async function handleRequest(request, env, ctx) {
         // first determines what the other group sees until TTL expires.
         const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
 
-        const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
+        const errorResponse = checkCachedError(entity, filters, sort, hNocache);
         if (errorResponse) return errorResponse;
 
-        return handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
+        const response = await handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
+        return withLastModified(response, entityVersionMs);
     }
 
     const entityTag = apiPath.slice(0, entitySlash);
@@ -208,18 +244,18 @@ async function handleRequest(request, env, ctx) {
     // Upstream rejects comma-separated ASNs with 400 — match that behaviour.
     if (entityTag === "as_set") {
         if (rest.includes(',')) {
-            return jsonError(400, "Invalid ASN");
+            return jsonError(400, "Invalid ASN", hNocache);
         }
         const asn = parseInt(rest, 10);
         if (isNaN(asn)) {
-            return jsonError(400, "Invalid ASN");
+            return jsonError(400, "Invalid ASN", hNocache);
         }
-        return handleAsSet(request, db, ctx, asn);
+        return handleAsSet(request, db, ctx, asn, authenticated);
     }
 
     // api/{entity}/{id} — detail endpoint
     if (!ENTITY_TAGS.has(entityTag)) {
-        return jsonError(404, `Unknown entity: ${entityTag}`);
+        return jsonError(404, `Unknown entity: ${entityTag}`, hNocache);
     }
 
     // Trailing slash is common in PeeringDB URLs — strip it.
@@ -230,13 +266,13 @@ async function handleRequest(request, env, ctx) {
     const idStr = rest.endsWith("/") ? rest.slice(0, -1) : rest;
     const id = parseInt(idStr, 10);
     if (isNaN(id) || id <= 0) {
-        return jsonError(400, `Invalid ID: ${idStr}`);
+        return jsonError(400, `Invalid ID: ${idStr}`, hNocache);
     }
 
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
 
     if (limit < -1 || skip < 0) {
-        return jsonError(400, 'limit and skip must be non-negative integers');
+        return jsonError(400, 'limit and skip must be non-negative integers', hNocache);
     }
 
     const entity = ENTITIES[entityTag];
@@ -244,17 +280,30 @@ async function handleRequest(request, env, ctx) {
 
     // Restricted entities (poc) are not accessible to anonymous callers.
     if (!authenticated && entity._restricted) {
-        return jsonError(404, `${entityTag} with id ${id} not found`);
+        return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+    }
+
+    // If-Modified-Since shortcut for detail endpoints.
+    const entityVersionMs = getEntityVersion(entityTag) * 1000;
+    if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
+        return new Response(null, {
+            status: 304,
+            headers: {
+                ...hApi,
+                'Last-Modified': lastModifiedHeader(entityVersionMs),
+            }
+        });
     }
 
     resolveImplicitFilters(entity, filters);
 
     const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
 
-    const errorResponse = checkCachedError(entityTag, cachePath, queryString, entity, filters, sort);
+    const errorResponse = checkCachedError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
 
-    return handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
+    const response = await handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
+    return withLastModified(response, entityVersionMs);
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

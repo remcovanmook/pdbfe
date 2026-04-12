@@ -21,7 +21,7 @@ import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, DETAIL_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
 import { cachedQuery, EMPTY_ENVELOPE } from '../pipeline.js';
-import { encoder, encodeJSON, serveJSON, jsonError } from '../../core/http.js';
+import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../../core/http.js';
 import { withEdgeSWR } from '../../core/swr.js';
 
 /**
@@ -46,7 +46,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
 
     // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
     if (opts.limit === 0 && opts.skip === 0) {
-        return handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString);
+        return handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString, authenticated);
     }
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
@@ -72,7 +72,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits });
+    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
 }
 
 /**
@@ -103,7 +103,7 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    return serveJSON(request, buf, { tier, hits });
+    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
 }
 
 /**
@@ -114,9 +114,10 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {number} asn - The ASN to look up.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for X-Auth-Status).
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleAsSet(request, db, ctx, asn) {
+export async function handleAsSet(request, db, ctx, asn, authenticated) {
     const cacheKey = `as_set/${asn}`;
     const { buf, tier, hits } = await withEdgeSWR(
         "as_set", cacheKey, ctx, DETAIL_TTL,
@@ -132,7 +133,7 @@ export async function handleAsSet(request, db, ctx, asn) {
 
     if (!buf) return jsonError(404, `No network found for ASN ${asn}`);
 
-    return serveJSON(request, buf, { tier, hits });
+    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
 }
 
 /**
@@ -234,10 +235,12 @@ async function executeDetailQuery(db, entity, filters, opts, id, authenticated) 
  * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
  * @param {string} rawPath - Original URL path.
  * @param {string} queryString - Original query string.
+ * @param {boolean} authenticated - Whether the caller is authenticated (for X-Auth-Status).
  * @returns {Promise<Response>} JSON response with count in meta.
  */
-async function handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString) {
+async function handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString, authenticated) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
+    const hApi = authenticated ? H_API_AUTH : H_API_ANON;
 
     // Try to derive count from a cached unfiltered list for this entity.
     // Only possible when there are no user-supplied filters and no since param.
@@ -257,7 +260,7 @@ async function handleCount(request, db, ctx, entity, entityTag, filters, opts, r
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
                 cache.add(cacheKey, buf, { entityTag }, Date.now());
-                return serveJSON(request, buf, { tier: 'L1', hits: 0 });
+                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi);
             }
         }
     }
@@ -273,7 +276,7 @@ async function handleCount(request, db, ctx, entity, entityTag, filters, opts, r
         }
     );
 
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits });
+    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi);
 }
 
 

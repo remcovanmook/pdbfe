@@ -8,9 +8,9 @@ The foundation layer. Contains generic, reusable components that have zero knowl
 - **`admin.js`**: Shared request validation and administrative endpoints. Exports:
   - `validateRequest(request, rawPath, methods)` — method, traversal, and scanner probe checks. Query strings are allowed (required for PeeringDB filters).
   - `routeAdminPath(rawPath, env, opts)` — robots.txt, health (with D1 probe), secret-gated `_cache_status`/`_cache_flush`
-  - `wrapHandler(handler, serviceName)` — error trapping, X-Timer, X-Served-By, and X-Isolate-ID headers
+  - `wrapHandler(handler, serviceName)` — error trapping, X-Timer, X-Served-By, X-Isolate-ID, and default X-Auth-Status headers
 - **`cache.js`**: TypedArray LRU cache. Uses contiguous `Uint32Array`, `Float64Array`, and `Int32Array` blocks for zero-GC eviction. Instantiated 14 times by `api/cache.js` (one per entity) and once by `api/ratelimit.js`.
-- **`http.js`**: JSON response serving, ETag generation (DJB2 hash), 304 Not Modified handling, precompiled frozen CORS headers, and `encodeJSON()` for single-serialisation-point caching.
+- **`http.js`**: JSON response serving, ETag generation (DJB2 hash), 304 Not Modified handling, precompiled frozen CORS headers, Last-Modified / If-Modified-Since helpers, and `encodeJSON()` for single-serialisation-point caching. Pre-cooked header sets (`H_API_AUTH`, `H_API_ANON`, `H_NOCACHE_AUTH`, `H_NOCACHE_ANON`) bake in `X-Auth-Status`, `Allow`, and `X-App-Version` to avoid per-request Response cloning. `serveJSON()` and `jsonError()` accept an optional base headers parameter to select the right set.
 - **`utils.js`**: Zero-allocation URL parsing (`parseURL`) and PeeringDB filter syntax parser (`parseQueryFilters`). Cache-key normalisation lives in `api/cache.js`.
 - **`auth.js`**: API key extraction from `Authorization: Api-Key` headers, SHA-256 key verification against USERS KV with per-isolate 5-minute cache, session ID extraction from Bearer tokens and cookies, and session resolution against SESSIONS KV.
 - **`swr.js`**: `withEdgeSWR()` — stale-while-revalidate wrapper that encapsulates L1 cache reads, synchronous field extraction (shared `_ret` contract), SWR background refresh via `ctx.waitUntil()`, and `cachedQuery()` fallback for misses. Used by all API handlers instead of raw cache + pipeline calls.
@@ -18,14 +18,14 @@ The foundation layer. Contains generic, reusable components that have zero knowl
 ## 2. API Domain (`workers/api/`)
 The primary traffic handler serving read-only PeeringDB API responses.
 
-- **`index.js`**: Top-level router. Resolves authentication (API key or session), applies per-isolate rate limiting, validates requests, dispatches to admin endpoints, CORS preflight, entity handlers, or returns 501 for write methods.
+- **`index.js`**: Top-level router. Resolves authentication (API key or session), selects pre-cooked header sets (`H_API_AUTH`/`H_API_ANON`) once per request, applies per-isolate rate limiting, validates requests, dispatches to admin endpoints, CORS preflight, entity handlers, or returns 501 for write methods. Entity routes check `If-Modified-Since` against `getEntityVersion()` for zero-cost 304 shortcuts before any cache or D1 work, and inject `Last-Modified` on responses.
 - **`pipeline.js`**: Shared D1 query pipeline used by all handlers. The `cachedQuery()` function encapsulates promise coalescing (stampede prevention), L2 cache lookups, D1 query execution, and L1+L2 cache write-back. Handlers pass a `queryFn` closure containing D1-specific logic. Also exports `EMPTY_ENVELOPE` (negative cache sentinel) and `isNegative()` (byte-level sentinel detection for L2 cache entries).
 - **`handlers/index.js`**: Route handlers for list, detail, AS set, count, and 501 Not Implemented. Two code paths based on depth:
   - **depth=0 (hot)**: `buildJsonQuery` → D1 returns pre-formatted JSON envelope string → `TextEncoder.encode()` → cache → serve. Zero V8 object allocations per row.
   - **depth>0 (cold)**: `buildRowQuery` → V8 row expansion → `JSON.stringify` → cache → serve.
   - **D1 query pipeline**: All D1 queries delegate to `cachedQuery()` (pipeline.js) which owns promise coalescing, L2 cache reads/writes, and negative caching.
   - **SWR pre-fetch**: Paginated next pages fetched in background via `ctx.waitUntil()`.
-- **`entities.js`**: Single source of truth for all 13 PeeringDB entity types. Maps API tags to D1 table names, column lists, allowed filter fields, and relationship definitions for depth expansion. Also exports `JSON_STORED_COLUMNS` — the set of columns that store JSON as TEXT in D1 — consumed by `query.js`, `depth.js`, and `handlers/index.js`.
+- **`entities.js`**: Single source of truth for all 13 PeeringDB entity types. Maps API tags to D1 table names, column lists, allowed filter fields, and relationship definitions for depth expansion. Re-exports `VERSIONS` (upstream `django_peeringdb` and `api_schema` versions) from the generated entity registry, used by `http.js` for the `X-App-Version` header. Also exports `JSON_STORED_COLUMNS` — the set of columns that store JSON as TEXT in D1 — consumed by `query.js`, `depth.js`, and `handlers/index.js`.
 - **`query.js`**: Dual query builder:
   - `buildJsonQuery()` — wraps SELECT in `json_group_array(json_object(...))` returning the full JSON envelope as a single D1 string. JSON-stored columns (`social_media`, `info_types`, `available_voltage_services`) are unwrapped with SQLite `json()` to prevent double-escaping.
   - `buildRowQuery()` — traditional SELECT returning individual rows (for depth>0 expansion).
@@ -54,6 +54,7 @@ Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (ev
 - **`tests/unit/pipeline.test.js`**: cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation
 - **`tests/unit/swr.test.js`**: withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling
 - **`tests/unit/visibility.test.js`**: Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering
+- **`tests/unit/headers.test.js`**: HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers (Allow, X-App-Version), pre-cooked auth header sets, Access-Control-Expose-Headers coverage
 - **`tests/unit/status.test.js`**: /status endpoint: sync metadata, Content-Type, CORS, static entity structure, buffer consistency
 - **`tests/unit/sync_state.test.js`**: sync_state.js: getEntityVersion, L2 version tagging contract
 - **`tests/unit/sync.test.js`**: Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields
