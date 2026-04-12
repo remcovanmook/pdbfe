@@ -1,8 +1,11 @@
 /**
  * @fileoverview HTTP response helpers for JSON API responses.
  * Handles ETag generation, 304 Not Modified, CORS preflight,
- * and raw Uint8Array forwarding for zero-serialisation cache hits.
+ * Last-Modified / If-Modified-Since, and raw Uint8Array forwarding
+ * for zero-serialisation cache hits.
  */
+
+import { VERSIONS } from '../api/entities.js';
 
 /**
  * Shared TextEncoder instance. Exported so modules that need to
@@ -28,7 +31,7 @@ export const H_CORS = Object.freeze({
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
-    "Access-Control-Expose-Headers": "X-Cache, X-Cache-Hits, X-Timer, X-Served-By, X-Isolate-ID, ETag"
+    "Access-Control-Expose-Headers": "X-Cache, X-Cache-Hits, X-Timer, X-Served-By, X-Isolate-ID, ETag, Allow, X-Auth-Status, X-App-Version, Last-Modified"
 });
 
 /**
@@ -38,8 +41,18 @@ export const H_CORS = Object.freeze({
 export const H_API = Object.freeze({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
+    "Allow": "GET, HEAD, OPTIONS",
+    "X-App-Version": VERSIONS.api_schema,
     ...H_CORS
 });
+
+/**
+ * Pre-cooked API header sets with X-Auth-Status baked in.
+ * Handlers select the right one based on caller authentication,
+ * avoiding per-request Response cloning.
+ */
+export const H_API_AUTH = Object.freeze({ ...H_API, "X-Auth-Status": "authenticated" });
+export const H_API_ANON = Object.freeze({ ...H_API, "X-Auth-Status": "unauthenticated" });
 
 /**
  * Headers for responses that should not be cached.
@@ -49,6 +62,12 @@ export const H_NOCACHE = Object.freeze({
     "Cache-Control": "no-store",
     ...H_CORS
 });
+
+/**
+ * Pre-cooked no-cache header sets with X-Auth-Status baked in.
+ */
+export const H_NOCACHE_AUTH = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "authenticated" });
+export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "unauthenticated" });
 
 /**
  * Precompiled CORS preflight response. Returned for all OPTIONS requests
@@ -122,16 +141,18 @@ export function encodeJSON(data) {
  * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
  * @param {{tier: import('../api/pipeline.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
+ * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
+ *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
  * @returns {Response} The HTTP response ready for the client.
  */
-export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }) {
+export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }, baseHeaders = H_API) {
     const etag = generateETag(buf);
 
     if (isNotModified(request.headers, etag)) {
         return new Response(null, {
             status: 304,
             headers: {
-                ...H_API,
+                ...baseHeaders,
                 "ETag": etag,
                 "X-Cache": meta.tier,
                 "X-Cache-Hits": meta.hits.toString()
@@ -142,7 +163,7 @@ export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }) {
     return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
         status: 200,
         headers: {
-            ...H_API,
+            ...baseHeaders,
             "ETag": etag,
             "Content-Length": buf.byteLength.toString(),
             "X-Cache": meta.tier,
@@ -156,11 +177,51 @@ export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }) {
  *
  * @param {number} status - HTTP status code.
  * @param {string} message - Error message for the response body.
+ * @param {Record<string, string>} [headers] - Header set. Defaults to H_NOCACHE;
+ *        pass H_NOCACHE_AUTH or H_NOCACHE_ANON to bake in X-Auth-Status.
  * @returns {Response} The error response.
  */
-export function jsonError(status, message) {
+export function jsonError(status, message, headers = H_NOCACHE) {
     return new Response(
         JSON.stringify({ error: message }) + "\n",
-        { status, headers: H_NOCACHE }
+        { status, headers }
     );
+}
+
+// ── Last-Modified / If-Modified-Since helpers ────────────────────────────────
+
+/**
+ * Converts an epoch-millisecond timestamp to an HTTP-date string
+ * suitable for the Last-Modified response header.
+ *
+ * Format: "Thu, 01 Jan 2026 00:00:00 GMT" (RFC 7231 §7.1.1.1).
+ *
+ * @param {number} epochMs - Timestamp in milliseconds since Unix epoch.
+ * @returns {string} HTTP-date string.
+ */
+export function lastModifiedHeader(epochMs) {
+    return new Date(epochMs).toUTCString();
+}
+
+/**
+ * Checks whether the client's If-Modified-Since header indicates
+ * the response has not changed. Compares the request header timestamp
+ * against the data's last-modified epoch.
+ *
+ * Returns true when the client already has a fresh copy and a 304
+ * can be returned without touching any cache or D1.
+ *
+ * @param {Headers} requestHeaders - Inbound HTTP request headers.
+ * @param {number} epochMs - The data's last-modified timestamp
+ *        in milliseconds since Unix epoch.
+ * @returns {boolean} True if the client cache is still valid.
+ */
+export function isNotModifiedSince(requestHeaders, epochMs) {
+    const ims = requestHeaders.get('if-modified-since');
+    if (!ims) return false;
+    const imsTime = Date.parse(ims);
+    if (isNaN(imsTime)) return false;
+    // HTTP dates have 1-second resolution. The data is unchanged if
+    // the IMS timestamp is >= the last-modified epoch (truncated to seconds).
+    return imsTime >= Math.floor(epochMs / 1000) * 1000;
 }

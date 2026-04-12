@@ -31,7 +31,12 @@ let _cachePrefix = '';
  */
 export function initL2(requestUrl) {
     if (_cachePrefix) return;
-    const origin = new URL(requestUrl).origin; // ap-ok: once per isolate, guarded by _cachePrefix
+    // Extract origin without constructing a URL object.
+    // requestUrl is always "https://host/path..." — the origin is
+    // everything before the first slash after "://".
+    const schemeEnd = requestUrl.indexOf('://');
+    const slashAfterHost = requestUrl.indexOf('/', schemeEnd + 3);
+    const origin = slashAfterHost === -1 ? requestUrl : requestUrl.slice(0, slashAfterHost);
     _cachePrefix = origin + '/__l2/';
 }
 

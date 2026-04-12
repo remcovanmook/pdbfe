@@ -1089,7 +1089,7 @@ def _emit_js_relationship(rel):
     return "{ " + ", ".join(parts) + " }"
 
 
-def generate_worker_entities_js(merged_entities, overrides):
+def generate_worker_entities_js(merged_entities, overrides, versions=None):
     """
     Generate a precompiled ES module for the API and sync workers.
 
@@ -1098,6 +1098,9 @@ def generate_worker_entities_js(merged_entities, overrides):
     the results as static JS object literals. The workers import this
     module directly — no JSON.parse, no Entity class, no runtime
     derivation.
+
+    When versions is provided (dict with django_peeringdb and api_schema
+    keys), emits a frozen VERSIONS export for use in HTTP headers.
 
     Returns the JS source string.
     """
@@ -1115,6 +1118,19 @@ def generate_worker_entities_js(merged_entities, overrides):
         " */",
         "",
     ]
+
+    # Version metadata — used by the API worker for X-App-Version header
+    if versions:
+        lines.append("/**")
+        lines.append(" * Upstream version metadata from the entity extraction pipeline.")
+        lines.append(" * Used by the API worker for the X-App-Version response header.")
+        lines.append(" * @type {{django_peeringdb: string, api_schema: string}}")
+        lines.append(" */")
+        lines.append(f"export const VERSIONS = Object.freeze({{")
+        lines.append(f"    django_peeringdb: {json.dumps(versions.get('django_peeringdb', 'unknown'))},")
+        lines.append(f"    api_schema: {json.dumps(versions.get('api_schema', 'unknown'))},")
+        lines.append(f"}});")
+        lines.append("")
 
     # Emit each entity as a const
     entity_names = []
@@ -1337,7 +1353,11 @@ def main():
     if overrides_path.exists():
         overrides = json.loads(overrides_path.read_text())
 
-    worker_js = generate_worker_entities_js(merged, overrides)
+    versions = {
+        "django_peeringdb": django_peeringdb_version,
+        "api_schema": peeringdb_version,
+    }
+    worker_js = generate_worker_entities_js(merged, overrides, versions)
     worker_js_path = extracted_dir / "entities-worker.js"
     worker_js_path.write_text(worker_js)
     print(f"Wrote {worker_js_path}")

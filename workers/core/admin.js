@@ -250,6 +250,13 @@ export function wrapHandler(handler, serviceName) {
             h.set("X-Served-By", `cache-${request.cf?.colo ?? "UNKNOWN"}-${serviceName}`);
             h.set("X-Isolate-ID", ISOLATE_ID);
 
+            // Default X-Auth-Status for responses produced before auth resolution
+            // (405, preflight, path traversal). The main handler sets it after
+            // resolving auth; wrapHandler ensures it's always present.
+            if (!h.has("X-Auth-Status")) {
+                h.set("X-Auth-Status", "unauthenticated");
+            }
+
             return new Response(response.body, {
                 status: response.status,
                 statusText: response.statusText,

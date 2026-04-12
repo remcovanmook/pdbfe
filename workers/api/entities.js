@@ -19,6 +19,7 @@ export {
     ENTITY_TAGS,
     CACHE_TIERS,
     DEFAULT_TIER,
+    VERSIONS,
 } from '../../extracted/entities-worker.js';
 
 import { ENTITIES } from '../../extracted/entities-worker.js';
