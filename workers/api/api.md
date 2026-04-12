@@ -42,11 +42,11 @@ api/index.js (router)
 │   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
 │   ├── api/depth.js      (expandDepth)
 │   ├── api/cache.js      (getEntityCache, normaliseCacheKey, TTL constants)
-│   └── api/entities.js   (ENTITIES, ENTITY_TAGS, JSON_STORED_COLUMNS)
+│   └── api/entities.js   (ENTITIES, ENTITY_TAGS, getFilterType, validateQuery)
 └── core/cache.js         (LRUCache — instantiated 14× by api/cache.js + 1× by api/ratelimit.js)
 ```
 
-Handlers live in `api/handlers/` for consistency with the debthin worker set.
+Handlers live in `api/handlers/` for separation of routing and query logic.
 
 ## Caching Strategy
 
@@ -79,7 +79,7 @@ All three handlers coalesce concurrent cache-miss requests via the `cache.pendin
 
 ### SWR Pre-fetch
 
-When a paginated list response fills its limit, `handleList` fires a background D1 query for the next page via `ctx.waitUntil()`. The result is encoded and stored in the entity's LRU cache using the `pending` map (same SWR pattern as debthin's `r2Get`). Sequential page requests hit the cache.
+When a paginated list response fills its limit, `handleList` fires a background D1 query for the next page via `ctx.waitUntil()`. The result is encoded and stored in the entity's LRU cache using the `pending` map (same coalescing pattern as cache misses). Sequential page requests hit the cache.
 
 ### Cache Keys
 
@@ -158,10 +158,10 @@ Both authentication checks complete before rate limiting, so authenticated vs an
 
 ### Restricted Entities
 
-Some PeeringDB entities contain sensitive data gated behind authentication upstream. The entity registry supports this via two builder methods:
+Some PeeringDB entities contain sensitive data gated behind authentication upstream. The precompiled entity registry marks these with two properties:
 
-- `.restricted()` — marks the entity as requiring auth for full access
-- `.anonFilter('visible', 'Public')` — defines a mandatory filter for unauthenticated callers
+- `_restricted: true` — marks the entity as requiring auth for full access
+- `_anonFilter: { field: 'visible', value: 'Public' }` — defines a mandatory filter for unauthenticated callers
 
 Currently only `poc` (network contacts) is restricted. Upstream PeeringDB uses a `visible` field with three levels: `Public` (anyone), `Users` (authenticated), `Private` (org-only).
 
@@ -184,6 +184,4 @@ Restricted entities have two layers of access control:
 
 Upstream PeeringDB represents absent values as `null`, but D1 stores them as empty strings after bulk import. The query builder applies `NULLIF(column, '')` at query time for all columns marked `nullable: true` in the entity registry, restoring API parity without requiring a D1 rebuild.
 
-## Entity Registry
-
-`api/entities.js` is the single source of truth. Adding a new entity type means adding an entry there — the router, query builder, depth expander, and cache all consume it. Entity-level access control metadata (`.restricted()`, `.anonFilter()`) is also defined here.
+Entity metadata is precompiled by `parse_django_models.py` from upstream Django models and the OpenAPI spec. `api/entities.js` re-exports from the generated `extracted/entities-worker.js` module and adds field accessor helpers. Adding a new entity upstream is handled automatically by the pipeline — the router, query builder, depth expander, and cache all consume the registry. Access control metadata (`_restricted`, `_anonFilter`) is derived from the upstream `visible` enum.

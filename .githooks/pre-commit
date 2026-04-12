@@ -43,10 +43,7 @@ cd ..
 node scripts/lint_xss.js 2>&1 || fail "XSS linting failed"
 pass "XSS linting"
 
-# ── Schema sync ──────────────────────────────────────────────────────
 
-node scripts/check_schema_sync.js 2>&1 || fail "schema sync check failed"
-pass "schema sync"
 
 # ── Frontend ─────────────────────────────────────────────────────────
 

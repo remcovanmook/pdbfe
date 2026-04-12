@@ -148,7 +148,7 @@ Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix
 
 ## 9. Testing
 
-### Unit tests (`npm test`) — 367 tests across 13 files
+### Unit tests (`npm test`) — 264 tests across 15 files
 
 Run locally with mock D1 bindings. No real database needed.
 
@@ -157,14 +157,16 @@ Run locally with mock D1 bindings. No real database needed.
 | `query.test.js` | 72 | Query builder: filters, operators, JOINs, cross-entity subqueries, COLLATE NOCASE, duplicate params, field validation |
 | `oauth.test.js` | 29 | OAuth flow: start redirect, callback token exchange, logout, error handling |
 | `cache.test.js` | 26 | LRU cache: eviction, TTL expiry, byte limits, stats, purge, shared return object |
+| `headers.test.js` | 24 | HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers, pre-cooked auth header sets |
 | `ratelimit.test.js` | 22 | Rate limiter: per-IP/per-identity limits, window expiry, IPv6 /64 normalisation, stats, purge |
 | `pipeline.test.js` | 16 | cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation |
 | `auth.test.js` | 14 | API key extraction/verification (SHA-256), session resolution, key hashing |
-| `account.test.js` | 11 | API key CRUD: create, list, delete, validation |
+| `antipatterns.test.js` | 11 | Anti-pattern detection: validates code samples from ANTI_PATTERNS.md |
 | `depth.test.js` | 11 | Depth 0/1/2 expansion: ID sets, full child objects, join columns |
+| `account.test.js` | 11 | API key CRUD: create, list, delete, validation |
 | `swr.test.js` | 10 | withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling |
 | `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
-| `headers.test.js` | 25 | HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers, pre-cooked auth header sets |
+| `sync_state.test.js` | 5 | sync_state.js: getEntityVersion, L2 version tagging, ensureSyncFreshness |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
 | `sync.test.js` | 4 | Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields |
 
