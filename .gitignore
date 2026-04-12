@@ -38,5 +38,5 @@ peeringdb/
 
 # OS
 .DS_Store
-.agent/workflows/sandbox-limitations.md
+.agent/
 scripts/__pycache__/

@@ -1348,7 +1348,7 @@ def main():
     print(f"Wrote {frontend_js_path}")
 
     # ── Output: entities-worker.js (precompiled worker registry) ─────────
-    overrides_path = project_root / "workers" / "api" / "entity-overrides.json"
+    overrides_path = project_root / "scripts" / "lib" / "entity-overrides.json"
     overrides = {}
     if overrides_path.exists():
         overrides = json.loads(overrides_path.read_text())
