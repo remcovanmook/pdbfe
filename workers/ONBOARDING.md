@@ -211,7 +211,7 @@ cp wrangler-sync.toml.example wrangler-sync.toml
 cp wrangler-auth.toml.example wrangler-auth.toml
 
 # 2. Populate local D1
-cd ../database && ./migrate-to-d1.sh --fetch && cd ../workers
+cd .. && ./scripts/migrate-to-d1.sh --fetch && cd workers
 
 # 3. Run API worker locally (XDG overrides keep wrangler state in-tree)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev
