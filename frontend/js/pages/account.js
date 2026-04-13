@@ -1,17 +1,72 @@
-/**
- * @fileoverview Account page — user profile and API key management.
- *
- * Displays the authenticated user's profile information and provides
- * a CRUD interface for managing API keys. All data is fetched from
- * the pdbfe-auth worker's /account/* endpoints.
- *
- * Requires an active session (redirects to homepage if not logged in).
- */
-
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
-import { escapeHTML, formatLocaleDate as formatDate, createLink } from '../render.js';
+import { formatLocaleDate as formatDate, createLink, createField, createFieldGroup } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
+
+// ── DOM helpers ─────────────────────────────────────────────────────
+
+/**
+ * Creates an element with optional className, style, and text.
+ *
+ * @param {string} tag - HTML tag name.
+ * @param {Object} [opts] - Element options.
+ * @param {string} [opts.className] - CSS class name.
+ * @param {string} [opts.style] - Inline CSS text.
+ * @param {string} [opts.id] - Element ID.
+ * @param {string} [opts.text] - textContent.
+ * @returns {HTMLElement}
+ */
+function el(tag, opts = {}) {
+    const node = document.createElement(tag);
+    if (opts.className) node.className = opts.className;
+    if (opts.style) node.style.cssText = opts.style;
+    if (opts.id) node.id = opts.id;
+    if (opts.text) node.textContent = opts.text;
+    return node;
+}
+
+/**
+ * Creates a card element with header title and body content.
+ *
+ * @param {string} title - Card header title.
+ * @param {HTMLElement|DocumentFragment} body - Card body content.
+ * @param {HTMLElement[]} [headerExtras] - Extra elements for the header (badges, buttons).
+ * @returns {HTMLDivElement}
+ */
+function card(title, body, headerExtras = []) {
+    const wrapper = el('div', { className: 'card' });
+    const header = el('div', { className: 'card__header' });
+    header.appendChild(el('span', { className: 'card__title', text: title }));
+    for (const extra of headerExtras) header.appendChild(extra);
+    wrapper.appendChild(header);
+    const cardBody = el('div', { className: 'card__body' });
+    cardBody.appendChild(body);
+    wrapper.appendChild(cardBody);
+    return wrapper;
+}
+
+/**
+ * Creates a modal overlay with a card inside.
+ *
+ * @param {string} id - Modal element ID.
+ * @param {string} title - Modal card title.
+ * @param {HTMLElement} body - Modal body content.
+ * @returns {HTMLDivElement}
+ */
+function modal(id, title, body) {
+    const overlay = el('div', { id, className: 'key-modal-overlay', style: 'display:none' });
+    const modalCard = el('div', { className: 'card key-modal' });
+    const header = el('div', { className: 'card__header' });
+    header.appendChild(el('span', { className: 'card__title', id: `${id}-title`, text: title }));
+    modalCard.appendChild(header);
+    const cardBody = el('div', { className: 'card__body', id: `${id}-body` });
+    cardBody.appendChild(body);
+    modalCard.appendChild(cardBody);
+    overlay.appendChild(modalCard);
+    return overlay;
+}
+
+// ── Page renderer ───────────────────────────────────────────────────
 
 /**
  * Renders the /account page into the app container.
@@ -24,141 +79,151 @@ export async function renderAccount(_params) {
     document.title = 'Account — PeeringDB';
 
     if (!isAuthenticated()) {
-        container.innerHTML = `
-            <div class="card" style="max-width:480px;margin:var(--space-2xl) auto;text-align:center">
-                <div class="card__body">
-                    <p style="color:var(--text-secondary);margin-bottom:var(--space-md)">${t('Sign in to access your account.')}</p>
-                    <a href="${AUTH_ORIGIN}/auth/login" class="auth-link">${t('Sign in with PeeringDB')}</a>
-                </div>
-            </div>
-        `;
+        const card_ = el('div', { className: 'card', style: 'max-width:480px;margin:var(--space-2xl) auto;text-align:center' });
+        const body = el('div', { className: 'card__body' });
+        body.appendChild(el('p', { style: 'color:var(--text-secondary);margin-bottom:var(--space-md)', text: t('Sign in to access your account.') }));
+        const loginLink = document.createElement('a');
+        loginLink.href = `${AUTH_ORIGIN}/auth/login`;
+        loginLink.className = 'auth-link';
+        loginLink.textContent = t('Sign in with PeeringDB');
+        body.appendChild(loginLink);
+        card_.appendChild(body);
+        container.replaceChildren(card_);
         return;
     }
 
     const sid = getSessionId();
     const user = getUser();
 
-    container.innerHTML = `
-        <h1 class="detail-header__title" style="margin-bottom:var(--space-xl)">${t('Account')}</h1>
+    const frag = document.createDocumentFragment();
 
-        <div class="detail-layout">
-            <div class="detail-sidebar">
-                <div class="card">
-                    <div class="card__header">
-                        <span class="card__title">${t('Profile')}</span>
-                    </div>
-                    <div class="card__body">
-                        <div class="info-group" id="profile-info">
-                            <div class="info-field">
-                                <span class="info-field__label">${t('Name')}</span>
-                                <span class="info-field__value">${escapeHTML(user?.name || '')}</span>
-                            </div>
-                            <div class="info-field">
-                                <span class="info-field__label">${t('Email')}</span>
-                                <span class="info-field__value">${escapeHTML(user?.email || '—')}</span>
-                            </div>
-                            <div class="info-field">
-                                <span class="info-field__label">${t('User ID')}</span>
-                                <span class="info-field__value info-field__value--muted">${/* safe — numeric id */ user?.id || '—'}</span>
-                            </div>
-                            <div class="info-field">
-                                <span class="info-field__label">${t('Language')}</span>
-                                <span class="info-field__value">
-                                    <select id="account-lang-select" class="site-footer__lang-select">
-                                        <option value="en"${!getCurrentLang() || getCurrentLang() === 'en' ? ' selected' : ''}>English</option>
-                                        ${Object.entries(LANGUAGES).map(([code, name]) =>
-                                            `<option value="${code}"${getCurrentLang() === code ? ' selected' : ''}>${escapeHTML(name)}</option>`
-                                        ).join('')}
-                                    </select>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    // ── Page heading ─────────────────────────────────────────────
+    frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-            </div>
-            <div id="networks-container"></div>
+    const layout = el('div', { className: 'detail-layout' });
 
-            <div class="detail-main">
-                <div class="card">
-                    <div class="card__header">
-                        <span class="card__title">${t('API Keys')}</span>
-                        <button id="btn-create-key" class="auth-link" style="cursor:pointer;background:none">+ ${t('New Key')}</button>
-                    </div>
-                    <div class="card__body" id="keys-container">
-                        <p style="color:var(--text-muted);font-size:0.8125rem">${t('Loading')}...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+    // ── Sidebar: Profile card ────────────────────────────────────
+    const sidebar = el('div', { className: 'detail-sidebar' });
 
-        <div id="key-modal" style="display:none" class="key-modal-overlay">
-            <div class="card key-modal">
-                <div class="card__header">
-                    <span class="card__title" id="key-modal-title">${t('Create API Key')}</span>
-                </div>
-                <div class="card__body" id="key-modal-body">
-                    <div id="key-modal-create">
-                        <label style="display:block;color:var(--text-secondary);font-size:0.8125rem;margin-bottom:var(--space-xs)">${t('Label')}</label>
-                        <input type="text" id="key-label-input" class="key-label-input"
-                               placeholder='e.g. "curl scripts"' maxlength="64" autofocus>
-                        <div style="display:flex;gap:var(--space-sm);margin-top:var(--space-md)">
-                            <button id="btn-do-create" class="auth-link" style="cursor:pointer;background:none;flex:1">${t('Create')}</button>
-                            <button id="btn-cancel-create" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">${t('Cancel')}</button>
-                        </div>
-                    </div>
-                    <div id="key-modal-result" style="display:none">
-                        <p style="color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)">
-                            ${t('Copy this key now — it will not be shown again.')}
-                        </p>
-                        <code id="key-modal-value" class="key-display"></code>
-                        <button id="btn-copy-key" class="auth-link" style="cursor:pointer;margin-top:var(--space-md);display:block;background:none;width:100%">
-                            ${t('Copy to clipboard')}
-                        </button>
-                        <button id="btn-close-modal" class="auth-link" style="cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%">
-                            ${t('Close')}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+    const profileGroup = el('div', { className: 'info-group', id: 'profile-info' });
 
-        <div id="revoke-modal" style="display:none" class="key-modal-overlay">
-            <div class="card key-modal">
-                <div class="card__header">
-                    <span class="card__title">${t('Revoke API Key')}</span>
-                </div>
-                <div class="card__body">
-                    <p style="color:var(--status-error);font-size:0.8125rem;margin-bottom:var(--space-md)">
-                        ${t('This will permanently revoke the key. Any client using it will lose access.')}
-                    </p>
-                    <p id="revoke-key-info" style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)"></p>
-                    <div style="display:flex;gap:var(--space-sm)">
-                        <button id="btn-do-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)">${t('Revoke')}</button>
-                        <button id="btn-cancel-revoke" class="auth-link" style="cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)">${t('Cancel')}</button>
-                    </div>
-                    <p id="revoke-error" class="modal-error" style="display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)"></p>
-                </div>
-            </div>
-        </div>
-    `;
+    // Name field
+    const nameField = el('div', { className: 'info-field' });
+    nameField.appendChild(el('span', { className: 'info-field__label', text: t('Name') }));
+    nameField.appendChild(el('span', { className: 'info-field__value', text: user?.name || '' }));
+    profileGroup.appendChild(nameField);
+
+    // Email field
+    const emailField = el('div', { className: 'info-field' });
+    emailField.appendChild(el('span', { className: 'info-field__label', text: t('Email') }));
+    emailField.appendChild(el('span', { className: 'info-field__value', text: user?.email || '—' }));
+    profileGroup.appendChild(emailField);
+
+    // User ID field
+    const idField = el('div', { className: 'info-field' });
+    idField.appendChild(el('span', { className: 'info-field__label', text: t('User ID') }));
+    const idValue = el('span', { className: 'info-field__value info-field__value--muted', text: String(user?.id || '—') });
+    idField.appendChild(idValue);
+    profileGroup.appendChild(idField);
+
+    // Language field with <select>
+    const langField = el('div', { className: 'info-field' });
+    langField.appendChild(el('span', { className: 'info-field__label', text: t('Language') }));
+    const langValue = el('span', { className: 'info-field__value' });
+    const langSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    langSelect.id = 'account-lang-select';
+    langSelect.className = 'site-footer__lang-select';
+
+    const enOpt = document.createElement('option');
+    enOpt.value = 'en';
+    enOpt.textContent = 'English';
+    if (!getCurrentLang() || getCurrentLang() === 'en') enOpt.selected = true;
+    langSelect.appendChild(enOpt);
+
+    for (const [code, name] of Object.entries(LANGUAGES)) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = /** @type {string} */ (name);
+        if (getCurrentLang() === code) opt.selected = true;
+        langSelect.appendChild(opt);
+    }
+    langValue.appendChild(langSelect);
+    langField.appendChild(langValue);
+    profileGroup.appendChild(langField);
+
+    const profileCard = card(t('Profile'), profileGroup);
+    sidebar.appendChild(profileCard);
+    layout.appendChild(sidebar);
+
+    // Networks container (populated after layout is in the DOM)
+    const netsContainer = el('div', { id: 'networks-container' });
+    layout.appendChild(netsContainer);
+
+    // ── Main: API keys card ──────────────────────────────────────
+    const main = el('div', { className: 'detail-main' });
+
+    const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
+    const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
+    const keysBody = el('div', { id: 'keys-container' });
+    keysBody.appendChild(keysLoading);
+    const keysCard = card(t('API Keys'), keysBody, [createBtn]);
+    main.appendChild(keysCard);
+    layout.appendChild(main);
+    frag.appendChild(layout);
+
+    // ── Create key modal ─────────────────────────────────────────
+    const createModalBody = document.createDocumentFragment();
+
+    const createDiv = el('div', { id: 'key-modal-create' });
+    createDiv.appendChild(el('label', { style: 'display:block;color:var(--text-secondary);font-size:0.8125rem;margin-bottom:var(--space-xs)', text: t('Label') }));
+    const labelInput = /** @type {HTMLInputElement} */ (document.createElement('input'));
+    labelInput.type = 'text';
+    labelInput.id = 'key-label-input';
+    labelInput.className = 'key-label-input';
+    labelInput.placeholder = 'e.g. "curl scripts"';
+    labelInput.maxLength = 64;
+    labelInput.autofocus = true;
+    createDiv.appendChild(labelInput);
+    const createBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm);margin-top:var(--space-md)' });
+    createBtnRow.appendChild(el('button', { id: 'btn-do-create', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1', text: t('Create') }));
+    createBtnRow.appendChild(el('button', { id: 'btn-cancel-create', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
+    createDiv.appendChild(createBtnRow);
+    createModalBody.appendChild(createDiv);
+
+    const resultDiv = el('div', { id: 'key-modal-result', style: 'display:none' });
+    resultDiv.appendChild(el('p', { style: 'color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('Copy this key now \u2014 it will not be shown again.') }));
+    resultDiv.appendChild(el('code', { id: 'key-modal-value', className: 'key-display' }));
+    resultDiv.appendChild(el('button', { id: 'btn-copy-key', className: 'auth-link', style: 'cursor:pointer;margin-top:var(--space-md);display:block;background:none;width:100%', text: t('Copy to clipboard') }));
+    resultDiv.appendChild(el('button', { id: 'btn-close-modal', className: 'auth-link', style: 'cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%', text: t('Close') }));
+    createModalBody.appendChild(resultDiv);
+
+    frag.appendChild(modal('key-modal', t('Create API Key'), /** @type {HTMLElement} */ (createModalBody)));
+
+    // ── Revoke key modal ─────────────────────────────────────────
+    const revokeBody = document.createDocumentFragment();
+    revokeBody.appendChild(el('p', { style: 'color:var(--status-error);font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('This will permanently revoke the key. Any client using it will lose access.') }));
+    revokeBody.appendChild(el('p', { id: 'revoke-key-info', style: 'font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)' }));
+    const revokeBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm)' });
+    revokeBtnRow.appendChild(el('button', { id: 'btn-do-revoke', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)', text: t('Revoke') }));
+    revokeBtnRow.appendChild(el('button', { id: 'btn-cancel-revoke', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
+    revokeBody.appendChild(revokeBtnRow);
+    revokeBody.appendChild(el('p', { id: 'revoke-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
+
+    frag.appendChild(modal('revoke-modal', t('Revoke API Key'), /** @type {HTMLElement} */ (revokeBody)));
+
+    // ── Mount and wire ───────────────────────────────────────────
+    container.replaceChildren(frag);
 
     // Wire up create key button
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
 
     // Render network affiliations into the sidebar
-    const netsContainer = document.getElementById('networks-container');
-    if (netsContainer) {
-        netsContainer.appendChild(renderNetworks(user));
-    }
+    netsContainer.appendChild(renderNetworks(user));
 
     // Wire up language preference selector
-    const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('account-lang-select'));
-    if (langSelect) {
-        langSelect.addEventListener('change', () => {
-            setLanguage(langSelect.value, () => renderAccount(_params));
-        });
-    }
+    langSelect.addEventListener('change', () => {
+        setLanguage(langSelect.value, () => renderAccount(_params));
+    });
 
     // Load keys
     await loadKeys(sid);

@@ -12,6 +12,8 @@
  * footprint until activated. Designed for network engineers debugging
  * stale data in the distributed system.
  *
+ * All content is built with DOM nodes — no innerHTML.
+ *
  * @example
  *   // In boot.js:
  *   import { initDebugger } from './debug.js';
@@ -19,7 +21,7 @@
  */
 
 import { getCacheDiagnostics, fetchSyncStatus, clearCache } from './api.js';
-import { escapeHTML, formatDate } from './render.js';
+import { formatDate } from './render.js';
 import { t } from './i18n.js';
 
 /** Staleness threshold for sync data — 1 hour in milliseconds. */
@@ -60,6 +62,76 @@ function parseTimer(timer) {
 function keyToPath(key) {
     return key.replace(/^https?:\/\/[^/]+/, '');
 }
+
+// ── DOM helpers ─────────────────────────────────────────────────────
+
+/**
+ * Creates an element with optional class, text, and title.
+ *
+ * @param {string} tag
+ * @param {Object} [opts]
+ * @param {string} [opts.className]
+ * @param {string} [opts.text]
+ * @param {string} [opts.title]
+ * @param {string} [opts.id]
+ * @param {boolean} [opts.hidden]
+ * @returns {HTMLElement}
+ */
+function _el(tag, opts = {}) {
+    const node = document.createElement(tag);
+    if (opts.className) node.className = opts.className;
+    if (opts.text !== undefined) node.textContent = opts.text;
+    if (opts.title) node.title = opts.title;
+    if (opts.id) node.id = opts.id;
+    if (opts.hidden) node.hidden = true;
+    return node;
+}
+
+/**
+ * Creates a <td> element with optional class and text.
+ *
+ * @param {string} text
+ * @param {string} [className]
+ * @param {string} [title]
+ * @returns {HTMLTableCellElement}
+ */
+function _td(text, className, title) {
+    const td = /** @type {HTMLTableCellElement} */ (document.createElement('td'));
+    if (className) td.className = className;
+    td.textContent = text;
+    if (title) td.title = title;
+    return td;
+}
+
+/**
+ * Creates a <th> element with text.
+ *
+ * @param {string} text
+ * @param {string} [className]
+ * @returns {HTMLTableCellElement}
+ */
+function _th(text, className) {
+    const th = /** @type {HTMLTableCellElement} */ (document.createElement('th'));
+    th.textContent = text;
+    if (className) th.className = className;
+    return th;
+}
+
+/**
+ * Creates a <span> with a CSS class and text (for tier/swr badges).
+ *
+ * @param {string} text
+ * @param {string} className
+ * @returns {HTMLSpanElement}
+ */
+function _badge(text, className) {
+    const span = /** @type {HTMLSpanElement} */ (document.createElement('span'));
+    span.className = className;
+    span.textContent = text;
+    return span;
+}
+
+// ── Overlay state ───────────────────────────────────────────────────
 
 /** @type {HTMLElement|null} */
 let _overlay = null;
@@ -112,7 +184,7 @@ async function refreshOverlay() {
             Promise.resolve(getCacheDiagnostics()),
         ]);
         if (!_overlay) return;
-        _overlay.innerHTML = buildOverlayHTML(syncStatus, localCache);
+        _overlay.replaceChildren(buildOverlayDOM(syncStatus, localCache));
         wireButtons();
     } catch {
         // Non-critical — leave current content on failure
@@ -135,13 +207,14 @@ async function toggleOverlay() {
     _overlay.id = 'debug-overlay';
     document.body.appendChild(_overlay);
 
-    _overlay.innerHTML = `<div class="debug-overlay__inner">
-        <div class="debug-header">
-            <h3>${t('Pipeline Diagnostics')}</h3>
-            <span class="debug-header__hint">Ctrl+Shift+D</span>
-        </div>
-        <p class="debug-loading">${escapeHTML(t('Loading telemetry...'))}</p>
-    </div>`;
+    // Show loading state
+    const inner = _el('div', { className: 'debug-overlay__inner' });
+    const loadHeader = _el('div', { className: 'debug-header' });
+    loadHeader.appendChild(_el('h3', { text: t('Pipeline Diagnostics') }));
+    loadHeader.appendChild(_el('span', { className: 'debug-header__hint', text: 'Ctrl+Shift+D' }));
+    inner.appendChild(loadHeader);
+    inner.appendChild(_el('p', { className: 'debug-loading', text: t('Loading telemetry...') }));
+    _overlay.replaceChildren(inner);
 
     try {
         const [syncStatus, localCache] = await Promise.all([
@@ -151,185 +224,228 @@ async function toggleOverlay() {
 
         if (!_overlay) return; // User closed before fetch completed
 
-        _overlay.innerHTML = buildOverlayHTML(syncStatus, localCache);
+        _overlay.replaceChildren(buildOverlayDOM(syncStatus, localCache));
         wireButtons();
     } catch (err) {
         if (!_overlay) return;
-        _overlay.innerHTML = `<div class="debug-overlay__inner">
-            <div class="debug-header">
-                <h3>${t('Pipeline Diagnostics')}</h3>
-                <button class="debug-btn" id="debug-close">\u2715</button>
-            </div>
-            <p class="debug-error">${escapeHTML(t('Failed to load telemetry'))}: ${escapeHTML(/** @type {Error} */(err).message)}</p>
-        </div>`;
-        document.getElementById('debug-close')?.addEventListener('click', toggleOverlay);
+        const errInner = _el('div', { className: 'debug-overlay__inner' });
+        const errHeader = _el('div', { className: 'debug-header' });
+        errHeader.appendChild(_el('h3', { text: t('Pipeline Diagnostics') }));
+        const closeBtn = _el('button', { className: 'debug-btn', id: 'debug-close', text: '\u2715' });
+        errHeader.appendChild(closeBtn);
+        errInner.appendChild(errHeader);
+        errInner.appendChild(_el('p', { className: 'debug-error', text: `${t('Failed to load telemetry')}: ${/** @type {Error} */ (err).message}` }));
+        _overlay.replaceChildren(errInner);
+        closeBtn.addEventListener('click', toggleOverlay);
     }
 }
 
 /**
- * Builds the full overlay HTML from sync status and cache diagnostics.
+ * Builds the full overlay DOM from sync status and cache diagnostics.
  *
  * @param {any} syncStatus - Response from fetchSyncStatus().
  * @param {Array<{key: string, ageMs: number, swrState: string, telemetry: import('./api.js').CacheTelemetry}>} localCache - Browser cache entries.
- * @returns {string} HTML string for the overlay content.
+ * @returns {HTMLDivElement} The overlay inner container.
  */
-function buildOverlayHTML(syncStatus, localCache) {
+function buildOverlayDOM(syncStatus, localCache) {
     const now = Date.now();
     const currentPath = window.location.pathname;
 
-    // ── Section 1: Current Page Context ──────────────────────────
+    const inner = _el('div', { className: 'debug-overlay__inner' });
 
-    // Find cache entries relevant to the current page by matching
-    // the URL path prefix. E.g. viewing /net/694 matches /api/net/694.
-    const pageEntries = localCache.filter(c => {
+    // ── Header ───────────────────────────────────────────────────
+    const header = _el('div', { className: 'debug-header' });
+    header.appendChild(_el('h3', { text: t('Pipeline Diagnostics') }));
+    header.appendChild(_el('span', { className: 'debug-header__hint', text: 'Ctrl+Shift+D' }));
+    inner.appendChild(header);
+
+    // ── Section 1: Current Page Context ──────────────────────────
+    const pageEntries = localCache.filter((/** @type {any} */ c) => {
         const path = keyToPath(c.key);
-        // Match /api/<entity>/<id> against /<entity>/<id>
-        return path.startsWith('/api' + currentPath) ||
-               path.startsWith('/status');
+        return path.startsWith('/api' + currentPath) || path.startsWith('/status');
     });
 
-    let currentPageSection = '';
+    const pageSection = _el('div', { className: 'debug-section' });
+    const pageHeading = _el('h4', { text: `${t('Current Page')}: ${currentPath}` });
+    pageSection.appendChild(pageHeading);
+
     if (pageEntries.length > 0) {
-        const rows = pageEntries.map(c => {
-            const path = keyToPath(c.key);
-            const tel = c.telemetry;
-            const tier = tel?.tier || 'N/A';
-            const ageSec = Math.floor(c.ageMs / 1000);
-
-            return `<tr>
-                <td class="debug-td--truncate" title="${escapeHTML(c.key)}">${escapeHTML(path)}</td>
-                <td><span class="${/* safe — CSS class */ `debug-swr--${c.swrState}`}">${escapeHTML(c.swrState)}</span></td>
-                <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
-                <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
-                <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
-                <td class="debug-td--right">${escapeHTML(parseTimer(tel?.timer || ''))}</td>
-                <td class="debug-td--muted">${escapeHTML(tel?.servedBy || '—')}</td>
-                <td class="debug-td--muted debug-td--truncate" title="${escapeHTML(tel?.isolateId || '')}">${escapeHTML(tel?.isolateId ? tel.isolateId.slice(0, 8) : '—')}</td>
-            </tr>`;
-        }).join('');
-
-        currentPageSection = `<div class="debug-section">
-            <h4>${escapeHTML(t('Current Page'))}: ${escapeHTML(currentPath)}</h4>
-            <table class="debug-table">
-                <thead><tr>
-                    <th>${escapeHTML(t('Request'))}</th>
-                    <th>${escapeHTML(t('Cache'))}</th>
-                    <th>${escapeHTML(t('Edge'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
-                    <th>${escapeHTML(t('Served By'))}</th>
-                    <th>${escapeHTML(t('Isolate'))}</th>
-                </tr></thead>
-                <tbody>${/* safe — built from escapeHTML calls */ rows}</tbody>
-            </table>
-        </div>`;
+        pageSection.appendChild(buildTelemetryTable(
+            [t('Request'), t('Cache'), t('Edge'), t('Age'), t('Hits'), t('Time'), t('Served By'), t('Isolate')],
+            ['', '', '', 'debug-td--right', 'debug-td--right', 'debug-td--right', '', ''],
+            pageEntries.map((/** @type {any} */ c) => {
+                const path = keyToPath(c.key);
+                const tel = c.telemetry;
+                const tier = tel?.tier || 'N/A';
+                const ageSec = Math.floor(c.ageMs / 1000);
+                return {
+                    cells: [
+                        { text: path, className: 'debug-td--truncate', title: c.key },
+                        { node: _badge(c.swrState, `debug-swr--${c.swrState}`) },
+                        { node: _badge(tier, `debug-tier--${tier}`) },
+                        { text: `${ageSec}s`, className: 'debug-td--right' },
+                        { text: tel?.hits || '0', className: 'debug-td--right' },
+                        { text: parseTimer(tel?.timer || ''), className: 'debug-td--right' },
+                        { text: tel?.servedBy || '—', className: 'debug-td--muted' },
+                        { text: tel?.isolateId ? tel.isolateId.slice(0, 8) : '—', className: 'debug-td--muted debug-td--truncate', title: tel?.isolateId || '' },
+                    ]
+                };
+            })
+        ));
     } else {
-        currentPageSection = `<div class="debug-section">
-            <h4>${escapeHTML(t('Current Page'))}: ${escapeHTML(currentPath)}</h4>
-            <p class="debug-meta">${escapeHTML(t('No cached API requests for this page'))}</p>
-        </div>`;
+        pageSection.appendChild(_el('p', { className: 'debug-meta', text: t('No cached API requests for this page') }));
     }
+    inner.appendChild(pageSection);
 
     // ── Section 2: D1 Sync State ─────────────────────────────────
-    let syncRows = '';
+    const syncSection = _el('div', { className: 'debug-section debug-section--collapsible' });
+    const syncToggle = _el('h4', { className: 'debug-section__toggle' });
+    syncToggle.setAttribute('data-target', 'debug-sync-body');
+    syncToggle.appendChild(document.createTextNode(t('D1 Edge Sync State')));
+    if (syncStatus?.last_sync_at) {
+        const syncMeta = _el('span', { className: 'debug-meta--inline', text: ` ${formatDate(toUTCISO(syncStatus.last_sync_at))}` });
+        syncToggle.appendChild(syncMeta);
+    }
+    syncToggle.appendChild(_el('span', { className: 'debug-chevron', text: '\u25B8' }));
+    syncSection.appendChild(syncToggle);
+
+    const syncBody = _el('div', { className: 'debug-section__body', id: 'debug-sync-body', hidden: true });
     if (syncStatus?.entities) {
+        const syncTable = document.createElement('table');
+        syncTable.className = 'debug-table';
+        const stHead = document.createElement('thead');
+        const stHR = document.createElement('tr');
+        stHR.appendChild(_th(t('Entity')));
+        stHR.appendChild(_th(t('Updated')));
+        stHR.appendChild(_th(t('Rows'), 'debug-td--right'));
+        stHR.appendChild(_th(''));
+        stHead.appendChild(stHR);
+        syncTable.appendChild(stHead);
+
+        const stBody = document.createElement('tbody');
         for (const [tag, meta] of Object.entries(syncStatus.entities)) {
             const m = /** @type {{last_sync: number, row_count: number, updated_at: string}} */ (meta);
             const syncAgeMs = now - (m.last_sync * 1000);
             const isStale = syncAgeMs > STALE_THRESHOLD_MS;
-            const staleClass = isStale ? ' debug-row--stale' : '';
 
-            syncRows += `<tr class="${staleClass}">
-                <td>${escapeHTML(tag)}</td>
-                <td>${/* safe — formatDate output */ formatDate(toUTCISO(m.updated_at))}</td>
-                <td class="debug-td--right">${/* safe — numeric */ m.row_count.toLocaleString()}</td>
-                <td>${/* safe — boolean-derived HTML */ isStale ? '<span class="debug-stale-badge" title="' + escapeHTML(t('Sync older than 1 hour')) + '">⚠</span>' : ''}</td>
-            </tr>`;
-        }
-    }
+            const tr = document.createElement('tr');
+            if (isStale) tr.className = 'debug-row--stale';
 
-    const syncSection = `<div class="debug-section debug-section--collapsible">
-        <h4 class="debug-section__toggle" data-target="debug-sync-body">
-            ${escapeHTML(t('D1 Edge Sync State'))}
-            ${syncStatus?.last_sync_at
-                ? ` <span class="debug-meta--inline">${/* safe — formatDate output */ formatDate(toUTCISO(syncStatus.last_sync_at))}</span>`
-                : ''
+            tr.appendChild(_td(tag));
+            tr.appendChild(_td(formatDate(toUTCISO(m.updated_at))));
+            tr.appendChild(_td(m.row_count.toLocaleString(), 'debug-td--right'));
+
+            const staleTd = document.createElement('td');
+            if (isStale) {
+                staleTd.appendChild(_badge('\u26A0', 'debug-stale-badge'));
+                staleTd.firstElementChild?.setAttribute('title', t('Sync older than 1 hour'));
             }
-            <span class="debug-chevron">▸</span>
-        </h4>
-        <div class="debug-section__body" id="debug-sync-body" hidden>
-            <table class="debug-table">
-                <thead><tr>
-                    <th>${escapeHTML(t('Entity'))}</th>
-                    <th>${escapeHTML(t('Updated'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Rows'))}</th>
-                    <th></th>
-                </tr></thead>
-                <tbody>${/* safe — built from escapeHTML calls */ syncRows || `<tr><td colspan="4">${escapeHTML(t('No entities'))}</td></tr>`}</tbody>
-            </table>
-        </div>
-    </div>`;
+            tr.appendChild(staleTd);
+            stBody.appendChild(tr);
+        }
+        syncTable.appendChild(stBody);
+        syncBody.appendChild(syncTable);
+    } else {
+        const emptyTr = document.createElement('p');
+        emptyTr.textContent = t('No entities');
+        syncBody.appendChild(emptyTr);
+    }
+    syncSection.appendChild(syncBody);
+    inner.appendChild(syncSection);
 
     // ── Section 3: Full Browser Cache ────────────────────────────
-    let cacheRows = '';
-    for (const entry of localCache) {
-        const path = keyToPath(entry.key);
-        const tel = entry.telemetry;
-        const tier = tel?.tier || 'N/A';
-        const ageSec = Math.floor(entry.ageMs / 1000);
-        const isCurrentPage = pageEntries.some(p => p.key === entry.key);
+    const cacheSection = _el('div', { className: 'debug-section debug-section--collapsible' });
+    const cacheToggle = _el('h4', { className: 'debug-section__toggle' });
+    cacheToggle.setAttribute('data-target', 'debug-cache-body');
+    cacheToggle.appendChild(document.createTextNode(t('All Cached Requests')));
+    cacheToggle.appendChild(_el('span', { className: 'debug-meta--inline', text: ` ${localCache.length} ${t('entries')}` }));
+    cacheToggle.appendChild(_el('span', { className: 'debug-chevron', text: '\u25B8' }));
+    cacheSection.appendChild(cacheToggle);
 
-        cacheRows += `<tr class="${isCurrentPage ? 'debug-row--active' : ''}">
-            <td class="debug-td--truncate" title="${escapeHTML(entry.key)}">${escapeHTML(path.split('?')[0])}</td>
-            <td><span class="${/* safe — CSS class */ `debug-swr--${entry.swrState}`}">${escapeHTML(entry.swrState)}</span></td>
-            <td><span class="${/* safe — CSS class */ `debug-tier--${tier}`}">${escapeHTML(tier)}</span></td>
-            <td class="debug-td--right">${/* safe — numeric */ ageSec}s</td>
-            <td class="debug-td--right">${escapeHTML(tel?.hits || '0')}</td>
-            <td class="debug-td--right">${escapeHTML(parseTimer(tel?.timer || ''))}</td>
-            <td class="debug-td--muted">${escapeHTML(tel?.servedBy || '—')}</td>
-        </tr>`;
+    const cacheBody = _el('div', { className: 'debug-section__body', id: 'debug-cache-body', hidden: true });
+    if (localCache.length > 0) {
+        cacheBody.appendChild(buildTelemetryTable(
+            [t('Path'), t('Cache'), t('Edge'), t('Age'), t('Hits'), t('Time'), t('Served By')],
+            ['', '', '', 'debug-td--right', 'debug-td--right', 'debug-td--right', ''],
+            localCache.map((/** @type {any} */ entry) => {
+                const path = keyToPath(entry.key);
+                const tel = entry.telemetry;
+                const tier = tel?.tier || 'N/A';
+                const ageSec = Math.floor(entry.ageMs / 1000);
+                const isCurrentPage = pageEntries.some((/** @type {any} */ p) => p.key === entry.key);
+                return {
+                    className: isCurrentPage ? 'debug-row--active' : '',
+                    cells: [
+                        { text: path.split('?')[0], className: 'debug-td--truncate', title: entry.key },
+                        { node: _badge(entry.swrState, `debug-swr--${entry.swrState}`) },
+                        { node: _badge(tier, `debug-tier--${tier}`) },
+                        { text: `${ageSec}s`, className: 'debug-td--right' },
+                        { text: tel?.hits || '0', className: 'debug-td--right' },
+                        { text: parseTimer(tel?.timer || ''), className: 'debug-td--right' },
+                        { text: tel?.servedBy || '—', className: 'debug-td--muted' },
+                    ]
+                };
+            })
+        ));
+    } else {
+        cacheBody.appendChild(_el('p', { text: t('Cache empty') }));
     }
-
-    const cacheSection = `<div class="debug-section debug-section--collapsible">
-        <h4 class="debug-section__toggle" data-target="debug-cache-body">
-            ${escapeHTML(t('All Cached Requests'))}
-            <span class="debug-meta--inline">${/* safe — numeric */ localCache.length} ${escapeHTML(t('entries'))}</span>
-            <span class="debug-chevron">▸</span>
-        </h4>
-        <div class="debug-section__body" id="debug-cache-body" hidden>
-            <table class="debug-table">
-                <thead><tr>
-                    <th>${escapeHTML(t('Path'))}</th>
-                    <th>${escapeHTML(t('Cache'))}</th>
-                    <th>${escapeHTML(t('Edge'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Age'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Hits'))}</th>
-                    <th class="debug-td--right">${escapeHTML(t('Time'))}</th>
-                    <th>${escapeHTML(t('Served By'))}</th>
-                </tr></thead>
-                <tbody>${/* safe — built from escapeHTML calls */ cacheRows || `<tr><td colspan="7">${escapeHTML(t('Cache empty'))}</td></tr>`}</tbody>
-            </table>
-        </div>
-    </div>`;
+    cacheSection.appendChild(cacheBody);
+    inner.appendChild(cacheSection);
 
     // ── Actions ──────────────────────────────────────────────────
-    const actions = `<div class="debug-actions">
-        <button class="debug-btn" id="debug-clear-cache">${escapeHTML(t('Clear Browser Cache'))}</button>
-        <button class="debug-btn" id="debug-force-refresh">${escapeHTML(t('Force Reload'))}</button>
-        <button class="debug-btn debug-btn--close" id="debug-close">\u2715</button>
-    </div>`;
+    const actions = _el('div', { className: 'debug-actions' });
+    actions.appendChild(_el('button', { className: 'debug-btn', id: 'debug-clear-cache', text: t('Clear Browser Cache') }));
+    actions.appendChild(_el('button', { className: 'debug-btn', id: 'debug-force-refresh', text: t('Force Reload') }));
+    actions.appendChild(_el('button', { className: 'debug-btn debug-btn--close', id: 'debug-close', text: '\u2715' }));
+    inner.appendChild(actions);
 
-    return `<div class="debug-overlay__inner">
-        <div class="debug-header">
-            <h3>${t('Pipeline Diagnostics')}</h3>
-            <span class="debug-header__hint">Ctrl+Shift+D</span>
-        </div>
-        ${currentPageSection}
-        ${syncSection}
-        ${cacheSection}
-        ${actions}
-    </div>`;
+    return inner;
+}
+
+/**
+ * Builds a telemetry data table from column headers and row data.
+ *
+ * @param {string[]} headers - Column header labels.
+ * @param {string[]} headerClasses - CSS classes for each header th.
+ * @param {Array<{className?: string, cells: Array<{text?: string, node?: Node, className?: string, title?: string}>}>} rows
+ * @returns {HTMLDivElement} Wrapper div containing the table.
+ */
+function buildTelemetryTable(headers, headerClasses, rows) {
+    const wrapper = document.createElement('div');
+    const table = document.createElement('table');
+    table.className = 'debug-table';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headers.forEach((label, i) => {
+        headRow.appendChild(_th(label, headerClasses[i]));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const row of rows) {
+        const tr = document.createElement('tr');
+        if (row.className) tr.className = row.className;
+
+        for (const cell of row.cells) {
+            const td = document.createElement('td');
+            if (cell.className) td.className = cell.className;
+            if (cell.title) td.title = cell.title;
+
+            if (cell.node) {
+                td.appendChild(cell.node);
+            } else if (cell.text !== undefined) {
+                td.textContent = cell.text;
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    return wrapper;
 }
 
 /**
@@ -359,7 +475,7 @@ function wireButtons() {
             const isHidden = body.hidden;
             body.hidden = !isHidden;
             const chevron = toggle.querySelector('.debug-chevron');
-            if (chevron) chevron.textContent = isHidden ? '▾' : '▸';
+            if (chevron) chevron.textContent = isHidden ? '\u25BE' : '\u25B8';
         });
     }
 }

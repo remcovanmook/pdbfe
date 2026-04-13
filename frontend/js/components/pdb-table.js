@@ -198,7 +198,7 @@ class PdbTable extends HTMLElement {
 
             this._prevBtn = document.createElement('button');
             this._prevBtn.className = 'table-paging__btn';
-            this._prevBtn.innerHTML = `&larr; ${t('Prev')}`;
+            this._prevBtn.textContent = `\u2190 ${t('Prev')}`;
             this._prevBtn.disabled = true;
             this._prevBtn.addEventListener('click', () => {
                 if (this._page > 1) {
@@ -220,7 +220,7 @@ class PdbTable extends HTMLElement {
 
             this._nextBtn = document.createElement('button');
             this._nextBtn.className = 'table-paging__btn';
-            this._nextBtn.innerHTML = `${t('Next')} &rarr;`;
+            this._nextBtn.textContent = `${t('Next')} \u2192`;
             this._nextBtn.addEventListener('click', () => {
                 const totalPages = this._totalPages();
                 if (this._page < totalPages) {

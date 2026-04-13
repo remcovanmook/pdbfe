@@ -16,7 +16,6 @@
 
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
-import { escapeHTML } from './render.js';
 import { t } from './i18n.js';
 
 /** @type {string} localStorage key for the session token. */
@@ -150,29 +149,40 @@ async function validateSession(sid) {
 /**
  * Updates the header UI to reflect the current auth state.
  * Shows either a "Sign in" link or the user's name + "Sign out".
+ * All user data goes through textContent.
  */
 function renderAuthUI() {
     const container = document.getElementById('auth-container');
     if (!container) return;
 
     if (_cachedUser) {
-        container.innerHTML = `
-            <span class="auth-user">${escapeHTML(_cachedUser.given_name || _cachedUser.name)}</span>
-            <a href="/account" class="auth-link" data-link>${t('Account')}</a>
-            <a href="#" id="auth-logout" class="auth-link">${t('Sign out')}</a>
-        `;
-        const logoutLink = document.getElementById('auth-logout');
-        if (logoutLink) {
-            logoutLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                logout();
-            });
-        }
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'auth-user';
+        nameSpan.textContent = _cachedUser.given_name || _cachedUser.name;
+
+        const accountLink = document.createElement('a');
+        accountLink.href = '/account';
+        accountLink.className = 'auth-link';
+        accountLink.setAttribute('data-link', '');
+        accountLink.textContent = t('Account');
+
+        const logoutLink = document.createElement('a');
+        logoutLink.href = '#';
+        logoutLink.className = 'auth-link';
+        logoutLink.textContent = t('Sign out');
+        logoutLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+
+        container.replaceChildren(nameSpan, accountLink, logoutLink);
     } else {
-        const loginUrl = `${AUTH_ORIGIN}/auth/login`;
-        container.innerHTML = `
-            <a href="${loginUrl}" class="auth-link">${t('Sign in with PeeringDB')}</a>
-        `;
+        const loginLink = document.createElement('a');
+        loginLink.href = `${AUTH_ORIGIN}/auth/login`;
+        loginLink.className = 'auth-link';
+        loginLink.textContent = t('Sign in with PeeringDB');
+
+        container.replaceChildren(loginLink);
     }
 }
 

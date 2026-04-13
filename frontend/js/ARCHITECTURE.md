@@ -89,10 +89,15 @@ sanitization (allowlisted tags, URL protocol validation).
 
 ## Remaining innerHTML Usage
 
-- `boot.js` line 99: footer sync status (output of `formatDate()`, not user data)
-- `account.js`: static modal layout (authored markup, no user data)
-- `auth.js`: auth UI button (static markup)
-- `debug.js`: diagnostic overlay (internal telemetry data, escaped via `escapeHTML()`)
-- `about.js`: markdown-rendered content (sanitized via `renderMarkdown()` pipeline)
+Only two intentional sites remain — both are `renderMarkdown()` output:
 
-None of these operate on untrusted user input.
+- `render.js:575`: markdown-rendered field values (sanitized by the markdown pipeline)
+- `about.js:32`: about page content fetched from `/content/about.md`
+
+The markdown pipeline (`markdown.js`) has its own sanitization: allowlisted HTML tags,
+URL protocol validation, and `target`/`rel` enforcement on links.
+
+All other modules use DOM nodes exclusively. `escapeHTML()` is retained
+in `render.js` for the legacy string-mode utilities (still exported but
+no longer called from page renderers) and in `i18n.js` for interpolation
+value escaping.
