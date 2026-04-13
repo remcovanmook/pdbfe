@@ -6,7 +6,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit } from '../../api/ratelimit.js';
+import { isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit } from '../../../api/ratelimit.js';
 
 /**
  * Reset rate limiter state between tests to prevent cross-contamination.

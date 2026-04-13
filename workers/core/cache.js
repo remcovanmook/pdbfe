@@ -73,8 +73,28 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
   }
 
   return {
+    /** @type {number} Hard expiry in milliseconds. */
     ttl: ttlMs,
+
+    /**
+     * In-flight promise map for cache stampede prevention.
+     * When a key expires, the first caller stores its fetch promise here;
+     * subsequent callers await the same promise instead of issuing
+     * duplicate D1 queries. Cleaned up via .finally() in pipeline.js.
+     * @type {Map<string, Promise<any>>}
+     */
     pending: new Map(),
+
+    /**
+     * Adds or updates an entry. If the cache exceeds maxSize after
+     * insertion, LRU entries are evicted until the byte budget is met.
+     *
+     * @param {string} key - Cache key.
+     * @param {Uint8Array} buf - Payload bytes.
+     * @param {any} meta - Arbitrary metadata (e.g. {entityTag, count}).
+     * @param {number} now - Current timestamp in milliseconds.
+     * @param {boolean} [pinned=false] - If true, entry is exempt from eviction.
+     */
     add: (key, buf, meta, now, pinned = false) => {
       let slot = index.get(key);
       if (slot !== undefined) {
@@ -105,6 +125,18 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
 
       while (size > maxSize && index.size > 0) evict();
     },
+
+    /**
+     * Retrieves a cache entry by key. Returns a shared mutable object
+     * whose fields ({buf, meta, hits, addedAt}) are overwritten on every
+     * call. Callers MUST extract needed fields synchronously before the
+     * next get() call or any await. See ANTI_PATTERNS.md §11.
+     *
+     * Returns null on cache miss.
+     *
+     * @param {string} key - Cache key.
+     * @returns {{buf: Uint8Array|null, meta: any, hits: number, addedAt: number}|null}
+     */
     get: (key) => {
       const slot = index.get(key);
       if (slot === undefined) return null;
@@ -117,11 +149,36 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
       _ret.addedAt = addedArray[slot];
       return _ret;
     },
+
+    /**
+     * Checks whether a key exists in the cache without updating
+     * access time or hit count.
+     *
+     * @param {string} key - Cache key.
+     * @returns {boolean}
+     */
     has: (key) => index.has(key),
+
+    /**
+     * Resets the insertion timestamp for an existing entry. Used by
+     * SWR to extend the TTL of entries refreshed in the background
+     * without re-adding the full payload.
+     *
+     * @param {string} key - Cache key.
+     * @param {number} now - New timestamp in milliseconds.
+     */
     updateTTL: (key, now) => {
       const slot = index.get(key);
       if (slot !== undefined) addedArray[slot] = now;
     },
+
+    /**
+     * Purges one or all entries. When called with a key, removes only
+     * that entry. When called without arguments, clears the entire
+     * cache by reallocating the backing arrays.
+     *
+     * @param {string} [key] - Specific key to purge. Omit to flush all.
+     */
     purge: (key) => {
       if (key !== undefined) {
         const slot = index.get(key);
@@ -152,6 +209,13 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
         clock = 0;
       }
     },
+
+    /**
+     * Returns aggregate cache statistics: entry count, total bytes
+     * stored, and the byte budget ceiling.
+     *
+     * @returns {{items: number, bytes: number, limit: number}}
+     */
     getStats: () => ({ items: index.size, bytes: size, limit: maxSize })
   };
 }

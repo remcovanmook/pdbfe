@@ -329,7 +329,7 @@ boilerplate in API handlers. Every instance is a place where a developer can:
 - Miss the negative cache TTL override,
 - Skip the `ctx.waitUntil()` background refresh.
 
-**Preferred pattern:** Use `withEdgeSWR()` from `core/swr.js`. It encapsulates
+**Preferred pattern:** Use `withEdgeSWR()` from `api/swr.js`. It encapsulates
 the full L1 read → stale-while-revalidate → `cachedQuery()` miss flow.
 
 **Don't:**
@@ -352,7 +352,7 @@ return serveJSON(request, buf, { tier, hits: 0 });
 
 **Do:**
 ```js
-import { withEdgeSWR } from '../../core/swr.js';
+import { withEdgeSWR } from '../swr.js';
 
 const cacheKey = normaliseCacheKey(rawPath, queryString);
 const { buf, tier, hits } = await withEdgeSWR(

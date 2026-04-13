@@ -1,11 +1,12 @@
 /**
- * @fileoverview HTTP response helpers for JSON API responses.
- * Handles ETag generation, 304 Not Modified, CORS preflight,
- * Last-Modified / If-Modified-Since, and raw Uint8Array forwarding
- * for zero-serialisation cache hits.
+ * @fileoverview Generic HTTP response helpers shared across all workers.
+ *
+ * Provides low-level building blocks: encoder, CORS headers, ETag,
+ * conditional request checks, JSON encoding, and error responses.
+ *
+ * API-specific header sets (H_API, H_API_AUTH/ANON, serveJSON) live
+ * in api/http.js which layers on top of this module.
  */
-
-import { VERSIONS } from '../api/entities.js';
 
 /**
  * Shared TextEncoder instance. Exported so modules that need to
@@ -35,26 +36,6 @@ export const H_CORS = Object.freeze({
 });
 
 /**
- * Standard cache headers for API responses.
- * Responses are public-cacheable for 60s with stale-while-revalidate.
- */
-export const H_API = Object.freeze({
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
-    "Allow": "GET, HEAD, OPTIONS",
-    "X-App-Version": VERSIONS.api_schema,
-    ...H_CORS
-});
-
-/**
- * Pre-cooked API header sets with X-Auth-Status baked in.
- * Handlers select the right one based on caller authentication,
- * avoiding per-request Response cloning.
- */
-export const H_API_AUTH = Object.freeze({ ...H_API, "X-Auth-Status": "authenticated" });
-export const H_API_ANON = Object.freeze({ ...H_API, "X-Auth-Status": "unauthenticated" });
-
-/**
  * Headers for responses that should not be cached.
  */
 export const H_NOCACHE = Object.freeze({
@@ -62,12 +43,6 @@ export const H_NOCACHE = Object.freeze({
     "Cache-Control": "no-store",
     ...H_CORS
 });
-
-/**
- * Pre-cooked no-cache header sets with X-Auth-Status baked in.
- */
-export const H_NOCACHE_AUTH = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "authenticated" });
-export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "unauthenticated" });
 
 /**
  * Precompiled CORS preflight response. Returned for all OPTIONS requests
@@ -131,45 +106,6 @@ export function isNotModified(requestHeaders, etag) {
  */
 export function encodeJSON(data) {
     return encoder.encode(JSON.stringify(data));
-}
-
-/**
- * Serves a Uint8Array of pre-encoded JSON bytes as an HTTP Response.
- * Handles ETag generation and 304 Not Modified checks. On a cache hit,
- * the buf is forwarded directly — no JSON.parse or JSON.stringify.
- *
- * @param {Request} request - The inbound HTTP request (for conditional headers).
- * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
- * @param {{tier: import('../api/pipeline.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
- * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
- *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
- * @returns {Response} The HTTP response ready for the client.
- */
-export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }, baseHeaders = H_API) {
-    const etag = generateETag(buf);
-
-    if (isNotModified(request.headers, etag)) {
-        return new Response(null, {
-            status: 304,
-            headers: {
-                ...baseHeaders,
-                "ETag": etag,
-                "X-Cache": meta.tier,
-                "X-Cache-Hits": meta.hits.toString()
-            }
-        });
-    }
-
-    return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
-        status: 200,
-        headers: {
-            ...baseHeaders,
-            "ETag": etag,
-            "Content-Length": buf.byteLength.toString(),
-            "X-Cache": meta.tier,
-            "X-Cache-Hits": meta.hits.toString()
-        }
-    });
 }
 
 /**

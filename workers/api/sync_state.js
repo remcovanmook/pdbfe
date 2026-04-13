@@ -15,13 +15,13 @@
  *
  * Exports:
  *   ensureSyncFreshness(db, ctx, now) — O(1) hot-path hook
- *   handleSyncStatusCached(request)   — pre-encoded /status handler
+ *   handleStatus(request, db, ctx)    — pre-encoded /status handler
  *   getEntityVersion(tag)             — returns last_modified_at for L2 key versioning
  */
 
 import { getEntityCache } from './cache.js';
 import { ENTITY_TAGS } from './entities.js';
-import { encoder, H_API } from '../core/http.js';
+import { encoder, H_API } from './http.js';
 
 /**
  * Per-entity last_modified_at snapshot. Initialised from ENTITY_TAGS
@@ -149,7 +149,7 @@ export function ensureSyncFreshness(db, ctx, now) {
  * @param {ExecutionContext} ctx - Execution context.
  * @returns {Promise<Response>}
  */
-export async function handleSyncStatusCached(request, db, ctx) {
+export async function handleStatus(request, db, ctx) {
     if (!_statusPayload) {
         // Cold boot: block on first poll to generate payload.
         // Subsequent requests serve from RAM.
@@ -171,7 +171,7 @@ export async function handleSyncStatusCached(request, db, ctx) {
  * when the version changes, old L2 entries are orphaned without
  * requiring enumeration or explicit deletion.
  *
- * Zero allocations: returns an existing string from the Map.
+ * Zero allocations: returns an existing number from the Map.
  *
  * @param {string} tag - Entity tag (e.g. "net").
  * @returns {number} The last_modified_at epoch, or 0 if not yet polled.

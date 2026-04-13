@@ -20,7 +20,7 @@
  * storage so the cleartext key is never persisted in KV.
  */
 
-import { extractSessionId, resolveSession, generateSessionId } from './auth.js';
+import { extractSessionId, resolveSession, generateSessionId, hashKey } from '../core/auth.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -169,20 +169,6 @@ export function generateApiKey() {
     return KEY_VISUAL_PREFIX + hex;
 }
 
-/**
- * Computes the SHA-256 hex digest of an API key. Used to derive the
- * KV storage key (`apikey:<hash>`) so the cleartext key is never
- * persisted. The full key only exists in memory during creation
- * (returned to the user) and verification (hashed before lookup).
- *
- * @param {string} key - The full API key string.
- * @returns {Promise<string>} 64-character lowercase hex digest.
- */
-export async function hashKey(key) {
-    const encoded = new TextEncoder().encode(key);
-    const digest = await crypto.subtle.digest('SHA-256', encoded);
-    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-}
 
 /**
  * Extracts the key ID from a full API key. The ID is the first 8 hex

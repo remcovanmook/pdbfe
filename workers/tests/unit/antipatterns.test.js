@@ -55,6 +55,7 @@ const SYNC_ONLY_FILES = [
     'core/cache.js',
     'core/http.js',
     'api/cache.js',
+    'api/http.js',
     'api/ratelimit.js',
 ];
 
@@ -65,7 +66,7 @@ const SYNC_ONLY_FILES = [
 const NO_D1_FILES = [
     'core/cache.js',
     'core/http.js',
-    'core/swr.js',
+    'api/swr.js',
     'core/utils.js',
     'api/cache.js',
     'api/ratelimit.js',
@@ -77,9 +78,13 @@ const NO_D1_FILES = [
  * Only pipeline.js owns coalescing via cache.pending.
  */
 const NO_PENDING_FILES = [
-    'api/handlers/index.js',
-    'core/swr.js',
+    'api/handlers/list.js',
+    'api/handlers/detail.js',
+    'api/handlers/as_set.js',
+    'api/handlers/shared.js',
+    'api/swr.js',
     'core/http.js',
+    'api/http.js',
     'api/cache.js',
     'api/ratelimit.js',
     'core/cache.js',
@@ -90,7 +95,9 @@ const NO_PENDING_FILES = [
  * appear directly — use withEdgeSWR() instead (§12).
  */
 const HANDLER_FILES = [
-    'api/handlers/index.js',
+    'api/handlers/list.js',
+    'api/handlers/detail.js',
+    'api/handlers/as_set.js',
 ];
 
 /**
@@ -99,7 +106,9 @@ const HANDLER_FILES = [
  * jsonError) and admin/auth/oauth paths.
  */
 const NO_JSON_ROUNDTRIP_FILES = [
-    'api/handlers/index.js',
+    'api/handlers/list.js',
+    'api/handlers/detail.js',
+    'api/handlers/as_set.js',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────

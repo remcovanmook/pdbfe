@@ -25,7 +25,7 @@ import {
     generateSessionId,
     writeSession,
     deleteSession
-} from './auth.js';
+} from '../core/auth.js';
 
 // ── PeeringDB OAuth2 Constants ───────────────────────────────────────────────
 

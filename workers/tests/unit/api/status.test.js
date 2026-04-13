@@ -45,7 +45,7 @@ function mockDB(rows) {
 
 // ── Import the worker under test ────────────────────────────────
 
-const workerModule = await import('../../api/index.js');
+const workerModule = await import('../../../api/index.js');
 const worker = workerModule.default;
 
 /**

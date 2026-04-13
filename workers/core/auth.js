@@ -17,7 +17,20 @@
  * The KV key format is `session:<sid>` and values are JSON SessionData objects.
  */
 
-import { hashKey } from './account.js';
+/**
+ * Computes the SHA-256 hex digest of an API key. Used to derive the
+ * KV storage key (`apikey:<hash>`) so the cleartext key is never
+ * persisted. The full key only exists in memory during creation
+ * (returned to the user) and verification (hashed before lookup).
+ *
+ * @param {string} key - The full API key string.
+ * @returns {Promise<string>} 64-character lowercase hex digest.
+ */
+export async function hashKey(key) {
+    const encoded = new TextEncoder().encode(key);
+    const digest = await crypto.subtle.digest('SHA-256', encoded);
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+}
 
 /** @type {string} KV key prefix for session entries. */
 const SESSION_PREFIX = 'session:';
@@ -214,4 +227,53 @@ export async function deleteSession(kv, sid) {
     if (!sid) return;
     const key = SESSION_PREFIX + sid;
     await kv.delete(key);
+}
+
+/**
+ * Resolves the caller's authentication status from the request headers.
+ * Tries two paths in order:
+ *
+ *   1. `Authorization: Api-Key <key>` → hash + USERS KV lookup.
+ *      Upstream PeeringDB keys (non-`pdbfe.` prefix) are flagged via
+ *      the `rejection` field so the caller can return an appropriate error.
+ *   2. Session ID (Bearer token or `pdbfe_sid` cookie) → SESSIONS KV lookup.
+ *
+ * Returns a result object with:
+ *   - `authenticated` (boolean): whether the caller proved identity.
+ *   - `identity` (string|null): rate-limit key — the API key or session ID.
+ *   - `rejection` (string|null): error message when credentials are
+ *     recognised but invalid (e.g. upstream PeeringDB keys).
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {{USERS: KVNamespace, SESSIONS: KVNamespace}} env - KV namespace bindings.
+ * @returns {Promise<{authenticated: boolean, identity: string|null, rejection: string|null}>}
+ */
+export async function resolveAuth(request, env) {
+    const apiKey = extractApiKey(request);
+
+    // Reject upstream PeeringDB keys early. Only pdbfe-issued keys are valid.
+    if (apiKey !== null && !apiKey.startsWith('pdbfe.')) {
+        return {
+            authenticated: false,
+            identity: null,
+            rejection: 'PeeringDB API keys are not valid on this mirror. '
+                     + 'Create a key at /account after signing in.',
+        };
+    }
+
+    // Path 1: API key
+    if (apiKey !== null && await verifyApiKey(env.USERS, apiKey)) {
+        return { authenticated: true, identity: apiKey, rejection: null };
+    }
+
+    // Path 2: session (Bearer token or cookie)
+    const sid = extractSessionId(request);
+    if (sid) {
+        const session = await resolveSession(env.SESSIONS, sid);
+        if (session !== null) {
+            return { authenticated: true, identity: sid, rejection: null };
+        }
+    }
+
+    return { authenticated: false, identity: null, rejection: null };
 }

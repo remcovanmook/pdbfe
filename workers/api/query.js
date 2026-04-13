@@ -15,6 +15,15 @@
  */
 
 import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
+
+/**
+ * Suffix operators that can appear after `__` in PeeringDB query parameters.
+ * Derived from OPS keys, excluding `eq` which is the implicit default
+ * (no suffix). Used by parseQueryFilters() to recognise operator suffixes.
+ * @type {Set<string>}
+ */
+export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in']);
+
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).

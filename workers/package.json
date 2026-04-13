@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/unit/*.test.js",
+    "test": "node --test tests/unit/*.test.js tests/unit/**/*.test.js",
     "test:integration": "node --test tests/test_api.js",
     "test:conformance": "node --test tests/test_conformance.js",
     "test:conformance-ext": "node --test tests/test_conformance_extended.js",

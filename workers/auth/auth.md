@@ -163,8 +163,8 @@ User records are auto-provisioned on first OAuth login if missing.
 
 ### Auth Worker
 - `workers/auth/index.js` — Router for /auth/* and /account/* endpoints
-- `workers/core/oauth.js` — OAuth handlers (login, callback, logout, me)
-- `workers/core/account.js` — Account profile and API key CRUD handlers
+- `workers/auth/oauth.js` — OAuth handlers (login, callback, logout, me)
+- `workers/auth/account.js` — Account profile and API key CRUD handlers
 
 ### Shared Auth Module
 - `workers/core/auth.js` — Session resolution, API key verification (with in-memory cache), session lifecycle

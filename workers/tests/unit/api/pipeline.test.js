@@ -6,8 +6,8 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMPTY_ENVELOPE, isNegative, cachedQuery } from '../../api/pipeline.js';
-import { LRUCache } from '../../core/cache.js';
+import { EMPTY_ENVELOPE, isNegative, cachedQuery } from '../../../api/pipeline.js';
+import { LRUCache } from '../../../core/cache.js';
 
 // ── isNegative tests ─────────────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ describe("EMPTY_ENVELOPE", () => {
     });
 
     it("should be the same reference across imports", async () => {
-        const mod = await import('../../api/pipeline.js');
+        const mod = await import('../../../api/pipeline.js');
         assert.equal(mod.EMPTY_ENVELOPE, EMPTY_ENVELOPE);
     });
 });

@@ -19,8 +19,8 @@
  * L2 cache, and negative caching.
  */
 
-import { getEntityCache, NEGATIVE_TTL } from '../api/cache.js';
-import { cachedQuery, isNegative } from '../api/pipeline.js';
+import { getEntityCache, NEGATIVE_TTL } from './cache.js';
+import { cachedQuery, isNegative } from './pipeline.js';
 
 /**
  * Performs the full L1 read → SWR → cachedQuery miss flow for a cache key.
