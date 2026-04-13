@@ -87,11 +87,11 @@ if (langSelect) {
 // Fetch and display sync status in the footer
 fetchSyncStatus().then(sync => {
     const el = document.getElementById('sync-status');
-    if (!el || !sync?.last_sync_at) return;
+    if (!el || !sync?.last_modified_at) return;
 
-    const isoDate = sync.last_sync_at.replace(' ', 'T') + 'Z';
-    const then = new Date(isoDate);
-    const diffMs = Date.now() - then.getTime();
+    const epochMs = sync.last_modified_at * 1000;
+    const isoDate = new Date(epochMs).toISOString();
+    const diffMs = Date.now() - epochMs;
     const isStale = diffMs > 3 * 3600 * 1000; // >3 hours
     const timeText = formatDate(isoDate);
     const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
@@ -101,7 +101,7 @@ fetchSyncStatus().then(sync => {
     timeSpan.className = `site-footer__sync-time${staleClass}`;
     timeSpan.textContent = timeText;
     el.replaceChildren(textNode, timeSpan);
-    el.title = sync.last_sync_at;
+    el.title = isoDate;
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure
 });
