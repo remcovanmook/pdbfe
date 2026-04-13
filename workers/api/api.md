@@ -32,21 +32,28 @@ All handler functions receive `db` (typed as `D1Session`) instead of `env`. The 
 ```
 api/index.js (router)
 ├── core/admin.js         (validateRequest, wrapHandler, routeAdminPath)
-├── core/http.js          (encoder, serveJSON, handlePreflight, jsonError, encodeJSON)
-├── core/utils.js         (parseURL, parseQueryFilters)
-├── core/auth.js          (extractApiKey, verifyApiKey, extractSessionId, resolveSession)
+├── core/utils.js         (parseURL, tokenizeString)
+├── core/auth.js          (extractApiKey, verifyApiKey, extractSessionId, resolveSession, hashKey)
+├── api/http.js           (serveJSON, jsonError, H_API_AUTH, H_API_ANON, isNotModifiedSince)
+│   └── core/http.js      (encoder, encodeJSON, handlePreflight, H_CORS, H_NOCACHE)
+├── api/utils.js          (parseQueryFilters)
 ├── api/ratelimit.js      (isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit)
-├── api/handlers/index.js (handleList, handleDetail, handleAsSet, handleNotImplemented)
-│   ├── core/swr.js       (withEdgeSWR — L1 read + SWR + cachedQuery miss flow)
-│   ├── api/pipeline.js   (cachedQuery, EMPTY_ENVELOPE, isNegative)
-│   ├── api/query.js      (buildJsonQuery, buildRowQuery, nextPageParams)
-│   ├── api/depth.js      (expandDepth)
-│   ├── api/cache.js      (getEntityCache, normaliseCacheKey, TTL constants)
-│   └── api/entities.js   (ENTITIES, ENTITY_TAGS, getFilterType, validateQuery)
+├── api/handlers/
+│   ├── index.js          (re-exports from individual handler modules)
+│   ├── list.js           (handleList, executeListQuery, handleCount, prefetchPage)
+│   ├── detail.js         (handleDetail, executeDetailQuery)
+│   ├── as_set.js         (handleAsSet)
+│   └── shared.js         (handleNotImplemented, parseJsonFields, countRows)
+│       ├── api/swr.js    (withEdgeSWR — L1 read + SWR + cachedQuery miss flow)
+│       ├── api/pipeline.js (cachedQuery, EMPTY_ENVELOPE, isNegative)
+│       ├── api/query.js  (buildJsonQuery, buildRowQuery, nextPageParams)
+│       ├── api/depth.js  (expandDepth)
+│       ├── api/cache.js  (getEntityCache, normaliseCacheKey, TTL constants)
+│       └── api/entities.js (ENTITIES, ENTITY_TAGS, getFilterType, validateQuery)
 └── core/cache.js         (LRUCache — instantiated 14× by api/cache.js + 1× by api/ratelimit.js)
 ```
 
-Handlers live in `api/handlers/` for separation of routing and query logic.
+Handlers live in `api/handlers/` as individual focused modules, re-exported via `api/handlers/index.js`.
 
 ## Caching Strategy
 
@@ -89,7 +96,7 @@ Cache keys are **partitioned by authentication state** (prefixed with `auth:` or
 
 ### SWR (Stale-While-Revalidate)
 
-Handlers use `withEdgeSWR()` (`core/swr.js`) instead of raw `cache.get()` + `cachedQuery()`. This encapsulates:
+Handlers use `withEdgeSWR()` (`api/swr.js`) instead of raw `cache.get()` + `cachedQuery()`. This encapsulates:
 1. L1 cache hit with synchronous field extraction (respects the shared `_ret` contract)
 2. Fresh entry → serve immediately
 3. Stale entry (within SWR window) → serve stale, fire `ctx.waitUntil()` background refresh

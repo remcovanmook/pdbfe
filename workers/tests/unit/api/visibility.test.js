@@ -13,8 +13,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ENTITIES } from '../../api/entities.js';
-import { expandDepth } from '../../api/depth.js';
+import { ENTITIES } from '../../../api/entities.js';
+import { expandDepth } from '../../../api/depth.js';
 
 
 // ── Depth expansion visibility tests ─────────────────────────────────────────

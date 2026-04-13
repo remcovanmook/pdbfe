@@ -1,10 +1,88 @@
 /**
- * @fileoverview Shared utility functions for URL parsing, query string
- * handling, and concurrency primitives. Adapted from debthin core/utils.js
- * with added query-filter parsing for the PeeringDB filter syntax.
+ * @fileoverview Shared utility functions for URL parsing and string
+ * tokenization. Generic building blocks used across all workers.
  *
- * Cache-key normalisation lives in api/cache.js.
+ * Domain-specific utilities (query filter parsing, cache-key normalisation)
+ * live in their respective layer modules (api/utils.js, api/cache.js).
  */
+
+/**
+ * Splits a string into up to `maxParts` segments at a delimiter.
+ * Returns an object with keys p0..pN where the last present key
+ * receives the remainder of the string. Keys beyond the number of
+ * actual delimiter occurrences are absent (undefined), so callers
+ * can test `p1 === undefined` to detect single-segment inputs.
+ *
+ * Pass maxParts=-1 to split on every delimiter occurrence (unlimited).
+ *
+ * Hardwired indexOf chains for maxParts 2-5 maintain a stable V8 hidden
+ * class shape (dictionary properties only for the generic fallback).
+ * This avoids array allocations that String.split() would create.
+ *
+ * @param {string} str - The string to tokenize.
+ * @param {string} [delimiter='/'] - Single-character delimiter.
+ * @param {number} [maxParts=5] - Maximum segments to extract, or -1 for unlimited.
+ * @returns {Record<string, string>} Keys p0..p(N-1) mapped to sequential segments. Absent keys indicate fewer segments than maxParts.
+ */
+export function tokenizeString(str, delimiter = '/', maxParts = 5) {
+    /** @type {Record<string, string>} */
+    const parts = {};
+    const s1 = str.indexOf(delimiter);
+    if (s1 === -1 || maxParts === 0) return parts;
+
+    if (maxParts === 2) {
+        parts.p0 = str.slice(0, s1);
+        parts.p1 = str.slice(s1 + 1);
+        return parts;
+    }
+
+    const s2 = str.indexOf(delimiter, s1 + 1);
+    if (maxParts === 3) {
+        parts.p0 = str.slice(0, s1);
+        parts.p1 = str.slice(s1 + 1, s2 !== -1 ? s2 : undefined);
+        if (s2 !== -1) parts.p2 = str.slice(s2 + 1);
+        return parts;
+    }
+
+    const s3 = s2 !== -1 ? str.indexOf(delimiter, s2 + 1) : -1;
+    if (maxParts === 4) {
+        parts.p0 = str.slice(0, s1);
+        parts.p1 = str.slice(s1 + 1, s2 !== -1 ? s2 : undefined);
+        if (s2 !== -1) parts.p2 = str.slice(s2 + 1, s3 !== -1 ? s3 : undefined);
+        if (s3 !== -1) parts.p3 = str.slice(s3 + 1);
+        return parts;
+    }
+
+    const s4 = s3 !== -1 ? str.indexOf(delimiter, s3 + 1) : -1;
+    if (maxParts === 5) {
+        parts.p0 = str.slice(0, s1);
+        parts.p1 = str.slice(s1 + 1, s2 !== -1 ? s2 : undefined);
+        if (s2 !== -1) parts.p2 = str.slice(s2 + 1, s3 !== -1 ? s3 : undefined);
+        if (s3 !== -1) parts.p3 = str.slice(s3 + 1, s4 !== -1 ? s4 : undefined);
+        if (s4 !== -1) parts.p4 = str.slice(s4 + 1);
+        return parts;
+    }
+
+    // Generic fallback for maxParts > 5, maxParts === 1, or maxParts === -1 (unlimited).
+    const unlimited = maxParts === -1;
+    let currentIdx = -1;
+    for (let i = 0; unlimited || i < maxParts; i++) {
+        if (!unlimited && i === maxParts - 1) {
+            // Last allowed part — remainder goes here
+            parts[`p${i}`] = str.slice(currentIdx + 1);
+            break;
+        }
+        const nextIdx = str.indexOf(delimiter, currentIdx + 1);
+        if (nextIdx === -1) {
+            // No more delimiters — final segment
+            parts[`p${i}`] = str.slice(currentIdx + 1);
+            break;
+        }
+        parts[`p${i}`] = str.slice(currentIdx + 1, nextIdx);
+        currentIdx = nextIdx;
+    }
+    return parts;
+}
 
 /**
  * Parses a Request URL into its components. Avoids constructing a full
@@ -33,111 +111,3 @@ export function parseURL(request) {
         queryString: pathAndQuery.slice(qIdx + 1)
     };
 }
-
-/**
- * Parses a URL query string into PeeringDB-style filter objects.
- * Handles the filter suffix conventions: __lt, __gt, __lte, __gte,
- * __contains, __startswith, __in. Parameters without a suffix are
- * treated as exact-match equality filters.
- *
- * Reserved parameters (depth, limit, skip, since, sort) are separated out
- * and returned in the `pagination` and `meta` objects.
- *
- * @param {string} queryString - Raw query string without the leading '?'.
- * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[]}} Parsed query components.
- */
-export function parseQueryFilters(queryString) {
-    /** @type {ParsedFilter[]} */
-    const filters = [];
-    let depth = 0;
-    let limit = -1;
-    let skip = 0;
-    let since = 0;
-    let sort = '';
-    /** @type {string[]} */
-    let fields = [];
-
-    /** @type {Map<string, number>} Track filter index by "field:op" to implement last-value-wins */
-    const filterIdx = new Map();
-
-    if (!queryString) return { filters, depth, limit, skip, since, sort, fields };
-
-    const pairs = queryString.split("&"); // ap-ok: query string parsing, bounded by URL length
-    for (let i = 0; i < pairs.length; i++) {
-        const eqIdx = pairs[i].indexOf("=");
-        if (eqIdx === -1) continue;
-
-        const rawKey = decodeURIComponent(pairs[i].slice(0, eqIdx));
-        const rawValue = decodeURIComponent(pairs[i].slice(eqIdx + 1));
-
-        // Handle reserved pagination/meta parameters
-        if (rawKey === "depth") {
-            depth = parseInt(rawValue, 10) || 0;
-            if (depth > 2) depth = 2;
-            if (depth < 0) depth = 0;
-            continue;
-        }
-        if (rawKey === "limit") {
-            const parsed = parseInt(rawValue, 10);
-            limit = isNaN(parsed) ? -1 : parsed;
-            continue;
-        }
-        if (rawKey === "skip") {
-            skip = parseInt(rawValue, 10) || 0;
-            if (skip < 0) skip = 0;
-            continue;
-        }
-        if (rawKey === "since") {
-            since = parseInt(rawValue, 10) || 0;
-            continue;
-        }
-        if (rawKey === "sort") {
-            sort = rawValue;
-            continue;
-        }
-        if (rawKey === "fields") {
-            fields = rawValue.split(",").map(s => s.trim()).filter(Boolean); // ap-ok: ?fields= parsing, small input
-            continue;
-        }
-
-        // Parse filter suffix from the field name
-        const suffixes = ["__lte", "__gte", "__lt", "__gt", "__contains", "__startswith", "__in"];
-        let field = rawKey;
-        let op = "eq";
-
-        for (const suffix of suffixes) {
-            if (rawKey.endsWith(suffix)) {
-                field = rawKey.slice(0, -suffix.length);
-                op = suffix.slice(2); // strip leading __
-                break;
-            }
-        }
-
-        // Cross-entity filter: if the field still contains __, the prefix
-        // is a related entity tag (e.g. fac__state → entity=fac, field=state).
-        const dunder = field.indexOf('__');
-
-        // Build the filter entry
-        /** @type {ParsedFilter} */
-        let entry;
-        if (dunder !== -1) {
-            entry = { field: field.slice(dunder + 2), op, value: rawValue, entity: field.slice(0, dunder) };
-        } else {
-            entry = { field, op, value: rawValue };
-        }
-
-        // Last-value-wins: if the same field+op was seen before, overwrite it
-        // This matches Django's QueryDict.get() which returns the last value
-        const dedupeKey = `${entry.entity || ''}:${entry.field}:${op}`;
-        const existingIdx = filterIdx.get(dedupeKey);
-        if (existingIdx !== undefined) {
-            filters[existingIdx] = entry;
-        } else {
-            filterIdx.set(dedupeKey, filters.length);
-            filters.push(entry);
-        }
-    }
-
-    return { filters, depth, limit, skip, since, sort, fields };
-}
-

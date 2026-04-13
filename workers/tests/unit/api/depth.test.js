@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { expandDepth } from '../../api/depth.js';
+import { expandDepth } from '../../../api/depth.js';
 
 /**
  * Creates a mock D1 database that returns pre-defined results

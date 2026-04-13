@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureColumns } from '../../sync/index.js';
+import { ensureColumns } from '../../../sync/index.js';
 
 /**
  * Creates a mock D1 database that tracks PRAGMA and ALTER queries.

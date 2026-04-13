@@ -25,7 +25,7 @@ import {
     handleLogout,
     handleMe,
     handleAuthPreflight,
-} from '../core/oauth.js';
+} from './oauth.js';
 
 import {
     handleGetProfile,
@@ -34,7 +34,7 @@ import {
     handleCreateKey,
     handleDeleteKey,
     handleAccountPreflight,
-} from '../core/account.js';
+} from './account.js';
 
 /**
  * Routes incoming requests to the appropriate handler.

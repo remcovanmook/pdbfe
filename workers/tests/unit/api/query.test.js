@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../api/query.js';
+import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../../api/query.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -327,7 +327,7 @@ describe("fields parameter", () => {
 
 // ── validateQuery ────────────────────────────────────────────────────────────
 
-import { validateQuery, MAX_IN_VALUES } from '../../api/entities.js';
+import { validateQuery, MAX_IN_VALUES } from '../../../api/entities.js';
 
 describe("validateQuery", () => {
     it("should return null for valid filters", () => {
@@ -410,7 +410,7 @@ describe("validateQuery", () => {
 
 // ── Cross-entity filter SQL generation ───────────────────────────────────────
 
-import { ENTITIES, resolveImplicitFilters } from '../../api/entities.js';
+import { ENTITIES, resolveImplicitFilters } from '../../../api/entities.js';
 
 describe("cross-entity filters", () => {
     // Use real ENTITIES for these tests since subquery generation
@@ -505,7 +505,7 @@ describe("resolveImplicitFilters", () => {
 
 // ── Cross-entity filter parsing ──────────────────────────────────────────────
 
-import { parseQueryFilters } from '../../core/utils.js';
+import { parseQueryFilters } from '../../../api/utils.js';
 
 describe("parseQueryFilters cross-entity syntax", () => {
     it("should parse fac__state=NSW as cross-entity filter", () => {

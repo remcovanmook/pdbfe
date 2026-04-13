@@ -5,8 +5,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateApiKey, hashKey } from '../../core/account.js';
-import { verifyApiKey, extractApiKey } from '../../core/auth.js';
+import { generateApiKey } from '../../../auth/account.js';
+import { verifyApiKey, extractApiKey, hashKey } from '../../../core/auth.js';
 
 // ── Mock KV namespace ────────────────────────────────────────────────────────
 

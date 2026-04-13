@@ -10,16 +10,19 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+    H_CORS,
+    H_NOCACHE,
+    lastModifiedHeader,
+    isNotModifiedSince,
+} from '../../../core/http.js';
+
+import {
     H_API,
     H_API_AUTH,
     H_API_ANON,
-    H_CORS,
-    H_NOCACHE,
     H_NOCACHE_AUTH,
     H_NOCACHE_ANON,
-    lastModifiedHeader,
-    isNotModifiedSince,
-} from '../../core/http.js';
+} from '../../../api/http.js';
 
 // ── lastModifiedHeader ──────────────────────────────────────────────────────
 

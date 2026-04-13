@@ -7,6 +7,8 @@
  * since the PeeringDB API depends on them for filtering.
  */
 
+import { tokenizeString } from './utils.js';
+
 const H_PLAIN = Object.freeze({
     "Content-Type": "text/plain; charset=utf-8",
     "Cache-Control": "no-store"
@@ -51,8 +53,8 @@ export function validateRequest(request, rawPath, allowedMethods = DEFAULT_METHO
         || rawPath.startsWith("xmlrpc")) {
         return new Response("Not Found\n", { status: 404 });
     }
-    const slash = rawPath.indexOf("/");
-    if (slash !== -1 && rawPath.slice(slash + 1).startsWith("wp-includes")) {
+    const { p1 } = tokenizeString(rawPath, '/', 2);
+    if (p1 !== undefined && p1.startsWith("wp-includes")) {
         return new Response("Not Found\n", { status: 404 });
     }
     return null;

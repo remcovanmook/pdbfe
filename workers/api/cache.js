@@ -37,12 +37,18 @@ const MB = 1024 * 1024;
  * With background sync invalidation (sync_state.js), data freshness
  * is handled by the 15s poll loop. TTL is an upper bound for entries
  * that survive without invalidation (e.g. if polling is delayed).
+ *
+ * LIST_TTL, DETAIL_TTL, and COUNT_TTL are currently identical but
+ * kept as separate constants. The sync invalidation poll granularity
+ * may improve in future, allowing shorter detail TTLs without
+ * penalising cheaper list queries.
  * @type {number}
  */
 export const LIST_TTL = 60 * 60 * 1000;
 
 /**
  * TTL for detail (single-row) responses (60 minutes).
+ * Separate from LIST_TTL for independent tuning.
  * @type {number}
  */
 export const DETAIL_TTL = 60 * 60 * 1000;
@@ -51,6 +57,7 @@ export const DETAIL_TTL = 60 * 60 * 1000;
  * TTL for count responses (60 minutes).
  * Counts are derived from the same entity data; invalidation
  * purges them along with list/detail entries.
+ * Separate from LIST_TTL for independent tuning.
  * @type {number}
  */
 export const COUNT_TTL = 60 * 60 * 1000;

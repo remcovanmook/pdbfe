@@ -4,15 +4,16 @@
  * handlers, AS-set lookups, and returns 501 for write methods.
  */
 
-import { parseURL, parseQueryFilters } from '../core/utils.js';
+import { parseURL, tokenizeString } from '../core/utils.js';
+import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from '../core/http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, withLastModified } from './http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
-import { ensureSyncFreshness, getEntityVersion, handleSyncStatusCached } from './sync_state.js';
+import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
-import { extractApiKey, verifyApiKey, extractSessionId, resolveSession } from '../core/auth.js';
+import { resolveAuth } from '../core/auth.js';
 import { initL2 } from './l2cache.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -33,33 +34,12 @@ const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Response|null} 400 Response on validation failure, or null if valid.
  */
-function checkCachedError(entity, filters, sort, hNocache) {
+function validateQueryOrError(entity, filters, sort, hNocache) {
     const queryError = validateQuery(entity, filters, sort);
     if (!queryError) return null;
-
-    const errorJson = JSON.stringify({ error: queryError }) + '\n';
-    return new Response(errorJson, { status: 400, headers: hNocache });
+    return jsonError(400, queryError, hNocache);
 }
 
-/**
- * Adds Last-Modified header to an entity response using the per-entity
- * version timestamp from _sync_meta. Clones into a new Response to
- * work around frozen header objects.
- *
- * @param {Response} response - The original response.
- * @param {number} epochMs - Last-modified epoch in milliseconds.
- * @returns {Response} New response with Last-Modified header.
- */
-function withLastModified(response, epochMs) {
-    if (!epochMs) return response;
-    const h = new Headers(response.headers);
-    h.set('Last-Modified', lastModifiedHeader(epochMs));
-    return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: h
-    });
-}
 
 /**
  * Validates and routes incoming API requests.
@@ -75,32 +55,8 @@ async function handleRequest(request, env, ctx) {
     initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
-    // Determine authentication status. Two paths:
-    //   1. API-Key header (pdbfe.* keys) → USERS KV lookup
-    //   2. Session ID (from Bearer token or cookie) → SESSIONS KV lookup
-    const apiKey = extractApiKey(request);
-
-    // Reject upstream PeeringDB keys early with a helpful error.
-    // Only pdbfe-issued keys (pdbfe.<hex>) are valid on this mirror.
-    if (apiKey !== null && !apiKey.startsWith('pdbfe.')) {
-        return jsonError(403,
-            'PeeringDB API keys are not valid on this mirror. ' +
-            'Create a key at /account after signing in.');
-    }
-
-    let authenticated = apiKey !== null && await verifyApiKey(env.USERS, apiKey);
-    let authIdentity = authenticated ? apiKey : null;
-
-    if (!authenticated) {
-        const sid = extractSessionId(request);
-        if (sid) {
-            const session = await resolveSession(env.SESSIONS, sid);
-            if (session !== null) {
-                authenticated = true;
-                authIdentity = sid;
-            }
-        }
-    }
+    const { authenticated, identity: authIdentity, rejection } = await resolveAuth(request, env);
+    if (rejection) return jsonError(403, rejection);
 
     // Pre-select header sets based on auth state. These frozen objects
     // are used for all Response construction — no per-request cloning.
@@ -135,10 +91,10 @@ async function handleRequest(request, env, ctx) {
         return handlePreflight();
     }
 
-    const slash = rawPath.indexOf("/");
+    const { p0: topLevel, p1: apiCall } = tokenizeString(rawPath, '/', 2);
 
     // Root-level paths (no slash): admin endpoints
-    if (slash === -1) {
+    if (apiCall === undefined) {
         const adminResponse = routeAdminPath(rawPath, env, {
             db,
             serviceName: "pdbfe-api",
@@ -151,18 +107,16 @@ async function handleRequest(request, env, ctx) {
         if (adminResponse) return adminResponse;
 
         if (rawPath === "status") {
-            return handleSyncStatusCached(request, db, ctx);
+            return handleStatus(request, db, ctx);
         }
 
         return jsonError(404, "Not found");
     }
 
     // All API paths start with "api/"
-    if (!rawPath.startsWith("api/")) {
+    if (topLevel !== "api") {
         return jsonError(404, "Not found");
     }
-
-    const apiPath = rawPath.slice(4); // strip "api/"
 
     // O(1) hot-path hook: trigger background D1 poll if 15s have passed.
     // Scoped to entity routes only — admin/health/status don't need it.
@@ -179,70 +133,11 @@ async function handleRequest(request, env, ctx) {
     //   api/{entity}       → list
     //   api/{entity}/{id}  → detail
     //   api/as_set/{asn}   → AS set lookup
-    const entitySlash = apiPath.indexOf("/");
+    const { p0: entityTag, p1: rest } = tokenizeString(apiCall, '/', 2);
 
-    if (entitySlash === -1) {
-        // api/{entity} — list endpoint
-        const entityTag = apiPath;
-        if (!ENTITY_TAGS.has(entityTag)) {
-            return jsonError(404, `Unknown entity: ${entityTag}`, hNocache);
-        }
-
-        const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
-
-        // Reject nonsensical negative values. limit=-1 is the internal
-        // sentinel for "not specified"; any lower value is invalid user input.
-        if (limit < -1 || skip < 0) {
-            return jsonError(400, 'limit and skip must be non-negative integers', hNocache);
-        }
-
-        const entity = ENTITIES[entityTag];
-        const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
-
-        // Restricted entities (poc) are not accessible to anonymous callers.
-        // Upstream PeeringDB returns {"data": []} for unauthenticated /api/poc
-        // requests. The anonFilter (visible=Public) is only applied during
-        // depth expansion (poc_set), not on the direct endpoint.
-        if (!authenticated && entity._restricted) {
-            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
-        }
-
-        // If-Modified-Since shortcut: if the entity data hasn't changed
-        // since the client's cached copy, return 304 without touching
-        // any cache or D1. Uses the per-entity last_modified_at from _sync_meta.
-        const entityVersionMs = getEntityVersion(entityTag) * 1000;
-        if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
-            return new Response(null, {
-                status: 304,
-                headers: {
-                    ...hApi,
-                    'Last-Modified': lastModifiedHeader(entityVersionMs),
-                }
-            });
-        }
-
-        resolveImplicitFilters(entity, filters);
-
-        // Partition cache keys by authentication state to prevent cache
-        // poisoning. Anonymous users see restricted poc_set filtered to
-        // visible=Public; authenticated users see all visibility levels.
-        // Without partitioning, whichever request populates the cache
-        // first determines what the other group sees until TTL expires.
-        const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
-
-        const errorResponse = checkCachedError(entity, filters, sort, hNocache);
-        if (errorResponse) return errorResponse;
-
-        const response = await handleList(request, db, ctx, entityTag, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
-        return withLastModified(response, entityVersionMs);
-    }
-
-    const entityTag = apiPath.slice(0, entitySlash);
-    const rest = apiPath.slice(entitySlash + 1);
-
-    // Special case: as_set/{asn}
+    // Special case: as_set/{asn} — early return before shared entity flow.
     // Upstream rejects comma-separated ASNs with 400 — match that behaviour.
-    if (entityTag === "as_set") {
+    if (entityTag === "as_set" && rest !== undefined) {
         if (rest.includes(',')) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
@@ -253,20 +148,27 @@ async function handleRequest(request, env, ctx) {
         return handleAsSet(request, db, ctx, asn, authenticated);
     }
 
-    // api/{entity}/{id} — detail endpoint
+    // ── Shared entity request pipeline ───────────────────────────────
+    // List and detail endpoints share the same validation, caching, and
+    // response pipeline. The only fork is which handler to call at the end.
+
     if (!ENTITY_TAGS.has(entityTag)) {
         return jsonError(404, `Unknown entity: ${entityTag}`, hNocache);
     }
 
-    // Trailing slash is common in PeeringDB URLs — strip it.
-    // Note: parseInt tolerates trailing non-numeric characters, so
-    // ".json" extensions (e.g. /api/net/1.json) work accidentally:
-    // parseInt('1.json', 10) → 1. This provides compatibility with
-    // clients that append .json to API paths.
-    const idStr = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-    const id = parseInt(idStr, 10);
-    if (isNaN(id) || id <= 0) {
-        return jsonError(400, `Invalid ID: ${idStr}`, hNocache);
+    // Parse optional detail ID from the rest segment.
+    let id = 0;
+    if (rest !== undefined) {
+        // Trailing slash is common in PeeringDB URLs — strip it.
+        // Note: parseInt tolerates trailing non-numeric characters, so
+        // ".json" extensions (e.g. /api/net/1.json) work accidentally:
+        // parseInt('1.json', 10) → 1. This provides compatibility with
+        // clients that append .json to API paths.
+        const idStr = rest.endsWith("/") ? rest.slice(0, -1) : rest;
+        id = parseInt(idStr, 10);
+        if (isNaN(id) || id <= 0) {
+            return jsonError(400, `Invalid ID: ${idStr}`, hNocache);
+        }
     }
 
     const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
@@ -279,11 +181,18 @@ async function handleRequest(request, env, ctx) {
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
     // Restricted entities (poc) are not accessible to anonymous callers.
+    // List returns 200 with empty data (upstream behaviour); detail returns 404.
     if (!authenticated && entity._restricted) {
-        return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+        if (id > 0) {
+            return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+        }
+        // 200 empty result — not an error — matches upstream's treatment
+        // of unauthenticated /api/poc as a valid but empty result set.
+        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
     }
 
-    // If-Modified-Since shortcut for detail endpoints.
+    // If-Modified-Since shortcut: return 304 without touching cache or D1
+    // if the entity data hasn't changed since the client's cached copy.
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
     if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
         return new Response(null, {
@@ -297,12 +206,20 @@ async function handleRequest(request, env, ctx) {
 
     resolveImplicitFilters(entity, filters);
 
+    // Partition cache keys by authentication state to prevent cache
+    // poisoning. Anonymous users see restricted poc_set filtered to
+    // visible=Public; authenticated users see all visibility levels.
     const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
 
-    const errorResponse = checkCachedError(entity, filters, sort, hNocache);
+    const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
 
-    const response = await handleDetail(request, db, ctx, entityTag, id, filters, { depth, limit, skip, since, sort, fields }, cachePath, queryString, authenticated);
+    const opts = { depth, limit, skip, since, sort, fields };
+
+    // ── Handler dispatch ─────────────────────────────────────────────
+    const response = id > 0
+        ? await handleDetail(request, db, ctx, entityTag, id, filters, opts, cachePath, queryString, authenticated)
+        : await handleList(request, db, ctx, entityTag, filters, opts, cachePath, queryString, authenticated);
     return withLastModified(response, entityVersionMs);
 }
 

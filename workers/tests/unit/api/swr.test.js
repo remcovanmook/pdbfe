@@ -1,5 +1,5 @@
 /**
- * @fileoverview Unit tests for the withEdgeSWR wrapper (core/swr.js).
+ * @fileoverview Unit tests for the withEdgeSWR wrapper (api/swr.js).
  *
  * Tests the full L1 → SWR → cachedQuery flow with mocked cache instances.
  * L2 cache (caches.default) is not available in Node.js, so all miss-path
@@ -8,10 +8,10 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { withEdgeSWR } from '../../core/swr.js';
-import { LRUCache } from '../../core/cache.js';
-import { getEntityCache, NEGATIVE_TTL } from '../../api/cache.js';
-import { EMPTY_ENVELOPE } from '../../api/pipeline.js';
+import { withEdgeSWR } from '../../../api/swr.js';
+import { LRUCache } from '../../../core/cache.js';
+import { getEntityCache, NEGATIVE_TTL } from '../../../api/cache.js';
+import { EMPTY_ENVELOPE } from '../../../api/pipeline.js';
 
 /**
  * Creates a minimal mock ExecutionContext that captures waitUntil calls.

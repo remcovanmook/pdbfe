@@ -14,7 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getEntityVersion } from '../../api/sync_state.js';
+import { getEntityVersion } from '../../../api/sync_state.js';
 
 // ── Tests ───────────────────────────────────────────────────────
 

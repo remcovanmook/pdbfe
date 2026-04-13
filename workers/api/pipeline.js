@@ -22,7 +22,7 @@
 
 import { getL2, putL2 } from './l2cache.js';
 import { getEntityVersion } from './sync_state.js';
-import { encoder } from '../core/http.js';
+import { encoder } from './http.js';
 import { NEGATIVE_TTL } from './cache.js';
 
 /**
