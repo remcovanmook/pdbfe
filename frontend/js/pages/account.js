@@ -31,7 +31,7 @@ function el(tag, opts = {}) {
  * @param {string} title - Card header title.
  * @param {HTMLElement|DocumentFragment} body - Card body content.
  * @param {HTMLElement[]} [headerExtras] - Extra elements for the header (badges, buttons).
- * @returns {HTMLDivElement}
+ * @returns {HTMLElement}
  */
 function card(title, body, headerExtras = []) {
     const wrapper = el('div', { className: 'card' });
@@ -50,8 +50,8 @@ function card(title, body, headerExtras = []) {
  *
  * @param {string} id - Modal element ID.
  * @param {string} title - Modal card title.
- * @param {HTMLElement} body - Modal body content.
- * @returns {HTMLDivElement}
+ * @param {HTMLElement|DocumentFragment} body - Modal body content.
+ * @returns {HTMLElement}
  */
 function modal(id, title, body) {
     const overlay = el('div', { id, className: 'key-modal-overlay', style: 'display:none' });
@@ -197,7 +197,7 @@ export async function renderAccount(_params) {
     resultDiv.appendChild(el('button', { id: 'btn-close-modal', className: 'auth-link', style: 'cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%', text: t('Close') }));
     createModalBody.appendChild(resultDiv);
 
-    frag.appendChild(modal('key-modal', t('Create API Key'), /** @type {HTMLElement} */ (createModalBody)));
+    frag.appendChild(modal('key-modal', t('Create API Key'), createModalBody));
 
     // ── Revoke key modal ─────────────────────────────────────────
     const revokeBody = document.createDocumentFragment();
@@ -209,7 +209,7 @@ export async function renderAccount(_params) {
     revokeBody.appendChild(revokeBtnRow);
     revokeBody.appendChild(el('p', { id: 'revoke-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
 
-    frag.appendChild(modal('revoke-modal', t('Revoke API Key'), /** @type {HTMLElement} */ (revokeBody)));
+    frag.appendChild(modal('revoke-modal', t('Revoke API Key'), revokeBody));
 
     // ── Mount and wire ───────────────────────────────────────────
     container.replaceChildren(frag);

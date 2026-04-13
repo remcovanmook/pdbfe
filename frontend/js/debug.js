@@ -245,7 +245,7 @@ async function toggleOverlay() {
  *
  * @param {any} syncStatus - Response from fetchSyncStatus().
  * @param {Array<{key: string, ageMs: number, swrState: string, telemetry: import('./api.js').CacheTelemetry}>} localCache - Browser cache entries.
- * @returns {HTMLDivElement} The overlay inner container.
+ * @returns {HTMLElement} The overlay inner container.
  */
 function buildOverlayDOM(syncStatus, localCache) {
     const now = Date.now();
