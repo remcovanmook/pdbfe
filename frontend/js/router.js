@@ -4,7 +4,7 @@
  * to the appropriate page renderer via registered route patterns.
  */
 
-import { escapeHTML } from './render.js';
+import { createError, createEmptyState } from './render.js';
 
 /**
  * @typedef {Object} Route
@@ -133,8 +133,9 @@ async function dispatch(fullPath) {
             try {
                 await route.handler(params);
             } catch (err) {
-                console.error('Route handler error:', err);
-                _appContainer.innerHTML = `<div class="error-message">Failed to load page: ${escapeHTML(err.message)}</div>`;
+                _appContainer.replaceChildren(
+                    createError(`Failed to load page: ${err.message}`)
+                );
             }
 
             // Reset scroll after content is rendered
@@ -150,6 +151,6 @@ async function dispatch(fullPath) {
     }
 
     // No route matched
-    _appContainer.innerHTML = `<div class="empty-state">Page not found</div>`;
+    _appContainer.replaceChildren(createEmptyState('Page not found'));
     document.title = 'Not Found — PeeringDB';
 }

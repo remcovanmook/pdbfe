@@ -1,0 +1,440 @@
+/**
+ * @fileoverview <pdb-table> custom element.
+ *
+ * A sortable, filterable, paginated data table that self-initializes
+ * when connected to the DOM. Replaces the renderTableCard() +
+ * attachTableSort() + attachTableFilter() + attachTablePaging()
+ * pipeline from render.js.
+ *
+ * Usage:
+ *   const el = document.createElement('pdb-table');
+ *   el.configure({
+ *       title: 'Peers',
+ *       columns: [{key: 'name', label: 'Network'}, ...],
+ *       rows: [...],
+ *       cellRenderer: (row, col) => Node | {node, sortValue},
+ *       filterable: true,
+ *       filterPlaceholder: 'Filter by name...',
+ *       pageSize: 50,
+ *   });
+ *   container.appendChild(el);
+ *
+ * The element builds its DOM in connectedCallback() using the config
+ * set via configure(). Sorting, filtering, and paging are handled
+ * internally — no external attachment functions are needed.
+ *
+ * Paging uses a slice-based approach: the full row dataset lives in
+ * JS memory, and only the currently visible page is rendered into
+ * the <tbody>. This scales to tens of thousands of rows without
+ * touching the DOM for hidden rows.
+ */
+
+import { t } from '../i18n.js';
+
+/** Default number of rows per page. */
+const DEFAULT_PAGE_SIZE = 50;
+
+/**
+ * @typedef {Object} TableColumn
+ * @property {string} key - Column key used in cellRenderer dispatch.
+ * @property {string} label - Display label (passed through t() for i18n).
+ * @property {string} [class] - Optional CSS class for <td> elements.
+ */
+
+/**
+ * @typedef {Object} CellResult
+ * @property {Node} node - DOM node for the cell content.
+ * @property {string|number} sortValue - Value used for sorting.
+ */
+
+/**
+ * @typedef {Object} TableConfig
+ * @property {string} title - Card header title.
+ * @property {TableColumn[]} columns - Column definitions.
+ * @property {any[]} rows - Data rows.
+ * @property {function(any, TableColumn): (Node|CellResult)} cellRenderer
+ *     Returns a DOM node for a cell. May return a plain Node or an object
+ *     with `node` and `sortValue` for sortable cells.
+ * @property {boolean} [filterable] - Show a filter input.
+ * @property {string} [filterPlaceholder] - Placeholder text for filter input.
+ * @property {number} [pageSize] - Rows per page (default: DEFAULT_PAGE_SIZE).
+ */
+
+class PdbTable extends HTMLElement {
+    constructor() {
+        super();
+        /** @type {TableConfig|null} */
+        this._config = null;
+
+        /** @type {any[]} Filtered + sorted row dataset (references into config.rows). */
+        this._processedRows = [];
+
+        /** @type {number} Current 1-indexed page number. */
+        this._page = 1;
+
+        /** @type {number} Active sort column index, or -1 for none. */
+        this._sortColIdx = -1;
+
+        /** @type {string} Sort direction: 'asc' or 'desc'. */
+        this._sortDir = 'asc';
+
+        /** @type {string} Current filter query (lowercased). */
+        this._filterQuery = '';
+
+        // DOM references set during build
+        /** @type {HTMLTableSectionElement|null} */
+        this._tbody = null;
+        /** @type {HTMLElement|null} */
+        this._pagingDiv = null;
+        /** @type {HTMLSpanElement|null} */
+        this._pageNumSpan = null;
+        /** @type {HTMLSpanElement|null} */
+        this._pageTotalSpan = null;
+        /** @type {HTMLButtonElement|null} */
+        this._prevBtn = null;
+        /** @type {HTMLButtonElement|null} */
+        this._nextBtn = null;
+        /** @type {HTMLSpanElement|null} */
+        this._badgeSpan = null;
+    }
+
+    /**
+     * Sets the table configuration. Must be called before the element
+     * is connected to the DOM (i.e., before appendChild).
+     *
+     * @param {TableConfig} config - Table configuration object.
+     */
+    configure(config) {
+        this._config = config;
+    }
+
+    /**
+     * Called by the browser when the element is inserted into the DOM.
+     * Builds the full table structure and initializes sort/filter/paging.
+     */
+    connectedCallback() {
+        if (!this._config) return;
+
+        const cfg = this._config;
+        const pageSize = cfg.pageSize || DEFAULT_PAGE_SIZE;
+
+        // ── Card wrapper ─────────────────────────────────────────
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        // ── Header ───────────────────────────────────────────────
+        const header = document.createElement('div');
+        header.className = 'card__header';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'card__title';
+        titleSpan.textContent = t(cfg.title);
+        header.appendChild(titleSpan);
+
+        const headerRight = document.createElement('div');
+        headerRight.style.cssText = 'display:flex;align-items:center;gap:var(--space-sm)';
+
+        // Filter input
+        if (cfg.filterable) {
+            const filterWrap = document.createElement('div');
+            filterWrap.className = 'table-filter';
+
+            const filterInput = document.createElement('input');
+            filterInput.type = 'text';
+            filterInput.className = 'table-filter__input';
+            filterInput.placeholder = cfg.filterPlaceholder || t('Filter...');
+            filterInput.addEventListener('input', () => {
+                this._filterQuery = filterInput.value.toLowerCase();
+                this._applyFilterAndSort();
+                this._page = 1;
+                this._renderPage();
+            });
+            filterWrap.appendChild(filterInput);
+            headerRight.appendChild(filterWrap);
+        }
+
+        // Count badge
+        this._badgeSpan = document.createElement('span');
+        this._badgeSpan.className = 'card__badge';
+        this._badgeSpan.textContent = String(cfg.rows.length);
+        headerRight.appendChild(this._badgeSpan);
+
+        header.appendChild(headerRight);
+        card.appendChild(header);
+
+        // ── Table ────────────────────────────────────────────────
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'data-table-wrapper';
+
+        const table = document.createElement('table');
+        table.className = 'data-table';
+
+        // Thead
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        cfg.columns.forEach((col, idx) => {
+            const th = document.createElement('th');
+            th.textContent = t(col.label);
+            th.setAttribute('data-sort-key', col.key);
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => this._onHeaderClick(idx));
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Tbody (rows are rendered via _renderPage)
+        this._tbody = document.createElement('tbody');
+        table.appendChild(this._tbody);
+
+        tableWrap.appendChild(table);
+        card.appendChild(tableWrap);
+
+        // ── Paging ───────────────────────────────────────────────
+        const needsPaging = cfg.rows.length > pageSize;
+        if (needsPaging) {
+            this._pagingDiv = document.createElement('div');
+            this._pagingDiv.className = 'table-paging';
+
+            this._prevBtn = document.createElement('button');
+            this._prevBtn.className = 'table-paging__btn';
+            this._prevBtn.innerHTML = `&larr; ${t('Prev')}`;
+            this._prevBtn.disabled = true;
+            this._prevBtn.addEventListener('click', () => {
+                if (this._page > 1) {
+                    this._page--;
+                    this._renderPage();
+                }
+            });
+
+            const infoSpan = document.createElement('span');
+            infoSpan.className = 'table-paging__info';
+            this._pageNumSpan = document.createElement('span');
+            this._pageTotalSpan = document.createElement('span');
+            infoSpan.append(
+                t('Page') + ' ',
+                this._pageNumSpan,
+                ' / ',
+                this._pageTotalSpan
+            );
+
+            this._nextBtn = document.createElement('button');
+            this._nextBtn.className = 'table-paging__btn';
+            this._nextBtn.innerHTML = `${t('Next')} &rarr;`;
+            this._nextBtn.addEventListener('click', () => {
+                const totalPages = this._totalPages();
+                if (this._page < totalPages) {
+                    this._page++;
+                    this._renderPage();
+                }
+            });
+
+            this._pagingDiv.append(this._prevBtn, infoSpan, this._nextBtn);
+            card.appendChild(this._pagingDiv);
+        }
+
+        this.appendChild(card);
+
+        // ── Initial render ───────────────────────────────────────
+        this._applyFilterAndSort();
+
+        // Default sort: first column ascending
+        if (cfg.columns.length > 0) {
+            this._sortColIdx = 0;
+            this._sortDir = 'asc';
+            const firstTh = thead.querySelector('th');
+            if (firstTh) firstTh.setAttribute('data-sort-dir', 'asc');
+            this._applySortToProcessedRows();
+        }
+
+        this._renderPage();
+    }
+
+    /**
+     * Returns the configured page size.
+     * @returns {number}
+     */
+    _pageSize() {
+        return this._config?.pageSize || DEFAULT_PAGE_SIZE;
+    }
+
+    /**
+     * Returns the total number of pages based on filtered row count.
+     * @returns {number}
+     */
+    _totalPages() {
+        return Math.max(1, Math.ceil(this._processedRows.length / this._pageSize()));
+    }
+
+    /**
+     * Handles a click on a column header. Toggles sort direction
+     * if the same column, else sorts ascending on the new column.
+     *
+     * @param {number} colIdx - Column index that was clicked.
+     */
+    _onHeaderClick(colIdx) {
+        const thead = this.querySelector('thead');
+        if (!thead) return;
+
+        // Determine new direction
+        if (this._sortColIdx === colIdx) {
+            this._sortDir = this._sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            this._sortColIdx = colIdx;
+            this._sortDir = 'asc';
+        }
+
+        // Update visual indicators
+        for (const th of thead.querySelectorAll('th')) {
+            th.removeAttribute('data-sort-dir');
+        }
+        const activeTh = thead.querySelectorAll('th')[colIdx];
+        if (activeTh) activeTh.setAttribute('data-sort-dir', this._sortDir);
+
+        this._applySortToProcessedRows();
+        this._page = 1;
+        this._renderPage();
+    }
+
+    /**
+     * Filters the full row set based on the current filter query.
+     * Filtering works by rendering each row to text via cellRenderer
+     * and checking for substring match.
+     */
+    _applyFilterAndSort() {
+        const cfg = this._config;
+        if (!cfg) return;
+
+        if (!this._filterQuery) {
+            this._processedRows = cfg.rows.slice();
+        } else {
+            this._processedRows = cfg.rows.filter(row => {
+                // Build text representation for filtering
+                const text = cfg.columns.map(col => {
+                    const rendered = cfg.cellRenderer(row, col);
+                    if (rendered instanceof Node) {
+                        return rendered.textContent || '';
+                    }
+                    if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
+                        return rendered.node.textContent || '';
+                    }
+                    return '';
+                }).join(' ').toLowerCase();
+                return text.includes(this._filterQuery);
+            });
+        }
+
+        // Update badge with filtered count
+        if (this._badgeSpan) {
+            this._badgeSpan.textContent = String(this._processedRows.length);
+        }
+
+        // Re-apply current sort
+        if (this._sortColIdx >= 0) {
+            this._applySortToProcessedRows();
+        }
+    }
+
+    /**
+     * Sorts _processedRows in place by the current sort column and direction.
+     * Extracts sort values by calling cellRenderer for the sort column.
+     */
+    _applySortToProcessedRows() {
+        const cfg = this._config;
+        if (!cfg || this._sortColIdx < 0) return;
+
+        const col = cfg.columns[this._sortColIdx];
+        const dir = this._sortDir;
+
+        // Pre-compute sort keys to avoid calling cellRenderer during comparisons
+        /** @type {Map<any, string|number>} */
+        const sortKeys = new Map();
+        for (const row of this._processedRows) {
+            const rendered = cfg.cellRenderer(row, col);
+            let key;
+            if (rendered instanceof Node) {
+                key = rendered.textContent?.trim() || '';
+            } else if (typeof rendered === 'object' && rendered !== null && 'sortValue' in rendered) {
+                key = rendered.sortValue;
+            } else if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
+                key = rendered.node.textContent?.trim() || '';
+            } else {
+                key = '';
+            }
+            sortKeys.set(row, key);
+        }
+
+        this._processedRows.sort((a, b) => {
+            const aVal = sortKeys.get(a) ?? '';
+            const bVal = sortKeys.get(b) ?? '';
+
+            const aNum = Number(aVal);
+            const bNum = Number(bVal);
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return dir === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+
+            const aStr = String(aVal);
+            const bStr = String(bVal);
+            return dir === 'asc'
+                ? aStr.localeCompare(bStr)
+                : bStr.localeCompare(aStr);
+        });
+    }
+
+    /**
+     * Renders the currently visible page of rows into the <tbody>.
+     * Only the rows for the current page are added to the DOM — all
+     * others exist only as data in _processedRows. This makes paging
+     * O(pageSize) instead of O(totalRows).
+     */
+    _renderPage() {
+        const cfg = this._config;
+        if (!cfg || !this._tbody) return;
+
+        const pageSize = this._pageSize();
+        const totalPages = this._totalPages();
+        const safePage = Math.max(1, Math.min(this._page, totalPages));
+        this._page = safePage;
+
+        const start = (safePage - 1) * pageSize;
+        const end = Math.min(start + pageSize, this._processedRows.length);
+
+        // Build the visible rows as a DocumentFragment (single DOM write)
+        const frag = document.createDocumentFragment();
+        for (let i = start; i < end; i++) {
+            const row = this._processedRows[i];
+            const tr = document.createElement('tr');
+
+            for (const col of cfg.columns) {
+                const td = document.createElement('td');
+                if (col.class) td.className = col.class;
+
+                const rendered = cfg.cellRenderer(row, col);
+                if (rendered instanceof Node) {
+                    td.appendChild(rendered);
+                } else if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
+                    td.appendChild(rendered.node);
+                    if (rendered.sortValue !== undefined) {
+                        td.setAttribute('data-sort-value', String(rendered.sortValue));
+                    }
+                }
+
+                tr.appendChild(td);
+            }
+
+            frag.appendChild(tr);
+        }
+
+        // Single DOM mutation: replace all tbody children
+        this._tbody.replaceChildren(frag);
+
+        // Update paging controls
+        if (this._pageNumSpan) this._pageNumSpan.textContent = String(safePage);
+        if (this._pageTotalSpan) this._pageTotalSpan.textContent = String(totalPages);
+        if (this._prevBtn) this._prevBtn.disabled = safePage <= 1;
+        if (this._nextBtn) this._nextBtn.disabled = safePage >= totalPages;
+    }
+}
+
+customElements.define('pdb-table', PdbTable);

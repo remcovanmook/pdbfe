@@ -1,7 +1,14 @@
 /**
  * @fileoverview Shared rendering utilities for the PeeringDB frontend.
- * Provides functions for building data tables, info fields, loading
- * states, and formatting values commonly found in PeeringDB data.
+ *
+ * Provides two API surfaces:
+ * - **DOM builders** (createField, createLink, etc.) — return DOM Nodes via
+ *   template cloning and textContent assignment. XSS-safe by construction.
+ * - **String builders** (renderField, linkEntity, etc.) — return HTML strings.
+ *   Marked @deprecated; retained for backward compatibility during migration.
+ *
+ * Also provides formatting helpers (formatSpeed, formatDate, etc.) and the
+ * escapeHTML utility used by string-mode callers.
  */
 
 import { renderMarkdown } from './markdown.js';
@@ -491,4 +498,266 @@ export function attachTableFilter(container) {
             }
         });
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DOM-based builders — return Nodes, not strings.
+// All user data is assigned via textContent (XSS-safe by construction).
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Lazily caches a reference to a <template> element by ID.
+ * Returns the template's content for cloning. Throws if the
+ * template does not exist in the document.
+ *
+ * @param {string} id - Template element ID (e.g. "tpl-info-field").
+ * @returns {DocumentFragment} The template's .content property.
+ */
+function getTemplate(id) {
+    const tpl = /** @type {HTMLTemplateElement|null} */ (document.getElementById(id));
+    if (!tpl) throw new Error(`Missing <template id="${id}">`);
+    return tpl.content;
+}
+
+/**
+ * Creates an internal SPA link element as a DOM node.
+ * Uses textContent for the label, so XSS is structurally impossible.
+ *
+ * @param {string} type - Entity type (net, ix, fac, org, carrier, campus).
+ * @param {number|string} id - Entity ID.
+ * @param {string} label - Display text.
+ * @returns {HTMLAnchorElement} An anchor element with data-link attribute.
+ */
+export function createLink(type, id, label) {
+    const a = document.createElement('a');
+    a.href = `/${type}/${id}`;
+    a.setAttribute('data-link', '');
+    a.textContent = label;
+    return a;
+}
+
+/**
+ * Creates a key/value info field as a DOM node by cloning the
+ * tpl-info-field template. Returns null for empty/null values,
+ * matching the same skip-empty semantics as renderField().
+ *
+ * @param {string} label - Field label (passed through t() for i18n).
+ * @param {string|number|null|undefined} value - Field value.
+ * @param {Object} [opts] - Options.
+ * @param {string} [opts.href] - Wrap value in an external link.
+ * @param {boolean} [opts.external] - Open link in a new tab.
+ * @param {string} [opts.linkType] - Entity type for internal SPA link.
+ * @param {number|string} [opts.linkId] - Entity ID for internal SPA link.
+ * @param {boolean} [opts.markdown] - Render value as markdown (uses innerHTML for the value span only).
+ * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
+ * @returns {HTMLDivElement|null} The info-field element, or null if value is empty.
+ */
+export function createField(label, value, opts = {}) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+
+    const clone = /** @type {HTMLDivElement} */ (
+        getTemplate('tpl-info-field').cloneNode(true).firstElementChild
+    );
+    const labelEl = /** @type {HTMLSpanElement} */ (clone.querySelector('.info-field__label'));
+    const valueEl = /** @type {HTMLSpanElement} */ (clone.querySelector('.info-field__value'));
+
+    labelEl.textContent = t(label);
+
+    const displayValue = opts.translate ? t(String(value)) : String(value);
+
+    if (opts.linkType && opts.linkId) {
+        valueEl.appendChild(createLink(opts.linkType, opts.linkId, String(value)));
+    } else if (opts.markdown) {
+        // Markdown content goes through the sanitising renderMarkdown pipeline.
+        // This is the only place innerHTML is used — on authored/sanitised content.
+        valueEl.innerHTML = renderMarkdown(displayValue);
+    } else if (opts.href) {
+        const a = document.createElement('a');
+        a.href = opts.href;
+        if (opts.external) {
+            a.target = '_blank';
+            a.rel = 'noopener';
+        }
+        a.textContent = displayValue;
+        valueEl.appendChild(a);
+    } else {
+        valueEl.textContent = displayValue;
+    }
+
+    return clone;
+}
+
+/**
+ * Creates a group of info fields with a section title as a DOM node.
+ * Clones the tpl-info-group template and appends non-null field nodes.
+ * Returns null if all fields are null/empty.
+ *
+ * @param {string} title - Group title (passed through t() for i18n).
+ * @param {Array<HTMLElement|null>} fields - Array of createField() results.
+ * @returns {HTMLDivElement|null} The info-group element, or null if empty.
+ */
+export function createFieldGroup(title, fields) {
+    const populated = fields.filter(Boolean);
+    if (populated.length === 0) return null;
+
+    const clone = /** @type {HTMLDivElement} */ (
+        getTemplate('tpl-info-group').cloneNode(true).firstElementChild
+    );
+    clone.querySelector('.info-group__title').textContent = t(title);
+
+    for (const field of populated) {
+        clone.appendChild(/** @type {Node} */ (field));
+    }
+
+    return clone;
+}
+
+/**
+ * Creates a stats bar with label/value pairs as a DOM node.
+ * Each item is cloned from the tpl-stats-item template.
+ *
+ * @param {Array<{label: string, value: string|number}>} items - Stats to display.
+ * @returns {HTMLDivElement} The stats-bar element.
+ */
+export function createStatsBar(items) {
+    const bar = document.createElement('div');
+    bar.className = 'stats-bar';
+
+    const itemTpl = getTemplate('tpl-stats-item');
+
+    for (const item of items) {
+        const clone = /** @type {HTMLDivElement} */ (itemTpl.cloneNode(true).firstElementChild);
+        clone.querySelector('.stats-bar__value').textContent = String(item.value);
+        clone.querySelector('.stats-bar__label').textContent = t(item.label);
+        bar.appendChild(clone);
+    }
+
+    return bar;
+}
+
+/**
+ * Creates a boolean yes/no indicator as a DOM node.
+ *
+ * @param {any} val - Value to check for truthiness.
+ * @returns {HTMLSpanElement} Span element with boolean CSS class and translated text.
+ */
+export function createBool(val) {
+    const span = document.createElement('span');
+    if (val === true || val === 1 || val === 'Yes') {
+        span.className = 'bool-yes';
+        span.textContent = t('Yes');
+    } else {
+        span.className = 'bool-no';
+        span.textContent = t('No');
+    }
+    return span;
+}
+
+/**
+ * Creates a loading spinner element as a DOM node.
+ *
+ * @param {string} [message="Loading"] - Text to display beside the spinner.
+ * @returns {HTMLDivElement} The loading element.
+ */
+export function createLoading(message = 'Loading') {
+    const div = document.createElement('div');
+    div.className = 'loading';
+    div.textContent = t(message);
+    return div;
+}
+
+/**
+ * Creates an error message element as a DOM node.
+ *
+ * @param {string} message - Error text.
+ * @returns {HTMLDivElement} The error-message element.
+ */
+export function createError(message) {
+    const div = document.createElement('div');
+    div.className = 'error-message';
+    div.textContent = message;
+    return div;
+}
+
+/**
+ * Creates an empty-state element as a DOM node.
+ *
+ * @param {string} message - Display text (passed through t() for i18n).
+ * @returns {HTMLDivElement} The empty-state element.
+ */
+export function createEmptyState(message) {
+    const div = document.createElement('div');
+    div.className = 'empty-state';
+    div.textContent = t(message);
+    return div;
+}
+
+/**
+ * Creates a text node inside a DocumentFragment, suitable for use
+ * as a table cell's content when no special formatting is needed.
+ *
+ * @param {string} text - Cell text content.
+ * @returns {Text} A text node.
+ */
+export function createTextNode(text) {
+    return document.createTextNode(text);
+}
+
+/**
+ * Builds the standard detail-layout wrapper used by all entity pages.
+ * Assembles header, optional stats bar, sidebar, and main content
+ * into the grid layout structure.
+ *
+ * @param {Object} opts - Layout options.
+ * @param {string} opts.title - Page title (h1).
+ * @param {string} [opts.subtitle] - Subtitle text below the title.
+ * @param {HTMLElement} [opts.statsBar] - Optional stats bar element.
+ * @param {HTMLElement|DocumentFragment} opts.sidebar - Sidebar content.
+ * @param {HTMLElement|DocumentFragment} opts.main - Main content area.
+ * @returns {HTMLDivElement} The assembled detail-layout element.
+ */
+export function createDetailLayout(opts) {
+    const layout = document.createElement('div');
+    layout.className = 'detail-layout';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'detail-header';
+    const h1 = document.createElement('h1');
+    h1.className = 'detail-header__title';
+    h1.textContent = opts.title;
+    header.appendChild(h1);
+
+    if (opts.subtitle) {
+        const sub = document.createElement('span');
+        sub.className = 'detail-header__subtitle';
+        sub.textContent = opts.subtitle;
+        header.appendChild(sub);
+    }
+
+    layout.appendChild(header);
+
+    // Stats bar (full-width row)
+    if (opts.statsBar) {
+        const statsRow = document.createElement('div');
+        statsRow.style.gridColumn = '1 / -1';
+        statsRow.appendChild(opts.statsBar);
+        layout.appendChild(statsRow);
+    }
+
+    // Sidebar
+    const sidebarWrap = document.createElement('div');
+    sidebarWrap.className = 'detail-sidebar';
+    sidebarWrap.appendChild(opts.sidebar);
+    layout.appendChild(sidebarWrap);
+
+    // Main
+    const mainWrap = document.createElement('div');
+    mainWrap.className = 'detail-main';
+    mainWrap.appendChild(opts.main);
+    layout.appendChild(mainWrap);
+
+    return layout;
 }

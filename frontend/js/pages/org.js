@@ -1,14 +1,16 @@
 /**
  * @fileoverview Organization detail page renderer.
  * Displays org info and tables of owned networks, facilities, and exchanges.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>) and
+ * createField/createLink builders.
  */
 
 import { fetchEntity } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard,
-    renderLoading, renderError,
-    linkEntity, escapeHTML, setOGTags,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink,
+    createLoading, createError, createEmptyState,
+    createDetailLayout, setOGTags
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -22,76 +24,71 @@ export async function renderOrg(params) {
     const id = params.id;
 
     document.title = `Organization — PeeringDB`;
-    app.innerHTML = renderLoading('Loading organization');
+    app.replaceChildren(createLoading('Loading organization'));
 
     try {
         const org = await fetchEntity('org', id, 2);
         if (!org) {
-            app.innerHTML = renderError(`Organization ${id} not found`);
+            app.replaceChildren(createError(`Organization ${id} not found`));
             return;
         }
 
         document.title = `${org.name} — PeeringDB`;
         setOGTags(org.name, `Organization — PeeringDB`);
 
-        const sidebar = buildSidebar(org);
-        const tables = buildTables(org);
-
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(org.name)}</h1>
-                </div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: org.name,
+            sidebar: buildSidebar(org),
+            main: buildTables(org),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load organization: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load organization: ${err.message}`));
     }
 }
 
 /**
- * Builds the info sidebar for an organization.
+ * Builds the info sidebar for an organization as a DocumentFragment.
  *
  * @param {any} org - Organization entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(org) {
-    const general = renderFieldGroup('General', [
-        renderField('Also Known As', org.aka),
-        renderField('Long Name', org.name_long),
-        renderField('Website', org.website, { href: org.website, external: true }),
-        renderField('Notes', org.notes, { markdown: true }),
-        renderField('Last Updated', org.updated),
-    ]);
+    const frag = document.createDocumentFragment();
 
-    const address = renderFieldGroup('Address', [
-        renderField('Address', org.address1),
-        renderField('Address 2', org.address2),
-        renderField('City', org.city),
-        renderField('State', org.state),
-        renderField('Postal Code', org.zipcode),
-        renderField('Country', org.country),
+    const general = createFieldGroup('General', [
+        createField('Also Known As', org.aka),
+        createField('Long Name', org.name_long),
+        createField('Website', org.website, { href: org.website, external: true }),
+        createField('Notes', org.notes, { markdown: true }),
+        createField('Last Updated', org.updated),
     ]);
+    if (general) frag.appendChild(general);
 
-    return [general, address].filter(s => s).join('');
+    const address = createFieldGroup('Address', [
+        createField('Address', org.address1),
+        createField('Address 2', org.address2),
+        createField('City', org.city),
+        createField('State', org.state),
+        createField('Postal Code', org.zipcode),
+        createField('Country', org.country),
+    ]);
+    if (address) frag.appendChild(address);
+
+    return frag;
 }
 
 /**
  * Builds tables for an organization's network, facility, and exchange assets.
  *
  * @param {any} org - Organization entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Tables fragment.
  */
 function buildTables(org) {
-    let netTable = '';
+    const frag = document.createDocumentFragment();
+
     if (org.net_set && org.net_set.length > 0) {
-        netTable = renderTableCard({
+        const netTable = /** @type {any} */ (document.createElement('pdb-table'));
+        netTable.configure({
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
@@ -101,16 +98,17 @@ function buildTables(org) {
             ],
             rows: org.net_set,
             cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('net', row.id, row.name || `Net ${row.id}`);
-                if (col.key === 'asn') return String(row.asn || '—');
-                return escapeHTML(String(row[col.key] ?? ''));
+                if (col.key === 'name') return createLink('net', row.id, row.name || `Net ${row.id}`);
+                if (col.key === 'asn') return document.createTextNode(String(row.asn || '—'));
+                return document.createTextNode(String(row[col.key] ?? ''));
             }
         });
+        frag.appendChild(netTable);
     }
 
-    let facTable = '';
     if (org.fac_set && org.fac_set.length > 0) {
-        facTable = renderTableCard({
+        const facTable = /** @type {any} */ (document.createElement('pdb-table'));
+        facTable.configure({
             title: 'Facilities',
             columns: [
                 { key: 'name',    label: 'Facility' },
@@ -119,15 +117,16 @@ function buildTables(org) {
             ],
             rows: org.fac_set,
             cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('fac', row.id, row.name || `Fac ${row.id}`);
-                return escapeHTML(String(row[col.key] ?? '—'));
+                if (col.key === 'name') return createLink('fac', row.id, row.name || `Fac ${row.id}`);
+                return document.createTextNode(String(row[col.key] ?? '—'));
             }
         });
+        frag.appendChild(facTable);
     }
 
-    let ixTable = '';
     if (org.ix_set && org.ix_set.length > 0) {
-        ixTable = renderTableCard({
+        const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
+        ixTable.configure({
             title: 'Exchanges',
             columns: [
                 { key: 'name',    label: 'Exchange' },
@@ -136,11 +135,16 @@ function buildTables(org) {
             ],
             rows: org.ix_set,
             cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('ix', row.id, row.name || `IX ${row.id}`);
-                return escapeHTML(String(row[col.key] ?? '—'));
+                if (col.key === 'name') return createLink('ix', row.id, row.name || `IX ${row.id}`);
+                return document.createTextNode(String(row[col.key] ?? '—'));
             }
         });
+        frag.appendChild(ixTable);
     }
 
-    return [netTable, facTable, ixTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No networks, facilities, or exchanges'))}</div>`;
+    if (frag.children.length === 0) {
+        frag.appendChild(createEmptyState('No networks, facilities, or exchanges'));
+    }
+
+    return frag;
 }

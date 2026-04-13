@@ -10,7 +10,7 @@
 
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
-import { escapeHTML, formatLocaleDate as formatDate } from '../render.js';
+import { escapeHTML, formatLocaleDate as formatDate, createLink } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
 /**
@@ -76,8 +76,8 @@ export async function renderAccount(_params) {
                     </div>
                 </div>
 
-                ${renderNetworks(user)}
             </div>
+            <div id="networks-container"></div>
 
             <div class="detail-main">
                 <div class="card">
@@ -146,6 +146,12 @@ export async function renderAccount(_params) {
     // Wire up create key button
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
 
+    // Render network affiliations into the sidebar
+    const netsContainer = document.getElementById('networks-container');
+    if (netsContainer) {
+        netsContainer.appendChild(renderNetworks(user));
+    }
+
     // Wire up language preference selector
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('account-lang-select'));
     if (langSelect) {
@@ -160,32 +166,53 @@ export async function renderAccount(_params) {
 
 /**
  * Renders the user's network affiliations as a sidebar card.
+ * Uses DOM builders — network names go through textContent.
  *
  * @param {SessionData|null} user - The session/user data.
- * @returns {string} HTML string.
+ * @returns {HTMLDivElement|DocumentFragment} Card element, or empty fragment.
  */
 function renderNetworks(user) {
     const nets = user?.networks || [];
-    if (nets.length === 0) return '';
+    if (nets.length === 0) return document.createDocumentFragment();
 
-    const rows = nets.map(/** @param {{id: number, asn: number, name: string}} n */ (n) =>
-        `<div class="info-field">
-            <span class="info-field__label">AS${n.asn}</span>
-            <span class="info-field__value"><a href="/net/${n.id}" data-link>${escapeHTML(n.name)}</a></span>
-        </div>`
-    ).join('');
+    const card = document.createElement('div');
+    card.className = 'card';
 
-    return `
-        <div class="card">
-            <div class="card__header">
-                <span class="card__title">${t('Networks')}</span>
-                <span class="card__badge">${nets.length}</span>
-            </div>
-            <div class="card__body">
-                <div class="info-group">${rows}</div>
-            </div>
-        </div>
-    `;
+    const header = document.createElement('div');
+    header.className = 'card__header';
+    const title = document.createElement('span');
+    title.className = 'card__title';
+    title.textContent = t('Networks');
+    const badge = document.createElement('span');
+    badge.className = 'card__badge';
+    badge.textContent = String(nets.length);
+    header.append(title, badge);
+    card.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'card__body';
+    const group = document.createElement('div');
+    group.className = 'info-group';
+
+    for (const n of nets) {
+        const field = document.createElement('div');
+        field.className = 'info-field';
+
+        const label = document.createElement('span');
+        label.className = 'info-field__label';
+        label.textContent = `AS${n.asn}`;
+
+        const value = document.createElement('span');
+        value.className = 'info-field__value';
+        value.appendChild(createLink('net', n.id, n.name));
+
+        field.append(label, value);
+        group.appendChild(field);
+    }
+
+    body.appendChild(group);
+    card.appendChild(body);
+    return card;
 }
 
 /**
@@ -203,7 +230,10 @@ async function loadKeys(sid) {
         });
 
         if (!res.ok) {
-            keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">${t('Failed to load API keys.')}</p>`;
+            const errP = document.createElement('p');
+            errP.style.cssText = 'color:var(--status-error);font-size:0.8125rem';
+            errP.textContent = t('Failed to load API keys.');
+            keysContainer.replaceChildren(errP);
             return;
         }
 
@@ -211,68 +241,84 @@ async function loadKeys(sid) {
         const keys = data.keys || [];
 
         if (keys.length === 0) {
-            keysContainer.innerHTML = `
-                <p style="color:var(--text-muted);font-size:0.8125rem">
-                    ${t('No API keys yet. Create one to enable authenticated API access.')}
-                </p>
-                <p style="color:var(--text-muted);font-size:0.75rem;margin-top:var(--space-sm)">
-                    ${t('Use')}: <code style="color:var(--accent)">Authorization: Api-Key pdbfe.xxxxx</code>
-                </p>
-            `;
+            const p1 = document.createElement('p');
+            p1.style.cssText = 'color:var(--text-muted);font-size:0.8125rem';
+            p1.textContent = t('No API keys yet. Create one to enable authenticated API access.');
+
+            const p2 = document.createElement('p');
+            p2.style.cssText = 'color:var(--text-muted);font-size:0.75rem;margin-top:var(--space-sm)';
+            p2.append(t('Use') + ': ');
+            const code = document.createElement('code');
+            code.style.color = 'var(--accent)';
+            code.textContent = 'Authorization: Api-Key pdbfe.xxxxx';
+            p2.appendChild(code);
+
+            keysContainer.replaceChildren(p1, p2);
             return;
         }
 
-        keysContainer.innerHTML = `
-            <div class="data-table-wrapper">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>${t('Label')}</th>
-                            <th>${t('Key Prefix')}</th>
-                            <th>${t('Created')}</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${keys.map(/** @param {any} k */ (k) => `
-                            <tr>
-                                <td>${escapeHTML(k.label)}</td>
-                                <td class="td-mono">pdbfe.${escapeHTML(k.prefix)}…</td>
-                                <td>${formatDate(k.created_at)}</td>
-                                <td>
-                                    <button class="auth-link btn-delete-key"
-                                            data-key-id="${escapeHTML(k.id)}"
-                                            data-key-label="${escapeHTML(k.label)}"
-                                            data-key-prefix="${escapeHTML(k.prefix)}"
-                                            style="cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)">
-                                        ${t('Revoke')}
-                                    </button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            <p style="color:var(--text-muted);font-size:0.6875rem;margin-top:var(--space-sm)">
-                ${t('{n} / {max} keys used', { n: keys.length, max: data.max_keys })}
-            </p>
-        `;
+        // Build key table with DOM nodes
+        const wrapper = document.createElement('div');
+        wrapper.className = 'data-table-wrapper';
 
-        // Wire up delete buttons
-        keysContainer.querySelectorAll('.btn-delete-key').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const el = /** @type {HTMLElement} */ (e.target);
-                const keyId = el.dataset.keyId;
-                const keyLabel = el.dataset.keyLabel || '';
-                const keyPrefix = el.dataset.keyPrefix || '';
-                if (!keyId) return;
-                showRevokeDialog(sid, keyId, keyLabel, keyPrefix);
+        const table = document.createElement('table');
+        table.className = 'data-table';
+
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        for (const label of [t('Label'), t('Key Prefix'), t('Created'), '']) {
+            const th = document.createElement('th');
+            th.textContent = label;
+            headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        for (const k of keys) {
+            const tr = document.createElement('tr');
+
+            const tdLabel = document.createElement('td');
+            tdLabel.textContent = k.label;
+            tr.appendChild(tdLabel);
+
+            const tdPrefix = document.createElement('td');
+            tdPrefix.className = 'td-mono';
+            tdPrefix.textContent = `pdbfe.${k.prefix}…`;
+            tr.appendChild(tdPrefix);
+
+            const tdDate = document.createElement('td');
+            tdDate.textContent = formatDate(k.created_at);
+            tr.appendChild(tdDate);
+
+            const tdAction = document.createElement('td');
+            const revokeBtn = document.createElement('button');
+            revokeBtn.className = 'auth-link btn-delete-key';
+            revokeBtn.style.cssText = 'cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)';
+            revokeBtn.textContent = t('Revoke');
+            revokeBtn.addEventListener('click', () => {
+                showRevokeDialog(sid, k.id, k.label, k.prefix);
             });
-        });
+            tdAction.appendChild(revokeBtn);
+            tr.appendChild(tdAction);
+
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        wrapper.appendChild(table);
+
+        const usageP = document.createElement('p');
+        usageP.style.cssText = 'color:var(--text-muted);font-size:0.6875rem;margin-top:var(--space-sm)';
+        usageP.textContent = t('{n} / {max} keys used', { n: keys.length, max: data.max_keys });
+
+        keysContainer.replaceChildren(wrapper, usageP);
 
     } catch (err) {
         console.error('Failed to load keys:', err);
-        keysContainer.innerHTML = `<p style="color:var(--status-error);font-size:0.8125rem">${t('Error loading API keys.')}</p>`;
+        const errP = document.createElement('p');
+        errP.style.cssText = 'color:var(--status-error);font-size:0.8125rem';
+        errP.textContent = t('Error loading API keys.');
+        keysContainer.replaceChildren(errP);
     }
 }
 
@@ -393,7 +439,15 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     const errorEl = document.getElementById('revoke-error');
     if (!modal || !infoEl || !errorEl) return;
 
-    infoEl.innerHTML = `<strong>${escapeHTML(label)}</strong> <span class="td-mono" style="display:inline">(pdbfe.${escapeHTML(prefix)}…)</span>`;
+    // Build the info text with DOM nodes — user key label goes through textContent
+    infoEl.textContent = '';
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'td-mono';
+    prefixSpan.style.display = 'inline';
+    prefixSpan.textContent = ` (pdbfe.${prefix}…)`;
+    infoEl.append(strong, prefixSpan);
     errorEl.style.display = 'none';
     modal.style.display = 'flex';
 

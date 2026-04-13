@@ -6,13 +6,13 @@
  * ASN-aware: if the query looks like an ASN (bare number or AS-prefixed),
  * an additional lookup by ASN is fired in parallel and the exact match
  * is surfaced at the top of the Networks section.
+ *
+ * Uses DOM-based rendering — all user data goes through textContent.
  */
 
 import { searchWithAsn, SEARCH_ENTITIES } from '../api.js';
-import { linkEntity, escapeHTML, renderLoading } from '../render.js';
+import { createLink, createLoading, createEmptyState } from '../render.js';
 import { t } from '../i18n.js';
-
-
 
 /**
  * Renders the search results page.
@@ -26,16 +26,28 @@ export async function renderSearch(params) {
     document.title = `Search: ${query} — PeeringDB`;
 
     if (!query) {
-        app.innerHTML = `<div class="empty-state">${escapeHTML(t('Enter a search term'))}</div>`;
+        app.replaceChildren(createEmptyState('Enter a search term'));
         return;
     }
 
-    app.innerHTML = `
-        <div class="search-results">
-            <h1 class="search-results__heading">${t('Results for')} <strong>${escapeHTML(query)}</strong></h1>
-            <div id="search-body">${renderLoading('Searching')}</div>
-        </div>
-    `;
+    // Build initial layout with loading state
+    const wrapper = document.createElement('div');
+    wrapper.className = 'search-results';
+
+    const heading = document.createElement('h1');
+    heading.className = 'search-results__heading';
+    heading.append(t('Results for') + ' ');
+    const strong = document.createElement('strong');
+    strong.textContent = query;
+    heading.appendChild(strong);
+    wrapper.appendChild(heading);
+
+    const body = document.createElement('div');
+    body.id = 'search-body';
+    body.appendChild(createLoading('Searching'));
+    wrapper.appendChild(body);
+
+    app.replaceChildren(wrapper);
 
     // Update the header search input to reflect the query
     const headerInput = /** @type {HTMLInputElement|null} */ (document.getElementById('header-search'));
@@ -44,15 +56,13 @@ export async function renderSearch(params) {
     try {
         const results = await searchWithAsn(query);
 
-        const body = /** @type {HTMLElement} */ (document.getElementById('search-body'));
-
         const /** @type {Record<string, any[]>} */ res = /** @type {any} */ (results);
         const sections = SEARCH_ENTITIES.map(e => ({
             ...e,
             items: res[e.key] || []
         }));
 
-        let html = '';
+        const frag = document.createDocumentFragment();
         let totalCount = 0;
 
         for (const section of sections) {
@@ -60,36 +70,58 @@ export async function renderSearch(params) {
             totalCount += count;
             if (count === 0) continue;
 
-            const itemsHTML = section.items.map(/** @param {any} item */ (item) => {
+            const sectionDiv = document.createElement('div');
+            sectionDiv.className = 'search-results__section';
+
+            // Section title + badge
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'search-results__section-title';
+            titleDiv.textContent = section.label;
+            const badge = document.createElement('span');
+            badge.className = 'card__badge';
+            badge.textContent = String(count);
+            titleDiv.appendChild(badge);
+            sectionDiv.appendChild(titleDiv);
+
+            // Card with items
+            const card = document.createElement('div');
+            card.className = 'card';
+            const cardBody = document.createElement('div');
+            cardBody.className = 'card__body';
+            cardBody.style.padding = '0';
+
+            for (const item of section.items) {
                 const name = item.name || `ID ${item.id}`;
                 const sub = section.subtitle(item);
-                return `<div class="search-dropdown__item">
-                    ${linkEntity(section.key, item.id, name)}
-                    ${sub ? `<span class="search-dropdown__item-sub">${escapeHTML(sub)}</span>` : ''}
-                </div>`;
-            }).join('');
 
-            html += `<div class="search-results__section">
-                <div class="search-results__section-title">
-                    ${escapeHTML(section.label)}
-                    <span class="card__badge">${count}</span>
-                </div>
-                <div class="card">
-                    <div class="card__body" style="padding:0">${itemsHTML}</div>
-                </div>
-            </div>`;
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'search-dropdown__item';
+                itemDiv.appendChild(createLink(section.key, item.id, name));
+
+                if (sub) {
+                    const subSpan = document.createElement('span');
+                    subSpan.className = 'search-dropdown__item-sub';
+                    subSpan.textContent = sub;
+                    itemDiv.appendChild(subSpan);
+                }
+
+                cardBody.appendChild(itemDiv);
+            }
+
+            card.appendChild(cardBody);
+            sectionDiv.appendChild(card);
+            frag.appendChild(sectionDiv);
         }
 
         if (totalCount === 0) {
-            html = `<div class="empty-state">${escapeHTML(t('No results found for "{q}"', { q: query }))}</div>`;
+            frag.appendChild(createEmptyState(t('No results found for "{q}"', { q: query })));
         }
 
-        body.innerHTML = html;
+        body.replaceChildren(frag);
     } catch (err) {
-        const body = document.getElementById('search-body');
-        if (body) {
-            body.innerHTML = `<div class="error-message">${escapeHTML(t('Search failed'))}: ${escapeHTML(err.message)}</div>`;
-        }
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-message';
+        errDiv.textContent = `${t('Search failed')}: ${err.message}`;
+        body.replaceChildren(errDiv);
     }
 }
-

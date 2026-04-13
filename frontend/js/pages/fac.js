@@ -1,14 +1,16 @@
 /**
  * @fileoverview Facility detail page renderer.
  * Displays facility info, networks present, and exchanges at the facility.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>) and
+ * createField/createLink builders.
  */
 
 import { fetchEntity } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard,
-    renderLoading, renderError,
-    linkEntity, escapeHTML, setOGTags,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink,
+    createLoading, createError, createEmptyState,
+    createDetailLayout, setOGTags
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -22,12 +24,12 @@ export async function renderFac(params) {
     const id = params.id;
 
     document.title = `Facility — PeeringDB`;
-    app.innerHTML = renderLoading('Loading facility');
+    app.replaceChildren(createLoading('Loading facility'));
 
     try {
         const fac = await fetchEntity('fac', id, 2);
         if (!fac) {
-            app.innerHTML = renderError(`Facility ${id} not found`);
+            app.replaceChildren(createError(`Facility ${id} not found`));
             return;
         }
 
@@ -37,69 +39,66 @@ export async function renderFac(params) {
             `Facility — ${fac.city || ''}${fac.country ? `, ${fac.country}` : ''}`
         );
 
-        const sidebar = buildSidebar(fac);
-        const tables = buildTables(fac);
+        const subtitle = `${fac.city || ''}${fac.country ? `, ${fac.country}` : ''}`;
 
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(fac.name)}</h1>
-                    <span class="detail-header__subtitle">${escapeHTML(fac.city || '')}${fac.country ? `, ${escapeHTML(fac.country)}` : ''}</span>
-                </div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: fac.name,
+            subtitle,
+            sidebar: buildSidebar(fac),
+            main: buildTables(fac),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load facility: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load facility: ${err.message}`));
     }
 }
 
 /**
- * Builds the info sidebar for a facility.
+ * Builds the info sidebar for a facility as a DocumentFragment.
  *
  * @param {any} fac - Facility entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(fac) {
-    const general = renderFieldGroup('General', [
-        renderField('Organization', fac.org_name || fac.org_id, { linkType: 'org', linkId: fac.org_id }),
-        renderField('Website', fac.website, { href: fac.website, external: true }),
-        renderField('CLLI', fac.clli),
-        renderField('Rencode', fac.rencode),
-        renderField('NPA-NXX', fac.npanxx),
-        renderField('Notes', fac.notes, { markdown: true }),
-        renderField('Last Updated', fac.updated),
-    ]);
+    const frag = document.createDocumentFragment();
 
-    const address = renderFieldGroup('Location', [
-        renderField('Address', fac.address1),
-        renderField('Address 2', fac.address2),
-        renderField('City', fac.city),
-        renderField('State', fac.state),
-        renderField('Postal Code', fac.zipcode),
-        renderField('Country', fac.country),
-        renderField('Latitude', fac.latitude),
-        renderField('Longitude', fac.longitude),
+    const general = createFieldGroup('General', [
+        createField('Organization', fac.org_name || fac.org_id, { linkType: 'org', linkId: fac.org_id }),
+        createField('Website', fac.website, { href: fac.website, external: true }),
+        createField('CLLI', fac.clli),
+        createField('Rencode', fac.rencode),
+        createField('NPA-NXX', fac.npanxx),
+        createField('Notes', fac.notes, { markdown: true }),
+        createField('Last Updated', fac.updated),
     ]);
+    if (general) frag.appendChild(general);
 
-    return [general, address].filter(s => s).join('');
+    const address = createFieldGroup('Location', [
+        createField('Address', fac.address1),
+        createField('Address 2', fac.address2),
+        createField('City', fac.city),
+        createField('State', fac.state),
+        createField('Postal Code', fac.zipcode),
+        createField('Country', fac.country),
+        createField('Latitude', fac.latitude),
+        createField('Longitude', fac.longitude),
+    ]);
+    if (address) frag.appendChild(address);
+
+    return frag;
 }
 
 /**
  * Builds the data tables (networks + exchanges) for a facility.
  *
  * @param {any} fac - Facility entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Tables fragment.
  */
 function buildTables(fac) {
-    let netTable = '';
+    const frag = document.createDocumentFragment();
+
     if (fac.netfac_set && fac.netfac_set.length > 0) {
-        netTable = renderTableCard({
+        const netTable = /** @type {any} */ (document.createElement('pdb-table'));
+        netTable.configure({
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
@@ -109,41 +108,45 @@ function buildTables(fac) {
             ],
             rows: fac.netfac_set,
             cellRenderer: (row, col) => {
-                // Use net_name from the API's JOIN response.
-                // Fall back to AS{local_asn} if not available.
                 if (col.key === 'network') {
                     const label = row.net_name || `AS${row.local_asn || row.net_id}`;
                     return row.net_id
-                        ? linkEntity('net', row.net_id, label)
-                        : escapeHTML(label);
+                        ? createLink('net', row.net_id, label)
+                        : document.createTextNode(label);
                 }
-                if (col.key === 'local_asn') return String(row.net_asn || row.local_asn || '—');
-                return escapeHTML(String(row[col.key] ?? ''));
+                if (col.key === 'local_asn') {
+                    return document.createTextNode(String(row.net_asn || row.local_asn || '—'));
+                }
+                return document.createTextNode(String(row[col.key] ?? ''));
             }
         });
+        frag.appendChild(netTable);
     }
 
-    let ixTable = '';
     if (fac.ixfac_set && fac.ixfac_set.length > 0) {
-        ixTable = renderTableCard({
+        const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
+        ixTable.configure({
             title: 'Exchanges',
             columns: [
                 { key: 'exchange', label: 'Exchange' },
             ],
             rows: fac.ixfac_set,
             cellRenderer: (row, col) => {
-                // Use ix_name from the API's JOIN response.
-                // Fall back to IX ID if not available.
                 if (col.key === 'exchange') {
                     const label = row.ix_name || `IX ${row.ix_id}`;
                     return row.ix_id
-                        ? linkEntity('ix', row.ix_id, label)
-                        : escapeHTML(label);
+                        ? createLink('ix', row.ix_id, label)
+                        : document.createTextNode(label);
                 }
-                return escapeHTML(String(row[col.key] ?? ''));
+                return document.createTextNode(String(row[col.key] ?? ''));
             }
         });
+        frag.appendChild(ixTable);
     }
 
-    return [netTable, ixTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No networks or exchanges'))}</div>`;
+    if (frag.children.length === 0) {
+        frag.appendChild(createEmptyState('No networks or exchanges'));
+    }
+
+    return frag;
 }
