@@ -161,7 +161,7 @@ function buildTables(ix, peers) {
     const frag = document.createDocumentFragment();
 
     if (peers.length > 0) {
-        const peerTable = /** @type {import('../components/pdb-table.js').default} */ (
+        const peerTable = /** @type {HTMLElement & {configure: Function}} */ (
             document.createElement('pdb-table')
         );
         peerTable.configure({
@@ -177,7 +177,7 @@ function buildTables(ix, peers) {
                 { key: 'is_rs_peer', label: 'RS' },
             ],
             rows: peers,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 switch (col.key) {
                     case 'name': {
                         const label = row.net_name || `AS${row.asn}`;
@@ -207,7 +207,7 @@ function buildTables(ix, peers) {
     }
 
     if (ix.ixfac_set && ix.ixfac_set.length > 0) {
-        const facTable = /** @type {import('../components/pdb-table.js').default} */ (
+        const facTable = /** @type {HTMLElement & {configure: Function}} */ (
             document.createElement('pdb-table')
         );
         facTable.configure({
@@ -218,7 +218,7 @@ function buildTables(ix, peers) {
                 { key: 'country', label: 'Country' },
             ],
             rows: ix.ixfac_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'name') {
                     return createLink('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
                 }

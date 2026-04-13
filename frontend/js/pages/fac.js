@@ -107,7 +107,7 @@ function buildTables(fac) {
                 { key: 'local_asn', label: 'ASN', class: 'td-right' },
             ],
             rows: fac.netfac_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'network') {
                     const label = row.net_name || `AS${row.local_asn || row.net_id}`;
                     return row.net_id
@@ -131,7 +131,7 @@ function buildTables(fac) {
                 { key: 'exchange', label: 'Exchange' },
             ],
             rows: fac.ixfac_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'exchange') {
                     const label = row.ix_name || `IX ${row.ix_id}`;
                     return row.ix_id

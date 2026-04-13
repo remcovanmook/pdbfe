@@ -151,7 +151,7 @@ function buildTables(net) {
                 { key: 'is_rs_peer', label: 'RS' },
             ],
             rows: net.netixlan_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 switch (col.key) {
                     case 'name':
                         return createLink('ix', row.ix_id, row.name || `IX ${row.ix_id}`);
@@ -183,7 +183,7 @@ function buildTables(net) {
                 { key: 'country', label: 'Country' },
             ],
             rows: net.netfac_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'name') return createLink('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
                 return document.createTextNode(String(row[col.key] ?? '—'));
             }

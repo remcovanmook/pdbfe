@@ -558,7 +558,7 @@ export function createField(label, value, opts = {}) {
     }
 
     const clone = /** @type {HTMLDivElement} */ (
-        getTemplate('tpl-info-field').cloneNode(true).firstElementChild
+        /** @type {DocumentFragment} */ (getTemplate('tpl-info-field').cloneNode(true)).firstElementChild
     );
     const labelEl = /** @type {HTMLSpanElement} */ (clone.querySelector('.info-field__label'));
     const valueEl = /** @type {HTMLSpanElement} */ (clone.querySelector('.info-field__value'));
@@ -603,7 +603,7 @@ export function createFieldGroup(title, fields) {
     if (populated.length === 0) return null;
 
     const clone = /** @type {HTMLDivElement} */ (
-        getTemplate('tpl-info-group').cloneNode(true).firstElementChild
+        /** @type {DocumentFragment} */ (getTemplate('tpl-info-group').cloneNode(true)).firstElementChild
     );
     clone.querySelector('.info-group__title').textContent = t(title);
 
@@ -628,7 +628,7 @@ export function createStatsBar(items) {
     const itemTpl = getTemplate('tpl-stats-item');
 
     for (const item of items) {
-        const clone = /** @type {HTMLDivElement} */ (itemTpl.cloneNode(true).firstElementChild);
+        const clone = /** @type {HTMLDivElement} */ (/** @type {DocumentFragment} */ (itemTpl.cloneNode(true)).firstElementChild);
         clone.querySelector('.stats-bar__value').textContent = String(item.value);
         clone.querySelector('.stats-bar__label').textContent = t(item.label);
         bar.appendChild(clone);

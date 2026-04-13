@@ -55,7 +55,7 @@ class PdbStatsBar extends HTMLElement {
         for (const item of this._config.items) {
             if (tpl) {
                 const clone = /** @type {HTMLDivElement} */ (
-                    tpl.content.cloneNode(true).firstElementChild
+                    /** @type {DocumentFragment} */ (tpl.content.cloneNode(true)).firstElementChild
                 );
                 clone.querySelector('.stats-bar__value').textContent = String(item.value);
                 clone.querySelector('.stats-bar__label').textContent = t(item.label);

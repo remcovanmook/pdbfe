@@ -90,7 +90,7 @@ function buildTables(campus) {
             { key: 'country', label: 'Country' },
         ],
         rows: campus.fac_set,
-        cellRenderer: (row, col) => {
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
             if (col.key === 'name') {
                 return createLink('fac', row.id, row.name || `Facility ${row.id}`);
             }

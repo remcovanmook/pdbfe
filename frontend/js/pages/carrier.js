@@ -93,7 +93,7 @@ function buildTables(carrier) {
             { key: 'name', label: 'Facility' },
         ],
         rows: carrier.carrierfac_set,
-        cellRenderer: (row, col) => {
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
             if (col.key === 'name') {
                 return createLink('fac', row.fac_id, row.name || `Facility ${row.fac_id}`);
             }

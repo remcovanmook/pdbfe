@@ -116,7 +116,7 @@ export function attachTypeahead(input, opts = {}) {
 
                 if (tpl) {
                     itemDiv = /** @type {HTMLDivElement} */ (
-                        tpl.content.cloneNode(true).firstElementChild
+                        /** @type {DocumentFragment} */ (tpl.content.cloneNode(true)).firstElementChild
                     );
                     /** @type {HTMLSpanElement} */ (
                         itemDiv.querySelector('.search-dropdown__item-name')

@@ -97,7 +97,7 @@ function buildTables(org) {
                 { key: 'asn',  label: 'ASN', class: 'td-right' },
             ],
             rows: org.net_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'name') return createLink('net', row.id, row.name || `Net ${row.id}`);
                 if (col.key === 'asn') return document.createTextNode(String(row.asn || '—'));
                 return document.createTextNode(String(row[col.key] ?? ''));
@@ -116,7 +116,7 @@ function buildTables(org) {
                 { key: 'country', label: 'Country' },
             ],
             rows: org.fac_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'name') return createLink('fac', row.id, row.name || `Fac ${row.id}`);
                 return document.createTextNode(String(row[col.key] ?? '—'));
             }
@@ -134,7 +134,7 @@ function buildTables(org) {
                 { key: 'country', label: 'Country' },
             ],
             rows: org.ix_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 if (col.key === 'name') return createLink('ix', row.id, row.name || `IX ${row.id}`);
                 return document.createTextNode(String(row[col.key] ?? '—'));
             }
