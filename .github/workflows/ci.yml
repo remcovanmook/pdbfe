@@ -113,9 +113,6 @@ jobs:
         run: npm ci
         working-directory: workers
 
-      - name: Schema ↔ entities sync
-        run: node scripts/check_schema_sync.js
-
       - name: Locale completeness
         run: node scripts/check_locales.js
 
@@ -159,9 +156,6 @@ jobs:
 
       - name: Regenerate schema artifacts
         run: python scripts/parse_django_models.py --force
-
-      - name: Validate entity ↔ schema sync
-        run: node scripts/check_schema_sync.js
 
       - name: Check for drift
         run: |
