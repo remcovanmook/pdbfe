@@ -74,9 +74,10 @@ The `cellRenderer` callback returns DOM Nodes (not HTML strings).
 ## Templates (index.html)
 
 ```html
-<template id="tpl-info-field">   → createField()
-<template id="tpl-info-group">   → createFieldGroup()
-<template id="tpl-stats-item">   → createStatsBar()
+<template id="tpl-info-field">      → createField()
+<template id="tpl-info-group">      → createFieldGroup()
+<template id="tpl-stats-item">      → createStatsBar()
+<template id="tpl-typeahead-item">  → typeahead dropdown items
 ```
 
 ## Markdown Rendering
@@ -90,9 +91,8 @@ sanitization (allowlisted tags, URL protocol validation).
 
 - `boot.js` line 99: footer sync status (output of `formatDate()`, not user data)
 - `account.js`: static modal layout (authored markup, no user data)
-- `typeahead.js`: ephemeral dropdown (all data escaped via `escapeHTML()`)
 - `auth.js`: auth UI button (static markup)
-- `debug.js`: diagnostic overlay (internal telemetry data)
-- `about.js`: markdown-rendered content (sanitized)
+- `debug.js`: diagnostic overlay (internal telemetry data, escaped via `escapeHTML()`)
+- `about.js`: markdown-rendered content (sanitized via `renderMarkdown()` pipeline)
 
 None of these operate on untrusted user input.

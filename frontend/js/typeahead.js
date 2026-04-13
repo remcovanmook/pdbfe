@@ -3,12 +3,14 @@
  * Attaches to a search input and renders a dropdown of results
  * as the user types, with keyboard navigation and click-to-navigate.
  *
- * Uses debounced calls to `searchAll()` from the API client.
+ * Uses debounced calls to `searchWithAsn()` from the API client.
  * Results are grouped by entity type in a dropdown overlay.
+ *
+ * Dropdown items are built with DOM nodes and template cloning.
+ * All user data is assigned via textContent (XSS-safe by construction).
  */
 
 import { searchWithAsn, SEARCH_ENTITIES } from './api.js';
-import { escapeHTML } from './render.js';
 import { navigate } from './router.js';
 
 
@@ -73,7 +75,8 @@ export function attachTypeahead(input, opts = {}) {
     }
 
     /**
-     * Renders search results into the dropdown.
+     * Renders search results into the dropdown using DOM nodes.
+     * All data is assigned via textContent — XSS-safe by construction.
      *
      * @param {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} results
      */
@@ -85,26 +88,70 @@ export function attachTypeahead(input, opts = {}) {
             items: (res[e.key] || []).slice(0, primaryKeys.has(e.key) ? 5 : 3)
         }));
 
-        let html = '';
+        const tpl = /** @type {HTMLTemplateElement|null} */ (
+            document.getElementById('tpl-typeahead-item')
+        );
+
+        const frag = document.createDocumentFragment();
         let hasResults = false;
 
         for (const group of groups) {
             if (group.items.length === 0) continue;
             hasResults = true;
 
-            html += `<div class="search-dropdown__group">
-                <div class="search-dropdown__label">${escapeHTML(group.label)}</div>`;
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'search-dropdown__group';
+
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'search-dropdown__label';
+            labelDiv.textContent = group.label;
+            groupDiv.appendChild(labelDiv);
 
             for (const item of group.items) {
-                const name = escapeHTML(item.name || `ID ${item.id}`);
+                const name = item.name || `ID ${item.id}`;
                 const sub = group.subtitle(item);
-                html += `<div class="search-dropdown__item" data-href="/${group.key}/${item.id}" role="option">
-                    <span>${/* safe — escapeHTML() on line 99 */ name}</span>
-                    ${sub ? `<span class="search-dropdown__item-sub">${escapeHTML(sub)}</span>` : ''}
-                </div>`;
+
+                /** @type {HTMLDivElement} */
+                let itemDiv;
+
+                if (tpl) {
+                    itemDiv = /** @type {HTMLDivElement} */ (
+                        tpl.content.cloneNode(true).firstElementChild
+                    );
+                    /** @type {HTMLSpanElement} */ (
+                        itemDiv.querySelector('.search-dropdown__item-name')
+                    ).textContent = name;
+
+                    const subEl = itemDiv.querySelector('.search-dropdown__item-sub');
+                    if (sub && subEl) {
+                        subEl.textContent = sub;
+                    } else if (subEl) {
+                        subEl.remove();
+                    }
+                } else {
+                    // Fallback: build without template
+                    itemDiv = document.createElement('div');
+                    itemDiv.className = 'search-dropdown__item';
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'search-dropdown__item-name';
+                    nameSpan.textContent = name;
+                    itemDiv.appendChild(nameSpan);
+
+                    if (sub) {
+                        const subSpan = document.createElement('span');
+                        subSpan.className = 'search-dropdown__item-sub';
+                        subSpan.textContent = sub;
+                        itemDiv.appendChild(subSpan);
+                    }
+                }
+
+                itemDiv.setAttribute('data-href', `/${group.key}/${item.id}`);
+                itemDiv.setAttribute('role', 'option');
+                groupDiv.appendChild(itemDiv);
             }
 
-            html += '</div>';
+            frag.appendChild(groupDiv);
         }
 
         if (!hasResults) {
@@ -112,7 +159,7 @@ export function attachTypeahead(input, opts = {}) {
             return;
         }
 
-        dropdown.innerHTML = html;
+        dropdown.replaceChildren(frag);
         dropdown.classList.add('is-open');
         activeIndex = -1;
     }
@@ -120,7 +167,7 @@ export function attachTypeahead(input, opts = {}) {
     /** Closes the dropdown and resets state. */
     function closeDropdown() {
         dropdown.classList.remove('is-open');
-        dropdown.innerHTML = '';
+        dropdown.replaceChildren();
         activeIndex = -1;
     }
 
