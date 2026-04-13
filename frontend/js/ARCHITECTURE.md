@@ -33,8 +33,7 @@ boot.js
 │   ├── createLoading()          → Loading spinner
 │   ├── createError()            → Error message
 │   ├── createEmptyState()       → Empty state message
-│   ├── createDetailLayout()     → Page layout grid
-│   └── (deprecated string builders: renderField, linkEntity, etc.)
+│   └── createDetailLayout()     → Page layout grid
 └── pages/
     ├── net.js, ix.js, fac.js, org.js, carrier.js, campus.js
     │   → Entity detail pages using createDetailLayout + <pdb-table>
@@ -98,6 +97,4 @@ The markdown pipeline (`markdown.js`) has its own sanitization: allowlisted HTML
 URL protocol validation, and `target`/`rel` enforcement on links.
 
 All other modules use DOM nodes exclusively. `escapeHTML()` is retained
-in `render.js` for the legacy string-mode utilities (still exported but
-no longer called from page renderers) and in `i18n.js` for interpolation
-value escaping.
+only in `i18n.js` for interpolation value escaping.
