@@ -72,6 +72,14 @@ const _cache = new Map();
  */
 const _pending = new Set();
 
+/**
+ * Tracks in-flight blocking requests to prevent cold-boot stampedes.
+ * When multiple components request the same uncached resource concurrently,
+ * only one network request is made; all callers share the same Promise.
+ * @type {Map<string, Promise<any>>}
+ */
+const _inflight = new Map();
+
 /** Fresh window — cached data returned without revalidation. */
 const CACHE_TTL_MS = 60_000;
 
@@ -86,15 +94,19 @@ const CACHE_SWR_MS = 300_000;
  *   background fetch to update the cache for subsequent calls.
  * - **Expired** (> 5min) or **first request**: blocks on fetch.
  *
+ * Concurrent cache misses for the same key are coalesced into a single
+ * network request via the _inflight Map.
+ *
  * Cache keys include auth state so authenticated and anonymous
  * responses are stored separately.
  *
  * @param {string} path - API path (e.g. "/api/net/694").
  * @param {Record<string, string|number>} [params] - Query parameters.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<any>} Parsed JSON response body.
  * @throws {Error} On non-2xx status or network failure.
  */
-async function cachedFetch(path, params) {
+async function cachedFetch(path, params, signal) {
     const url = buildURL(path, params);
     const now = Date.now();
     const sid = getSessionId();
@@ -116,8 +128,16 @@ async function cachedFetch(path, params) {
         }
     }
 
-    // Expired or first request: blocking fetch
-    return freshFetch(cacheKey, url, sid);
+    // Coalesce concurrent cache misses into a single network request
+    if (_inflight.has(cacheKey)) {
+        return _inflight.get(cacheKey);
+    }
+
+    const promise = freshFetch(cacheKey, url, sid, signal).finally(() => {
+        _inflight.delete(cacheKey);
+    });
+    _inflight.set(cacheKey, promise);
+    return promise;
 }
 
 /**
@@ -127,14 +147,18 @@ async function cachedFetch(path, params) {
  * @param {string} cacheKey - Cache key for storage.
  * @param {string} url - Full API URL to fetch.
  * @param {string|null} sid - Session ID for auth header, or null.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<any>} Parsed JSON response body.
  * @throws {Error} On non-2xx status or network failure.
  */
-async function freshFetch(cacheKey, url, sid) {
+async function freshFetch(cacheKey, url, sid, signal) {
     /** @type {RequestInit} */
     const init = {};
     if (sid) {
         init.headers = { 'Authorization': `Bearer ${sid}` };
+    }
+    if (signal) {
+        init.signal = signal;
     }
 
     const res = await fetch(url, init);
@@ -214,10 +238,11 @@ export async function fetchEntity(type, id, depth = 2) {
  *
  * @param {string} type - Entity type.
  * @param {Record<string, string|number>} [filters={}] - Query filters.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<any[]>} Array of result objects.
  */
-export async function fetchList(type, filters = {}) {
-    const result = await cachedFetch(`/api/${type}`, filters);
+export async function fetchList(type, filters = {}, signal) {
+    const result = await cachedFetch(`/api/${type}`, filters, signal);
     return result?.data || [];
 }
 
@@ -226,13 +251,14 @@ export async function fetchList(type, filters = {}) {
  * Returns results grouped by type.
  *
  * @param {string} query - Search term (matched via name__contains).
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
-export async function searchAll(query) {
+export async function searchAll(query, signal) {
     const params = { name__contains: query, limit: 20 };
 
     const results = await Promise.all(
-        SEARCH_ENTITIES.map(e => fetchList(e.key, params).catch(/** @returns {any[]} */() => []))
+        SEARCH_ENTITIES.map(e => fetchList(e.key, params, signal).catch(/** @returns {any[]} */() => []))
     );
 
     /** @type {Record<string, any[]>} */
@@ -307,14 +333,15 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * the networks list.
  *
  * @param {string} query - Search term.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
-export async function searchWithAsn(query) {
+export async function searchWithAsn(query, signal) {
     const asnMatch = query.trim().match(ASN_PATTERN);
     const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
 
     const [results, asnNet] = await Promise.all([
-        searchAll(query),
+        searchAll(query, signal),
         isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 

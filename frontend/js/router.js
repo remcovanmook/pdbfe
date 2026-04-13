@@ -63,6 +63,12 @@ export function initRouter(appContainer) {
         const link = /** @type {HTMLElement|null} */ (e.target)?.closest('[data-link]');
         if (!link) return;
 
+        // Let the browser handle Ctrl+Click, Cmd+Click, Shift+Click,
+        // and middle mouse button — these open links in new tabs/windows.
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
+            return;
+        }
+
         e.preventDefault();
         const href = link.getAttribute('href');
         if (href && href !== window.location.pathname) {
