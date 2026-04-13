@@ -1,14 +1,15 @@
 /**
  * @fileoverview Campus detail page renderer.
  * Displays campus info and its associated facilities from fac_set.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>) and
+ * createField/createLink builders.
  */
 
 import { fetchEntity } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard,
-    renderLoading, renderError,
-    linkEntity, escapeHTML,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink,
+    createLoading, createError, createEmptyState, createDetailLayout
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -22,70 +23,64 @@ export async function renderCampus(params) {
     const id = params.id;
 
     document.title = `Campus — PeeringDB`;
-    app.innerHTML = renderLoading('Loading campus');
+    app.replaceChildren(createLoading('Loading campus'));
 
     try {
         const campus = await fetchEntity('campus', id, 2);
         if (!campus) {
-            app.innerHTML = renderError(`Campus ${id} not found`);
+            app.replaceChildren(createError(`Campus ${id} not found`));
             return;
         }
 
         document.title = `${campus.name} — PeeringDB`;
 
-        const sidebar = buildSidebar(campus);
-        const tables = buildTables(campus);
-
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(campus.name)}</h1>
-                </div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: campus.name,
+            sidebar: buildSidebar(campus),
+            main: buildTables(campus),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load campus: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load campus: ${err.message}`));
     }
 }
 
 /**
- * Builds the info sidebar HTML for a campus.
+ * Builds the info sidebar for a campus as a DocumentFragment.
  *
  * @param {any} campus - Campus entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(campus) {
-    return renderFieldGroup('General', [
-        renderField('Organization', campus.org_name || campus.org_id, { linkType: 'org', linkId: campus.org_id }),
-        renderField('Website', campus.website, { href: campus.website, external: true }),
-        renderField('Also Known As', campus.aka),
-        renderField('Long Name', campus.name_long),
-        renderField('City', campus.city),
-        renderField('State/Province', campus.state),
-        renderField('Country', campus.country),
-        renderField('Postal Code', campus.zipcode),
-        renderField('Last Updated', campus.updated),
+    const group = createFieldGroup('General', [
+        createField('Organization', campus.org_name || campus.org_id, { linkType: 'org', linkId: campus.org_id }),
+        createField('Website', campus.website, { href: campus.website, external: true }),
+        createField('Also Known As', campus.aka),
+        createField('Long Name', campus.name_long),
+        createField('City', campus.city),
+        createField('State/Province', campus.state),
+        createField('Country', campus.country),
+        createField('Postal Code', campus.zipcode),
+        createField('Last Updated', campus.updated),
     ]);
+
+    const frag = document.createDocumentFragment();
+    if (group) frag.appendChild(group);
+    return frag;
 }
 
 /**
  * Builds the facilities table from fac_set.
  *
  * @param {any} campus - Campus entity object.
- * @returns {string} HTML string.
+ * @returns {HTMLElement} Table element or empty-state.
  */
 function buildTables(campus) {
     if (!campus.fac_set || campus.fac_set.length === 0) {
-        return `<div class="empty-state">${escapeHTML(t('No facilities listed'))}</div>`;
+        return createEmptyState('No facilities listed');
     }
 
-    return renderTableCard({
+    const table = /** @type {any} */ (document.createElement('pdb-table'));
+    table.configure({
         title: 'Facilities',
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
@@ -95,11 +90,12 @@ function buildTables(campus) {
             { key: 'country', label: 'Country' },
         ],
         rows: campus.fac_set,
-        cellRenderer: (row, col) => {
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
             if (col.key === 'name') {
-                return linkEntity('fac', row.id, row.name || `Facility ${row.id}`);
+                return createLink('fac', row.id, row.name || `Facility ${row.id}`);
             }
-            return escapeHTML(String(row[col.key] ?? '—'));
+            return document.createTextNode(String(row[col.key] ?? '—'));
         }
     });
+    return table;
 }

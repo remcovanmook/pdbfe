@@ -2,14 +2,17 @@
  * @fileoverview Exchange detail page renderer.
  * Displays IX info, stats bar, LAN prefixes, contacts,
  * peer table (via secondary /api/netixlan query), and local facilities.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>,
+ * <pdb-field-group>) and the createField/createLink builders.
  */
 
 import { fetchEntity, fetchIxPeers } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard, renderStatsBar,
-    renderLoading, renderError, renderBool,
-    linkEntity, formatSpeed, escapeHTML, setOGTags,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink, createBool,
+    createLoading, createError, createEmptyState,
+    createStatsBar, createDetailLayout,
+    formatSpeed, setOGTags
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -23,7 +26,7 @@ export async function renderIx(params) {
     const id = params.id;
 
     document.title = `Exchange — PeeringDB`;
-    app.innerHTML = renderLoading('Loading exchange');
+    app.replaceChildren(createLoading('Loading exchange'));
 
     try {
         // Parallel fetch: IX entity + peer table
@@ -33,7 +36,7 @@ export async function renderIx(params) {
         ]);
 
         if (!ix) {
-            app.innerHTML = renderError(`Exchange ${id} not found`);
+            app.replaceChildren(createError(`Exchange ${id} not found`));
             return;
         }
 
@@ -50,106 +53,118 @@ export async function renderIx(params) {
             `${ix.city || ''}${ix.country ? `, ${ix.country}` : ''} — ${totalPeers.toLocaleString()} Peers, ${formatSpeed(totalSpeed)} Total Speed`
         );
 
-        const statsBar = renderStatsBar([
+        const statsBar = createStatsBar([
             { label: 'Peers', value: totalPeers.toLocaleString() },
             { label: 'Connections', value: totalConnections.toLocaleString() },
             { label: 'Open Peers', value: openPeers.toLocaleString() },
             { label: 'Total Speed', value: formatSpeed(totalSpeed) },
         ]);
 
-        const sidebar = buildSidebar(ix);
-        const tables = buildTables(ix, peers);
+        const subtitle = `${ix.city || ''}${ix.country ? `, ${ix.country}` : ''}`;
 
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(ix.name)}</h1>
-                    <span class="detail-header__subtitle">${escapeHTML(ix.city || '')}${ix.country ? `, ${escapeHTML(ix.country)}` : ''}</span>
-                </div>
-                <div style="grid-column: 1 / -1">${statsBar}</div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: ix.name,
+            subtitle,
+            statsBar,
+            sidebar: buildSidebar(ix),
+            main: buildTables(ix, peers),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load exchange: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load exchange: ${err.message}`));
     }
 }
 
 /**
- * Builds the sidebar info for an IX.
+ * Builds the sidebar info for an IX as a DocumentFragment.
  *
  * @param {any} ix - Exchange entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(ix) {
-    const general = renderFieldGroup('General', [
-        renderField('Organization', ix.org_name || ix.org_id, { linkType: 'org', linkId: ix.org_id }),
-        renderField('City', ix.city),
-        renderField('Country', ix.country),
-        renderField('Region', ix.region_continent, { translate: true }),
-        renderField('Media Type', ix.media, { translate: true }),
-        renderField('Service Level', ix.service_level, { translate: true }),
-        renderField('Terms', ix.terms, { translate: true }),
-        renderField('Website', ix.website, { href: ix.website, external: true }),
-        renderField('URL Stats', ix.url_stats, { href: ix.url_stats, external: true }),
-        renderField('Tech Email', ix.tech_email),
-        renderField('Tech Phone', ix.tech_phone),
-        renderField('Policy Email', ix.policy_email),
-        renderField('Policy Phone', ix.policy_phone),
-        renderField('Notes', ix.notes, { markdown: true }),
-        renderField('Last Updated', ix.updated),
+    const frag = document.createDocumentFragment();
+
+    const general = createFieldGroup('General', [
+        createField('Organization', ix.org_name || ix.org_id, { linkType: 'org', linkId: ix.org_id }),
+        createField('City', ix.city),
+        createField('Country', ix.country),
+        createField('Region', ix.region_continent, { translate: true }),
+        createField('Media Type', ix.media, { translate: true }),
+        createField('Service Level', ix.service_level, { translate: true }),
+        createField('Terms', ix.terms, { translate: true }),
+        createField('Website', ix.website, { href: ix.website, external: true }),
+        createField('URL Stats', ix.url_stats, { href: ix.url_stats, external: true }),
+        createField('Tech Email', ix.tech_email),
+        createField('Tech Phone', ix.tech_phone),
+        createField('Policy Email', ix.policy_email),
+        createField('Policy Phone', ix.policy_phone),
+        createField('Notes', ix.notes, { markdown: true }),
+        createField('Last Updated', ix.updated),
     ]);
+    if (general) frag.appendChild(general);
 
     // LAN parameters from ixlan_set — 1:1 relationship with IX.
     // Surfaces MTU, route server ASN, 802.1Q support, and the
     // IX-F Member Export URL when publicly visible.
-    let lanInfo = '';
     const lan = ix.ixlan_set?.[0];
     if (lan) {
+        /** @type {Array<HTMLElement|null>} */
         const lanFields = [
-            renderField('MTU', lan.mtu),
-            `<div class="info-field">
-                <span class="info-field__label">${escapeHTML(t('802.1Q'))}</span>
-                <span class="info-field__value">${/* safe — renderBool returns a known HTML badge */ renderBool(lan.dot1q_support)}</span>
-            </div>`,
-            lan.rs_asn ? renderField('Route Server ASN', lan.rs_asn) : '',
+            createField('MTU', lan.mtu),
         ];
+
+        // 802.1Q support — uses createBool for the yes/no badge
+        const dot1qField = createField('802.1Q', lan.dot1q_support != null ? ' ' : null);
+        if (dot1qField) {
+            const valueEl = dot1qField.querySelector('.info-field__value');
+            if (valueEl) {
+                valueEl.textContent = '';
+                valueEl.appendChild(createBool(lan.dot1q_support));
+            }
+        }
+        lanFields.push(dot1qField);
+
+        if (lan.rs_asn) {
+            lanFields.push(createField('Route Server ASN', lan.rs_asn));
+        }
+
         // Only show the IX-F URL when visibility is Public
         if (lan.ixf_ixp_member_list_url_visible === 'Public' && lan.ixf_ixp_member_list_url) {
-            lanFields.push(renderField('IX-F Member Export', lan.ixf_ixp_member_list_url, {
+            lanFields.push(createField('IX-F Member Export', lan.ixf_ixp_member_list_url, {
                 href: lan.ixf_ixp_member_list_url, external: true
             }));
         }
-        lanInfo = renderFieldGroup('LAN', lanFields.filter(s => s));
+
+        const lanGroup = createFieldGroup('LAN', lanFields);
+        if (lanGroup) frag.appendChild(lanGroup);
     }
 
-    let prefixes = '';
+    // LAN Prefixes
     if (ix.ixpfx_set && ix.ixpfx_set.length > 0) {
         const pfxFields = ix.ixpfx_set.map(/** @param {any} pfx */ (pfx) =>
-            renderField(pfx.protocol === 'IPv6' ? 'IPv6 Prefix' : 'IPv4 Prefix', pfx.prefix)
+            createField(pfx.protocol === 'IPv6' ? 'IPv6 Prefix' : 'IPv4 Prefix', pfx.prefix)
         );
-        prefixes = renderFieldGroup('LAN Prefixes', pfxFields);
+        const pfxGroup = createFieldGroup('LAN Prefixes', pfxFields);
+        if (pfxGroup) frag.appendChild(pfxGroup);
     }
 
-    return [general, lanInfo, prefixes].filter(s => s).join('');
+    return frag;
 }
 
 /**
- * Builds the peer table and local facilities table.
+ * Builds the peer table and local facilities table as a DocumentFragment.
  *
  * @param {any} ix - Exchange entity object.
  * @param {any[]} peers - netixlan records for this IX.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Tables fragment.
  */
 function buildTables(ix, peers) {
-    let peerTable = '';
+    const frag = document.createDocumentFragment();
+
     if (peers.length > 0) {
-        peerTable = renderTableCard({
+        const peerTable = /** @type {HTMLElement & {configure: Function}} */ (
+            document.createElement('pdb-table')
+        );
+        peerTable.configure({
             title: 'Peers',
             filterable: true,
             filterPlaceholder: t('Filter by name or ASN...'),
@@ -162,30 +177,40 @@ function buildTables(ix, peers) {
                 { key: 'is_rs_peer', label: 'RS' },
             ],
             rows: peers,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 switch (col.key) {
-                    // Use net_name from the API's JOIN response.
-                    // Fall back to AS{asn} if not available.
                     case 'name': {
                         const label = row.net_name || `AS${row.asn}`;
                         return row.net_id
-                            ? linkEntity('net', row.net_id, label)
-                            : escapeHTML(label);
+                            ? createLink('net', row.net_id, label)
+                            : document.createTextNode(label);
                     }
-                    case 'asn': return String(row.asn || '');
-                    case 'speed': return { html: formatSpeed(row.speed), sortValue: row.speed || 0 };
-                    case 'ipaddr4': return row.ipaddr4 ? escapeHTML(row.ipaddr4) : '—';
-                    case 'ipaddr6': return row.ipaddr6 ? escapeHTML(row.ipaddr6) : '—';
-                    case 'is_rs_peer': return renderBool(row.is_rs_peer);
-                    default: return escapeHTML(String(row[col.key] ?? ''));
+                    case 'asn':
+                        return document.createTextNode(String(row.asn || ''));
+                    case 'speed':
+                        return {
+                            node: document.createTextNode(formatSpeed(row.speed)),
+                            sortValue: row.speed || 0
+                        };
+                    case 'ipaddr4':
+                        return document.createTextNode(row.ipaddr4 || '—');
+                    case 'ipaddr6':
+                        return document.createTextNode(row.ipaddr6 || '—');
+                    case 'is_rs_peer':
+                        return createBool(row.is_rs_peer);
+                    default:
+                        return document.createTextNode(String(row[col.key] ?? ''));
                 }
             }
         });
+        frag.appendChild(peerTable);
     }
 
-    let facTable = '';
     if (ix.ixfac_set && ix.ixfac_set.length > 0) {
-        facTable = renderTableCard({
+        const facTable = /** @type {HTMLElement & {configure: Function}} */ (
+            document.createElement('pdb-table')
+        );
+        facTable.configure({
             title: 'Local Facilities',
             columns: [
                 { key: 'name',    label: 'Facility' },
@@ -193,12 +218,19 @@ function buildTables(ix, peers) {
                 { key: 'country', label: 'Country' },
             ],
             rows: ix.ixfac_set,
-            cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
-                return escapeHTML(String(row[col.key] ?? '—'));
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+                if (col.key === 'name') {
+                    return createLink('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
+                }
+                return document.createTextNode(String(row[col.key] ?? '—'));
             }
         });
+        frag.appendChild(facTable);
     }
 
-    return [peerTable, facTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No peers or facilities'))}</div>`;
+    if (frag.children.length === 0) {
+        frag.appendChild(createEmptyState('No peers or facilities'));
+    }
+
+    return frag;
 }

@@ -6,7 +6,7 @@
  */
 
 import { fetchByAsn } from '../api.js';
-import { renderLoading, renderError } from '../render.js';
+import { createLoading, createError } from '../render.js';
 import { navigate } from '../router.js';
 
 /**
@@ -24,13 +24,13 @@ export async function renderAsn(params) {
     const asn = parseInt(raw, 10);
 
     if (isNaN(asn) || asn <= 0) {
-        app.innerHTML = renderError(`Invalid ASN: ${params.asn}`);
+        app.replaceChildren(createError(`Invalid ASN: ${params.asn}`));
         document.title = 'Invalid ASN — PeeringDB';
         return;
     }
 
     document.title = `AS${asn} — PeeringDB`;
-    app.innerHTML = renderLoading(`Looking up AS${asn}`);
+    app.replaceChildren(createLoading(`Looking up AS${asn}`));
 
     try {
         const net = await fetchByAsn(asn);
@@ -39,9 +39,9 @@ export async function renderAsn(params) {
             window.history.replaceState(null, '', `/net/${net.id}`);
             navigate(`/net/${net.id}`);
         } else {
-            app.innerHTML = renderError(`No network found for AS${asn}`);
+            app.replaceChildren(createError(`No network found for AS${asn}`));
         }
     } catch (err) {
-        app.innerHTML = renderError(`Failed to look up AS${asn}: ${err.message}`);
+        app.replaceChildren(createError(`Failed to look up AS${asn}: ${err.message}`));
     }
 }

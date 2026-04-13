@@ -24,6 +24,11 @@ import { initAuth } from './auth.js';
 import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 
+// Register Web Components — must execute before the router dispatches.
+import './components/pdb-table.js';
+import './components/pdb-field-group.js';
+import './components/pdb-stats-bar.js';
+
 // Register routes
 addRoute('/', renderHome);
 addRoute('/search', renderSearch);
@@ -91,7 +96,11 @@ fetchSyncStatus().then(sync => {
     const timeText = formatDate(isoDate);
     const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
 
-    el.innerHTML = `${t('Last synced')} <span class="site-footer__sync-time${staleClass}">${/* safe — formatDate() output */ timeText}</span>`;
+    const textNode = document.createTextNode(t('Last synced') + ' ');
+    const timeSpan = document.createElement('span');
+    timeSpan.className = `site-footer__sync-time${staleClass}`;
+    timeSpan.textContent = timeText;
+    el.replaceChildren(textNode, timeSpan);
     el.title = sync.last_sync_at;
 }).catch(() => {
     // Non-critical — leave the sync status empty on failure

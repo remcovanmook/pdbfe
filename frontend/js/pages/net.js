@@ -2,14 +2,16 @@
  * @fileoverview Network detail page renderer.
  * Displays network info, peering policy, contacts, exchange points table,
  * and interconnection facilities table.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>) and the
+ * createField/createLink builders.
  */
 
 import { fetchEntity } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard,
-    renderLoading, renderError, renderBool,
-    linkEntity, formatSpeed, escapeHTML, setOGTags,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink, createBool,
+    createLoading, createError, createEmptyState,
+    createDetailLayout, formatSpeed, setOGTags
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -23,12 +25,12 @@ export async function renderNet(params) {
     const id = params.id;
 
     document.title = `Network — PeeringDB`;
-    app.innerHTML = renderLoading('Loading network');
+    app.replaceChildren(createLoading('Loading network'));
 
     try {
         const net = await fetchEntity('net', id, 2);
         if (!net) {
-            app.innerHTML = renderError(`Network ${id} not found`);
+            app.replaceChildren(createError(`Network ${id} not found`));
             return;
         }
 
@@ -38,89 +40,106 @@ export async function renderNet(params) {
             `${net.info_type || 'Network'} — ${net.policy_general || 'Peering policy not listed'}`
         );
 
-        const sidebar = buildSidebar(net);
-        const tables = buildTables(net);
-
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(net.name)}</h1>
-                    <span class="detail-header__subtitle">AS${net.asn}</span>
-                </div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: net.name,
+            subtitle: `AS${net.asn}`,
+            sidebar: buildSidebar(net),
+            main: buildTables(net),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load network: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load network: ${err.message}`));
     }
 }
 
 /**
- * Builds the info sidebar HTML for a network.
+ * Builds the info sidebar for a network as a DocumentFragment.
  *
  * @param {any} net - Network entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(net) {
-    const general = renderFieldGroup('General', [
-        renderField('Organization', net.org_name || net.org_id, { linkType: 'org', linkId: net.org_id }),
-        renderField('ASN', net.asn),
-        renderField('IRR Record', net.irr_as_set),
-        renderField('Website', net.website, { href: net.website, external: true }),
-        renderField('Looking Glass', net.looking_glass, { href: net.looking_glass, external: true }),
-        renderField('Route Server', net.route_server, { href: net.route_server, external: true }),
-        renderField('Network Type', net.info_type, { translate: true }),
-        renderField('Traffic Levels', net.info_traffic, { translate: true }),
-        renderField('Traffic Ratios', net.info_ratio, { translate: true }),
-        renderField('Scope', net.info_scope, { translate: true }),
-        renderField('Unicast Prefixes', net.info_prefixes4 || net.info_prefixes6
+    const frag = document.createDocumentFragment();
+
+    const general = createFieldGroup('General', [
+        createField('Organization', net.org_name || net.org_id, { linkType: 'org', linkId: net.org_id }),
+        createField('ASN', net.asn),
+        createField('IRR Record', net.irr_as_set),
+        createField('Website', net.website, { href: net.website, external: true }),
+        createField('Looking Glass', net.looking_glass, { href: net.looking_glass, external: true }),
+        createField('Route Server', net.route_server, { href: net.route_server, external: true }),
+        createField('Network Type', net.info_type, { translate: true }),
+        createField('Traffic Levels', net.info_traffic, { translate: true }),
+        createField('Traffic Ratios', net.info_ratio, { translate: true }),
+        createField('Scope', net.info_scope, { translate: true }),
+        createField('Unicast Prefixes', net.info_prefixes4 || net.info_prefixes6
             ? `${net.info_prefixes4 || 0} IPv4 / ${net.info_prefixes6 || 0} IPv6` : null),
-        renderField('IPv6', net.info_ipv6 ? t('Yes') : t('No')),
-        renderField('Multicast', net.info_multicast ? t('Yes') : t('No')),
-        renderField('Last Updated', net.updated),
+        createField('IPv6', net.info_ipv6 ? t('Yes') : t('No')),
+        createField('Multicast', net.info_multicast ? t('Yes') : t('No')),
+        createField('Last Updated', net.updated),
     ]);
+    if (general) frag.appendChild(general);
 
-    const policy = renderFieldGroup('Peering Policy', [
-        renderField('General Policy', net.policy_general, { translate: true }),
-        renderField('Policy URL', net.policy_url, { href: net.policy_url, external: true }),
-        renderField('Ratio Requirement', net.policy_ratio ? t('Yes') : t('No')),
-        renderField('Contract Requirement', net.policy_contracts ? t('Yes') : t('No')),
-        renderField('Locations', net.policy_locations, { translate: true }),
+    const policy = createFieldGroup('Peering Policy', [
+        createField('General Policy', net.policy_general, { translate: true }),
+        createField('Policy URL', net.policy_url, { href: net.policy_url, external: true }),
+        createField('Ratio Requirement', net.policy_ratio ? t('Yes') : t('No')),
+        createField('Contract Requirement', net.policy_contracts ? t('Yes') : t('No')),
+        createField('Locations', net.policy_locations, { translate: true }),
     ]);
+    if (policy) frag.appendChild(policy);
 
-    let contacts = '';
+    // Contacts (poc_set)
     if (net.poc_set && net.poc_set.length > 0) {
-        const fields = net.poc_set.map(/** @param {any} poc */ (poc) => {
-            const parts = [escapeHTML(poc.role || 'Contact')];
-            if (poc.name) parts.push(escapeHTML(poc.name));
-            if (poc.email) parts.push(`<a href="mailto:${escapeHTML(poc.email)}">${escapeHTML(poc.email)}</a>`);
-            if (poc.phone) parts.push(escapeHTML(poc.phone));
-            return `<div class="info-field">
-                <span class="info-field__label">${/* safe — built from escapeHTML() */ parts[0]}</span>
-                <span class="info-field__value">${/* safe — built from escapeHTML() */ parts.slice(1).join(' · ')}</span>
-            </div>`;
+        const contactFields = net.poc_set.map(/** @param {any} poc */ (poc) => {
+            const field = createField(poc.role || 'Contact', ' ');
+            if (!field) return null;
+
+            const valueEl = /** @type {HTMLSpanElement} */ (field.querySelector('.info-field__value'));
+            valueEl.textContent = '';
+
+            const parts = [];
+            if (poc.name) parts.push(poc.name);
+
+            if (poc.email) {
+                const a = document.createElement('a');
+                a.href = `mailto:${poc.email}`;
+                a.textContent = poc.email;
+                parts.push(a);
+            }
+
+            if (poc.phone) parts.push(poc.phone);
+
+            for (let i = 0; i < parts.length; i++) {
+                if (i > 0) valueEl.appendChild(document.createTextNode(' · '));
+                if (typeof parts[i] === 'string') {
+                    valueEl.appendChild(document.createTextNode(parts[i]));
+                } else {
+                    valueEl.appendChild(parts[i]);
+                }
+            }
+
+            return field;
         });
-        contacts = renderFieldGroup('Contacts', fields);
+
+        const contacts = createFieldGroup('Contacts', contactFields);
+        if (contacts) frag.appendChild(contacts);
     }
 
-    return [general, policy, contacts].filter(s => s).join('');
+    return frag;
 }
 
 /**
  * Builds the data tables (exchange points + facilities) for a network.
  *
  * @param {any} net - Network entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Tables fragment.
  */
 function buildTables(net) {
-    let ixTable = '';
+    const frag = document.createDocumentFragment();
+
     if (net.netixlan_set && net.netixlan_set.length > 0) {
-        ixTable = renderTableCard({
+        const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
+        ixTable.configure({
             title: 'Exchange Points',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
@@ -132,22 +151,29 @@ function buildTables(net) {
                 { key: 'is_rs_peer', label: 'RS' },
             ],
             rows: net.netixlan_set,
-            cellRenderer: (row, col) => {
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 switch (col.key) {
-                    case 'name': return linkEntity('ix', row.ix_id, row.name || `IX ${row.ix_id}`);
-                    case 'speed': return { html: formatSpeed(row.speed), sortValue: row.speed || 0 };
-                    case 'ipaddr4': return row.ipaddr4 ? escapeHTML(row.ipaddr4) : '—';
-                    case 'ipaddr6': return row.ipaddr6 ? escapeHTML(row.ipaddr6) : '—';
-                    case 'is_rs_peer': return renderBool(row.is_rs_peer);
-                    default: return escapeHTML(String(row[col.key] ?? ''));
+                    case 'name':
+                        return createLink('ix', row.ix_id, row.name || `IX ${row.ix_id}`);
+                    case 'speed':
+                        return { node: document.createTextNode(formatSpeed(row.speed)), sortValue: row.speed || 0 };
+                    case 'ipaddr4':
+                        return document.createTextNode(row.ipaddr4 || '—');
+                    case 'ipaddr6':
+                        return document.createTextNode(row.ipaddr6 || '—');
+                    case 'is_rs_peer':
+                        return createBool(row.is_rs_peer);
+                    default:
+                        return document.createTextNode(String(row[col.key] ?? ''));
                 }
             }
         });
+        frag.appendChild(ixTable);
     }
 
-    let facTable = '';
     if (net.netfac_set && net.netfac_set.length > 0) {
-        facTable = renderTableCard({
+        const facTable = /** @type {any} */ (document.createElement('pdb-table'));
+        facTable.configure({
             title: 'Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
@@ -157,12 +183,17 @@ function buildTables(net) {
                 { key: 'country', label: 'Country' },
             ],
             rows: net.netfac_set,
-            cellRenderer: (row, col) => {
-                if (col.key === 'name') return linkEntity('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
-                return escapeHTML(String(row[col.key] ?? '—'));
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+                if (col.key === 'name') return createLink('fac', row.fac_id, row.name || `Fac ${row.fac_id}`);
+                return document.createTextNode(String(row[col.key] ?? '—'));
             }
         });
+        frag.appendChild(facTable);
     }
 
-    return [ixTable, facTable].filter(s => s).join('') || `<div class="empty-state">${escapeHTML(t('No exchange points or facilities'))}</div>`;
+    if (frag.children.length === 0) {
+        frag.appendChild(createEmptyState('No exchange points or facilities'));
+    }
+
+    return frag;
 }

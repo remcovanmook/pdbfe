@@ -183,3 +183,84 @@ describe("renderMarkdown — HTML sanitisation", () => {
     });
 });
 
+describe("renderMarkdown — headings", () => {
+    it("should render # as h1", () => {
+        const result = renderMarkdown("# Main Title");
+        assert.ok(result.includes('<h1>Main Title</h1>'));
+    });
+
+    it("should render ## as h2", () => {
+        const result = renderMarkdown("## Section");
+        assert.ok(result.includes('<h2>Section</h2>'));
+    });
+
+    it("should render ### as h3", () => {
+        const result = renderMarkdown("### Subsection");
+        assert.ok(result.includes('<h3>Subsection</h3>'));
+    });
+
+    it("should render h4 through h6", () => {
+        assert.ok(renderMarkdown("#### H4").includes('<h4>H4</h4>'));
+        assert.ok(renderMarkdown("##### H5").includes('<h5>H5</h5>'));
+        assert.ok(renderMarkdown("###### H6").includes('<h6>H6</h6>'));
+    });
+
+    it("should not treat # without a space as a heading", () => {
+        const result = renderMarkdown("#nospace");
+        assert.ok(!result.includes('<h1>'));
+        assert.ok(result.includes('#nospace'));
+    });
+
+    it("should handle inline formatting inside headings", () => {
+        const result = renderMarkdown("## **Bold** heading");
+        assert.ok(result.includes('<h2>'));
+        assert.ok(result.includes('<strong>Bold</strong>'));
+    });
+});
+
+describe("renderMarkdown — fenced code blocks", () => {
+    it("should render ``` fenced blocks as <pre><code>", () => {
+        const input = '```\ncurl -H "Auth: key" https://api.example.com\n```';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<pre><code>'));
+        assert.ok(result.includes('</code></pre>'));
+        assert.ok(result.includes('curl'));
+    });
+
+    it("should preserve whitespace inside code blocks", () => {
+        const input = '```\n  indented\n    more\n```';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('  indented'));
+        assert.ok(result.includes('    more'));
+    });
+
+    it("should not apply inline formatting inside code blocks", () => {
+        const input = '```\n**not bold** and *not italic*\n```';
+        const result = renderMarkdown(input);
+        // The bold/italic markers should be escaped but not turned into tags
+        // inside our already-escaped code block
+        assert.ok(!result.includes('<strong>'));
+        assert.ok(!result.includes('<em>'));
+    });
+
+    it("should handle unclosed code blocks", () => {
+        const input = '```\nsome code without closing fence';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<pre><code>'));
+        assert.ok(result.includes('some code'));
+    });
+
+    it("should handle code blocks with language hint", () => {
+        const input = '```bash\necho hello\n```';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('<pre><code>'));
+        assert.ok(result.includes('echo hello'));
+    });
+
+    it("should handle multiple code blocks", () => {
+        const input = '```\nblock one\n```\n\nSome text\n\n```\nblock two\n```';
+        const result = renderMarkdown(input);
+        const preCount = (result.match(/<pre>/g) || []).length;
+        assert.equal(preCount, 2, 'should have two code blocks');
+    });
+});

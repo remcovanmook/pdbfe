@@ -1,14 +1,15 @@
 /**
  * @fileoverview Carrier detail page renderer.
  * Displays carrier info and the facilities table from carrierfac_set.
+ *
+ * Uses DOM-based rendering via Web Components (<pdb-table>) and
+ * createField/createLink builders.
  */
 
 import { fetchEntity } from '../api.js';
 import {
-    renderField, renderFieldGroup, renderTableCard,
-    renderLoading, renderError,
-    linkEntity, escapeHTML,
-    attachTableSort, attachTableFilter, attachTablePaging
+    createField, createFieldGroup, createLink,
+    createLoading, createError, createEmptyState, createDetailLayout
 } from '../render.js';
 import { t } from '../i18n.js';
 
@@ -22,76 +23,69 @@ export async function renderCarrier(params) {
     const id = params.id;
 
     document.title = `Carrier — PeeringDB`;
-    app.innerHTML = renderLoading('Loading carrier');
+    app.replaceChildren(createLoading('Loading carrier'));
 
     try {
         const carrier = await fetchEntity('carrier', id, 2);
         if (!carrier) {
-            app.innerHTML = renderError(`Carrier ${id} not found`);
+            app.replaceChildren(createError(`Carrier ${id} not found`));
             return;
         }
 
         document.title = `${carrier.name} — PeeringDB`;
 
-        const sidebar = buildSidebar(carrier);
-        const tables = buildTables(carrier);
-
-        app.innerHTML = `
-            <div class="detail-layout">
-                <div class="detail-header">
-                    <h1 class="detail-header__title">${escapeHTML(carrier.name)}</h1>
-                </div>
-                <div class="detail-sidebar">${sidebar}</div>
-                <div class="detail-main">${tables}</div>
-            </div>
-        `;
-
-        attachTableSort(app);
-        attachTableFilter(app);
-        attachTablePaging(app);
+        app.replaceChildren(createDetailLayout({
+            title: carrier.name,
+            sidebar: buildSidebar(carrier),
+            main: buildTables(carrier),
+        }));
     } catch (err) {
-        app.innerHTML = renderError(`Failed to load carrier: ${err.message}`);
+        app.replaceChildren(createError(`Failed to load carrier: ${err.message}`));
     }
 }
 
 /**
- * Builds the info sidebar HTML for a carrier.
+ * Builds the info sidebar for a carrier as a DocumentFragment.
  *
  * @param {any} carrier - Carrier entity object.
- * @returns {string} HTML string.
+ * @returns {DocumentFragment} Sidebar content fragment.
  */
 function buildSidebar(carrier) {
-    const general = renderFieldGroup('General', [
-        renderField('Organization', carrier.org_name || carrier.org_id, { linkType: 'org', linkId: carrier.org_id }),
-        renderField('Website', carrier.website, { href: carrier.website, external: true }),
-        renderField('Also Known As', carrier.aka),
-        renderField('Long Name', carrier.name_long),
-        renderField('Facilities', carrier.fac_count),
-        renderField('Last Updated', carrier.updated),
-    ]);
+    const frag = document.createDocumentFragment();
 
-    let notes = '';
+    const general = createFieldGroup('General', [
+        createField('Organization', carrier.org_name || carrier.org_id, { linkType: 'org', linkId: carrier.org_id }),
+        createField('Website', carrier.website, { href: carrier.website, external: true }),
+        createField('Also Known As', carrier.aka),
+        createField('Long Name', carrier.name_long),
+        createField('Facilities', carrier.fac_count),
+        createField('Last Updated', carrier.updated),
+    ]);
+    if (general) frag.appendChild(general);
+
     if (carrier.notes) {
-        notes = renderFieldGroup('Notes', [
-            renderField('Notes', carrier.notes, { markdown: true })
+        const notes = createFieldGroup('Notes', [
+            createField('Notes', carrier.notes, { markdown: true })
         ]);
+        if (notes) frag.appendChild(notes);
     }
 
-    return [general, notes].filter(s => s).join('');
+    return frag;
 }
 
 /**
  * Builds the facilities table from carrierfac_set.
  *
  * @param {any} carrier - Carrier entity object.
- * @returns {string} HTML string.
+ * @returns {HTMLElement} Table element or empty-state.
  */
 function buildTables(carrier) {
     if (!carrier.carrierfac_set || carrier.carrierfac_set.length === 0) {
-        return `<div class="empty-state">${escapeHTML(t('No facilities listed'))}</div>`;
+        return createEmptyState('No facilities listed');
     }
 
-    return renderTableCard({
+    const table = /** @type {any} */ (document.createElement('pdb-table'));
+    table.configure({
         title: 'Facilities',
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
@@ -99,11 +93,12 @@ function buildTables(carrier) {
             { key: 'name', label: 'Facility' },
         ],
         rows: carrier.carrierfac_set,
-        cellRenderer: (row, col) => {
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
             if (col.key === 'name') {
-                return linkEntity('fac', row.fac_id, row.name || `Facility ${row.fac_id}`);
+                return createLink('fac', row.fac_id, row.name || `Facility ${row.fac_id}`);
             }
-            return escapeHTML(String(row[col.key] ?? '—'));
+            return document.createTextNode(String(row[col.key] ?? '—'));
         }
     });
+    return table;
 }

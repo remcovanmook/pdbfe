@@ -1,7 +1,8 @@
 /**
  * @fileoverview Lightweight markdown-to-HTML renderer for PeeringDB notes fields.
- * Handles the subset of markdown commonly used in PeeringDB: bold, italic,
- * links, line breaks, basic lists, and code spans.
+ * Handles the subset of markdown commonly used in PeeringDB: headings,
+ * bold, italic, links, line breaks, basic lists, code spans, and
+ * fenced code blocks.
  *
  * PeeringDB notes often contain raw HTML (especially anchor tags). The
  * renderer sanitises HTML first — allowing `<a href>` through a strict
@@ -192,6 +193,24 @@ export function renderMarkdown(text) {
     // Step 3: Restore sanitised tags from placeholders
     html = restoreTags(html);
 
+    // Step 3b: Extract fenced code blocks before inline processing.
+    // This prevents bold/italic/link transforms from touching code content.
+    // Each block is replaced with a numbered sentinel; restored at the end.
+    /** @type {string[]} */
+    const codeBlocks = [];
+    html = html.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, content) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push(content.replace(/\n$/, ''));
+        return `\x00CODEBLOCK_${idx}\x00`;
+    });
+
+    // Handle unclosed code blocks (fence at EOF without closing ```)
+    html = html.replace(/^```[^\n]*\n([\s\S]*)$/gm, (_, content) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push(content.replace(/\n$/, ''));
+        return `\x00CODEBLOCK_${idx}\x00`;
+    });
+
     // Step 4: Code spans (before other inline processing)
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
@@ -238,13 +257,36 @@ export function renderMarkdown(text) {
         '<a href="$1" rel="noopener noreferrer" target="_blank">$1</a>'
     );
 
-    // Step 9: Process line-by-line for lists and line breaks
+    // Step 9: Process line-by-line for headings, lists, and line breaks
     const lines = html.split('\n');
     const result = [];
     let inList = false;
 
     for (const line of lines) {
         const trimmed = line.trim();
+
+        // Code block placeholder — emit as <pre><code>
+        const codeMatch = trimmed.match(/^\x00CODEBLOCK_(\d+)\x00$/);
+        if (codeMatch) {
+            if (inList) {
+                result.push('</ul>');
+                inList = false;
+            }
+            result.push(`<pre><code>${/* safe — escaped by escapeForMarkdown in step 2 */ codeBlocks[Number(codeMatch[1])]}</code></pre>`);
+            continue;
+        }
+
+        // Headings: # through ######
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+            if (inList) {
+                result.push('</ul>');
+                inList = false;
+            }
+            const level = headingMatch[1].length;
+            result.push(`<h${level}>${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
+            continue;
+        }
 
         // Unordered list items
         if (/^[-*]\s+/.test(trimmed)) {

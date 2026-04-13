@@ -35,3 +35,83 @@ interface PDBRecord {
 interface Window {
     __router: { navigate: (path: string) => void };
 }
+
+// ── Web Component types ─────────────────────────────────────────────
+
+/**
+ * Column definition for pdb-table.
+ */
+interface TableColumn {
+    key: string;
+    label: string;
+    class?: string;
+}
+
+/**
+ * Return type for cellRenderer when sort value differs from display.
+ */
+interface CellResult {
+    node: Node;
+    sortValue: string | number;
+}
+
+/**
+ * Configuration accepted by <pdb-table>.configure().
+ */
+interface TableConfig {
+    title: string;
+    columns: TableColumn[];
+    rows: any[];
+    cellRenderer: (row: any, col: TableColumn) => Node | CellResult;
+    filterable?: boolean;
+    filterPlaceholder?: string;
+    pageSize?: number;
+}
+
+/**
+ * Configuration accepted by <pdb-field-group>.configure().
+ */
+interface FieldGroupConfig {
+    title: string;
+    fields: Array<HTMLElement | null>;
+}
+
+/**
+ * Configuration accepted by <pdb-stats-bar>.configure().
+ */
+interface StatsBarConfig {
+    items: Array<{ label: string; value: string | number }>;
+}
+
+/**
+ * Options for the createField() DOM builder.
+ */
+interface CreateFieldOpts {
+    href?: string;
+    external?: boolean;
+    linkType?: string;
+    linkId?: number | string;
+    markdown?: boolean;
+    translate?: boolean;
+}
+
+/**
+ * Options for the createDetailLayout() DOM builder.
+ */
+interface DetailLayoutOpts {
+    title: string;
+    subtitle?: string;
+    statsBar?: HTMLElement;
+    sidebar: HTMLElement | DocumentFragment;
+    main: HTMLElement | DocumentFragment;
+}
+
+/**
+ * Extend HTMLElementTagNameMap so document.createElement('pdb-table')
+ * returns the correct type without explicit casting.
+ */
+interface HTMLElementTagNameMap {
+    'pdb-table': HTMLElement & { configure(config: TableConfig): void };
+    'pdb-field-group': HTMLElement & { configure(config: FieldGroupConfig): void };
+    'pdb-stats-bar': HTMLElement & { configure(config: StatsBarConfig): void };
+}
