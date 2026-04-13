@@ -56,6 +56,14 @@ export function attachTypeahead(input, opts = {}) {
     let activeIndex = -1;
 
     /**
+     * AbortController for the current in-flight search request.
+     * Aborted when a new keystroke triggers a search, preventing
+     * stale results from overwriting newer ones.
+     * @type {AbortController|null}
+     */
+    let searchController = null;
+
+    /**
      * Fetches and renders search results for the given query.
      *
      * @param {string} query - The search term.
@@ -66,10 +74,19 @@ export function attachTypeahead(input, opts = {}) {
             return;
         }
 
+        // Cancel any previous in-flight search to prevent stale results
+        // from overwriting newer ones (fast-typer race condition).
+        if (searchController) {
+            searchController.abort();
+        }
+        searchController = new AbortController();
+
         try {
-            const results = await searchWithAsn(query);
+            const results = await searchWithAsn(query, searchController.signal);
             renderDropdown(results);
-        } catch {
+        } catch (err) {
+            // Aborted searches are expected — ignore them silently
+            if (/** @type {Error} */ (err).name === 'AbortError') return;
             closeDropdown();
         }
     }
