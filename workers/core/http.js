@@ -91,9 +91,23 @@ export function generateETag(buf) {
 export function isNotModified(requestHeaders, etag) {
     const reqEtag = requestHeaders.get("if-none-match");
     if (!reqEtag) return false;
-    const cleanReq = reqEtag.replace(/^W\//, "").replace(/"/g, ""); // ap-ok: fixed pattern on short ETag string
-    const cleanObj = etag.replace(/^W\//, "").replace(/"/g, ""); // ap-ok: fixed pattern on short ETag string
-    return reqEtag === "*" || cleanReq === cleanObj;
+    if (reqEtag === "*") return true;
+    return stripEtagDecoration(reqEtag) === stripEtagDecoration(etag);
+}
+
+/**
+ * Strips the W/ weak indicator and surrounding quotes from an ETag value.
+ * Uses string operations (no regex) — safe for the hot path.
+ *
+ * @param {string} raw - Raw ETag string (e.g. 'W/"abc123"' or '"abc123"').
+ * @returns {string} The bare hash value (e.g. 'abc123').
+ */
+function stripEtagDecoration(raw) {
+    let s = raw;
+    if (s.startsWith('W/')) s = s.slice(2);
+    if (s.startsWith('"')) s = s.slice(1);
+    if (s.endsWith('"')) s = s.slice(0, -1);
+    return s;
 }
 
 /**
@@ -108,8 +122,15 @@ export function encodeJSON(data) {
     return encoder.encode(JSON.stringify(data));
 }
 
+/** @type {Map<string, Uint8Array>} Pre-compiled error body cache. */
+const _errorBufs = new Map();
+
 /**
  * Returns a JSON error response with the standard CORS and no-cache headers.
+ *
+ * Error body bytes are cached by message string so repeated calls
+ * (e.g. 404 scanner sweeps, 429 rate-limit storms) skip JSON.stringify
+ * and TextEncoder on the hot path.
  *
  * @param {number} status - HTTP status code.
  * @param {string} message - Error message for the response body.
@@ -118,10 +139,12 @@ export function encodeJSON(data) {
  * @returns {Response} The error response.
  */
 export function jsonError(status, message, headers = H_NOCACHE) {
-    return new Response(
-        JSON.stringify({ error: message }) + "\n",
-        { status, headers }
-    );
+    let buf = _errorBufs.get(message);
+    if (!buf) {
+        buf = encoder.encode(JSON.stringify({ error: message }) + "\n");
+        _errorBufs.set(message, buf);
+    }
+    return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), { status, headers });
 }
 
 // ── Last-Modified / If-Modified-Since helpers ────────────────────────────────

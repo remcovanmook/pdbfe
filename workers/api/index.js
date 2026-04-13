@@ -77,19 +77,20 @@ async function handleRequest(request, env, ctx) {
                 'for higher rate limits \u2014 see /account', hNocache);
     }
 
-    // Create a D1 session for read replication. "first-unconstrained" allows
-    // queries to hit any replica (including the primary). This is optimal for
-    // read-only workloads where eventual consistency is acceptable.
-    const db = env.PDB.withSession("first-unconstrained");
-
     // Allow all methods through validation so we can return proper 501s
     const invalid = validateRequest(request, rawPath, ALL_METHODS);
     if (invalid) return invalid;
 
-    // CORS preflight
+    // CORS preflight — return before D1 session allocation
     if (request.method === "OPTIONS") {
         return handlePreflight();
     }
+
+    // Create a D1 session for read replication. "first-unconstrained" allows
+    // queries to hit any replica (including the primary). This is optimal for
+    // read-only workloads where eventual consistency is acceptable.
+    // Placed after OPTIONS/method checks to avoid the allocation on preflight.
+    const db = env.PDB.withSession("first-unconstrained");
 
     const { p0: topLevel, p1: apiCall } = tokenizeString(rawPath, '/', 2);
 
@@ -159,15 +160,12 @@ async function handleRequest(request, env, ctx) {
     // Parse optional detail ID from the rest segment.
     let id = 0;
     if (rest !== undefined) {
-        // Trailing slash is common in PeeringDB URLs — strip it.
-        // Note: parseInt tolerates trailing non-numeric characters, so
-        // ".json" extensions (e.g. /api/net/1.json) work accidentally:
-        // parseInt('1.json', 10) → 1. This provides compatibility with
-        // clients that append .json to API paths.
-        const idStr = rest.endsWith("/") ? rest.slice(0, -1) : rest;
-        id = parseInt(idStr, 10);
+        // parseInt stops at the first non-numeric character, so trailing
+        // slashes ("/") and ".json" suffixes are handled natively:
+        // parseInt('1/', 10) → 1, parseInt('1.json', 10) → 1.
+        id = parseInt(rest, 10);
         if (isNaN(id) || id <= 0) {
-            return jsonError(400, `Invalid ID: ${idStr}`, hNocache);
+            return jsonError(400, `Invalid ID: ${rest}`, hNocache);
         }
     }
 
@@ -209,7 +207,7 @@ async function handleRequest(request, env, ctx) {
     // Partition cache keys by authentication state to prevent cache
     // poisoning. Anonymous users see restricted poc_set filtered to
     // visible=Public; authenticated users see all visibility levels.
-    const cachePath = (authenticated ? 'auth:' : 'anon:') + rawPath;
+    const cachePath = `${authenticated ? 'auth' : 'anon'}:${rawPath}`;
 
     const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
