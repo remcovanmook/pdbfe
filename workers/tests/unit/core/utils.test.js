@@ -8,9 +8,9 @@ import { tokenizeString } from '../../../core/utils.js';
 
 describe('tokenizeString', () => {
     describe('default delimiter (/)', () => {
-        it('returns empty object when no delimiter present', () => {
+        it('returns p0 only when no delimiter present', () => {
             const result = tokenizeString('hello');
-            assert.deepStrictEqual(result, {});
+            assert.deepStrictEqual(result, { p0: 'hello' });
         });
 
         it('splits simple path into two parts', () => {
@@ -155,7 +155,7 @@ describe('tokenizeString', () => {
 
         it('handles single segment', () => {
             const result = tokenizeString('hello', '/', -1);
-            assert.deepStrictEqual(result, {});
+            assert.deepStrictEqual(result, { p0: 'hello' });
         });
 
         it('handles two segments', () => {

@@ -28,7 +28,11 @@ export function tokenizeString(str, delimiter = '/', maxParts = 5) {
     /** @type {Record<string, string>} */
     const parts = {};
     const s1 = str.indexOf(delimiter);
-    if (s1 === -1 || maxParts === 0) return parts;
+    if (s1 === -1 || maxParts === 0) {
+        // No delimiter found — the entire string is p0
+        if (s1 === -1 && str.length > 0) parts.p0 = str;
+        return parts;
+    }
 
     if (maxParts === 2) {
         parts.p0 = str.slice(0, s1);
