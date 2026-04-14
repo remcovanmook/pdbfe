@@ -35,6 +35,17 @@ const LOCAL_FAVS_KEY = 'pdbfe_favorites';
 /** @type {number} Maximum favorites for anonymous users (same as server cap). */
 const MAX_LOCAL_FAVORITES = 50;
 
+/** @type {number} Maximum label length stored in favorites. */
+const MAX_LABEL_LENGTH = 200;
+
+/**
+ * Allowed entity types for favorites. Must match the server-side
+ * VALID_FAVORITE_TYPES set in account.js.
+ *
+ * @type {Set<string>}
+ */
+const VALID_ENTITY_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
+
 /**
  * Expected format for session IDs: 64 lowercase hex characters,
  * matching the output of generateSessionId() in the auth worker.
@@ -69,8 +80,37 @@ let _favoritesList = [];
 // ── localStorage helpers for anonymous favorites ─────────────────────────────
 
 /**
- * Reads favorites from localStorage. Returns an empty array on
- * parse failure or if the key doesn't exist.
+ * Validates and normalises a single favorite entry. Returns null if the
+ * entry is malformed or contains an invalid entity type. Treats the input
+ * as untrusted — localStorage can be modified by browser extensions,
+ * devtools, or other scripts on the same origin.
+ *
+ * @param {any} entry - Raw parsed entry from localStorage.
+ * @returns {{entity_type: string, entity_id: number, label: string, created_at: string}|null}
+ */
+function _sanitizeFavorite(entry) {
+    if (typeof entry !== 'object' || entry === null) return null;
+
+    const entityType = entry.entity_type;
+    if (typeof entityType !== 'string' || !VALID_ENTITY_TYPES.has(entityType)) return null;
+
+    const entityId = Number(entry.entity_id);
+    if (!Number.isInteger(entityId) || entityId <= 0) return null;
+
+    // Label: coerce to string, truncate, strip control characters
+    const rawLabel = typeof entry.label === 'string' ? entry.label : '';
+    const label = rawLabel.replace(/[\x00-\x1f]/g, '').trim().slice(0, MAX_LABEL_LENGTH);
+
+    // created_at: coerce to string, fall back to epoch
+    const createdAt = typeof entry.created_at === 'string' ? entry.created_at : new Date(0).toISOString();
+
+    return { entity_type: entityType, entity_id: entityId, label, created_at: createdAt };
+}
+
+/**
+ * Reads favorites from localStorage, validates each entry, and drops
+ * any malformed rows. Returns an empty array on parse failure or if
+ * the key doesn't exist.
  *
  * @returns {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>}
  */
@@ -79,7 +119,22 @@ function _readLocalFavorites() {
         const raw = localStorage.getItem(LOCAL_FAVS_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+
+        /** @type {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>} */
+        const valid = [];
+        const seen = new Set();
+        for (const entry of parsed) {
+            const clean = _sanitizeFavorite(entry);
+            if (!clean) continue;
+            // Deduplicate (in case localStorage was hand-edited)
+            const key = `${clean.entity_type}:${clean.entity_id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            valid.push(clean);
+            if (valid.length >= MAX_LOCAL_FAVORITES) break;
+        }
+        return valid;
     } catch {
         return [];
     }
@@ -244,6 +299,13 @@ export function isFavorite(entityType, entityId) {
  * @returns {Promise<boolean>} True on success.
  */
 export async function addFavorite(entityType, entityId, label) {
+    // Validate inputs before they touch localStorage or the network
+    if (!VALID_ENTITY_TYPES.has(entityType)) return false;
+    entityId = Number(entityId);
+    if (!Number.isInteger(entityId) || entityId <= 0) return false;
+    label = (typeof label === 'string' ? label : '')
+        .replace(/[\x00-\x1f]/g, '').trim().slice(0, MAX_LABEL_LENGTH);
+
     const key = `${entityType}:${entityId}`;
     if (_favoritesSet.has(key)) return true; // already favorited
 
