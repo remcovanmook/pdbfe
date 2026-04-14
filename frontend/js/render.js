@@ -109,47 +109,6 @@ function setMetaProperty(property, content) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Logo URL normalization
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * PeeringDB media URL prefix used in the JSON dump data.
- * The dump uses Django's test server hostname; the production media
- * is served from an S3 bucket.
- * @type {string}
- */
-const TESTSERVER_PREFIX = 'http://testserver/m/';
-
-/**
- * Production media URL prefix (S3 bucket).
- * @type {string}
- */
-const PRODUCTION_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
-
-/**
- * Normalises a PeeringDB logo URL. Rewrites the testserver prefix
- * from JSON dump data to the production S3 bucket. Returns null
- * for falsy values, non-HTTPS URLs (after rewriting), or URLs
- * that don't look like PeeringDB media paths.
- *
- * @param {string|null|undefined} url - Raw logo URL from the API.
- * @returns {string|null} Normalised HTTPS URL, or null.
- */
-function normalizeLogoUrl(url) {
-    if (!url || typeof url !== 'string') return null;
-
-    // Rewrite testserver dump URLs to production S3
-    if (url.startsWith(TESTSERVER_PREFIX)) {
-        url = PRODUCTION_PREFIX + url.slice(TESTSERVER_PREFIX.length);
-    }
-
-    // Only allow HTTPS to prevent mixed content on the page
-    if (!url.startsWith('https://')) return null;
-
-    return url;
-}
-
-// ═══════════════════════════════════════════════════════════════════
 // DOM-based builders — return Nodes, not strings.
 // All user data is assigned via textContent (XSS-safe by construction).
 // ═══════════════════════════════════════════════════════════════════
@@ -402,13 +361,10 @@ export function createDetailLayout(opts) {
     header.appendChild(titleRow);
 
     // Logo — rendered below the title row when available; hidden until loaded.
-    // The PeeringDB JSON dump uses 'http://testserver/m/' as the media host;
-    // normalize to the production S3 bucket.
-    const logoUrl = normalizeLogoUrl(opts.logoUrl);
-    if (logoUrl) {
+    if (opts.logoUrl) {
         const logo = document.createElement('img');
         logo.className = 'detail-header__logo';
-        logo.src = logoUrl;
+        logo.src = opts.logoUrl;
         logo.alt = `${opts.title} logo`;
         logo.loading = 'lazy';
         logo.style.display = 'none';
