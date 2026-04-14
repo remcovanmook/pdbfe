@@ -1,5 +1,5 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
@@ -168,6 +168,18 @@ export async function renderAccount(_params) {
     keysBody.appendChild(keysLoading);
     const keysCard = card(t('API Keys'), keysBody, [createBtn]);
     main.appendChild(keysCard);
+
+    // ── Favorites card ──────────────────────────────────────────
+    const favBody = el('div', { id: 'favorites-container' });
+    const favorites = getFavorites();
+    if (favorites.length === 0) {
+        favBody.appendChild(el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No favorites yet. Use the star button on any entity page to add favorites.') }));
+    } else {
+        favBody.appendChild(buildFavoritesList(favorites, sid));
+    }
+    const favCard = card(t('Favorites'), favBody);
+    main.appendChild(favCard);
+
     layout.appendChild(main);
     frag.appendChild(layout);
 
@@ -220,9 +232,32 @@ export async function renderAccount(_params) {
     // Render network affiliations into the sidebar
     netsContainer.appendChild(renderNetworks(user));
 
-    // Wire up language preference selector
-    langSelect.addEventListener('change', () => {
-        setLanguage(langSelect.value, () => renderAccount(_params));
+    // Wire up language preference selector — persists to server
+    langSelect.addEventListener('change', async () => {
+        const newLang = langSelect.value;
+
+        // Persist the preference server-side
+        try {
+            await fetch(`${AUTH_ORIGIN}/account/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: { language: newLang } }),
+            });
+        } catch (err) {
+            console.warn('Failed to persist language preference:', err);
+        }
+
+        setLanguage(newLang, () => {
+            // Sync the footer language selector to match the new preference
+            const footerSelect = /** @type {HTMLSelectElement|null} */ (
+                document.getElementById('lang-select')
+            );
+            if (footerSelect) footerSelect.value = newLang;
+            renderAccount(_params);
+        });
     });
 
     // Load keys
@@ -559,3 +594,74 @@ function showRevokeDialog(sid, keyId, label, prefix) {
     if (cancelBtn) cancelBtn.onclick = closeModal;
 }
 
+/**
+ * Entity type display labels used in the favorites list.
+ *
+ * @type {Record<string, string>}
+ */
+const ENTITY_TYPE_LABELS = {
+    net: 'Network',
+    ix: 'Exchange',
+    fac: 'Facility',
+    org: 'Organization',
+    carrier: 'Carrier',
+    campus: 'Campus',
+};
+
+/**
+ * Builds the favorites list for the account page.
+ * Each row shows the entity type, a link to the entity, and a remove button.
+ *
+ * @param {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>} favorites - User favorites.
+ * @param {string} sid - Session ID for auth header.
+ * @returns {HTMLElement} The favorites list element.
+ */
+function buildFavoritesList(favorites, sid) {
+    const list = el('div', { className: 'favorites-list' });
+
+    for (const fav of favorites) {
+        const row = el('div', { className: 'favorites-list__item' });
+
+        // Entity type badge
+        const badge = el('span', {
+            className: 'favorites-list__type',
+            text: t(ENTITY_TYPE_LABELS[fav.entity_type] || fav.entity_type),
+        });
+        row.appendChild(badge);
+
+        // Link to entity
+        const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
+        row.appendChild(link);
+
+        // Remove button
+        const removeBtn = el('button', {
+            className: 'favorites-list__remove',
+            text: '×',
+        });
+        removeBtn.title = t('Remove from favorites');
+        removeBtn.addEventListener('click', async () => {
+            removeBtn.disabled = true;
+            const ok = await removeFavorite(fav.entity_type, fav.entity_id);
+            if (ok) {
+                row.remove();
+                // Show empty state if no favorites left
+                const container = document.getElementById('favorites-container');
+                if (container && container.querySelectorAll('.favorites-list__item').length === 0) {
+                    container.replaceChildren(
+                        el('p', {
+                            style: 'color:var(--text-muted);font-size:0.8125rem',
+                            text: t('No favorites yet. Use the star button on any entity page to add favorites.'),
+                        })
+                    );
+                }
+            } else {
+                removeBtn.disabled = false;
+            }
+        });
+        row.appendChild(removeBtn);
+
+        list.appendChild(row);
+    }
+
+    return list;
+}

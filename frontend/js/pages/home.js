@@ -8,11 +8,12 @@
  * built with createElement/textContent, not innerHTML.
  */
 
-import { fetchList, fetchCount } from '../api.js';
+import { fetchList, fetchCount, fetchEntity } from '../api.js';
 import { createLink, createLoading, formatDate } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
 import { getLabel } from '../entities.js';
+import { isAuthenticated, getFavorites } from '../auth.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -87,6 +88,47 @@ export async function renderHome(_params) {
 
     homeTop.appendChild(hero);
 
+    // Favorites section (authenticated users only, if they have favorites)
+    const favorites = isAuthenticated() ? getFavorites() : [];
+    if (favorites.length > 0) {
+        const favsSection = document.createElement('div');
+        favsSection.className = 'home-favorites';
+        const favsHeading = document.createElement('h2');
+        favsHeading.className = 'home-recent__heading';
+        favsHeading.textContent = t('Your Favorites');
+        favsSection.appendChild(favsHeading);
+
+        const favsGrid = document.createElement('div');
+        favsGrid.className = 'favorites-grid';
+        favsGrid.id = 'home-favorites-grid';
+
+        for (const fav of favorites) {
+            const item = document.createElement('div');
+            item.className = 'favorites-grid__item';
+            item.dataset.type = fav.entity_type;
+            item.dataset.id = String(fav.entity_id);
+
+            const typeBadge = document.createElement('span');
+            typeBadge.className = 'favorites-grid__type';
+            typeBadge.textContent = fav.entity_type;
+            item.appendChild(typeBadge);
+
+            const nameLink = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
+            nameLink.className += ' favorites-grid__name';
+            item.appendChild(nameLink);
+
+            const updatedSpan = document.createElement('span');
+            updatedSpan.className = 'favorites-grid__updated';
+            updatedSpan.textContent = '...';
+            item.appendChild(updatedSpan);
+
+            favsGrid.appendChild(item);
+        }
+
+        favsSection.appendChild(favsGrid);
+        homeTop.appendChild(favsSection);
+    }
+
     // Recent updates container
     const recentDiv = document.createElement('div');
     recentDiv.className = 'home-recent';
@@ -114,11 +156,15 @@ export async function renderHome(_params) {
     const input = /** @type {HTMLInputElement} */ (document.getElementById('home-search-input'));
     attachTypeahead(input);
 
-    // Fetch recent updates and stats in parallel
-    await Promise.all([
+    // Fetch recent updates, stats, and favorites live data in parallel
+    const tasks = [
         loadRecentUpdates(),
-        loadGlobalStats()
-    ]);
+        loadGlobalStats(),
+    ];
+    if (favorites.length > 0) {
+        tasks.push(loadFavoritesLiveData(favorites));
+    }
+    await Promise.all(tasks);
 }
 
 /**
@@ -253,4 +299,47 @@ async function loadGlobalStats() {
     } catch {
         // Stats are non-critical — fail silently
     }
+}
+
+/**
+ * Fetches live entity data for each favorite and updates the grid.
+ * Runs in the background — the grid renders immediately with cached
+ * labels, then each cell updates as the API response arrives.
+ *
+ * @param {Array<{entity_type: string, entity_id: number, label: string}>} favorites - The user's favorites.
+ */
+async function loadFavoritesLiveData(favorites) {
+    const grid = document.getElementById('home-favorites-grid');
+    if (!grid) return;
+
+    await Promise.all(favorites.map(async (fav) => {
+        try {
+            const entity = await fetchEntity(fav.entity_type, String(fav.entity_id), 0);
+            if (!entity) return;
+
+            // Find the matching grid item
+            const item = grid.querySelector(
+                `.favorites-grid__item[data-type="${fav.entity_type}"][data-id="${fav.entity_id}"]`
+            );
+            if (!item) return;
+
+            // Update name (may have changed since cached)
+            const nameEl = item.querySelector('.favorites-grid__name');
+            if (nameEl) {
+                let displayName = entity.name || fav.label;
+                if (fav.entity_type === 'net' && entity.asn) {
+                    displayName += ` (AS${entity.asn})`;
+                }
+                nameEl.textContent = displayName;
+            }
+
+            // Update timestamp
+            const updatedEl = item.querySelector('.favorites-grid__updated');
+            if (updatedEl) {
+                updatedEl.textContent = entity.updated ? formatDate(entity.updated) : '';
+            }
+        } catch {
+            // Non-critical — keep the cached label
+        }
+    }));
 }

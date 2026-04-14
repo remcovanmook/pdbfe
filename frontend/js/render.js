@@ -10,6 +10,7 @@
 
 import { renderMarkdown } from './markdown.js';
 import { t, getCurrentLang } from './i18n.js';
+import { isAuthenticated, isFavorite, addFavorite, removeFavorite } from './auth.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -321,6 +322,8 @@ export function createTextNode(text) {
  * @param {string} opts.title - Page title (h1).
  * @param {string} [opts.subtitle] - Subtitle text below the title.
  * @param {string} [opts.logoUrl] - URL of the entity or org logo. Skipped when falsy.
+ * @param {string} [opts.entityType] - Entity type for favorite button (net, ix, fac, etc.).
+ * @param {number} [opts.entityId] - Entity ID for favorite button.
  * @param {HTMLElement} [opts.statsBar] - Optional stats bar element.
  * @param {HTMLElement|DocumentFragment} opts.sidebar - Sidebar content.
  * @param {HTMLElement|DocumentFragment} opts.main - Main content area.
@@ -359,6 +362,11 @@ export function createDetailLayout(opts) {
         header.appendChild(sub);
     }
 
+    // Favorite toggle button — only for authenticated users
+    if (opts.entityType && opts.entityId && isAuthenticated()) {
+        header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
+    }
+
     layout.appendChild(header);
 
     // Stats bar (full-width row)
@@ -382,4 +390,50 @@ export function createDetailLayout(opts) {
     layout.appendChild(mainWrap);
 
     return layout;
+}
+
+/**
+ * Creates a favorite toggle button (star icon). Checks the in-memory
+ * favorites cache for initial state and toggles on click via the
+ * auth module's addFavorite/removeFavorite helpers.
+ *
+ * @param {string} entityType - Entity type tag (net, ix, fac, etc.).
+ * @param {number} entityId - Entity ID.
+ * @param {string} label - Display name for the entity (cached in D1).
+ * @returns {HTMLButtonElement} The favorite toggle button.
+ */
+export function createFavoriteButton(entityType, entityId, label) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'favorite-btn';
+
+    const active = isFavorite(entityType, entityId);
+    btn.classList.toggle('favorite-btn--active', active);
+    btn.textContent = active ? '★' : '☆';
+    btn.title = active ? t('Remove from favorites') : t('Add to favorites');
+
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const wasActive = btn.classList.contains('favorite-btn--active');
+
+        if (wasActive) {
+            const ok = await removeFavorite(entityType, entityId);
+            if (ok) {
+                btn.classList.remove('favorite-btn--active');
+                btn.textContent = '☆';
+                btn.title = t('Add to favorites');
+            }
+        } else {
+            const ok = await addFavorite(entityType, entityId, label);
+            if (ok) {
+                btn.classList.add('favorite-btn--active');
+                btn.textContent = '★';
+                btn.title = t('Remove from favorites');
+            }
+        }
+
+        btn.disabled = false;
+    });
+
+    return btn;
 }

@@ -8,7 +8,9 @@
  *   1. Checks the URL fragment on page load for a new session token
  *   2. Stores the token in localStorage
  *   3. Verifies the session via GET /auth/me on the auth worker
- *   4. Updates the header UI to show login/logout state
+ *   4. Fetches the user profile (including preferences and favorites)
+ *   5. Applies server-side language preference if set
+ *   6. Updates the header UI to show login/logout state
  *
  * The session ID is sent to the API worker as an Authorization: Bearer
  * header on API requests that need authenticated access.
@@ -16,7 +18,7 @@
 
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
-import { t } from './i18n.js';
+import { t, setLanguage, getCurrentLang } from './i18n.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -37,12 +39,30 @@ let _cachedSid = null;
 let _cachedUser = null;
 
 /**
+ * In-memory favorites cache. Populated from the profile fetch during
+ * initAuth(), updated optimistically on add/remove. Keyed as
+ * "type:id" strings for O(1) lookups.
+ *
+ * @type {Set<string>}
+ */
+const _favoritesSet = new Set();
+
+/**
+ * Full favorites list (with labels and timestamps) for rendering.
+ *
+ * @type {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>}
+ */
+let _favoritesList = [];
+
+/**
  * Initialises the auth module. Should be called once during page boot.
  *
  * 1. Checks URL fragment for a new session token from OAuth callback
  * 2. Clears the fragment from the URL bar (keeps it out of browser history)
  * 3. Validates the session against the auth worker
- * 4. Updates the header UI
+ * 4. Fetches the user profile (preferences, favorites) from the account API
+ * 5. Applies server-side language preference if it differs from the current locale
+ * 6. Updates the header UI
  */
 export async function initAuth() {
     // Check for session token in URL query params (from OAuth callback redirect).
@@ -72,6 +92,10 @@ export async function initAuth() {
         if (_cachedUser) {
             // Auth state changed — flush stale anonymous API responses
             clearCache();
+
+            // Fetch the D1-backed profile to pick up preferences and favorites.
+            // This enriches _cachedUser with server-side data not in the KV session.
+            await _fetchProfile(_cachedSid);
         } else {
             // Session expired or invalid — clear it
             localStorage.removeItem(STORAGE_KEY);
@@ -111,6 +135,114 @@ export function isAuthenticated() {
 }
 
 /**
+ * Returns the full favorites list for rendering.
+ *
+ * @returns {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>}
+ */
+export function getFavorites() {
+    return _favoritesList;
+}
+
+/**
+ * Checks if a given entity is in the user's favorites.
+ * O(1) lookup against the in-memory Set.
+ *
+ * @param {string} entityType - Entity type tag (net, ix, fac, etc.).
+ * @param {number} entityId - Entity ID.
+ * @returns {boolean}
+ */
+export function isFavorite(entityType, entityId) {
+    return _favoritesSet.has(`${entityType}:${entityId}`);
+}
+
+/**
+ * Adds an entity to the user's favorites. Updates the local cache
+ * optimistically, then POSTs to the auth worker. On failure, rolls
+ * back the cache.
+ *
+ * @param {string} entityType - Entity type tag.
+ * @param {number} entityId - Entity ID.
+ * @param {string} label - Display label for the entity.
+ * @returns {Promise<boolean>} True on success.
+ */
+export async function addFavorite(entityType, entityId, label) {
+    if (!_cachedSid) return false;
+
+    const key = `${entityType}:${entityId}`;
+    if (_favoritesSet.has(key)) return true; // already favorited
+
+    // Optimistic update
+    _favoritesSet.add(key);
+    const entry = { entity_type: entityType, entity_id: entityId, label, created_at: new Date().toISOString() };
+    _favoritesList.unshift(entry);
+
+    try {
+        const res = await fetch(`${AUTH_ORIGIN}/account/favorites`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${_cachedSid}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ entity_type: entityType, entity_id: entityId, label }),
+        });
+        if (!res.ok) {
+            // Roll back
+            _favoritesSet.delete(key);
+            _favoritesList = _favoritesList.filter(f => !(f.entity_type === entityType && f.entity_id === entityId));
+            return false;
+        }
+        return true;
+    } catch {
+        // Roll back on network error
+        _favoritesSet.delete(key);
+        _favoritesList = _favoritesList.filter(f => !(f.entity_type === entityType && f.entity_id === entityId));
+        return false;
+    }
+}
+
+/**
+ * Removes an entity from the user's favorites. Updates the local cache
+ * optimistically, then DELETEs on the auth worker. On failure, rolls
+ * back the cache.
+ *
+ * @param {string} entityType - Entity type tag.
+ * @param {number} entityId - Entity ID.
+ * @returns {Promise<boolean>} True on success.
+ */
+export async function removeFavorite(entityType, entityId) {
+    if (!_cachedSid) return false;
+
+    const key = `${entityType}:${entityId}`;
+    if (!_favoritesSet.has(key)) return true; // already not favorited
+
+    // Save for rollback
+    const oldEntry = _favoritesList.find(f => f.entity_type === entityType && f.entity_id === entityId);
+
+    // Optimistic update
+    _favoritesSet.delete(key);
+    _favoritesList = _favoritesList.filter(f => !(f.entity_type === entityType && f.entity_id === entityId));
+
+    try {
+        const res = await fetch(`${AUTH_ORIGIN}/account/favorites/${entityType}/${entityId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${_cachedSid}` },
+        });
+        if (!res.ok) {
+            // Roll back
+            _favoritesSet.add(key);
+            if (oldEntry) _favoritesList.unshift(oldEntry);
+            return false;
+        }
+        return true;
+    } catch {
+        // Roll back on network error
+        _favoritesSet.add(key);
+        if (oldEntry) _favoritesList.unshift(oldEntry);
+        return false;
+    }
+}
+
+/**
  * Logs the user out by clearing the local session and redirecting
  * to the auth worker's logout endpoint (which deletes the KV entry).
  */
@@ -119,6 +251,8 @@ export function logout() {
     localStorage.removeItem(STORAGE_KEY);
     _cachedSid = null;
     _cachedUser = null;
+    _favoritesSet.clear();
+    _favoritesList = [];
     clearCache();
     renderAuthUI();
 
@@ -156,8 +290,61 @@ async function validateSession(sid) {
 }
 
 /**
+ * Fetches the user profile from the auth worker's /account/profile
+ * endpoint. Enriches _cachedUser with server-side preferences, and
+ * loads the favorites list. If the server has a language preference
+ * that differs from the current locale, applies it.
+ *
+ * @param {string} sid - The session ID.
+ */
+async function _fetchProfile(sid) {
+    try {
+        const [profileRes, favsRes] = await Promise.all([
+            fetch(`${AUTH_ORIGIN}/account/profile`, {
+                headers: { 'Authorization': `Bearer ${sid}` },
+            }),
+            fetch(`${AUTH_ORIGIN}/account/favorites`, {
+                headers: { 'Authorization': `Bearer ${sid}` },
+            }),
+        ]);
+
+        // Profile
+        if (profileRes.ok) {
+            const profile = await profileRes.json();
+            if (_cachedUser && profile.preferences) {
+                _cachedUser.preferences = profile.preferences;
+
+                // Apply server-side language preference if it differs from
+                // the current locale. This makes the preference follow the
+                // user across browsers/devices.
+                const serverLang = profile.preferences.language;
+                if (serverLang && serverLang !== getCurrentLang()) {
+                    await setLanguage(serverLang);
+                    // Also update localStorage so the footer selector and
+                    // subsequent page loads use the right locale without
+                    // waiting for the profile fetch.
+                    localStorage.setItem('pdbfe-lang', serverLang);
+                }
+            }
+        }
+
+        // Favorites
+        if (favsRes.ok) {
+            const favsData = await favsRes.json();
+            _favoritesList = favsData.favorites || [];
+            _favoritesSet.clear();
+            for (const f of _favoritesList) {
+                _favoritesSet.add(`${f.entity_type}:${f.entity_id}`);
+            }
+        }
+    } catch (err) {
+        console.warn('Profile/favorites fetch failed:', err);
+    }
+}
+
+/**
  * Updates the header UI to reflect the current auth state.
- * Shows either a "Sign in" link or the user's name + "Sign out".
+ * Shows either a "Sign in" link or the user's name + "Account" + "Sign out".
  * All user data goes through textContent.
  */
 function renderAuthUI() {
@@ -194,4 +381,3 @@ function renderAuthUI() {
         container.replaceChildren(loginLink);
     }
 }
-

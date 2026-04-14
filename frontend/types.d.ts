@@ -14,6 +14,14 @@ interface SessionData {
     email: string;
     networks: Array<{ id: number; asn: number; name: string }>;
     keys?: Array<{ name: string; created: string }>;
+    preferences?: UserPreferences;
+}
+
+/**
+ * Parsed user preferences. All fields optional — absent means "use default."
+ */
+interface UserPreferences {
+    language?: string;
 }
 
 /**

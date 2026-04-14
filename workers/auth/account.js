@@ -1,19 +1,24 @@
 /**
  * @fileoverview Account management handlers for the pdbfe-auth worker.
  *
- * Provides CRUD operations for user profiles and API keys:
+ * Provides CRUD operations for user profiles, preferences, favorites,
+ * and API keys:
  *
- *   GET    /account/profile     → Return user profile
- *   PUT    /account/profile     → Update user profile
- *   GET    /account/keys        → List API keys (prefix + label only)
- *   POST   /account/keys        → Create a new API key
- *   DELETE /account/keys/:id    → Revoke an API key
+ *   GET    /account/profile           → Return user profile & preferences
+ *   PUT    /account/profile           → Update profile & preferences
+ *   GET    /account/keys              → List API keys (prefix + label only)
+ *   POST   /account/keys              → Create a new API key
+ *   DELETE /account/keys/:id          → Revoke an API key
+ *   GET    /account/favorites         → List favorited entities
+ *   POST   /account/favorites         → Add a favorite
+ *   DELETE /account/favorites/:type/:id → Remove a favorite
  *
  * All endpoints require a valid session (Authorization: Bearer header).
  *
  * Data is stored in the USERDB D1 database:
- *   users     — one row per PeeringDB user (auto-provisioned on first login)
- *   api_keys  — one row per API key, with ACID guarantees on INSERT/DELETE
+ *   users           — one row per PeeringDB user (auto-provisioned on first login)
+ *   api_keys        — one row per API key, with ACID guarantees on INSERT/DELETE
+ *   user_favorites  — one row per favorited entity
  *
  * API keys use the format `pdbfe.<32 hex chars>` for visual distinction
  * from upstream PeeringDB API keys. Keys are SHA-256 hashed before
@@ -28,7 +33,24 @@ import { extractSessionId, resolveSession, hashKey } from '../core/auth.js';
 const KEY_VISUAL_PREFIX = 'pdbfe.';
 
 /** Maximum number of API keys per user. */
+// @ts-ignore — used by handleCreateKey
+
 const MAX_KEYS_PER_USER = 5;
+
+/** Maximum number of favorites per user. */
+const MAX_FAVORITES_PER_USER = 50;
+
+/** Entity types that can be favorited. */
+const VALID_FAVORITE_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
+
+/**
+ * Allowed language codes for the language preference.
+ * Matches the curated set from the frontend LANGUAGES map.
+ */
+const VALID_LANGUAGES = new Set([
+    'en', 'cs', 'de', 'el', 'es', 'fr', 'it',
+    'ja', 'lt', 'pt', 'ro', 'ru', 'zh-cn', 'zh-tw',
+]);
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 
@@ -128,8 +150,8 @@ async function ensureUser(db, session) {
 
     const now = new Date().toISOString();
     await db.prepare(
-        'INSERT OR IGNORE INTO users (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-    ).bind(session.id, session.name, session.email, now, now).run();
+        'INSERT OR IGNORE INTO users (id, name, email, preferences, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(session.id, session.name, session.email, '{}', now, now).run();
 
     // Re-fetch to guarantee we return the canonical DB state
     // regardless of which concurrent request won the INSERT race.
@@ -139,6 +161,7 @@ async function ensureUser(db, session) {
         id: session.id,
         name: session.name,
         email: session.email,
+        preferences: '{}',
         created_at: now,
         updated_at: now,
     });
@@ -199,10 +222,15 @@ export async function handleGetProfile(request, env) {
 
     const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
 
+    /** @type {UserPreferences} */
+    let preferences = {};
+    try { preferences = JSON.parse(user.preferences || '{}'); } catch { /* use default */ }
+
     return jsonResponse({
         id: user.id,
         name: user.name,
         email: user.email,
+        preferences,
         networks: session.networks,
         created_at: user.created_at,
         updated_at: user.updated_at,
@@ -223,27 +251,66 @@ export async function handleUpdateProfile(request, env) {
 
     let body;
     try {
-        body = /** @type {{name?: string}} */ (await request.json());
+        body = /** @type {{name?: string, preferences?: UserPreferences}} */ (await request.json());
     } catch {
         return jsonResponse({ error: 'Invalid JSON body' }, 400, env.FRONTEND_ORIGIN);
     }
 
-    if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-        return jsonResponse({ error: 'name is required and must be non-empty' }, 400, env.FRONTEND_ORIGIN);
-    }
-
     const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
     const now = new Date().toISOString();
-    const trimmedName = body.name.trim();
+
+    // Build SET clauses for fields that are being updated
+    const sets = /** @type {string[]} */ ([]);
+    const binds = /** @type {(string|number)[]} */ ([]);
+
+    // Name update
+    if (body.name !== undefined) {
+        if (typeof body.name !== 'string' || body.name.trim().length === 0) {
+            return jsonResponse({ error: 'name must be non-empty' }, 400, env.FRONTEND_ORIGIN);
+        }
+        sets.push('name = ?');
+        binds.push(body.name.trim());
+    }
+
+    // Preferences update (merge with existing)
+    /** @type {UserPreferences} */
+    let mergedPrefs;
+    try { mergedPrefs = JSON.parse(user.preferences || '{}'); } catch { mergedPrefs = {}; }
+
+    if (body.preferences !== undefined) {
+        if (typeof body.preferences !== 'object' || body.preferences === null) {
+            return jsonResponse({ error: 'preferences must be an object' }, 400, env.FRONTEND_ORIGIN);
+        }
+
+        // Validate language if provided
+        if (body.preferences.language !== undefined) {
+            if (!VALID_LANGUAGES.has(body.preferences.language)) {
+                return jsonResponse({ error: `Invalid language: ${body.preferences.language}` }, 400, env.FRONTEND_ORIGIN);
+            }
+            mergedPrefs.language = body.preferences.language;
+        }
+
+        sets.push('preferences = ?');
+        binds.push(JSON.stringify(mergedPrefs));
+    }
+
+    if (sets.length === 0) {
+        return jsonResponse({ error: 'No fields to update' }, 400, env.FRONTEND_ORIGIN);
+    }
+
+    sets.push('updated_at = ?');
+    binds.push(now);
+    binds.push(user.id);
 
     await env.USERDB.prepare(
-        'UPDATE users SET name = ?, updated_at = ? WHERE id = ?'
-    ).bind(trimmedName, now, user.id).run();
+        `UPDATE users SET ${sets.join(', ')} WHERE id = ?`
+    ).bind(...binds).run();
 
     return jsonResponse({
         id: user.id,
-        name: trimmedName,
+        name: body.name !== undefined ? body.name.trim() : user.name,
         email: user.email,
+        preferences: mergedPrefs,
         updated_at: now,
     }, 200, env.FRONTEND_ORIGIN);
 }
@@ -386,6 +453,129 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
     ]);
 
     return jsonResponse({ deleted: deleteKeyId }, 200, env.FRONTEND_ORIGIN);
+}
+
+// ── Favorites Handlers ───────────────────────────────────────────────────────
+
+/**
+ * GET /account/favorites — Lists the user's favorited entities.
+ * Returns an array of { entity_type, entity_id, label, created_at }.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handleListFavorites(request, env) {
+    const { session, error } = await requireSession(request, env);
+    if (error) return error;
+
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+
+    const result = await env.USERDB.prepare(
+        'SELECT entity_type, entity_id, label, created_at FROM user_favorites WHERE user_id = ? ORDER BY created_at DESC'
+    ).bind(session.id).all();
+
+    return jsonResponse({
+        favorites: result.results,
+        max_favorites: MAX_FAVORITES_PER_USER,
+    }, 200, env.FRONTEND_ORIGIN);
+}
+
+/**
+ * POST /account/favorites — Adds an entity to the user's favorites.
+ * Expects JSON body: { entity_type, entity_id, label }.
+ * Uses INSERT OR IGNORE for idempotency — re-favoriting a duplicate
+ * is silently accepted without error.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handleAddFavorite(request, env) {
+    const { session, error } = await requireSession(request, env);
+    if (error) return error;
+
+    let body;
+    try {
+        body = /** @type {{entity_type?: string, entity_id?: number, label?: string}} */ (await request.json());
+    } catch {
+        return jsonResponse({ error: 'Invalid JSON body' }, 400, env.FRONTEND_ORIGIN);
+    }
+
+    // Validate entity_type
+    if (!body.entity_type || !VALID_FAVORITE_TYPES.has(body.entity_type)) {
+        return jsonResponse(
+            { error: `entity_type must be one of: ${[...VALID_FAVORITE_TYPES].join(', ')}` },
+            400, env.FRONTEND_ORIGIN
+        );
+    }
+
+    // Validate entity_id
+    if (typeof body.entity_id !== 'number' || !Number.isInteger(body.entity_id) || body.entity_id <= 0) {
+        return jsonResponse({ error: 'entity_id must be a positive integer' }, 400, env.FRONTEND_ORIGIN);
+    }
+
+    const label = (typeof body.label === 'string' && body.label.trim().length > 0)
+        ? body.label.trim().slice(0, 200)
+        : '';
+
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+
+    // Check favorites count (soft limit)
+    const countRow = await env.USERDB.prepare(
+        'SELECT COUNT(*) as cnt FROM user_favorites WHERE user_id = ?'
+    ).bind(session.id).first();
+    const favCount = countRow ? /** @type {number} */ (countRow.cnt) : 0;
+
+    if (favCount >= MAX_FAVORITES_PER_USER) {
+        return jsonResponse(
+            { error: `Maximum of ${MAX_FAVORITES_PER_USER} favorites allowed` },
+            400, env.FRONTEND_ORIGIN
+        );
+    }
+
+    const now = new Date().toISOString();
+
+    await env.USERDB.prepare(
+        'INSERT OR IGNORE INTO user_favorites (user_id, entity_type, entity_id, label, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).bind(session.id, body.entity_type, body.entity_id, label, now).run();
+
+    return jsonResponse({
+        entity_type: body.entity_type,
+        entity_id: body.entity_id,
+        label,
+        created_at: now,
+    }, 201, env.FRONTEND_ORIGIN);
+}
+
+/**
+ * DELETE /account/favorites/:type/:id — Removes an entity from favorites.
+ * Returns 200 even if the favorite didn't exist (idempotent delete).
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @param {string} entityType - Entity type tag.
+ * @param {string} entityId - Entity ID (string from URL path, parsed as int).
+ * @returns {Promise<Response>}
+ */
+export async function handleRemoveFavorite(request, env, entityType, entityId) {
+    const { session, error } = await requireSession(request, env);
+    if (error) return error;
+
+    if (!VALID_FAVORITE_TYPES.has(entityType)) {
+        return jsonResponse({ error: 'Invalid entity type' }, 400, env.FRONTEND_ORIGIN);
+    }
+
+    const id = parseInt(entityId, 10);
+    if (isNaN(id) || id <= 0) {
+        return jsonResponse({ error: 'Invalid entity ID' }, 400, env.FRONTEND_ORIGIN);
+    }
+
+    await env.USERDB.prepare(
+        'DELETE FROM user_favorites WHERE user_id = ? AND entity_type = ? AND entity_id = ?'
+    ).bind(session.id, entityType, id).run();
+
+    return jsonResponse({ deleted: { entity_type: entityType, entity_id: id } }, 200, env.FRONTEND_ORIGIN);
 }
 
 /**
