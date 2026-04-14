@@ -179,7 +179,7 @@ export function isNotModifiedSince(requestHeaders, epochMs) {
     const ims = requestHeaders.get('if-modified-since');
     if (!ims) return false;
     const imsTime = Date.parse(ims);
-    if (isNaN(imsTime)) return false;
+    if (Number.isNaN(imsTime)) return false;
     // HTTP dates have 1-second resolution. The data is unchanged if
     // the IMS timestamp is >= the last-modified epoch (truncated to seconds).
     return imsTime >= Math.floor(epochMs / 1000) * 1000;

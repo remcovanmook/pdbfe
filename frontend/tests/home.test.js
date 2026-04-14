@@ -29,6 +29,8 @@ function mockElement(tag) {
     const classList = new Set();
     const style = {};
 
+    const dataset = {};
+
     const el = {
         tagName: tag.toUpperCase(),
         nodeType: 1,
@@ -36,6 +38,7 @@ function mockElement(tag) {
         id: '',
         innerHTML: '',
         style,
+        dataset,
         children,
         childNodes: children,
         parentElement: null,

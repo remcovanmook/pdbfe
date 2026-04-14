@@ -163,7 +163,7 @@ function renderAuthUI() {
         const accountLink = document.createElement('a');
         accountLink.href = '/account';
         accountLink.className = 'auth-link';
-        accountLink.setAttribute('data-link', '');
+        accountLink.dataset.link = '';
         accountLink.textContent = t('Account');
 
         const logoutLink = document.createElement('a');

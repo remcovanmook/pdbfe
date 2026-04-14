@@ -51,23 +51,23 @@ export function parseQueryFilters(queryString) {
 
         // Handle reserved pagination/meta parameters
         if (rawKey === "depth") {
-            depth = parseInt(rawValue, 10) || 0;
+            depth = Number.parseInt(rawValue, 10) || 0;
             if (depth > 2) depth = 2;
             if (depth < 0) depth = 0;
             continue;
         }
         if (rawKey === "limit") {
-            const parsed = parseInt(rawValue, 10);
-            limit = isNaN(parsed) ? -1 : parsed;
+            const parsed = Number.parseInt(rawValue, 10);
+            limit = Number.isNaN(parsed) ? -1 : parsed;
             continue;
         }
         if (rawKey === "skip") {
-            skip = parseInt(rawValue, 10) || 0;
+            skip = Number.parseInt(rawValue, 10) || 0;
             if (skip < 0) skip = 0;
             continue;
         }
         if (rawKey === "since") {
-            since = parseInt(rawValue, 10) || 0;
+            since = Number.parseInt(rawValue, 10) || 0;
             continue;
         }
         if (rawKey === "sort") {

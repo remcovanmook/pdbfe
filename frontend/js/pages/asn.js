@@ -21,9 +21,9 @@ export async function renderAsn(params) {
 
     // Strip optional AS/as prefix
     const raw = (params.asn || '').replace(/^as/i, '');
-    const asn = parseInt(raw, 10);
+    const asn = Number.parseInt(raw, 10);
 
-    if (isNaN(asn) || asn <= 0) {
+    if (Number.isNaN(asn) || asn <= 0) {
         app.replaceChildren(createError(`Invalid ASN: ${params.asn}`));
         document.title = 'Invalid ASN — PeeringDB';
         return;

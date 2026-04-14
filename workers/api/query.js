@@ -98,7 +98,7 @@ const OPS_SQL = {
 function coerceValue(value, fieldType) {
     if (fieldType === "number") {
         const n = Number(value);
-        return isNaN(n) ? 0 : n;
+        return Number.isNaN(n) ? 0 : n;
     }
     if (fieldType === "boolean") {
         return value === "true" || value === "1" ? 1 : 0;

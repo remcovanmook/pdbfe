@@ -210,3 +210,4 @@ fi
 
 section "Complete"
 pass "All steps finished"
+exit 0

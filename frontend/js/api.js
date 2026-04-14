@@ -241,7 +241,7 @@ export async function fetchEntity(type, id, depth = 2) {
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<any[]>} Array of result objects.
  */
-export async function fetchList(type, filters = {}, signal) {
+export async function fetchList(type, filters = {}, signal = undefined) {
     const result = await cachedFetch(`/api/${type}`, filters, signal);
     return result?.data || [];
 }
@@ -337,23 +337,23 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
 export async function searchWithAsn(query, signal) {
-    const asnMatch = query.trim().match(ASN_PATTERN);
-    const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
+    const asnMatch = ASN_PATTERN.exec(query.trim());
+    const asnNum = asnMatch ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
         searchAll(query, signal),
-        isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
+        Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 
     if (asnNet) {
         const existingIds = new Set(results.net.map(/** @param {any} n */ (n) => n.id));
-        if (!existingIds.has(asnNet.id)) {
-            results.net.unshift(asnNet);
-        } else {
+        if (existingIds.has(asnNet.id)) {
             results.net = [
                 asnNet,
                 ...results.net.filter(/** @param {any} n */ (n) => n.id !== asnNet.id)
             ];
+        } else {
+            results.net.unshift(asnNet);
         }
     }
 

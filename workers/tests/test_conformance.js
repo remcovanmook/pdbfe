@@ -88,7 +88,7 @@ async function fetchJSON(url, opts = {}) {
 
         if (res.status === 429 && url.startsWith(PEERINGDB)) {
             clearTimeout(timer);
-            const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
+            const retryAfter = Number.parseInt(res.headers.get('retry-after') || '5', 10);
             await delay((retryAfter + 1) * 1000);
             const start2 = Date.now();
             const res2 = await fetch(url, { method, signal: controller.signal, headers });
@@ -303,8 +303,8 @@ describe('Conformance: schema', { concurrency: 1 }, () => {
                 const upNonNull = new Set([...upSet].filter(t => t !== 'null'));
                 const mirNonNull = new Set([...mirSet].filter(t => t !== 'null'));
                 if (upNonNull.size > 0 && mirNonNull.size > 0) {
-                    const upStr = [...upNonNull].sort().join(',');
-                    const mirStr = [...mirNonNull].sort().join(',');
+                    const upStr = [...upNonNull].sort((a, b) => a.localeCompare(b)).join(',');
+                    const mirStr = [...mirNonNull].sort((a, b) => a.localeCompare(b)).join(',');
                     if (upStr !== mirStr) {
                         mismatches.push(`  ${field}: upstream=${upStr} mirror=${mirStr}`);
                     }
@@ -722,8 +722,8 @@ describe('Conformance: divergence edge cases', { concurrency: 1 }, () => {
         if (noDepthData.length === 0) return;
 
         // Should have identical key sets (no _set fields)
-        const noDepthKeys = Object.keys(noDepthData[0]).sort();
-        const depth0Keys = Object.keys(depth0Data[0]).sort();
+        const noDepthKeys = Object.keys(noDepthData[0]).sort((a, b) => a.localeCompare(b));
+        const depth0Keys = Object.keys(depth0Data[0]).sort((a, b) => a.localeCompare(b));
         assert.deepStrictEqual(noDepthKeys, depth0Keys,
             'Default depth should produce same fields as depth=0');
     });
