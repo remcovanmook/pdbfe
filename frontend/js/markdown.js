@@ -110,7 +110,7 @@ function escapeAttr(str) {
  */
 function sanitiseHTML(input) {
     // Process all HTML tags in the input
-    return input.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g,
+    return input.replaceAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g,
         (fullMatch, tagName, attrs) => {
             const tag = tagName.toLowerCase();
             const isClosing = fullMatch.startsWith('</');
@@ -159,13 +159,13 @@ function sanitiseHTML(input) {
 function restoreTags(html) {
     return html
         // Restore anchor tags: sentinel wraps the escaped <a> tag
-        .replace(
+        .replaceAll(
             /\uE000LINK_OPEN\uE000&lt;a href=&quot;([^&]*)&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;/g,
             '<a href="$1" target="_blank" rel="noopener noreferrer">'
         )
         .replaceAll('\uE000LINK_CLOSE\uE000', '</a>')
         // Restore safe tags: sentinel wraps the escaped tag
-        .replace(/\uE001TAG_OPEN\uE001&lt;(\/?[a-z]+)&gt;\uE001TAG_CLOSE\uE001/g, '<$1>');
+        .replaceAll(/\uE001TAG_OPEN\uE001&lt;(\/?[a-z]+)&gt;\uE001TAG_CLOSE\uE001/g, '<$1>');
 }
 
 /**
@@ -198,33 +198,33 @@ export function renderMarkdown(text) {
     // Each block is replaced with a numbered sentinel; restored at the end.
     /** @type {string[]} */
     const codeBlocks = [];
-    html = html.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, content) => {
+    html = html.replaceAll(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, content) => {
         const idx = codeBlocks.length;
         codeBlocks.push(content.replace(/\n$/, ''));
         return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
     // Handle unclosed code blocks (fence at EOF without closing ```)
-    html = html.replace(/^```[^\n]*\n([\s\S]*)$/gm, (_, content) => {
+    html = html.replaceAll(/^```[^\n]*\n([\s\S]*)$/gm, (_, content) => {
         const idx = codeBlocks.length;
         codeBlocks.push(content.replace(/\n$/, ''));
         return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
     // Step 4: Code spans (before other inline processing)
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replaceAll(/`([^`]+)`/g, '<code>$1</code>');
 
     // Step 5: Bold (**text** or __text__)
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    html = html.replaceAll(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replaceAll(/__([^_]+)__/g, '<strong>$1</strong>');
 
     // Step 6: Italic (*text* or _text_)
     // Negative lookbehind for word chars prevents matching mid-word underscores
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    html = html.replace(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
+    html = html.replaceAll(/\*([^*]+)\*/g, '<em>$1</em>');
+    html = html.replaceAll(/(?<!\w)_([^_]+)_(?!\w)/g, '<em>$1</em>');
 
     // Step 7a: Linked images [![alt](img-src)](link-url)
-    html = html.replace(/\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g, (_, alt, imgSrc, linkUrl) => {
+    html = html.replaceAll(/\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)/g, (_, alt, imgSrc, linkUrl) => {
         const safeSrc = sanitiseImageURL(imgSrc);
         const safeHref = sanitiseURL(linkUrl);
         if (!safeSrc) return alt || '';
@@ -237,7 +237,7 @@ export function renderMarkdown(text) {
     });
 
     // Step 7b: Standalone images ![alt](src)
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+    html = html.replaceAll(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
         const safeSrc = sanitiseImageURL(src);
         if (!safeSrc) return alt || '';
         const loading = safeSrc.startsWith('data:') ? ' loading="lazy"' : '';
@@ -245,14 +245,14 @@ export function renderMarkdown(text) {
     });
 
     // Step 7c: Markdown links [text](url) — only if not already inside an <a> tag
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+    html = html.replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;
         return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
     });
 
     // Step 8: Bare URLs (http/https only, not already in an href or <a> tag)
-    html = html.replace(
+    html = html.replaceAll(
         /(?<!href=")(https?:\/\/[^\s<&]+)/g,
         '<a href="$1" rel="noopener noreferrer" target="_blank">$1</a>'
     );
