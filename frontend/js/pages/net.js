@@ -43,6 +43,7 @@ export async function renderNet(params) {
         app.replaceChildren(createDetailLayout({
             title: net.name,
             subtitle: `AS${net.asn}`,
+            logoUrl: net.logo || net.org?.logo || null,
             sidebar: buildSidebar(net),
             main: buildTables(net),
         }));

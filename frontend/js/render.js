@@ -314,12 +314,13 @@ export function createTextNode(text) {
 
 /**
  * Builds the standard detail-layout wrapper used by all entity pages.
- * Assembles header, optional stats bar, sidebar, and main content
- * into the grid layout structure.
+ * Assembles header, optional logo, optional stats bar, sidebar, and
+ * main content into the grid layout structure.
  *
  * @param {Object} opts - Layout options.
  * @param {string} opts.title - Page title (h1).
  * @param {string} [opts.subtitle] - Subtitle text below the title.
+ * @param {string} [opts.logoUrl] - URL of the entity or org logo. Skipped when falsy.
  * @param {HTMLElement} [opts.statsBar] - Optional stats bar element.
  * @param {HTMLElement|DocumentFragment} opts.sidebar - Sidebar content.
  * @param {HTMLElement|DocumentFragment} opts.main - Main content area.
@@ -332,6 +333,20 @@ export function createDetailLayout(opts) {
     // Header
     const header = document.createElement('div');
     header.className = 'detail-header';
+
+    // Logo — only rendered when a URL is available; hidden until loaded
+    if (opts.logoUrl) {
+        const logo = document.createElement('img');
+        logo.className = 'detail-header__logo';
+        logo.src = opts.logoUrl;
+        logo.alt = `${opts.title} logo`;
+        logo.loading = 'lazy';
+        logo.style.display = 'none';
+        logo.onload = () => { logo.style.display = ''; };
+        logo.onerror = () => { logo.remove(); };
+        header.appendChild(logo);
+    }
+
     const h1 = document.createElement('h1');
     h1.className = 'detail-header__title';
     h1.textContent = opts.title;

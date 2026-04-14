@@ -430,11 +430,22 @@ body[data-page="home"] .site-logo {
 .detail-header {
     grid-column: 1 / -1;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-md);
     padding-bottom: var(--space-lg);
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: var(--space-lg);
+}
+
+.detail-header__logo {
+    max-height: 48px;
+    max-width: 120px;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: #fff;
+    padding: 4px;
+    flex-shrink: 0;
 }
 
 .detail-header__title {
