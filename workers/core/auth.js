@@ -4,8 +4,9 @@
  * Provides two authentication paths:
  *
  * 1. API-Key: PeeringDB convention `Authorization: Api-Key <key>`.
- *    Currently a stub — verifyApiKey() always returns false.
- *    Reserved for future direct API-key validation.
+ *    Keys are SHA-256 hashed and looked up in the USERDB D1 database
+ *    (api_keys table). An in-memory per-isolate cache avoids repeated
+ *    D1 reads within a 5-minute window.
  *
  * 2. Session-based: OAuth sessions stored in the SESSIONS KV namespace.
  *    The pdbfe-auth worker writes sessions on successful OAuth login.
@@ -59,20 +60,19 @@ export function extractApiKey(request) {
 }
 
 /**
- * Validates an API key by hashing it and looking up the reverse-index
- * entry in the USERS KV namespace. Keys are stored as `apikey:<sha256(key)>`
- * so the cleartext key is never persisted. An in-memory per-isolate cache
- * (keyed on the cleartext key) avoids repeated KV reads within a 5-minute
- * window.
+ * Validates an API key by hashing it and looking up the hash in the
+ * USERDB D1 database (api_keys table). An in-memory per-isolate cache
+ * (keyed on the cleartext key) avoids repeated D1 queries within a
+ * 5-minute window.
  *
  * Key format: `pdbfe.<32 hex chars>`.
- * KV key format: `apikey:<sha256(full_key)>` → ApiKeyEntry JSON.
+ * D1 query: `SELECT 1 FROM api_keys WHERE hash = ?`.
  *
- * @param {KVNamespace} kv - The USERS KV namespace binding.
+ * @param {D1Database|D1DatabaseSession} db - USERDB D1 binding (or session).
  * @param {string} apiKey - The API key to validate.
  * @returns {Promise<boolean>} Whether the key is valid.
  */
-export async function verifyApiKey(kv, apiKey) {
+export async function verifyApiKey(db, apiKey) {
     if (!apiKey) return false;
 
     const now = Date.now();
@@ -83,10 +83,10 @@ export async function verifyApiKey(kv, apiKey) {
         return cached.valid;
     }
 
-    // Hash the key, then look up in KV
+    // Hash the key, then look up in D1
     const hashed = await hashKey(apiKey);
-    const entry = await kv.get('apikey:' + hashed);
-    const valid = entry !== null;
+    const row = await db.prepare('SELECT 1 FROM api_keys WHERE hash = ?').bind(hashed).first();
+    const valid = row !== null;
 
     // Cache the result (both positive and negative)
     _apiKeyCache.set(apiKey, { valid, ts: now });
@@ -233,7 +233,7 @@ export async function deleteSession(kv, sid) {
  * Resolves the caller's authentication status from the request headers.
  * Tries two paths in order:
  *
- *   1. `Authorization: Api-Key <key>` → hash + USERS KV lookup.
+ *   1. `Authorization: Api-Key <key>` → hash + USERDB D1 lookup.
  *      Upstream PeeringDB keys (non-`pdbfe.` prefix) are flagged via
  *      the `rejection` field so the caller can return an appropriate error.
  *   2. Session ID (Bearer token or `pdbfe_sid` cookie) → SESSIONS KV lookup.
@@ -245,7 +245,7 @@ export async function deleteSession(kv, sid) {
  *     recognised but invalid (e.g. upstream PeeringDB keys).
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {{USERS: KVNamespace, SESSIONS: KVNamespace}} env - KV namespace bindings.
+ * @param {{USERDB: D1Database, SESSIONS: KVNamespace}} env - Database and KV bindings.
  * @returns {Promise<{authenticated: boolean, identity: string|null, rejection: string|null}>}
  */
 export async function resolveAuth(request, env) {
@@ -261,8 +261,8 @@ export async function resolveAuth(request, env) {
         };
     }
 
-    // Path 1: API key
-    if (apiKey !== null && await verifyApiKey(env.USERS, apiKey)) {
+    // Path 1: API key (verified against USERDB D1)
+    if (apiKey !== null && await verifyApiKey(env.USERDB, apiKey)) {
         return { authenticated: true, identity: apiKey, rejection: null };
     }
 

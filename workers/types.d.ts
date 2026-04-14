@@ -142,8 +142,8 @@ interface Request {
  */
 interface PdbApiEnv {
     PDB: D1Database;
+    USERDB: D1Database;
     SESSIONS: KVNamespace;
-    USERS: KVNamespace;
     ADMIN_SECRET?: string;
 }
 
@@ -167,11 +167,11 @@ interface PdbSyncEnv {
 
 /**
  * Environment bindings for the auth worker (pdbfe-auth).
- * Matches workers/wrangler-auth.toml kv_namespaces, vars, and secrets.
+ * Matches workers/wrangler-auth.toml d1_databases, kv_namespaces, vars, and secrets.
  */
 interface PdbAuthEnv {
+    USERDB: D1Database;
     SESSIONS: KVNamespace;
-    USERS: KVNamespace;
     OAUTH_CLIENT_ID: string;
     OAUTH_CLIENT_SECRET: string;
     OAUTH_REDIRECT_URI: string;
@@ -206,8 +206,7 @@ interface SessionData {
 }
 
 /**
- * Per-user record stored in the USERS KV namespace.
- * Key format: `user:<peeringdb_user_id>`.
+ * Per-user record stored in the USERDB D1 database (users table).
  */
 interface UserRecord {
     /** PeeringDB user ID (same as SessionData.id). */
@@ -216,8 +215,6 @@ interface UserRecord {
     name: string;
     /** Email address. */
     email: string;
-    /** API keys owned by this user (stores prefix + metadata, never the full key). */
-    api_keys: ApiKeyMeta[];
     /** ISO 8601 timestamp of record creation. */
     created_at: string;
     /** ISO 8601 timestamp of last modification. */
@@ -225,33 +222,21 @@ interface UserRecord {
 }
 
 /**
- * API key metadata stored in the user record.
- * The full key is only returned once at creation time — the user
- * record stores only the 4-character prefix for display purposes.
+ * API key row from the USERDB D1 database (api_keys table).
+ * Each key is a separate row — no more JSON arrays in a user blob.
+ * The full key is never stored; only its SHA-256 hash for verification.
  */
-interface ApiKeyMeta {
+interface ApiKeyRow {
     /** Key identifier (first 8 hex chars of the full key). */
-    id: string;
-    /** User-assigned label (e.g. "curl scripts"). */
-    label: string;
-    /** First 4 hex characters of the key, for display (e.g. "a1b2"). */
-    prefix: string;
-    /** SHA-256 hex digest of the full key. Used for KV reverse-index deletion. */
-    hash: string;
-    /** ISO 8601 timestamp of key creation. */
-    created_at: string;
-}
-
-/**
- * Reverse-index entry stored in USERS KV for API key lookups.
- * Key format: `apikey:<full_key>`. Looked up by pdbfe-api to
- * verify incoming Api-Key headers.
- */
-interface ApiKeyEntry {
+    key_id: string;
     /** PeeringDB user ID that owns this key. */
     user_id: number;
-    /** User-assigned label. */
+    /** User-assigned label (e.g. "curl scripts"). */
     label: string;
+    /** First 4 hex characters of the key, for UI display (e.g. "a1b2"). */
+    prefix: string;
+    /** SHA-256 hex digest of the full key. Indexed for hot-path lookups. */
+    hash: string;
     /** ISO 8601 timestamp of key creation. */
     created_at: string;
 }

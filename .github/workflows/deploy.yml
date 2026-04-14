@@ -8,8 +8,8 @@
 #   CLOUDFLARE_API_TOKEN   — Wrangler API token with Workers + D1 + Pages permissions
 #   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID (optional if token is single-account)
 #   D1_DATABASE_ID         — PeeringDB D1 database ID
+#   D1_USERDB_ID           — Users D1 database ID (pdbfe-users)
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
-#   KV_USERS_ID            — Users KV namespace ID
 #   OAUTH_REDIRECT_URI     — OAuth redirect URI for auth worker
 #   FRONTEND_ORIGIN        — Frontend origin URL
 #   WORKERS_DOMAIN         — Workers subdomain (e.g. "remco-vanmook.workers.dev")
@@ -61,7 +61,7 @@ jobs:
           sed \
             -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
             -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
-            -e 's/<your-users-kv-namespace-id>/${{ secrets.KV_USERS_ID }}/' \
+            -e 's/<your-users-d1-database-id>/${{ secrets.D1_USERDB_ID }}/' \
             -e 's/<your-domain>/${{ secrets.API_DOMAIN }}/g' \
             workers/wrangler.toml.example > workers/wrangler.toml
 
@@ -71,7 +71,7 @@ jobs:
 
           sed \
             -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
-            -e 's/<your-users-kv-namespace-id>/${{ secrets.KV_USERS_ID }}/' \
+            -e 's/<your-users-d1-database-id>/${{ secrets.D1_USERDB_ID }}/' \
             -e "s|https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback|${{ secrets.OAUTH_REDIRECT_URI }}|" \
             -e "s|https://<your-pages-project>.pages.dev|${{ secrets.FRONTEND_ORIGIN }}|" \
             workers/wrangler-auth.toml.example > workers/wrangler-auth.toml

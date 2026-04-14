@@ -15,6 +15,7 @@ database_id = "<your-d1-database-id>"
 binding = "SESSIONS"
 id = "<your-sessions-kv-namespace-id>"
 
-[[kv_namespaces]]
-binding = "USERS"
-id = "<your-users-kv-namespace-id>"
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "<your-users-d1-database-id>"

@@ -38,7 +38,7 @@ const API_BASE = 'https://www.peeringdb.com/api';
  *        in the schema. null/undefined values for these columns are coerced to "".
  * @returns {{ sql: string, params: any[] }} Parameterised statement.
  */
-function buildUpsert(table, columns, row, notNullStrings) {
+export function buildUpsert(table, columns, row, notNullStrings) {
     const placeholders = columns.map(() => '?').join(',');
     const sql = `INSERT OR REPLACE INTO "${table}" (${columns.map(c => `"${c}"`).join(',')}) VALUES (${placeholders})`;
 
@@ -110,7 +110,7 @@ export async function ensureColumns(db, table, apiColumns) {
  * @param {string} apiKey - PeeringDB API key.
  * @returns {Promise<{ tag: string, updated: number, deleted: number, error: string }>}
  */
-async function syncEntity(db, tag, meta, apiKey) {
+export async function syncEntity(db, tag, meta, apiKey) {
     const result = { tag, updated: 0, deleted: 0, error: '' };
 
     try {
@@ -120,6 +120,18 @@ async function syncEntity(db, tag, meta, apiKey) {
         ).bind(tag).first();
 
         const lastSync = syncRow ? /** @type {number} */ (syncRow.last_sync) : 0;
+
+        // Refuse to sync from epoch. Fetching the full dataset for an entity
+        // (e.g. ~300k rows for netixlan) would exceed the Worker's 128MB RAM
+        // limit and crash the isolate. Fresh databases must be bootstrapped
+        // via the SQLite dump pipeline (migrate-to-d1.sh).
+        if (lastSync === 0) {
+            result.error = 'last_sync is 0 — initial bootstrap required via SQLite dump';
+            return result;
+        }
+
+        // Lock in the timestamp BEFORE the network request so any upstream
+        // updates that land during the fetch are caught in the next cron run.
         const now = Math.floor(Date.now() / 1000);
 
         // Fetch updates since last sync
@@ -132,7 +144,10 @@ async function syncEntity(db, tag, meta, apiKey) {
             headers['Authorization'] = `Api-Key ${apiKey}`;
         }
 
-        const url = `${API_BASE}/${tag}?since=${lastSync}&depth=0`;
+        // limit=0 disables PeeringDB's default 250-item pagination cap.
+        // Without it, any sync window with >250 changed rows silently
+        // drops the overflow and permanently loses those updates.
+        const url = `${API_BASE}/${tag}?since=${lastSync}&depth=0&limit=0`;
         const response = await fetch(url, { headers });
 
         if (!response.ok) {

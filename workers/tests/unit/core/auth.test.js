@@ -151,54 +151,89 @@ describe('hashKey', () => {
 
 describe('verifyApiKey', () => {
     /** @returns {any} */
-    function emptyKV() {
-        return { get: async () => null };
+    function emptyD1() {
+        return {
+            prepare() {
+                return {
+                    bind() {
+                        return {
+                            first: async () => null,
+                        };
+                    },
+                };
+            },
+        };
     }
 
-    it('should return false when key is not in KV', async () => {
-        assert.equal(await verifyApiKey(emptyKV(), 'any-key'), false);
-        assert.equal(await verifyApiKey(emptyKV(), ''), false);
-        assert.equal(await verifyApiKey(emptyKV(), 'valid-looking-key-12345'), false);
+    it('should return false when key is not in D1', async () => {
+        assert.equal(await verifyApiKey(emptyD1(), 'any-key'), false);
+        assert.equal(await verifyApiKey(emptyD1(), ''), false);
+        assert.equal(await verifyApiKey(emptyD1(), 'valid-looking-key-12345'), false);
     });
 
-    it('should return true when hashed key exists in KV', async () => {
+    it('should return true when hashed key exists in D1', async () => {
         const testKey = 'pdbfe.real';
         const testHash = await hashKey(testKey);
-        const kv = /** @type {any} */ ({
-            get: async (/** @type {string} */ key) => key === 'apikey:' + testHash ? '{}' : null,
+        const db = /** @type {any} */ ({
+            prepare() {
+                return {
+                    bind(/** @type {string} */ hash) {
+                        return {
+                            first: async () => hash === testHash ? { 1: 1 } : null,
+                        };
+                    },
+                };
+            },
         });
-        assert.equal(await verifyApiKey(kv, testKey), true);
+        assert.equal(await verifyApiKey(db, testKey), true);
     });
 
-    it('should return false when cleartext key is in KV but hash is not', async () => {
-        // Pre-hashing migration scenario: old cleartext entries should not match
-        const kv = /** @type {any} */ ({
-            get: async (/** @type {string} */ key) => key === 'apikey:pdbfe.old' ? '{}' : null,
+    it('should return false when key hash is not in D1', async () => {
+        const db = /** @type {any} */ ({
+            prepare() {
+                return {
+                    bind() {
+                        return { first: async () => null };
+                    },
+                };
+            },
         });
-        assert.equal(await verifyApiKey(kv, 'pdbfe.old'), false);
+        assert.equal(await verifyApiKey(db, 'pdbfe.old'), false);
     });
 
     it('should return false for null', async () => {
-        const { kv } = mockKV({});
-        assert.equal(await verifyApiKey(kv, null), false);
+        const db = /** @type {any} */ ({
+            prepare() {
+                return { bind() { return { first: async () => null }; } };
+            },
+        });
+        assert.equal(await verifyApiKey(db, null), false);
     });
 
-    it('should cache results to avoid repeated KV lookups', async () => {
-        let getCount = 0;
-        const kv = /** @type {any} */ ({
-            get: async (/** @type {string} */ _key) => {
-                getCount++;
-                return '{}';
+    it('should cache results to avoid repeated D1 queries', async () => {
+        let queryCount = 0;
+        const db = /** @type {any} */ ({
+            prepare() {
+                return {
+                    bind() {
+                        return {
+                            first: async () => {
+                                queryCount++;
+                                return { 1: 1 };
+                            },
+                        };
+                    },
+                };
             },
         });
 
         const key = 'pdbfe.cachetest000000000000000000';
-        await verifyApiKey(kv, key);
-        await verifyApiKey(kv, key);
-        await verifyApiKey(kv, key);
+        await verifyApiKey(db, key);
+        await verifyApiKey(db, key);
+        await verifyApiKey(db, key);
 
-        // Should only hit KV once, then cache for subsequent calls
-        assert.equal(getCount, 1, 'Expected 1 KV get call, got ' + getCount);
+        // Should only hit D1 once, then cache for subsequent calls
+        assert.equal(queryCount, 1, 'Expected 1 D1 query, got ' + queryCount);
     });
 });
 
@@ -367,15 +402,37 @@ describe('deleteSession', () => {
 
 describe('resolveAuth', () => {
     /**
-     * Builds a mock env with USERS and SESSIONS KV namespaces.
+     * Creates a mock D1 database for API key verification.
+     * Seeds with a set of valid key hashes.
      *
-     * @param {Record<string, any>} users - USERS KV store.
-     * @param {Record<string, any>} sessions - SESSIONS KV store.
-     * @returns {{USERS: KVNamespace, SESSIONS: KVNamespace}}
+     * @param {string[]} validHashes - SHA-256 hashes of valid API keys.
+     * @returns {D1Database}
      */
-    function mockEnv(users = {}, sessions = {}) {
+    function mockUserDB(validHashes = []) {
+        const hashSet = new Set(validHashes);
+        return /** @type {any} */ ({
+            prepare() {
+                return {
+                    bind(/** @type {string} */ hash) {
+                        return {
+                            first: async () => hashSet.has(hash) ? { 1: 1 } : null,
+                        };
+                    },
+                };
+            },
+        });
+    }
+
+    /**
+     * Builds a mock env with USERDB (D1) and SESSIONS (KV) bindings.
+     *
+     * @param {string[]} validKeyHashes - Hashes of valid API keys.
+     * @param {Record<string, any>} sessions - SESSIONS KV store.
+     * @returns {{USERDB: D1Database, SESSIONS: KVNamespace}}
+     */
+    function mockEnv(validKeyHashes = [], sessions = {}) {
         return {
-            USERS: /** @type {any} */ (mockKV(users).kv),
+            USERDB: mockUserDB(validKeyHashes),
             SESSIONS: /** @type {any} */ (mockKV(sessions).kv),
         };
     }
@@ -383,7 +440,7 @@ describe('resolveAuth', () => {
     it('returns authenticated for a valid pdbfe API key', async () => {
         const key = 'pdbfe.aabbccdd00112233445566778899aabb';
         const hashed = await hashKey(key);
-        const env = mockEnv({ [`apikey:${hashed}`]: '{}' });
+        const env = mockEnv([hashed]);
         const req = makeRequest(`Api-Key ${key}`);
 
         const result = await resolveAuth(req, env);
@@ -405,7 +462,7 @@ describe('resolveAuth', () => {
 
     it('falls back to session auth when no API key', async () => {
         const sid = 'abc123session';
-        const env = mockEnv({}, { [`session:${sid}`]: { id: 1, name: 'Test' } });
+        const env = mockEnv([], { [`session:${sid}`]: { id: 1, name: 'Test' } });
         const req = mockRequest({ 'Authorization': `Bearer ${sid}` });
 
         const result = await resolveAuth(req, env);

@@ -16,7 +16,7 @@
  *   /account/keys/:id  DELETE → Revoke API key
  *
  * Session state lives in the SESSIONS KV namespace (shared with pdbfe-api).
- * User profiles and API keys live in the USERS KV namespace.
+ * User profiles and API keys live in the USERDB D1 database.
  */
 
 import {

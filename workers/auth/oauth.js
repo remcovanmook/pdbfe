@@ -42,10 +42,7 @@ const PDB_PROFILE_URL = `${PDB_AUTH_BASE}/profile/v1`;
  */
 const OAUTH_SCOPES = 'profile email networks';
 
-/** KV key prefix for CSRF state nonces. */
-const STATE_PREFIX = 'oauth_state:';
-
-/** CSRF state nonce TTL in seconds (5 minutes). */
+/** CSRF state cookie TTL in seconds (5 minutes). */
 const STATE_TTL = 300;
 
 /** Session TTL in seconds (24 hours). */
@@ -75,22 +72,20 @@ function corsHeaders(frontendOrigin) {
 /**
  * Handles GET /auth/login.
  *
- * Generates a CSRF state nonce, stores it in KV with a short TTL,
- * and redirects the user to PeeringDB's OAuth2 authorization endpoint.
+ * Generates a CSRF state nonce, binds it to the browser via an HttpOnly
+ * cookie (Double Submit Cookie pattern), and redirects the user to
+ * PeeringDB's OAuth2 authorization endpoint.
+ *
+ * No server-side storage is needed for the state — the cookie is the
+ * sole CSRF binding. The callback handler verifies the cookie matches
+ * the URL state parameter returned by PeeringDB.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<Response>} 302 redirect to PeeringDB authorize URL.
+ * @returns {Response} 302 redirect to PeeringDB authorize URL.
  */
-export async function handleLogin(request, env) {
+export function handleLogin(request, env) {
     const state = generateSessionId();
-
-    // Store the state nonce so we can validate it in the callback
-    await env.SESSIONS.put(
-        STATE_PREFIX + state,
-        JSON.stringify({ created_at: new Date().toISOString() }),
-        { expirationTtl: STATE_TTL }
-    );
 
     const params = new URLSearchParams({
         response_type: 'code',
@@ -119,11 +114,11 @@ export async function handleLogin(request, env) {
  *
  * This is the OAuth2 redirect URI. PeeringDB sends back a `code`
  * and `state` parameter. The handler:
- *   1. Validates the state nonce against KV (CSRF protection)
+ *   1. Validates the state nonce via cookie (CSRF protection)
  *   2. Exchanges the authorization code for an access token
  *   3. Fetches the user profile using the access token
  *   4. Creates a session in KV
- *   5. Redirects to the frontend with the session ID as a URL fragment
+ *   5. Redirects to the frontend with the session ID as a query parameter
  *
  * @param {Request} request - The inbound HTTP request (with ?code=...&state=...).
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
@@ -135,52 +130,59 @@ export async function handleCallback(request, env) {
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
 
+    // Cookie clearing header — expires the oauth_state cookie regardless
+    // of whether the callback succeeds or fails.
+    const clearCookie = 'pdbfe_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
+
     // PeeringDB may redirect with an error parameter on user denial
     if (error) {
         const desc = url.searchParams.get('error_description') || error;
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, desc);
+        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, desc);
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
 
     if (!code || !state) {
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Missing code or state parameter');
+        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Missing code or state parameter');
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
 
-    // Validate CSRF state nonce: verify both KV (server-side) and cookie
-    // (client-side). The cookie binding prevents login CSRF where an
-    // attacker generates a valid state in KV then sends the authorization
-    // URL to a victim.
+    // Validate CSRF state nonce: verify the cookie set during /auth/login
+    // matches the state parameter returned by PeeringDB. This proves the
+    // login flow was initiated by this browser (Double Submit Cookie).
     const cookieState = extractCookie(request, 'pdbfe_oauth_state');
     if (!cookieState || cookieState !== state) {
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'State mismatch (possible CSRF)');
+        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'State mismatch (possible CSRF)');
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
-
-    const stateKey = STATE_PREFIX + state;
-    const storedState = await env.SESSIONS.get(stateKey);
-    if (!storedState) {
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Invalid or expired state');
-    }
-    // Delete the nonce — it's single-use
-    await env.SESSIONS.delete(stateKey);
 
     // Exchange authorization code for access token
     const tokenResult = await exchangeCode(code, env);
     if (!tokenResult.ok) {
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, tokenResult.error || 'Token exchange failed');
+        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, tokenResult.error || 'Token exchange failed');
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
 
     // Fetch user profile from PeeringDB
     const profile = await fetchProfile(tokenResult.access_token);
     if (!profile) {
-        return redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Failed to fetch user profile');
+        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Failed to fetch user profile');
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
 
     // Require verified user — unverified accounts cannot log in
     if (!profile.verified_user) {
-        return redirectToFrontend(
+        const resp = redirectToFrontend(
             env.FRONTEND_ORIGIN,
             null,
             'PeeringDB account is not verified. Please verify your account and try again.'
         );
+        resp.headers.append('Set-Cookie', clearCookie);
+        return resp;
     }
 
     // Create session
@@ -200,7 +202,9 @@ export async function handleCallback(request, env) {
 
     await writeSession(env.SESSIONS, sid, sessionData, SESSION_TTL);
 
-    return redirectToFrontend(env.FRONTEND_ORIGIN, sid, null);
+    const resp = redirectToFrontend(env.FRONTEND_ORIGIN, sid, null);
+    resp.headers.append('Set-Cookie', clearCookie);
+    return resp;
 }
 
 /**

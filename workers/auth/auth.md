@@ -20,20 +20,21 @@ User clicks "Sign in with PeeringDB"
         │
         ▼
 pdbfe-auth /auth/login
-        │  Generates CSRF state nonce → KV (5min TTL)
+        │  Generates CSRF state nonce → HttpOnly cookie (5min Max-Age)
         │  Redirects to auth.peeringdb.com/oauth2/authorize/
         ▼
 PeeringDB authorize page (user logs in)
         │
         ▼
 pdbfe-auth /auth/callback?code=...&state=...
-        │  1. Validate state nonce (KV get + delete)
+        │  1. Validate state nonce (cookie must match URL state parameter)
         │  2. POST code → auth.peeringdb.com/oauth2/token/ → access_token
         │     (with Api-Key header to bypass PeeringDB WAF — see below)
         │  3. GET auth.peeringdb.com/profile/v1 → user profile
         │  4. Generate session ID (32 random bytes, hex)
         │  5. KV.put("session:<sid>", {profile}, TTL=24h)
-        │  6. Redirect to frontend/?sid=<session_id>
+        │  6. Clear oauth_state cookie
+        │  7. Redirect to frontend/?sid=<session_id>
         ▼
 Frontend picks up ?sid= from URL query parameters
         │  Stores in localStorage, strips param from URL
@@ -73,9 +74,9 @@ Client sends: Authorization: Api-Key pdbfe.<32 hex chars>
         ▼
 pdbfe-api:
     extractApiKey(request) → "pdbfe.<hex>"
-    verifyApiKey(env.USERS, key) → boolean
+    verifyApiKey(env.USERDB, key) → boolean
         │  1. Check in-memory per-isolate cache (5min TTL)
-        │  2. If miss: KV.get("apikey:<full_key>")
+        │  2. If miss: SELECT 1 FROM api_keys WHERE hash = SHA-256(key)
         │  3. Cache result (positive and negative)
         │
     if valid → authenticated = true
@@ -89,25 +90,43 @@ pdbfe-api:
 - Display prefix: First 4 hex characters (shown in the UI as `pdbfe.a1b2…`)
 - Maximum 5 keys per user
 
-## KV Schema
+## Data Storage
 
-### SESSIONS namespace (`pdbfe-sessions`)
+### SESSIONS KV namespace (`pdbfe-sessions`)
 
 | Key Pattern | Value | TTL | Written By |
 |---|---|---|---|
 | `session:<hex64>` | JSON SessionData | 24 hours | pdbfe-auth |
-| `oauth_state:<hex64>` | JSON `{created_at}` | 5 minutes | pdbfe-auth |
 
-### USERS namespace (`pdbfe-users`)
+### USERDB D1 database (`pdbfe-users`)
 
-| Key Pattern | Value | TTL | Written By |
-|---|---|---|---|
-| `user:<pdb_user_id>` | JSON UserRecord | None (persistent) | pdbfe-auth |
-| `apikey:<full_key>` | JSON ApiKeyEntry `{user_id, label, created_at}` | None (persistent) | pdbfe-auth |
+User profiles and API keys are stored in a dedicated D1 database, separate
+from the PeeringDB mirror data. This ensures user data is never affected
+by mirror rebuilds and provides ACID guarantees on key operations.
 
-The `apikey:` entries are reverse indexes — the API worker looks up incoming
-`Api-Key` headers by key value. The user record stores the key list with only
-the 4-char prefix (for display), never the full key.
+#### `users` table
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | PeeringDB user ID |
+| `name` | TEXT | Display name |
+| `email` | TEXT | Email address |
+| `created_at` | TEXT | ISO 8601 timestamp |
+| `updated_at` | TEXT | ISO 8601 timestamp |
+
+#### `api_keys` table
+
+| Column | Type | Description |
+|---|---|---|
+| `key_id` | TEXT (PK) | First 8 hex chars of key |
+| `user_id` | INTEGER (PK, FK) | References users.id |
+| `label` | TEXT | User-assigned label |
+| `prefix` | TEXT | First 4 hex chars (for UI display) |
+| `hash` | TEXT (UNIQUE) | SHA-256 hex digest of the full key |
+| `created_at` | TEXT | ISO 8601 timestamp |
+
+The `idx_api_keys_hash` index on `hash` serves the API worker's key
+verification hot path. The full key is never stored.
 
 ## Session Data Structure
 
@@ -134,7 +153,7 @@ session (`Authorization: Bearer <sid>`).
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/account/profile` | GET | Return user profile from USERS KV |
+| `/account/profile` | GET | Return user profile from USERDB D1 |
 | `/account/keys` | GET | List API keys (label + prefix, no full keys) |
 | `/account/keys` | POST | Generate new API key, return full key once |
 | `/account/keys/:id` | DELETE | Revoke an API key |
@@ -143,13 +162,14 @@ User records are auto-provisioned on first OAuth login if missing.
 
 ## Security
 
-- **CSRF protection**: State nonce is single-use (deleted after validation), stored in KV with 5-minute TTL.
+- **CSRF protection**: Double Submit Cookie pattern — state nonce is set as an `HttpOnly; Secure; SameSite=Lax` cookie during `/auth/login` and verified against the URL `state` parameter in `/auth/callback`. No server-side state storage needed. Cookie is cleared after use.
 - **Session ID**: 32 bytes from `crypto.getRandomValues`, making brute-force infeasible.
 - **Query parameters**: Session IDs are passed via `?sid=` (survives Cloudflare Access redirects). The frontend strips the query param immediately after reading it.
 - **Token storage**: Frontend stores session ID in `localStorage`. Not accessible to other origins.
 - **OAuth secrets**: `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, and `PEERINGDB_API_KEY` are stored as wrangler secrets, not in source control.
 - **Verified users only**: Unverified PeeringDB accounts are rejected at the callback step.
-- **API key display**: Full API keys are shown only once at creation. Only the 4-char prefix is stored in the user record.
+- **API key display**: Full API keys are shown only once at creation. Only the 4-char prefix is stored.
+- **ACID key operations**: API key creation and deletion use D1 `batch()` for atomic multi-statement execution, preventing orphaned reverse-index entries ("Ghost Keys").
 
 ## Secrets
 
@@ -178,6 +198,6 @@ User records are auto-provisioned on first OAuth login if missing.
 - `frontend/js/pages/account.js` — Account page with profile, networks, API key management
 
 ### Configuration
-- `workers/wrangler-auth.toml` — Auth worker config (SESSIONS + USERS KV, OAuth vars)
-- `workers/wrangler.toml` — API worker config (SESSIONS + USERS KV for read)
+- `workers/wrangler-auth.toml` — Auth worker config (SESSIONS KV, USERDB D1, OAuth vars)
+- `workers/wrangler.toml` — API worker config (SESSIONS KV, USERDB D1 for read)
 - `workers/types.d.ts` — PdbAuthEnv, PdbApiEnv, SessionData, UserRecord, ApiKeyEntry types

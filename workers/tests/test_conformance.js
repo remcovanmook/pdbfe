@@ -949,7 +949,7 @@ describe('Conformance: poc visibility', { concurrency: 1 }, () => {
  * The pdbfe API key (pdbfe.<hex>) for testing authenticated access.
  * Set PDBFE_API_KEY in the environment to enable these tests.
  * These keys are managed via the /account page and stored in the
- * USERS KV namespace.
+ * USERDB D1 database.
  */
 const PDBFE_API_KEY = process.env.PDBFE_API_KEY || '';
 

@@ -56,7 +56,7 @@ Handler functions receive a `D1Session` parameter named `db` instead of the full
 
 The API worker supports two authentication methods, resolved in this order:
 
-1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — verified against the USERS KV namespace. Only pdbfe-issued keys are accepted; upstream PeeringDB API keys are rejected with a 403.
+1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — verified against the USERDB D1 database. Only pdbfe-issued keys are accepted; upstream PeeringDB API keys are rejected with a 403.
 2. **Session token** (`Authorization: Bearer <sid>` or cookie) — verified against the SESSIONS KV namespace.
 
 Unauthenticated callers:
