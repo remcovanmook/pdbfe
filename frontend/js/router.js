@@ -123,7 +123,7 @@ async function dispatch(fullPath) {
     }
 
     for (const route of _routes) {
-        const match = path.match(route.pattern);
+        const match = route.pattern.exec(path);
         if (match) {
             // Merge named groups and query params
             const params = { ...match.groups, ...queryParams };

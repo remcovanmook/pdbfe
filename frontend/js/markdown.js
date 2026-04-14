@@ -121,9 +121,9 @@ function sanitiseHTML(input) {
                     return LINK_CLOSE;
                 }
                 // Extract href from attributes, ignore everything else
-                const hrefMatch = attrs.match(/href\s*=\s*"([^"]*)"/i)
-                    || attrs.match(/href\s*=\s*'([^']*)'/i)
-                    || attrs.match(/href\s*=\s*([^\s>]+)/i);
+                const hrefMatch = /href\s*=\s*"([^"]*)"/i.exec(attrs)
+                    || /href\s*=\s*'([^']*)'/i.exec(attrs)
+                    || /href\s*=\s*([^\s>]+)/i.exec(attrs);
 
                 if (hrefMatch) {
                     const url = sanitiseURL(hrefMatch[1]);
@@ -266,7 +266,7 @@ export function renderMarkdown(text) {
         const trimmed = line.trim();
 
         // Code block placeholder — emit as <pre><code>
-        const codeMatch = trimmed.match(/^\uE002CODEBLOCK_(\d+)\uE002$/);
+        const codeMatch = /^\uE002CODEBLOCK_(\d+)\uE002$/.exec(trimmed);
         if (codeMatch) {
             if (inList) {
                 result.push('</ul>');
@@ -277,7 +277,7 @@ export function renderMarkdown(text) {
         }
 
         // Headings: # through ######
-        const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
         if (headingMatch) {
             if (inList) {
                 result.push('</ul>');

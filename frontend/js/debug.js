@@ -49,7 +49,7 @@ function toUTCISO(sqliteDatetime) {
  */
 function parseTimer(timer) {
     if (!timer) return '—';
-    const match = timer.match(/VE(\d+)/);
+    const match = /VE(\d+)/.exec(timer);
     return match ? `${match[1]}ms` : timer;
 }
 

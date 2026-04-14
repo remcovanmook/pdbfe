@@ -337,7 +337,7 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
 export async function searchWithAsn(query, signal) {
-    const asnMatch = query.trim().match(ASN_PATTERN);
+    const asnMatch = ASN_PATTERN.exec(query.trim());
     const asnNum = asnMatch ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
