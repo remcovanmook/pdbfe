@@ -135,7 +135,7 @@ export function t(key, vars = {}) {
     let str = _dict[key] || key;
 
     if (Object.keys(vars).length > 0) {
-        str = str.replace(/\{(\w+)\}/g, (_, varName) => {
+        str = str.replaceAll(/\{(\w+)\}/g, (_, varName) => {
             return vars[varName] !== undefined ? escapeHTML(String(vars[varName])) : `{${varName}}`;
         });
     }
@@ -151,7 +151,7 @@ export function t(key, vars = {}) {
  * @returns {string} Escaped string.
  */
 function escapeHTML(str) {
-    return str.replace(/[&<>"']/g, m => ({
+    return str.replaceAll(/[&<>"']/g, m => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[m] || m);
 }

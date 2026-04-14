@@ -29,7 +29,7 @@ let _appContainer = null;
 export function addRoute(pattern, handler) {
     // Convert "/net/:id" to regex with named capture groups
     const regexStr = pattern
-        .replace(/:[a-zA-Z]+/g, (match) => {
+        .replaceAll(/:[a-zA-Z]+/g, (match) => {
             const name = match.slice(1);
             return `(?<${name}>[^/]+)`;
         });
