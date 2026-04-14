@@ -85,7 +85,7 @@ export function formatLocaleDate(iso) {
 export function setOGTags(title, description) {
     setMetaProperty('og:title', title);
     setMetaProperty('og:description', description);
-    setMetaProperty('og:url', window.location.href);
+    setMetaProperty('og:url', globalThis.location.href);
 }
 
 /**

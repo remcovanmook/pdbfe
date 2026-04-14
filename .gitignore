@@ -40,3 +40,4 @@ peeringdb/
 .DS_Store
 .agent/
 scripts/__pycache__/
+.vscode/settings.json

@@ -43,7 +43,7 @@ addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 
 // Expose navigate for the homepage search box
-window.__router = { navigate };
+globalThis.__router = { navigate };
 
 // Header search: typeahead with fallback Enter-to-navigate
 const headerSearch = /** @type {HTMLInputElement} */ (document.getElementById('header-search'));
@@ -79,7 +79,7 @@ if (langSelect) {
     langSelect.addEventListener('change', () => {
         setLanguage(langSelect.value, () => {
             // Re-render the current route by re-dispatching
-            window.location.reload();
+            globalThis.location.reload();
         });
     });
 }

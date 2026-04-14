@@ -36,7 +36,7 @@ export async function renderAsn(params) {
         const net = await fetchByAsn(asn);
         if (net) {
             // Replace history entry so Back doesn't return to this redirect page
-            window.history.replaceState(null, '', `/net/${net.id}`);
+            globalThis.history.replaceState(null, '', `/net/${net.id}`);
             navigate(`/net/${net.id}`);
         } else {
             app.replaceChildren(createError(`No network found for AS${asn}`));

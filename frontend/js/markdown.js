@@ -38,10 +38,10 @@ const SAFE_TAGS = new Set(['br', 'p', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li'
  */
 function escapeForMarkdown(str) {
     return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
 }
 
 /**
@@ -70,7 +70,7 @@ function sanitiseURL(url) {
 function sanitiseImageURL(url) {
     const trimmed = url.trim();
     // Strip optional dimension suffix (e.g. " =410x300")
-    const cleaned = trimmed.replace(/\s*=[0-9]+x[0-9]+$/, '');
+    const cleaned = trimmed.replace(/\s*=\d+x\d+$/, '');
     if (/^data:image\/[a-z+]+;base64,/i.test(cleaned)) {
         return cleaned;
     }
@@ -86,10 +86,10 @@ function sanitiseImageURL(url) {
  */
 function escapeAttr(str) {
     return str
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+        .replaceAll('&', '&amp;')
+        .replaceAll('"', '&quot;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
 }
 
 /**
@@ -163,7 +163,7 @@ function restoreTags(html) {
             /\uE000LINK_OPEN\uE000&lt;a href=&quot;([^&]*)&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;/g,
             '<a href="$1" target="_blank" rel="noopener noreferrer">'
         )
-        .replace(/\uE000LINK_CLOSE\uE000/g, '</a>')
+        .replaceAll('\uE000LINK_CLOSE\uE000', '</a>')
         // Restore safe tags: sentinel wraps the escaped tag
         .replace(/\uE001TAG_OPEN\uE001&lt;(\/?[a-z]+)&gt;\uE001TAG_CLOSE\uE001/g, '<$1>');
 }

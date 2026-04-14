@@ -274,11 +274,9 @@ function createMockDOM() {
         activeElement: null,
     });
 
-    globalThis.window = /** @type {any} */ ({
-        __router: { navigate: () => {} },
-        scrollTo: () => {},
-        location: { href: 'http://localhost/' },
-    });
+    globalThis.__router = { navigate: () => {} };
+    globalThis.scrollTo = () => {};
+    globalThis.location = /** @type {any} */ ({ href: 'http://localhost/', pathname: '/', search: '' });
 
     /**
      * Registers a mock DOM element that getElementById can find.

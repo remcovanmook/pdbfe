@@ -61,14 +61,11 @@ function createMockDOM() {
         body: { appendChild: () => {}, dataset: {} },
         activeElement: null,
     });
-    globalThis.window = /** @type {any} */ ({
-        __router: { navigate: () => {} },
-        scrollTo: () => {},
-        location: { href: 'http://localhost/', pathname: '/', reload: () => {} },
-        addEventListener: () => {},
-        history: { pushState: () => {} },
-    });
-    globalThis.history = globalThis.window.history;
+    globalThis.scrollTo = () => {};
+    globalThis.location = /** @type {any} */ ({ href: 'http://localhost/', pathname: '/', search: '', reload: () => {} });
+    globalThis.addEventListener = () => {};
+    globalThis.history = /** @type {any} */ ({ pushState: () => {} });
+    globalThis.__router = { navigate: () => {} };
     return { listeners };
 }
 

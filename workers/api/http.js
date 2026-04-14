@@ -44,6 +44,9 @@ export const H_API_ANON = Object.freeze({ ...H_API, "X-Auth-Status": "unauthenti
 export const H_NOCACHE_AUTH = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "authenticated" });
 export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "unauthenticated" });
 
+/** Default cache metadata for responses that bypassed all cache tiers. */
+const DEFAULT_META = Object.freeze({ tier: /** @type {import('./pipeline.js').CacheTier} */ ('MISS'), hits: 0 });
+
 /**
  * Serves a Uint8Array of pre-encoded JSON bytes as an HTTP Response.
  * Handles ETag generation and 304 Not Modified checks. On a cache hit,
@@ -56,7 +59,7 @@ export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "un
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
  * @returns {Response} The HTTP response ready for the client.
  */
-export function serveJSON(request, buf, meta = { tier: 'MISS', hits: 0 }, baseHeaders = H_API) {
+export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API) {
     const etag = generateETag(buf);
 
     if (isNotModified(request.headers, etag)) {
