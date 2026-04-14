@@ -742,9 +742,6 @@ body[data-page="home"] .site-logo {
 }
 
 .home-top {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: var(--space-2xl);
     margin-bottom: var(--space-xl);
 }
 
@@ -769,7 +766,11 @@ body[data-page="home"] .site-logo {
     margin-bottom: 0;
 }
 
-/* ── Recent updates (right pane) ───────────────────────────────── */
+/* ── Recent updates ────────────────────────────────────────────── */
+
+.home-recent {
+    margin-bottom: var(--space-xl);
+}
 
 .home-recent__heading {
     font-size: 1.125rem;
@@ -1172,9 +1173,7 @@ body[data-page="home"] .site-logo {
         grid-template-columns: 1fr;
     }
 
-    .home-top {
-        grid-template-columns: 1fr;
-    }
+
 
     .recent-updates {
         grid-template-columns: repeat(2, 1fr);

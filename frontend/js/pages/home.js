@@ -130,7 +130,9 @@ export async function renderHome(_params) {
         homeTop.appendChild(favsSection);
     }
 
-    // Recent updates container
+    frag.appendChild(homeTop);
+
+    // Recent updates — full width below the hero section
     const recentDiv = document.createElement('div');
     recentDiv.className = 'home-recent';
     const recentHeading = document.createElement('h2');
@@ -142,9 +144,7 @@ export async function renderHome(_params) {
     recentBody.id = 'recent-updates';
     recentBody.appendChild(createLoading('Loading recent updates'));
     recentDiv.appendChild(recentBody);
-
-    homeTop.appendChild(recentDiv);
-    frag.appendChild(homeTop);
+    frag.appendChild(recentDiv);
 
     // Stats container
     const statsDiv = document.createElement('div');
