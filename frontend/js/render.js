@@ -373,12 +373,20 @@ export function createDetailLayout(opts) {
     if (opts.logoUrl) {
         const logo = document.createElement('img');
         logo.className = 'detail-sidebar__logo';
-        logo.src = opts.logoUrl;
         logo.alt = `${opts.title} logo`;
-        logo.loading = 'lazy';
         logo.style.display = 'none';
+
+        // Attach handlers BEFORE setting src — cached images fire
+        // load synchronously and would be missed otherwise.
         logo.onload = () => { logo.style.display = ''; };
         logo.onerror = () => { logo.remove(); };
+        logo.src = opts.logoUrl;
+
+        // Catch already-cached images where load fired before insertion
+        if (logo.complete && logo.naturalWidth > 0) {
+            logo.style.display = '';
+        }
+
         sidebarWrap.appendChild(logo);
     }
 
