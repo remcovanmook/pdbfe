@@ -73,7 +73,7 @@ async function refreshSyncState(db) {
                     last_sync: /** @type {number} */ (row.last_sync),
                     row_count: /** @type {number} */ (row.row_count),
                     updated_at: /** @type {string} */ (row.updated_at),
-                    last_modified_at: (/** @type {number} */ (row.last_modified_at) || 0) | 0,
+                    last_modified_at: Math.trunc(/** @type {number} */ (row.last_modified_at) || 0),
                 }
             );
         }
