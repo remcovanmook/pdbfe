@@ -75,6 +75,17 @@ def main():
     skipped = 0
 
     for row in rows:
+        # The PeeringDB JSON dump uses Django's test server hostname for
+        # media URLs (logos). Rewrite to the production S3 bucket so the
+        # frontend can load them directly.
+        logo = row.get("logo")
+        if isinstance(logo, str) and logo.startswith("http://testserver/m/"):
+            row["logo"] = logo.replace(
+                "http://testserver/m/",
+                "https://peeringdb-media-prod.s3.amazonaws.com/media/",
+                1,
+            )
+
         vals = [to_sql_value(row.get(col)) for col in cols]
         stmt = f"INSERT OR REPLACE INTO {table} ({','.join(cols)}) VALUES ({','.join(vals)});"
 
