@@ -48,9 +48,11 @@ export async function renderIx(params) {
         const totalSpeed = peers.reduce((sum, p) => sum + (p.speed || 0), 0);
         const openPeers = new Set(peers.filter(p => p.operational).map(p => p.asn)).size;
 
+        const location = (ix.city || '') + (ix.country ? `, ${ix.country}` : '');
+
         setOGTags(
             ix.name,
-            `${ix.city || ''}${ix.country ? `, ${ix.country}` : ''} — ${totalPeers.toLocaleString()} Peers, ${formatSpeed(totalSpeed)} Total Speed`
+            `${location} — ${totalPeers.toLocaleString()} Peers, ${formatSpeed(totalSpeed)} Total Speed`
         );
 
         const statsBar = createStatsBar([
@@ -60,7 +62,7 @@ export async function renderIx(params) {
             { label: 'Total Speed', value: formatSpeed(totalSpeed) },
         ]);
 
-        const subtitle = `${ix.city || ''}${ix.country ? `, ${ix.country}` : ''}`;
+        const subtitle = location;
 
         app.replaceChildren(createDetailLayout({
             title: ix.name,

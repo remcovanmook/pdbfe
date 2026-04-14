@@ -52,7 +52,7 @@ async function fetchJSON(url, timeoutMs = 15000) {
         // Retry once on throttle
         if (res.status === 429 && url.startsWith(PEERINGDB)) {
             clearTimeout(timer);
-            const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
+            const retryAfter = Number.parseInt(res.headers.get('retry-after') || '5', 10);
             await delay((retryAfter + 1) * 1000);
             const timer2 = setTimeout(() => controller.abort(), timeoutMs);
             try {

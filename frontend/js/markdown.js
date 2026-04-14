@@ -16,10 +16,10 @@
  * escape pass. These are chosen to be unlikely to appear in real input.
  * @type {string}
  */
-const LINK_OPEN = '\x00LINK_OPEN\x00';
-const LINK_CLOSE = '\x00LINK_CLOSE\x00';
-const TAG_OPEN = '\x00TAG_OPEN\x00';
-const TAG_CLOSE = '\x00TAG_CLOSE\x00';
+const LINK_OPEN = '\uE000LINK_OPEN\uE000';
+const LINK_CLOSE = '\uE000LINK_CLOSE\uE000';
+const TAG_OPEN = '\uE001TAG_OPEN\uE001';
+const TAG_CLOSE = '\uE001TAG_CLOSE\uE001';
 
 /**
  * Set of HTML tag names that are allowed through the sanitiser unchanged
@@ -160,12 +160,12 @@ function restoreTags(html) {
     return html
         // Restore anchor tags: sentinel wraps the escaped <a> tag
         .replace(
-            /\x00LINK_OPEN\x00&lt;a href=&quot;([^&]*)&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;/g,
+            /\uE000LINK_OPEN\uE000&lt;a href=&quot;([^&]*)&quot; target=&quot;_blank&quot; rel=&quot;noopener noreferrer&quot;&gt;/g,
             '<a href="$1" target="_blank" rel="noopener noreferrer">'
         )
-        .replace(/\x00LINK_CLOSE\x00/g, '</a>')
+        .replace(/\uE000LINK_CLOSE\uE000/g, '</a>')
         // Restore safe tags: sentinel wraps the escaped tag
-        .replace(/\x00TAG_OPEN\x00&lt;(\/?[a-z]+)&gt;\x00TAG_CLOSE\x00/g, '<$1>');
+        .replace(/\uE001TAG_OPEN\uE001&lt;(\/?[a-z]+)&gt;\uE001TAG_CLOSE\uE001/g, '<$1>');
 }
 
 /**
@@ -201,14 +201,14 @@ export function renderMarkdown(text) {
     html = html.replace(/^```[^\n]*\n([\s\S]*?)^```/gm, (_, content) => {
         const idx = codeBlocks.length;
         codeBlocks.push(content.replace(/\n$/, ''));
-        return `\x00CODEBLOCK_${idx}\x00`;
+        return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
     // Handle unclosed code blocks (fence at EOF without closing ```)
     html = html.replace(/^```[^\n]*\n([\s\S]*)$/gm, (_, content) => {
         const idx = codeBlocks.length;
         codeBlocks.push(content.replace(/\n$/, ''));
-        return `\x00CODEBLOCK_${idx}\x00`;
+        return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
     // Step 4: Code spans (before other inline processing)
@@ -266,7 +266,7 @@ export function renderMarkdown(text) {
         const trimmed = line.trim();
 
         // Code block placeholder — emit as <pre><code>
-        const codeMatch = trimmed.match(/^\x00CODEBLOCK_(\d+)\x00$/);
+        const codeMatch = trimmed.match(/^\uE002CODEBLOCK_(\d+)\uE002$/);
         if (codeMatch) {
             if (inList) {
                 result.push('</ul>');

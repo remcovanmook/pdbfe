@@ -241,7 +241,7 @@ export async function fetchEntity(type, id, depth = 2) {
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @returns {Promise<any[]>} Array of result objects.
  */
-export async function fetchList(type, filters = {}, signal) {
+export async function fetchList(type, filters = {}, signal = undefined) {
     const result = await cachedFetch(`/api/${type}`, filters, signal);
     return result?.data || [];
 }
@@ -338,11 +338,11 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  */
 export async function searchWithAsn(query, signal) {
     const asnMatch = query.trim().match(ASN_PATTERN);
-    const asnNum = asnMatch ? parseInt(asnMatch[1], 10) : NaN;
+    const asnNum = asnMatch ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
         searchAll(query, signal),
-        isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
+        Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 
     if (asnNet) {

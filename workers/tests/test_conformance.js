@@ -88,7 +88,7 @@ async function fetchJSON(url, opts = {}) {
 
         if (res.status === 429 && url.startsWith(PEERINGDB)) {
             clearTimeout(timer);
-            const retryAfter = parseInt(res.headers.get('retry-after') || '5', 10);
+            const retryAfter = Number.parseInt(res.headers.get('retry-after') || '5', 10);
             await delay((retryAfter + 1) * 1000);
             const start2 = Date.now();
             const res2 = await fetch(url, { method, signal: controller.signal, headers });

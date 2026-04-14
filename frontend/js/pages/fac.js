@@ -33,13 +33,15 @@ export async function renderFac(params) {
             return;
         }
 
+        const location = (fac.city || '') + (fac.country ? `, ${fac.country}` : '');
+
         document.title = `${fac.name} — PeeringDB`;
         setOGTags(
             fac.name,
-            `Facility — ${fac.city || ''}${fac.country ? `, ${fac.country}` : ''}`
+            `Facility — ${location}`
         );
 
-        const subtitle = `${fac.city || ''}${fac.country ? `, ${fac.country}` : ''}`;
+        const subtitle = location;
 
         app.replaceChildren(createDetailLayout({
             title: fac.name,

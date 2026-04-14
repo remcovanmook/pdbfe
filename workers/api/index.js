@@ -142,8 +142,8 @@ async function handleRequest(request, env, ctx) {
         if (rest.includes(',')) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
-        const asn = parseInt(rest, 10);
-        if (isNaN(asn)) {
+        const asn = Number.parseInt(rest, 10);
+        if (Number.isNaN(asn)) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
         return handleAsSet(request, db, ctx, asn, authenticated);
@@ -162,9 +162,9 @@ async function handleRequest(request, env, ctx) {
     if (rest !== undefined) {
         // parseInt stops at the first non-numeric character, so trailing
         // slashes ("/") and ".json" suffixes are handled natively:
-        // parseInt('1/', 10) → 1, parseInt('1.json', 10) → 1.
-        id = parseInt(rest, 10);
-        if (isNaN(id) || id <= 0) {
+        // Number.parseInt('1/', 10) → 1, Number.parseInt('1.json', 10) → 1.
+        id = Number.parseInt(rest, 10);
+        if (Number.isNaN(id) || id <= 0) {
             return jsonError(400, `Invalid ID: ${rest}`, hNocache);
         }
     }
