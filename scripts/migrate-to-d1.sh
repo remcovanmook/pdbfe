@@ -44,6 +44,7 @@ for arg in "$@"; do
     case "$arg" in
         --remote) REMOTE_FLAG="--remote" ;;
         --fetch)  DO_FETCH=true ;;
+        *) echo "Unknown flag: $arg"; exit 1 ;;
     esac
 done
 
@@ -205,3 +206,4 @@ npx wrangler d1 execute peeringdb \
     --file "$SYNC_FILE"
 
 echo "==> Migration complete."
+exit 0

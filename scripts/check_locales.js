@@ -44,7 +44,7 @@ let hasErrors = false;
 let hasWarnings = false;
 let localeCount = 0;
 
-for (const file of fs.readdirSync(LOCALES_DIR).sort()) {
+for (const file of fs.readdirSync(LOCALES_DIR).sort((a, b) => a.localeCompare(b))) {
     if (!file.endsWith('.json') || file === 'strings.json') continue;
 
     const filePath = path.join(LOCALES_DIR, file);

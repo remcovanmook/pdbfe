@@ -260,8 +260,8 @@ describe('Conformance: carrier/carrierfac/campus', { concurrency: 1 }, () => {
             for (const [f, upSet] of upTypes) {
                 const mirSet = mirTypes.get(f);
                 if (!mirSet) continue;
-                const upT = [...upSet].filter(t => t !== 'null').sort().join(',');
-                const mirT = [...mirSet].filter(t => t !== 'null').sort().join(',');
+                const upT = [...upSet].filter(t => t !== 'null').sort((a, b) => a.localeCompare(b)).join(',');
+                const mirT = [...mirSet].filter(t => t !== 'null').sort((a, b) => a.localeCompare(b)).join(',');
                 if (upT && mirT && upT !== mirT) {
                     mismatches.push(`  ${f}: upstream=${upT} mirror=${mirT}`);
                 }

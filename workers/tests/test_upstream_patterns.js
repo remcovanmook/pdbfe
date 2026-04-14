@@ -254,13 +254,13 @@ describe('Upstream pattern: ?fields= selection', () => {
     it('org with fields=name,status returns only those keys', () => {
         const org = FIXTURES.org[0];
         const selected = selectFields(org, ['name', 'status']);
-        assert.deepStrictEqual(Object.keys(selected).sort(), ['name', 'status']);
+        assert.deepStrictEqual(Object.keys(selected).sort((a, b) => a.localeCompare(b)), ['name', 'status']);
     });
 
     it('net with fields=asn,name returns only those keys', () => {
         const net = FIXTURES.net[0];
         const selected = selectFields(net, ['asn', 'name']);
-        assert.deepStrictEqual(Object.keys(selected).sort(), ['asn', 'name']);
+        assert.deepStrictEqual(Object.keys(selected).sort((a, b) => a.localeCompare(b)), ['asn', 'name']);
     });
 
     it('nonexistent fields are omitted', () => {

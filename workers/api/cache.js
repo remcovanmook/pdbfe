@@ -147,6 +147,6 @@ export function purgeAllCaches() {
  */
 export function normaliseCacheKey(path, queryString) {
     if (!queryString) return path;
-    const sorted = queryString.split("&").sort().join("&"); // ap-ok: bounded by URL length
+    const sorted = queryString.split("&").sort((a, b) => a < b ? -1 : a > b ? 1 : 0).join("&"); // ap-ok: bounded by URL length
     return `${path}?${sorted}`;
 }
