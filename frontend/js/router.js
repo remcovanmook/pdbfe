@@ -54,8 +54,8 @@ export function initRouter(appContainer) {
     }
 
     // Handle browser back/forward
-    window.addEventListener('popstate', () => {
-        dispatch(window.location.pathname + window.location.search);
+    globalThis.addEventListener('popstate', () => {
+        dispatch(globalThis.location.pathname + globalThis.location.search);
     });
 
     // Intercept clicks on [data-link] anchors for SPA navigation
@@ -71,7 +71,7 @@ export function initRouter(appContainer) {
 
         e.preventDefault();
         const href = link.getAttribute('href');
-        if (href && href !== window.location.pathname) {
+        if (href && href !== globalThis.location.pathname) {
             navigate(href);
         }
     });
@@ -89,7 +89,7 @@ export function initRouter(appContainer) {
     });
 
     // Render current URL on load
-    dispatch(window.location.pathname + window.location.search);
+    dispatch(globalThis.location.pathname + globalThis.location.search);
 }
 
 /**
@@ -98,7 +98,7 @@ export function initRouter(appContainer) {
  * @param {string} path - The URL path to navigate to.
  */
 export function navigate(path) {
-    window.history.pushState(null, '', path);
+    globalThis.history.pushState(null, '', path);
     dispatch(path);
 }
 
@@ -145,7 +145,7 @@ async function dispatch(fullPath) {
             }
 
             // Reset scroll after content is rendered
-            window.scrollTo(0, 0);
+            globalThis.scrollTo(0, 0);
 
             // Trigger enter transition
             requestAnimationFrame(() => {

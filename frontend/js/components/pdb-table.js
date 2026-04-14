@@ -305,9 +305,7 @@ class PdbTable extends HTMLElement {
         const cfg = this._config;
         if (!cfg) return;
 
-        if (!this._filterQuery) {
-            this._processedRows = cfg.rows.slice();
-        } else {
+        if (this._filterQuery) {
             this._processedRows = cfg.rows.filter(row => {
                 // Build text representation for filtering
                 const text = cfg.columns.map(col => {
@@ -322,6 +320,8 @@ class PdbTable extends HTMLElement {
                 }).join(' ').toLowerCase();
                 return text.includes(this._filterQuery);
             });
+        } else {
+            this._processedRows = cfg.rows.slice();
         }
 
         // Update badge with filtered count

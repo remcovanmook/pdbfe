@@ -39,19 +39,19 @@ export async function initAuth() {
     // Check for session token in URL query params (from OAuth callback redirect).
     // Query params are used instead of URL fragments because Cloudflare Access
     // strips fragments during its auth redirect chain.
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(globalThis.location.search);
 
     const sid = urlParams.get('sid');
     if (sid) {
         localStorage.setItem(STORAGE_KEY, sid);
         // Clean the query param from the URL without triggering a page reload
-        history.replaceState(null, '', window.location.pathname);
+        history.replaceState(null, '', globalThis.location.pathname);
     }
 
     const authError = urlParams.get('auth_error');
     if (authError) {
         console.warn('Auth error:', authError);
-        history.replaceState(null, '', window.location.pathname);
+        history.replaceState(null, '', globalThis.location.pathname);
     }
 
     // Load cached session ID
@@ -60,13 +60,13 @@ export async function initAuth() {
     // Validate session if we have one
     if (_cachedSid) {
         _cachedUser = await validateSession(_cachedSid);
-        if (!_cachedUser) {
+        if (_cachedUser) {
+            // Auth state changed — flush stale anonymous API responses
+            clearCache();
+        } else {
             // Session expired or invalid — clear it
             localStorage.removeItem(STORAGE_KEY);
             _cachedSid = null;
-        } else {
-            // Auth state changed — flush stale anonymous API responses
-            clearCache();
         }
     }
 
@@ -116,7 +116,7 @@ export function logout() {
     // Redirect to auth worker logout to clean up KV
     // Pass the session ID as a Bearer token so the auth worker can delete it
     if (sid) {
-        window.location.href = `${AUTH_ORIGIN}/auth/logout`;
+        globalThis.location.href = `${AUTH_ORIGIN}/auth/logout`;
     }
 }
 

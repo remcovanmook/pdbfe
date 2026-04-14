@@ -159,7 +159,7 @@ export function initDebugger() {
 
     // Re-render overlay on SPA navigation (popstate = back/forward,
     // pushState = link clicks via the router).
-    window.addEventListener('popstate', () => refreshOverlay());
+    globalThis.addEventListener('popstate', () => refreshOverlay());
 
     const origPush = history.pushState.bind(history);
     history.pushState = function(...args) {
@@ -249,7 +249,7 @@ async function toggleOverlay() {
  */
 function buildOverlayDOM(syncStatus, localCache) {
     const now = Date.now();
-    const currentPath = window.location.pathname;
+    const currentPath = globalThis.location.pathname;
 
     const inner = _el('div', { className: 'debug-overlay__inner' });
 
@@ -462,7 +462,7 @@ function wireButtons() {
 
     document.getElementById('debug-force-refresh')?.addEventListener('click', () => {
         clearCache();
-        window.location.reload();
+        globalThis.location.reload();
     });
 
     // Collapsible section toggles
