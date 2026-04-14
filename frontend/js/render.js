@@ -334,15 +334,16 @@ export function createDetailLayout(opts) {
     const header = document.createElement('div');
     header.className = 'detail-header';
 
-    // Logo — only rendered when a URL is available
+    // Logo — only rendered when a URL is available; hidden until loaded
     if (opts.logoUrl) {
         const logo = document.createElement('img');
         logo.className = 'detail-header__logo';
         logo.src = opts.logoUrl;
         logo.alt = `${opts.title} logo`;
         logo.loading = 'lazy';
-        // Hide the element on load failure so a broken-image icon is never shown
-        logo.onerror = () => { logo.style.display = 'none'; };
+        logo.style.display = 'none';
+        logo.onload = () => { logo.style.display = ''; };
+        logo.onerror = () => { logo.remove(); };
         header.appendChild(logo);
     }
 
