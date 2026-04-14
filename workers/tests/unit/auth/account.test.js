@@ -37,9 +37,9 @@ function mockD1(apiKeys = []) {
                     return this;
                 },
                 first() {
-                    // Respond to: SELECT 1 FROM api_keys WHERE hash = ?
+                    // Respond to: SELECT user_id FROM api_keys WHERE hash = ?
                     const hash = this._params[0];
-                    return Promise.resolve(hashSet.has(hash) ? { 1: 1 } : null);
+                    return Promise.resolve(hashSet.has(hash) ? { user_id: 1 } : null);
                 },
                 run() {
                     return Promise.resolve({ success: true, meta: {}, results: [] });
@@ -89,25 +89,27 @@ describe('verifyApiKey', () => {
         const db = mockD1([{ hash: hashed }]);
 
         const result = await verifyApiKey(db, testKey);
-        assert.equal(result, true);
+        assert.equal(result.valid, true);
+        assert.equal(result.userId, 1);
     });
 
     it('returns false for a key that does not exist in D1', async () => {
         const db = mockD1([]);
         const result = await verifyApiKey(db, 'pdbfe.nonexistent0000000000000000');
-        assert.equal(result, false);
+        assert.equal(result.valid, false);
+        assert.equal(result.userId, null);
     });
 
     it('returns false for null key', async () => {
         const db = mockD1([]);
         const result = await verifyApiKey(db, null);
-        assert.equal(result, false);
+        assert.equal(result.valid, false);
     });
 
     it('returns false for empty string key', async () => {
         const db = mockD1([]);
         const result = await verifyApiKey(db, '');
-        assert.equal(result, false);
+        assert.equal(result.valid, false);
     });
 
     it('caches results to avoid repeated D1 queries', async () => {
@@ -119,7 +121,7 @@ describe('verifyApiKey', () => {
                         return {
                             first() {
                                 queryCount++;
-                                return Promise.resolve({ 1: 1 });
+                                return Promise.resolve({ user_id: 99 });
                             },
                         };
                     },
@@ -152,8 +154,8 @@ describe('extractApiKey + verifyApiKey integration', () => {
         const extracted = extractApiKey(request);
         assert.equal(extracted, fullKey);
 
-        const valid = await verifyApiKey(db, extracted);
-        assert.equal(valid, true);
+        const result = await verifyApiKey(db, extracted);
+        assert.equal(result.valid, true);
     });
 
     it('returns false for a valid format key that is not in D1', async () => {
@@ -164,7 +166,7 @@ describe('extractApiKey + verifyApiKey integration', () => {
         });
 
         const extracted = extractApiKey(request);
-        const valid = await verifyApiKey(db, extracted);
-        assert.equal(valid, false);
+        const result = await verifyApiKey(db, extracted);
+        assert.equal(result.valid, false);
     });
 });

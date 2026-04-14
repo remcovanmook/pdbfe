@@ -165,13 +165,13 @@ describe('verifyApiKey', () => {
         };
     }
 
-    it('should return false when key is not in D1', async () => {
-        assert.equal(await verifyApiKey(emptyD1(), 'any-key'), false);
-        assert.equal(await verifyApiKey(emptyD1(), ''), false);
-        assert.equal(await verifyApiKey(emptyD1(), 'valid-looking-key-12345'), false);
+    it('should return {valid: false} when key is not in D1', async () => {
+        assert.deepEqual(await verifyApiKey(emptyD1(), 'any-key'), { valid: false, userId: null });
+        assert.deepEqual(await verifyApiKey(emptyD1(), ''), { valid: false, userId: null });
+        assert.deepEqual(await verifyApiKey(emptyD1(), 'valid-looking-key-12345'), { valid: false, userId: null });
     });
 
-    it('should return true when hashed key exists in D1', async () => {
+    it('should return {valid: true, userId} when hashed key exists in D1', async () => {
         const testKey = 'pdbfe.real';
         const testHash = await hashKey(testKey);
         const db = /** @type {any} */ ({
@@ -179,16 +179,18 @@ describe('verifyApiKey', () => {
                 return {
                     bind(/** @type {string} */ hash) {
                         return {
-                            first: async () => hash === testHash ? { 1: 1 } : null,
+                            first: async () => hash === testHash ? { user_id: 50001 } : null,
                         };
                     },
                 };
             },
         });
-        assert.equal(await verifyApiKey(db, testKey), true);
+        const result = await verifyApiKey(db, testKey);
+        assert.equal(result.valid, true);
+        assert.equal(result.userId, 50001);
     });
 
-    it('should return false when key hash is not in D1', async () => {
+    it('should return {valid: false} when key hash is not in D1', async () => {
         const db = /** @type {any} */ ({
             prepare() {
                 return {
@@ -198,16 +200,16 @@ describe('verifyApiKey', () => {
                 };
             },
         });
-        assert.equal(await verifyApiKey(db, 'pdbfe.old'), false);
+        assert.deepEqual(await verifyApiKey(db, 'pdbfe.old'), { valid: false, userId: null });
     });
 
-    it('should return false for null', async () => {
+    it('should return {valid: false} for null', async () => {
         const db = /** @type {any} */ ({
             prepare() {
                 return { bind() { return { first: async () => null }; } };
             },
         });
-        assert.equal(await verifyApiKey(db, null), false);
+        assert.deepEqual(await verifyApiKey(db, null), { valid: false, userId: null });
     });
 
     it('should cache results to avoid repeated D1 queries', async () => {
@@ -219,7 +221,7 @@ describe('verifyApiKey', () => {
                         return {
                             first: async () => {
                                 queryCount++;
-                                return { 1: 1 };
+                                return { user_id: 99 };
                             },
                         };
                     },
@@ -408,14 +410,14 @@ describe('resolveAuth', () => {
      * @param {string[]} validHashes - SHA-256 hashes of valid API keys.
      * @returns {D1Database}
      */
-    function mockUserDB(validHashes = []) {
+    function mockUserDB(validHashes = [], userId = 50001) {
         const hashSet = new Set(validHashes);
         return /** @type {any} */ ({
             prepare() {
                 return {
                     bind(/** @type {string} */ hash) {
                         return {
-                            first: async () => hashSet.has(hash) ? { 1: 1 } : null,
+                            first: async () => hashSet.has(hash) ? { user_id: userId } : null,
                         };
                     },
                 };
@@ -446,6 +448,7 @@ describe('resolveAuth', () => {
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, true);
         assert.equal(result.identity, key);
+        assert.equal(result.userId, 50001);
         assert.equal(result.rejection, null);
     });
 
@@ -456,18 +459,20 @@ describe('resolveAuth', () => {
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, false);
         assert.equal(result.identity, null);
+        assert.equal(result.userId, null);
         assert.equal(typeof result.rejection, 'string');
         assert.ok(result.rejection.includes('not valid on this mirror'));
     });
 
     it('falls back to session auth when no API key', async () => {
         const sid = 'abc123session';
-        const env = mockEnv([], { [`session:${sid}`]: { id: 1, name: 'Test' } });
+        const env = mockEnv([], { [`session:${sid}`]: { id: 42, name: 'Test' } });
         const req = mockRequest({ 'Authorization': `Bearer ${sid}` });
 
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, true);
         assert.equal(result.identity, sid);
+        assert.equal(result.userId, 42);
         assert.equal(result.rejection, null);
     });
 
@@ -478,6 +483,7 @@ describe('resolveAuth', () => {
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, false);
         assert.equal(result.identity, null);
+        assert.equal(result.userId, null);
         assert.equal(result.rejection, null);
     });
 
@@ -488,6 +494,7 @@ describe('resolveAuth', () => {
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, false);
         assert.equal(result.identity, null);
+        assert.equal(result.userId, null);
         assert.equal(result.rejection, null);
     });
 
@@ -498,6 +505,7 @@ describe('resolveAuth', () => {
         const result = await resolveAuth(req, env);
         assert.equal(result.authenticated, false);
         assert.equal(result.identity, null);
+        assert.equal(result.userId, null);
         assert.equal(result.rejection, null);
     });
 });

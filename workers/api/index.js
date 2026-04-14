@@ -55,7 +55,7 @@ async function handleRequest(request, env, ctx) {
     initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
-    const { authenticated, identity: authIdentity, rejection } = await resolveAuth(request, env);
+    const { authenticated, identity: authIdentity, userId, rejection } = await resolveAuth(request, env);
     if (rejection) return jsonError(403, rejection);
 
     // Pre-select header sets based on auth state. These frozen objects
@@ -218,7 +218,21 @@ async function handleRequest(request, env, ctx) {
     const response = id > 0
         ? await handleDetail(request, db, ctx, entityTag, id, filters, opts, cachePath, queryString, authenticated)
         : await handleList(request, db, ctx, entityTag, filters, opts, cachePath, queryString, authenticated);
-    return withLastModified(response, entityVersionMs);
+    const finalResponse = withLastModified(response, entityVersionMs);
+
+    // Set X-Auth-Id on authenticated responses. Format matches upstream
+    // PeeringDB convention: "u{peeringdb_user_id}".
+    if (userId !== null) {
+        const h = new Headers(finalResponse.headers);
+        h.set('X-Auth-Id', `u${userId}`);
+        return new Response(finalResponse.body, {
+            status: finalResponse.status,
+            statusText: finalResponse.statusText,
+            headers: h,
+        });
+    }
+
+    return finalResponse;
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");
