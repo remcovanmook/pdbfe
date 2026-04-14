@@ -12,22 +12,25 @@ How to deploy the pdbfe stack from scratch.
 
 ## 1. Cloudflare Resource Setup
 
-### Create a D1 database
+### Create D1 databases
 
 ```bash
+# PeeringDB mirror data
 wrangler d1 create peeringdb
+
+# User profiles and API keys
+wrangler d1 create pdbfe-users
 ```
 
-Note the `database_id` from the output — you'll need it for the wrangler configs.
+Note both `database_id` values from the output — you'll need them for the wrangler configs.
 
-### Create KV namespaces
+### Create a KV namespace
 
 ```bash
 wrangler kv namespace create SESSIONS
-wrangler kv namespace create USERS
 ```
 
-Note both namespace IDs.
+Note the namespace ID.
 
 ## 2. PeeringDB OAuth Application
 
@@ -56,9 +59,9 @@ cp wrangler-auth.toml.example wrangler-auth.toml
 ```
 
 Edit each file and replace the placeholders:
-- `<your-d1-database-id>` → the ID from `wrangler d1 create`
+- `<your-d1-database-id>` → the ID from `wrangler d1 create peeringdb`
+- `<your-users-d1-database-id>` → the ID from `wrangler d1 create pdbfe-users`
 - `<your-sessions-kv-namespace-id>` → the SESSIONS namespace ID
-- `<your-users-kv-namespace-id>` → the USERS namespace ID
 - `<your-subdomain>` → your Cloudflare Workers subdomain
 - `<your-pages-project>` → your Cloudflare Pages project name
 
@@ -110,6 +113,15 @@ Download entity JSON from the PeeringDB API and populate D1:
 This downloads all 13 entity types from the PeeringDB API, converts them to INSERT statements, and loads them into D1 in batches. The `--fetch` flag downloads fresh JSON; without it, the script expects pre-existing JSON files in `database/`.
 
 After the initial load, the sync worker handles incremental updates every 15 minutes via the `since` parameter.
+
+### Users database schema
+
+Bootstrap the users database schema (required before any logins or API key creation):
+
+```bash
+# From the repo root
+npx wrangler d1 execute pdbfe-users --file=database/users/schema.sql --remote
+```
 
 ## 7. Worker Deployment
 
@@ -192,5 +204,6 @@ Visit `https://<your-pages-project>.pages.dev` — you should see the PeeringDB 
 | `OAUTH_CLIENT_SECRET` | wrangler secret | Auth worker |
 | `AUTH_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
 | `API_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
-| D1 database ID | `wrangler.toml`, `wrangler-sync.toml` | API + sync workers |
-| KV namespace IDs | `wrangler.toml`, `wrangler-auth.toml` | API + auth workers |
+| D1 database ID (peeringdb) | `wrangler.toml`, `wrangler-sync.toml` | API + sync workers |
+| D1 database ID (pdbfe-users) | `wrangler.toml`, `wrangler-auth.toml` | API + auth workers |
+| KV namespace ID (SESSIONS) | `wrangler.toml`, `wrangler-auth.toml` | API + auth workers |

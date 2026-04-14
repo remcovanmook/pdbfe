@@ -212,18 +212,21 @@ cp wrangler.toml.example wrangler.toml
 cp wrangler-sync.toml.example wrangler-sync.toml
 cp wrangler-auth.toml.example wrangler-auth.toml
 
-# 2. Populate local D1
+# 2. Populate local D1 (PeeringDB mirror)
 cd .. && ./scripts/migrate-to-d1.sh --fetch && cd workers
 
-# 3. Run API worker locally (XDG overrides keep wrangler state in-tree)
+# 3. Bootstrap local users database schema
+npx wrangler d1 execute pdbfe-users --file=../database/users/schema.sql
+
+# 4. Run API worker locally (XDG overrides keep wrangler state in-tree)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev
 
-# 4. Run auth worker locally (separate terminal, different port)
+# 5. Run auth worker locally (separate terminal, different port)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev --config wrangler-auth.toml --port 8788
 
-# 5. Type check
+# 6. Type check
 npm run typecheck
 
-# 6. Unit tests
+# 7. Unit tests
 npm test
 ```
