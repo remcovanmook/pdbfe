@@ -56,30 +56,39 @@ jobs:
 
       # Generate wrangler configs from examples + secrets.
       # The real configs are gitignored (contain deployment-specific IDs).
+      # Secrets are passed via env: to avoid shell injection from ${{ }} expansion.
       - name: Generate wrangler configs
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          D1_USERDB_ID: ${{ secrets.D1_USERDB_ID }}
+          KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
+          API_DOMAIN: ${{ secrets.API_DOMAIN }}
+          WORKERS_DOMAIN: ${{ secrets.WORKERS_DOMAIN }}
+          OAUTH_REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
+          FRONTEND_ORIGIN: ${{ secrets.FRONTEND_ORIGIN }}
         run: |
           sed \
-            -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
-            -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
-            -e 's/<your-users-d1-database-id>/${{ secrets.D1_USERDB_ID }}/' \
-            -e 's/<your-domain>/${{ secrets.API_DOMAIN }}/g' \
+            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
+            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
             workers/wrangler.toml.example > workers/wrangler.toml
 
           sed \
-            -e 's/<your-d1-database-id>/${{ secrets.D1_DATABASE_ID }}/' \
+            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
             workers/wrangler-sync.toml.example > workers/wrangler-sync.toml
 
           sed \
-            -e 's/<your-sessions-kv-namespace-id>/${{ secrets.KV_SESSIONS_ID }}/' \
-            -e 's/<your-users-d1-database-id>/${{ secrets.D1_USERDB_ID }}/' \
-            -e "s|https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback|${{ secrets.OAUTH_REDIRECT_URI }}|" \
-            -e "s|https://<your-pages-project>.pages.dev|${{ secrets.FRONTEND_ORIGIN }}|" \
+            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
+            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
+            -e "s|https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback|${OAUTH_REDIRECT_URI}|" \
+            -e "s|https://<your-pages-project>.pages.dev|${FRONTEND_ORIGIN}|" \
             workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
 
           # Frontend config (also gitignored)
           sed \
-            -e "s|<your-subdomain>|${{ secrets.WORKERS_DOMAIN }}|g" \
-            -e "s|<your-domain>|${{ secrets.API_DOMAIN }}|g" \
+            -e "s|<your-subdomain>|${WORKERS_DOMAIN}|g" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
             frontend/js/config.js.example > frontend/js/config.js
 
       - name: Deploy
