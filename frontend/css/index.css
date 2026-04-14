@@ -418,6 +418,23 @@ body[data-page="home"] .site-logo {
     padding: var(--space-lg);
 }
 
+/* ── Account page layout ──────────────────────────────────────── */
+
+.account-top {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) 1fr;
+    gap: var(--space-xl);
+    align-items: start;
+    margin-bottom: var(--space-xl);
+}
+
+.account-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    min-width: 0;
+}
+
 /* ── Detail page layout ───────────────────────────────────────── */
 
 .detail-layout {
@@ -1142,6 +1159,10 @@ body[data-page="home"] .site-logo {
 
 @media (max-width: 768px) {
     .detail-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .account-top {
         grid-template-columns: 1fr;
     }
 

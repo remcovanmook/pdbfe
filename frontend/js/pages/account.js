@@ -100,7 +100,8 @@ export async function renderAccount(_params) {
     // ── Page heading ─────────────────────────────────────────────
     frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-    const layout = el('div', { className: 'detail-layout' });
+    // Top row: profile sidebar + networks side by side
+    const topRow = el('div', { className: 'account-top' });
 
     // ── Sidebar: Profile card ────────────────────────────────────
     const sidebar = el('div', { className: 'detail-sidebar' });
@@ -153,14 +154,16 @@ export async function renderAccount(_params) {
 
     const profileCard = card(t('Profile'), profileGroup);
     sidebar.appendChild(profileCard);
-    layout.appendChild(sidebar);
+    topRow.appendChild(sidebar);
 
     // Networks container (populated after layout is in the DOM)
     const netsContainer = el('div', { id: 'networks-container' });
-    layout.appendChild(netsContainer);
+    topRow.appendChild(netsContainer);
 
-    // ── Main: API keys card ──────────────────────────────────────
-    const main = el('div', { className: 'detail-main' });
+    frag.appendChild(topRow);
+
+    // ── Full-width main: API keys + favorites ────────────────────
+    const main = el('div', { className: 'account-main' });
 
     const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
     const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
@@ -180,8 +183,7 @@ export async function renderAccount(_params) {
     const favCard = card(t('Favorites'), favBody);
     main.appendChild(favCard);
 
-    layout.appendChild(main);
-    frag.appendChild(layout);
+    frag.appendChild(main);
 
     // ── Create key modal ─────────────────────────────────────────
     const createModalBody = document.createDocumentFragment();
