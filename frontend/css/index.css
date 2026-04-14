@@ -443,7 +443,8 @@ body[data-page="home"] .site-logo {
     object-fit: contain;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
-    background: hsl(0 0% 100% / 0.05);
+    background: #fff;
+    padding: 4px;
     flex-shrink: 0;
 }
 
