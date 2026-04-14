@@ -1,6 +1,6 @@
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser } from '../auth.js';
-import { formatLocaleDate as formatDate, createLink, createField, createFieldGroup } from '../render.js';
+import { formatLocaleDate as formatDate, createLink } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
 // ── DOM helpers ─────────────────────────────────────────────────────

@@ -311,8 +311,7 @@ export function renderMarkdown(text) {
         }
 
         // Regular text line
-        result.push(trimmed);
-        result.push('<br>');
+        result.push(trimmed, '<br>');
     }
 
     // Close any open list
