@@ -21,6 +21,15 @@ import { t } from './i18n.js';
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
 
+/**
+ * Expected format for session IDs: 64 lowercase hex characters,
+ * matching the output of generateSessionId() in the auth worker.
+ * Used to reject malformed or injected sid query parameters.
+ *
+ * @type {RegExp}
+ */
+const SID_PATTERN = /^[0-9a-f]{64}$/;
+
 /** @type {string|null} Cached session ID for the current page load. */
 let _cachedSid = null;
 
@@ -42,7 +51,7 @@ export async function initAuth() {
     const urlParams = new URLSearchParams(globalThis.location.search);
 
     const sid = urlParams.get('sid');
-    if (sid) {
+    if (sid && SID_PATTERN.test(sid)) {
         localStorage.setItem(STORAGE_KEY, sid);
         // Clean the query param from the URL without triggering a page reload
         history.replaceState(null, '', globalThis.location.pathname);
