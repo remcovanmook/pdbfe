@@ -175,7 +175,7 @@ class PdbTable extends HTMLElement {
         cfg.columns.forEach((col, idx) => {
             const th = document.createElement('th');
             th.textContent = t(col.label);
-            th.setAttribute('data-sort-key', col.key);
+            th.dataset.sortKey = col.key;
             th.style.cursor = 'pointer';
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
@@ -243,7 +243,7 @@ class PdbTable extends HTMLElement {
             this._sortColIdx = 0;
             this._sortDir = 'asc';
             const firstTh = thead.querySelector('th');
-            if (firstTh) firstTh.setAttribute('data-sort-dir', 'asc');
+            if (firstTh) firstTh.dataset.sortDir = 'asc';
             this._applySortToProcessedRows();
         }
 
@@ -286,10 +286,10 @@ class PdbTable extends HTMLElement {
 
         // Update visual indicators
         for (const th of thead.querySelectorAll('th')) {
-            th.removeAttribute('data-sort-dir');
+            delete th.dataset.sortDir;
         }
         const activeTh = thead.querySelectorAll('th')[colIdx];
-        if (activeTh) activeTh.setAttribute('data-sort-dir', this._sortDir);
+        if (activeTh) activeTh.dataset.sortDir = this._sortDir;
 
         this._applySortToProcessedRows();
         this._page = 1;
@@ -416,7 +416,7 @@ class PdbTable extends HTMLElement {
                 } else if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
                     td.appendChild(rendered.node);
                     if (rendered.sortValue !== undefined) {
-                        td.setAttribute('data-sort-value', String(rendered.sortValue));
+                        td.dataset.sortValue = String(rendered.sortValue);
                     }
                 }
 

@@ -163,7 +163,7 @@ export function attachTypeahead(input, opts = {}) {
                     }
                 }
 
-                itemDiv.setAttribute('data-href', `/${group.key}/${item.id}`);
+                itemDiv.dataset.href = `/${group.key}/${item.id}`;
                 itemDiv.setAttribute('role', 'option');
                 groupDiv.appendChild(itemDiv);
             }
@@ -254,7 +254,7 @@ export function attachTypeahead(input, opts = {}) {
             case 'Enter':
                 if (activeIndex >= 0 && activeIndex < items.length) {
                     e.preventDefault();
-                    const href = items[activeIndex].getAttribute('data-href');
+                    const href = items[activeIndex].dataset.href;
                     if (href) {
                         closeDropdown();
                         navigate(href);
@@ -273,10 +273,10 @@ export function attachTypeahead(input, opts = {}) {
 
     // Click on dropdown item → navigate
     dropdown.addEventListener('click', (e) => {
-        const item = /** @type {HTMLElement|null} */ (e.target)?.closest('.search-dropdown__item');
+        const item = /** @type {HTMLElement|null} */ (/** @type {Element} */ (e.target).closest('.search-dropdown__item'));
         if (!item) return;
 
-        const href = item.getAttribute('data-href');
+        const href = item.dataset.href;
         if (href) {
             closeDropdown();
             navigate(href);

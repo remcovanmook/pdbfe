@@ -138,7 +138,7 @@ function getTemplate(id) {
 export function createLink(type, id, label) {
     const a = document.createElement('a');
     a.href = `/${type}/${id}`;
-    a.setAttribute('data-link', '');
+    a.dataset.link = '';
     a.textContent = label;
     return a;
 }

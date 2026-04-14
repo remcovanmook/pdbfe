@@ -300,7 +300,7 @@ function buildOverlayDOM(syncStatus, localCache) {
     // ── Section 2: D1 Sync State ─────────────────────────────────
     const syncSection = _el('div', { className: 'debug-section debug-section--collapsible' });
     const syncToggle = _el('h4', { className: 'debug-section__toggle' });
-    syncToggle.setAttribute('data-target', 'debug-sync-body');
+    syncToggle.dataset.target = 'debug-sync-body';
     syncToggle.appendChild(document.createTextNode(t('D1 Edge Sync State')));
     if (syncStatus?.last_sync_at) {
         const syncMeta = _el('span', { className: 'debug-meta--inline', text: ` ${formatDate(toUTCISO(syncStatus.last_sync_at))}` });
@@ -356,7 +356,7 @@ function buildOverlayDOM(syncStatus, localCache) {
     // ── Section 3: Full Browser Cache ────────────────────────────
     const cacheSection = _el('div', { className: 'debug-section debug-section--collapsible' });
     const cacheToggle = _el('h4', { className: 'debug-section__toggle' });
-    cacheToggle.setAttribute('data-target', 'debug-cache-body');
+    cacheToggle.dataset.target = 'debug-cache-body';
     cacheToggle.appendChild(document.createTextNode(t('All Cached Requests')));
     cacheToggle.appendChild(_el('span', { className: 'debug-meta--inline', text: ` ${localCache.length} ${t('entries')}` }));
     cacheToggle.appendChild(_el('span', { className: 'debug-chevron', text: '\u25B8' }));
@@ -468,7 +468,7 @@ function wireButtons() {
     // Collapsible section toggles
     for (const toggle of document.querySelectorAll('.debug-section__toggle')) {
         toggle.addEventListener('click', () => {
-            const targetId = toggle.getAttribute('data-target');
+            const targetId = /** @type {HTMLElement} */ (toggle).dataset.target;
             if (!targetId) return;
             const body = document.getElementById(targetId);
             if (!body) return;

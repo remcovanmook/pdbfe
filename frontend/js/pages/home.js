@@ -80,7 +80,7 @@ export async function renderHome(_params) {
     desc2.append('Learn more ');
     const aboutLink = document.createElement('a');
     aboutLink.href = '/about';
-    aboutLink.setAttribute('data-link', '');
+    aboutLink.dataset.link = '';
     aboutLink.textContent = 'about this mirror';
     desc2.append(aboutLink, '.');
     hero.appendChild(desc2);
