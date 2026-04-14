@@ -113,20 +113,29 @@ async function getUser(db, userId) {
  * Provisions a new user record from session data if one doesn't
  * already exist. Returns the existing or newly created record.
  *
+ * Uses INSERT OR IGNORE to survive concurrent SPA requests that
+ * may both attempt to provision the same user simultaneously.
+ * The second INSERT silently drops, and the re-fetch returns
+ * the canonical DB state regardless of which request won.
+ *
  * @param {D1Database} db - USERDB D1 binding.
  * @param {SessionData} session - Current session data.
  * @returns {Promise<UserRecord>}
  */
 async function ensureUser(db, session) {
-    const existing = await getUser(db, session.id);
+    let existing = await getUser(db, session.id);
     if (existing) return existing;
 
     const now = new Date().toISOString();
     await db.prepare(
-        'INSERT INTO users (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+        'INSERT OR IGNORE INTO users (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
     ).bind(session.id, session.name, session.email, now, now).run();
 
-    return /** @type {UserRecord} */ ({
+    // Re-fetch to guarantee we return the canonical DB state
+    // regardless of which concurrent request won the INSERT race.
+    existing = await getUser(db, session.id);
+
+    return existing || /** @type {UserRecord} */ ({
         id: session.id,
         name: session.name,
         email: session.email,
