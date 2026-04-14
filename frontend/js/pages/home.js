@@ -13,7 +13,7 @@ import { createLink, createLoading, formatDate } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
 import { getLabel } from '../entities.js';
-import { isAuthenticated, getFavorites } from '../auth.js';
+import { getFavorites } from '../auth.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -88,8 +88,9 @@ export async function renderHome(_params) {
 
     homeTop.appendChild(hero);
 
-    // Favorites section (authenticated users only, if they have favorites)
-    const favorites = isAuthenticated() ? getFavorites() : [];
+    // Favorites section — shows for any user with favorites
+    // (anonymous: localStorage, authenticated: D1)
+    const favorites = getFavorites();
     if (favorites.length > 0) {
         const favsSection = document.createElement('div');
         favsSection.className = 'home-favorites';

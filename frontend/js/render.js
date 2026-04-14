@@ -10,7 +10,7 @@
 
 import { renderMarkdown } from './markdown.js';
 import { t, getCurrentLang } from './i18n.js';
-import { isAuthenticated, isFavorite, addFavorite, removeFavorite } from './auth.js';
+import { isFavorite, addFavorite, removeFavorite } from './auth.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -362,8 +362,8 @@ export function createDetailLayout(opts) {
         header.appendChild(sub);
     }
 
-    // Favorite toggle button — only for authenticated users
-    if (opts.entityType && opts.entityId && isAuthenticated()) {
+    // Favorite toggle button — works for anonymous (localStorage) and authenticated (D1)
+    if (opts.entityType && opts.entityId) {
         header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
     }
 
