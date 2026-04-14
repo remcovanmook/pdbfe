@@ -566,8 +566,8 @@ export async function handleRemoveFavorite(request, env, entityType, entityId) {
         return jsonResponse({ error: 'Invalid entity type' }, 400, env.FRONTEND_ORIGIN);
     }
 
-    const id = parseInt(entityId, 10);
-    if (isNaN(id) || id <= 0) {
+    const id = Number.parseInt(entityId, 10);
+    if (Number.isNaN(id) || id <= 0) {
         return jsonResponse({ error: 'Invalid entity ID' }, 400, env.FRONTEND_ORIGIN);
     }
 

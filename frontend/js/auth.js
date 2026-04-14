@@ -24,7 +24,7 @@
 
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
-import { t, setLanguage, getCurrentLang } from './i18n.js';
+import { t, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -486,7 +486,7 @@ async function _fetchProfile(sid) {
                 // the current locale. This makes the preference follow the
                 // user across browsers/devices.
                 const serverLang = profile.preferences.language;
-                if (serverLang && serverLang !== getCurrentLang()) {
+                if (serverLang && serverLang in LANGUAGES && serverLang !== getCurrentLang()) {
                     await setLanguage(serverLang);
                     // Also update localStorage so the footer selector and
                     // subsequent page loads use the right locale without
