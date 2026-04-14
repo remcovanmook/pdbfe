@@ -1,6 +1,9 @@
 /**
  * @fileoverview Unit tests for API key generation, verification, and
  * account management functions.
+ *
+ * Uses mock D1 databases instead of mock KV namespaces. The verifyApiKey
+ * function now queries `SELECT 1 FROM api_keys WHERE hash = ?` on D1.
  */
 
 import { describe, it } from 'node:test';
@@ -8,39 +11,48 @@ import assert from 'node:assert/strict';
 import { generateApiKey } from '../../../auth/account.js';
 import { verifyApiKey, extractApiKey, hashKey } from '../../../core/auth.js';
 
-// ── Mock KV namespace ────────────────────────────────────────────────────────
+// ── Mock D1 database ─────────────────────────────────────────────────────────
 
 /**
- * Creates a mock KVNamespace backed by an in-memory store.
+ * Creates a mock D1Database backed by an in-memory row store.
+ * Supports the subset of the D1 API used by verifyApiKey:
+ *   db.prepare(sql).bind(...params).first() → row | null
  *
- * @param {Record<string, string>} store - Initial key-value contents.
- * @returns {{kv: KVNamespace, store: Record<string, string>}}
+ * The store maps SQL query substrings to result-producing functions,
+ * but for key verification tests we only need to match hash lookups.
+ *
+ * @param {Array<{hash: string}>} apiKeys - API key rows to seed.
+ * @returns {D1Database}
  */
-function mockKV(store = {}) {
-    const kv = /** @type {any} */ ({
-        get: async (/** @type {string} */ key, /** @type {any} */ opts) => {
-            const value = store[key];
-            if (value === undefined) return null;
-            if (opts?.type === 'json') {
-                return typeof value === 'string' ? JSON.parse(value) : value;
-            }
-            return value;
+function mockD1(apiKeys = []) {
+    const hashSet = new Set(apiKeys.map(k => k.hash));
+
+    return /** @type {any} */ ({
+        prepare(/** @type {string} */ _sql) {
+            return {
+                /** @type {any[]} */
+                _params: [],
+                bind(/** @type {...any} */ ...params) {
+                    this._params = params;
+                    return this;
+                },
+                first() {
+                    // Respond to: SELECT user_id FROM api_keys WHERE hash = ?
+                    const hash = this._params[0];
+                    return Promise.resolve(hashSet.has(hash) ? { user_id: 1 } : null);
+                },
+                run() {
+                    return Promise.resolve({ success: true, meta: {}, results: [] });
+                },
+                all() {
+                    return Promise.resolve({ success: true, meta: {}, results: [] });
+                },
+            };
         },
-        put: async (/** @type {string} */ key, /** @type {string} */ value) => {
-            store[key] = value;
-        },
-        delete: async (/** @type {string} */ key) => {
-            delete store[key];
-        },
-        list: async (/** @type {{prefix?: string}} */ opts) => {
-            const prefix = opts?.prefix || '';
-            const keys = Object.keys(store)
-                .filter(k => k.startsWith(prefix))
-                .map(name => ({ name }));
-            return { keys };
+        batch(/** @type {any[]} */ stmts) {
+            return Promise.resolve(stmts.map(() => ({ success: true, meta: {}, results: [] })));
         },
     });
-    return { kv, store };
 }
 
 // ── generateApiKey ───────────────────────────────────────────────────────────
@@ -71,55 +83,59 @@ describe('generateApiKey', () => {
 // ── verifyApiKey ─────────────────────────────────────────────────────────────
 
 describe('verifyApiKey', () => {
-    it('returns true for a key that exists in KV (hashed)', async () => {
+    it('returns true for a key that exists in D1 (hashed)', async () => {
         const testKey = 'pdbfe.abcd1234abcd1234abcd1234abcd1234';
         const hashed = await hashKey(testKey);
-        const { kv } = mockKV({
-            [`apikey:${hashed}`]: JSON.stringify({
-                user_id: 42,
-                label: 'test key',
-                created_at: '2026-04-06T10:00:00Z',
-            }),
-        });
+        const db = mockD1([{ hash: hashed }]);
 
-        const result = await verifyApiKey(kv, testKey);
-        assert.equal(result, true);
+        const result = await verifyApiKey(db, testKey);
+        assert.equal(result.valid, true);
+        assert.equal(result.userId, 1);
     });
 
-    it('returns false for a key that does not exist in KV', async () => {
-        const { kv } = mockKV({});
-        const result = await verifyApiKey(kv, 'pdbfe.nonexistent0000000000000000');
-        assert.equal(result, false);
+    it('returns false for a key that does not exist in D1', async () => {
+        const db = mockD1([]);
+        const result = await verifyApiKey(db, 'pdbfe.nonexistent0000000000000000');
+        assert.equal(result.valid, false);
+        assert.equal(result.userId, null);
     });
 
     it('returns false for null key', async () => {
-        const { kv } = mockKV({});
-        const result = await verifyApiKey(kv, null);
-        assert.equal(result, false);
+        const db = mockD1([]);
+        const result = await verifyApiKey(db, null);
+        assert.equal(result.valid, false);
     });
 
     it('returns false for empty string key', async () => {
-        const { kv } = mockKV({});
-        const result = await verifyApiKey(kv, '');
-        assert.equal(result, false);
+        const db = mockD1([]);
+        const result = await verifyApiKey(db, '');
+        assert.equal(result.valid, false);
     });
 
-    it('caches results to avoid repeated KV lookups', async () => {
-        let getCount = 0;
-        const kv = /** @type {any} */ ({
-            get: async (/** @type {string} */ _key) => {
-                getCount++;
-                return '{}';
+    it('caches results to avoid repeated D1 queries', async () => {
+        let queryCount = 0;
+        const db = /** @type {any} */ ({
+            prepare() {
+                return {
+                    bind() {
+                        return {
+                            first() {
+                                queryCount++;
+                                return Promise.resolve({ user_id: 99 });
+                            },
+                        };
+                    },
+                };
             },
         });
 
-        const key = 'pdbfe.cachetest000000000000000000';
-        await verifyApiKey(kv, key);
-        await verifyApiKey(kv, key);
-        await verifyApiKey(kv, key);
+        const key = 'pdbfe.cachetest_d1_000000000000000';
+        await verifyApiKey(db, key);
+        await verifyApiKey(db, key);
+        await verifyApiKey(db, key);
 
-        // Should only hit KV once, then cache for subsequent calls
-        assert.equal(getCount, 1, 'Expected 1 KV get call, got ' + getCount);
+        // Should only hit D1 once, then cache for subsequent calls
+        assert.equal(queryCount, 1, 'Expected 1 D1 query, got ' + queryCount);
     });
 });
 
@@ -129,9 +145,7 @@ describe('extractApiKey + verifyApiKey integration', () => {
     it('extracts and verifies a valid key from request header', async () => {
         const fullKey = generateApiKey();
         const hashed = await hashKey(fullKey);
-        const { kv } = mockKV({
-            [`apikey:${hashed}`]: JSON.stringify({ user_id: 1, label: 'test', created_at: '' }),
-        });
+        const db = mockD1([{ hash: hashed }]);
 
         const request = new Request('https://api.example.com/api/net', {
             headers: { 'Authorization': `Api-Key ${fullKey}` },
@@ -140,19 +154,19 @@ describe('extractApiKey + verifyApiKey integration', () => {
         const extracted = extractApiKey(request);
         assert.equal(extracted, fullKey);
 
-        const valid = await verifyApiKey(kv, extracted);
-        assert.equal(valid, true);
+        const result = await verifyApiKey(db, extracted);
+        assert.equal(result.valid, true);
     });
 
-    it('returns false for a valid format key that is not in KV', async () => {
-        const { kv } = mockKV({});
+    it('returns false for a valid format key that is not in D1', async () => {
+        const db = mockD1([]);
 
         const request = new Request('https://api.example.com/api/net', {
             headers: { 'Authorization': 'Api-Key pdbfe.0000000000000000000000000000dead' },
         });
 
         const extracted = extractApiKey(request);
-        const valid = await verifyApiKey(kv, extracted);
-        assert.equal(valid, false);
+        const result = await verifyApiKey(db, extracted);
+        assert.equal(result.valid, false);
     });
 });

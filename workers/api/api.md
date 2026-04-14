@@ -158,7 +158,7 @@ Precompiled frozen headers on every response:
 ### Authentication Methods
 
 The API worker supports two authentication methods, resolved in order:
-1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — SHA-256 hashed and verified against the USERS KV namespace with a per-isolate 5-minute cache. Upstream PeeringDB API keys are rejected with a 403.
+1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — SHA-256 hashed and verified against the USERDB D1 database with a per-isolate 5-minute cache. Upstream PeeringDB API keys are rejected with a 403.
 2. **Session token** (`Authorization: Bearer <sid>` or cookie) — verified against the SESSIONS KV namespace.
 
 Both authentication checks complete before rate limiting, so authenticated vs anonymous limits are applied correctly.

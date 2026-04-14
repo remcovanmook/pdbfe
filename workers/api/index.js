@@ -7,7 +7,7 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, withLastModified } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
 import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
@@ -55,7 +55,7 @@ async function handleRequest(request, env, ctx) {
     initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
-    const { authenticated, identity: authIdentity, rejection } = await resolveAuth(request, env);
+    const { authenticated, identity: authIdentity, userId, rejection } = await resolveAuth(request, env);
     if (rejection) return jsonError(403, rejection);
 
     // Pre-select header sets based on auth state. These frozen objects
@@ -218,7 +218,29 @@ async function handleRequest(request, env, ctx) {
     const response = id > 0
         ? await handleDetail(request, db, ctx, entityTag, id, filters, opts, cachePath, queryString, authenticated)
         : await handleList(request, db, ctx, entityTag, filters, opts, cachePath, queryString, authenticated);
-    return withLastModified(response, entityVersionMs);
+
+    // Batch header mutations into a single Response constructor to avoid
+    // instantiating intermediate garbage Response objects on the hot path.
+    if (entityVersionMs > 0 || userId !== null) {
+        const h = new Headers(response.headers);
+
+        if (entityVersionMs > 0) {
+            h.set('Last-Modified', lastModifiedHeader(entityVersionMs));
+        }
+
+        // Format matches upstream PeeringDB convention: "u{peeringdb_user_id}"
+        if (userId !== null) {
+            h.set('X-Auth-Id', `u${userId}`);
+        }
+
+        return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: h,
+        });
+    }
+
+    return response;
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

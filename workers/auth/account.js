@@ -11,24 +11,18 @@
  *
  * All endpoints require a valid session (Authorization: Bearer header).
  *
- * Data is stored in the USERS KV namespace:
- *   user:<pdb_user_id>       → UserRecord (profile + key metadata)
- *   apikey:<sha256(full_key)> → ApiKeyEntry (reverse index for API worker lookups)
+ * Data is stored in the USERDB D1 database:
+ *   users     — one row per PeeringDB user (auto-provisioned on first login)
+ *   api_keys  — one row per API key, with ACID guarantees on INSERT/DELETE
  *
  * API keys use the format `pdbfe.<32 hex chars>` for visual distinction
  * from upstream PeeringDB API keys. Keys are SHA-256 hashed before
- * storage so the cleartext key is never persisted in KV.
+ * storage so the cleartext key is never persisted.
  */
 
 import { extractSessionId, resolveSession, generateSessionId, hashKey } from '../core/auth.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-/** KV key prefix for user records. */
-const USER_PREFIX = 'user:';
-
-/** KV key prefix for API key reverse-index entries. */
-const APIKEY_PREFIX = 'apikey:';
 
 /** Prefix prepended to generated API keys for identification. */
 const KEY_VISUAL_PREFIX = 'pdbfe.';
@@ -100,58 +94,54 @@ async function requireSession(request, env) {
     return { session, error: null };
 }
 
-// ── User record helpers ──────────────────────────────────────────────────────
+// ── User record helpers (D1) ─────────────────────────────────────────────────
 
 /**
- * Reads a user record from USERS KV. Returns null if not found.
+ * Reads a user record from the USERDB D1 database. Returns null if not found.
  *
- * @param {KVNamespace} kv - USERS KV namespace.
+ * @param {D1Database} db - USERDB D1 binding.
  * @param {number} userId - PeeringDB user ID.
  * @returns {Promise<UserRecord|null>}
  */
-async function getUser(kv, userId) {
+async function getUser(db, userId) {
     return /** @type {UserRecord|null} */ (
-        await kv.get(USER_PREFIX + userId, { type: 'json' })
+        await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first()
     );
-}
-
-/**
- * Writes a user record to USERS KV. No TTL — user records persist
- * until explicitly deleted.
- *
- * @param {KVNamespace} kv - USERS KV namespace.
- * @param {UserRecord} user - The user record to write.
- * @returns {Promise<void>}
- */
-async function putUser(kv, user) {
-    await kv.put(USER_PREFIX + user.id, JSON.stringify(user));
 }
 
 /**
  * Provisions a new user record from session data if one doesn't
  * already exist. Returns the existing or newly created record.
  *
- * @param {KVNamespace} kv - USERS KV namespace.
+ * Uses INSERT OR IGNORE to survive concurrent SPA requests that
+ * may both attempt to provision the same user simultaneously.
+ * The second INSERT silently drops, and the re-fetch returns
+ * the canonical DB state regardless of which request won.
+ *
+ * @param {D1Database} db - USERDB D1 binding.
  * @param {SessionData} session - Current session data.
  * @returns {Promise<UserRecord>}
  */
-async function ensureUser(kv, session) {
-    const existing = await getUser(kv, session.id);
+async function ensureUser(db, session) {
+    let existing = await getUser(db, session.id);
     if (existing) return existing;
 
     const now = new Date().toISOString();
-    /** @type {UserRecord} */
-    const user = {
+    await db.prepare(
+        'INSERT OR IGNORE INTO users (id, name, email, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+    ).bind(session.id, session.name, session.email, now, now).run();
+
+    // Re-fetch to guarantee we return the canonical DB state
+    // regardless of which concurrent request won the INSERT race.
+    existing = await getUser(db, session.id);
+
+    return existing || /** @type {UserRecord} */ ({
         id: session.id,
         name: session.name,
         email: session.email,
-        api_keys: [],
         created_at: now,
         updated_at: now,
-    };
-
-    await putUser(kv, user);
-    return user;
+    });
 }
 
 // ── API key helpers ──────────────────────────────────────────────────────────
@@ -173,7 +163,7 @@ export function generateApiKey() {
 /**
  * Extracts the key ID from a full API key. The ID is the first 8 hex
  * characters after the prefix, used as the stable identifier in the
- * user record's api_keys array.
+ * api_keys table.
  *
  * @param {string} fullKey - The full API key (e.g. "pdbfe.a1b2c3d4e5f6...").
  * @returns {string} The 8-character key ID.
@@ -207,7 +197,7 @@ export async function handleGetProfile(request, env) {
     const { session, error } = await requireSession(request, env);
     if (error) return error;
 
-    const user = await ensureUser(env.USERS, /** @type {SessionData} */ (session));
+    const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
 
     return jsonResponse({
         id: user.id,
@@ -242,23 +232,25 @@ export async function handleUpdateProfile(request, env) {
         return jsonResponse({ error: 'name is required and must be non-empty' }, 400, env.FRONTEND_ORIGIN);
     }
 
-    const user = await ensureUser(env.USERS, /** @type {SessionData} */ (session));
-    user.name = body.name.trim();
-    user.updated_at = new Date().toISOString();
+    const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+    const now = new Date().toISOString();
+    const trimmedName = body.name.trim();
 
-    await putUser(env.USERS, user);
+    await env.USERDB.prepare(
+        'UPDATE users SET name = ?, updated_at = ? WHERE id = ?'
+    ).bind(trimmedName, now, user.id).run();
 
     return jsonResponse({
         id: user.id,
-        name: user.name,
+        name: trimmedName,
         email: user.email,
-        updated_at: user.updated_at,
+        updated_at: now,
     }, 200, env.FRONTEND_ORIGIN);
 }
 
 /**
  * GET /account/keys — Lists the user's API keys.
- * Returns metadata only (id, label, prefix, created_at) — never the full key.
+ * Returns metadata only (key_id, label, prefix, created_at) — never the full key.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
@@ -268,10 +260,14 @@ export async function handleListKeys(request, env) {
     const { session, error } = await requireSession(request, env);
     if (error) return error;
 
-    const user = await ensureUser(env.USERS, /** @type {SessionData} */ (session));
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+
+    const result = await env.USERDB.prepare(
+        'SELECT key_id, label, prefix, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at'
+    ).bind(session.id).all();
 
     return jsonResponse({
-        keys: user.api_keys,
+        keys: result.results,
         max_keys: MAX_KEYS_PER_USER,
     }, 200, env.FRONTEND_ORIGIN);
 }
@@ -279,11 +275,16 @@ export async function handleListKeys(request, env) {
 /**
  * POST /account/keys — Creates a new API key.
  * The full key is returned exactly once in the response. It is never
- * stored in the user record — only the 4-char prefix is kept for display.
+ * stored — only its SHA-256 hash is persisted in D1.
  *
- * Two KV writes happen atomically (sequentially):
- *   1. `apikey:<sha256(key)>` — reverse index for pdbfe-api lookups
- *   2. `user:<id>` — updated user record with new key metadata
+ * Uses db.batch() to atomically:
+ *   1. INSERT the key row into api_keys
+ *   2. UPDATE the user's updated_at timestamp
+ *
+ * The UNIQUE constraint on api_keys.hash prevents duplicate keys at
+ * the database level. The key count check + insert is not strictly
+ * atomic, but the worst case is exceeding MAX_KEYS_PER_USER by one
+ * on a race — acceptable for a soft limit.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
@@ -304,9 +305,15 @@ export async function handleCreateKey(request, env) {
         ? body.label.trim().slice(0, 64)
         : 'Unnamed key';
 
-    const user = await ensureUser(env.USERS, /** @type {SessionData} */ (session));
+    const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
 
-    if (user.api_keys.length >= MAX_KEYS_PER_USER) {
+    // Check key count — soft limit enforced at the application layer.
+    const countRow = await env.USERDB.prepare(
+        'SELECT COUNT(*) as cnt FROM api_keys WHERE user_id = ?'
+    ).bind(user.id).first();
+    const keyCount = countRow ? /** @type {number} */ (countRow.cnt) : 0;
+
+    if (keyCount >= MAX_KEYS_PER_USER) {
         return jsonResponse(
             { error: `Maximum of ${MAX_KEYS_PER_USER} API keys allowed` },
             400,
@@ -317,47 +324,34 @@ export async function handleCreateKey(request, env) {
     const fullKey = generateApiKey();
     const keyHash = await hashKey(fullKey);
     const now = new Date().toISOString();
+    const id = keyId(fullKey);
+    const prefix = keyPrefix(fullKey);
 
-    // Write reverse-index entry keyed by hash (cleartext key is never stored)
-    /** @type {ApiKeyEntry} */
-    const entry = {
-        user_id: session.id,
-        label,
-        created_at: now,
-    };
-    await env.USERS.put(APIKEY_PREFIX + keyHash, JSON.stringify(entry));
-
-    // Update user record with key metadata (hash stored for deletion)
-    /** @type {ApiKeyMeta} */
-    const meta = {
-        id: keyId(fullKey),
-        label,
-        prefix: keyPrefix(fullKey),
-        hash: keyHash,
-        created_at: now,
-    };
-    user.api_keys.push(meta);
-    user.updated_at = now;
-    await putUser(env.USERS, user);
+    // Atomic batch: insert key + update user timestamp.
+    // UNIQUE constraint on hash prevents duplicate keys.
+    await env.USERDB.batch([
+        env.USERDB.prepare(
+            'INSERT INTO api_keys (key_id, user_id, label, prefix, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(id, user.id, label, prefix, keyHash, now),
+        env.USERDB.prepare(
+            'UPDATE users SET updated_at = ? WHERE id = ?'
+        ).bind(now, user.id),
+    ]);
 
     // Return the full key exactly once
     return jsonResponse({
         key: fullKey,
-        id: meta.id,
-        label: meta.label,
-        prefix: meta.prefix,
+        key_id: id,
+        label,
+        prefix,
         created_at: now,
     }, 201, env.FRONTEND_ORIGIN);
 }
 
 /**
  * DELETE /account/keys/:id — Revokes an API key by its 8-char ID.
- * Deletes both the reverse-index entry and removes the key from
- * the user record.
- *
- * Since we don't store the full key in the user record, we need to
- * reconstruct the reverse-index key. We iterate over KV to find the
- * matching entry by user_id and key ID prefix match.
+ * Deletes the key row from api_keys and updates the user's timestamp.
+ * Uses db.batch() to ensure both operations succeed or fail together.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
@@ -368,23 +362,28 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
     const { session, error } = await requireSession(request, env);
     if (error) return error;
 
-    const user = await ensureUser(env.USERS, /** @type {SessionData} */ (session));
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
 
-    const keyIndex = user.api_keys.findIndex(k => k.id === deleteKeyId);
-    if (keyIndex === -1) {
+    // Check the key exists and belongs to this user
+    const existing = await env.USERDB.prepare(
+        'SELECT key_id FROM api_keys WHERE user_id = ? AND key_id = ?'
+    ).bind(session.id, deleteKeyId).first();
+
+    if (!existing) {
         return jsonResponse({ error: 'API key not found' }, 404, env.FRONTEND_ORIGIN);
     }
 
-    // Delete the reverse-index entry using the stored hash
-    const keyMeta = user.api_keys[keyIndex];
-    if (keyMeta.hash) {
-        await env.USERS.delete(APIKEY_PREFIX + keyMeta.hash);
-    }
+    const now = new Date().toISOString();
 
-    // Remove from user record
-    user.api_keys.splice(keyIndex, 1);
-    user.updated_at = new Date().toISOString();
-    await putUser(env.USERS, user);
+    // Atomic batch: delete key + update user timestamp
+    await env.USERDB.batch([
+        env.USERDB.prepare(
+            'DELETE FROM api_keys WHERE user_id = ? AND key_id = ?'
+        ).bind(session.id, deleteKeyId),
+        env.USERDB.prepare(
+            'UPDATE users SET updated_at = ? WHERE id = ?'
+        ).bind(now, session.id),
+    ]);
 
     return jsonResponse({ deleted: deleteKeyId }, 200, env.FRONTEND_ORIGIN);
 }

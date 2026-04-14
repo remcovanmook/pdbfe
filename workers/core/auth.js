@@ -4,8 +4,9 @@
  * Provides two authentication paths:
  *
  * 1. API-Key: PeeringDB convention `Authorization: Api-Key <key>`.
- *    Currently a stub — verifyApiKey() always returns false.
- *    Reserved for future direct API-key validation.
+ *    Keys are SHA-256 hashed and looked up in the USERDB D1 database
+ *    (api_keys table). An in-memory per-isolate cache avoids repeated
+ *    D1 reads within a 5-minute window.
  *
  * 2. Session-based: OAuth sessions stored in the SESSIONS KV namespace.
  *    The pdbfe-auth worker writes sessions on successful OAuth login.
@@ -59,37 +60,37 @@ export function extractApiKey(request) {
 }
 
 /**
- * Validates an API key by hashing it and looking up the reverse-index
- * entry in the USERS KV namespace. Keys are stored as `apikey:<sha256(key)>`
- * so the cleartext key is never persisted. An in-memory per-isolate cache
- * (keyed on the cleartext key) avoids repeated KV reads within a 5-minute
- * window.
+ * Validates an API key by hashing it and looking up the hash in the
+ * USERDB D1 database (api_keys table). An in-memory per-isolate cache
+ * (keyed on the cleartext key) avoids repeated D1 queries within a
+ * 5-minute window.
  *
  * Key format: `pdbfe.<32 hex chars>`.
- * KV key format: `apikey:<sha256(full_key)>` → ApiKeyEntry JSON.
+ * D1 query: `SELECT user_id FROM api_keys WHERE hash = ?`.
  *
- * @param {KVNamespace} kv - The USERS KV namespace binding.
+ * @param {D1Database|D1DatabaseSession} db - USERDB D1 binding (or session).
  * @param {string} apiKey - The API key to validate.
- * @returns {Promise<boolean>} Whether the key is valid.
+ * @returns {Promise<{valid: boolean, userId: number|null}>} Validation result with owning user ID.
  */
-export async function verifyApiKey(kv, apiKey) {
-    if (!apiKey) return false;
+export async function verifyApiKey(db, apiKey) {
+    if (!apiKey) return { valid: false, userId: null };
 
     const now = Date.now();
 
     // Check in-memory cache first (keyed on cleartext, ephemeral per-isolate)
     const cached = _apiKeyCache.get(apiKey);
     if (cached && (now - cached.ts) < APIKEY_CACHE_TTL) {
-        return cached.valid;
+        return { valid: cached.valid, userId: cached.userId };
     }
 
-    // Hash the key, then look up in KV
+    // Hash the key, then look up in D1
     const hashed = await hashKey(apiKey);
-    const entry = await kv.get('apikey:' + hashed);
-    const valid = entry !== null;
+    const row = await db.prepare('SELECT user_id FROM api_keys WHERE hash = ?').bind(hashed).first();
+    const valid = row !== null;
+    const userId = valid ? /** @type {number} */ (row.user_id) : null;
 
     // Cache the result (both positive and negative)
-    _apiKeyCache.set(apiKey, { valid, ts: now });
+    _apiKeyCache.set(apiKey, { valid, userId, ts: now });
 
     // Enforce hard size cap to prevent unbounded growth from brute-force
     // floods of invalid keys. First pass: evict stale entries. If still
@@ -114,7 +115,7 @@ export async function verifyApiKey(kv, apiKey) {
         }
     }
 
-    return valid;
+    return { valid, userId };
 }
 
 /**
@@ -122,7 +123,7 @@ export async function verifyApiKey(kv, apiKey) {
  * Maps full API key string → {valid: boolean, ts: number}.
  * Entries expire after APIKEY_CACHE_TTL milliseconds.
  *
- * @type {Map<string, {valid: boolean, ts: number}>}
+ * @type {Map<string, {valid: boolean, userId: number|null, ts: number}>}
  */
 const _apiKeyCache = new Map();
 
@@ -233,7 +234,7 @@ export async function deleteSession(kv, sid) {
  * Resolves the caller's authentication status from the request headers.
  * Tries two paths in order:
  *
- *   1. `Authorization: Api-Key <key>` → hash + USERS KV lookup.
+ *   1. `Authorization: Api-Key <key>` → hash + USERDB D1 lookup.
  *      Upstream PeeringDB keys (non-`pdbfe.` prefix) are flagged via
  *      the `rejection` field so the caller can return an appropriate error.
  *   2. Session ID (Bearer token or `pdbfe_sid` cookie) → SESSIONS KV lookup.
@@ -241,12 +242,13 @@ export async function deleteSession(kv, sid) {
  * Returns a result object with:
  *   - `authenticated` (boolean): whether the caller proved identity.
  *   - `identity` (string|null): rate-limit key — the API key or session ID.
+ *   - `userId` (number|null): PeeringDB user ID when authenticated.
  *   - `rejection` (string|null): error message when credentials are
  *     recognised but invalid (e.g. upstream PeeringDB keys).
  *
  * @param {Request} request - The inbound HTTP request.
- * @param {{USERS: KVNamespace, SESSIONS: KVNamespace}} env - KV namespace bindings.
- * @returns {Promise<{authenticated: boolean, identity: string|null, rejection: string|null}>}
+ * @param {{USERDB: D1Database, SESSIONS: KVNamespace}} env - Database and KV bindings.
+ * @returns {Promise<{authenticated: boolean, identity: string|null, userId: number|null, rejection: string|null}>}
  */
 export async function resolveAuth(request, env) {
     const apiKey = extractApiKey(request);
@@ -256,14 +258,18 @@ export async function resolveAuth(request, env) {
         return {
             authenticated: false,
             identity: null,
+            userId: null,
             rejection: 'PeeringDB API keys are not valid on this mirror. '
                      + 'Create a key at /account after signing in.',
         };
     }
 
-    // Path 1: API key
-    if (apiKey !== null && await verifyApiKey(env.USERS, apiKey)) {
-        return { authenticated: true, identity: apiKey, rejection: null };
+    // Path 1: API key (verified against USERDB D1)
+    if (apiKey !== null) {
+        const { valid, userId } = await verifyApiKey(env.USERDB, apiKey);
+        if (valid) {
+            return { authenticated: true, identity: apiKey, userId, rejection: null };
+        }
     }
 
     // Path 2: session (Bearer token or cookie)
@@ -271,9 +277,9 @@ export async function resolveAuth(request, env) {
     if (sid) {
         const session = await resolveSession(env.SESSIONS, sid);
         if (session !== null) {
-            return { authenticated: true, identity: sid, rejection: null };
+            return { authenticated: true, identity: sid, userId: session.id, rejection: null };
         }
     }
 
-    return { authenticated: false, identity: null, rejection: null };
+    return { authenticated: false, identity: null, userId: null, rejection: null };
 }
