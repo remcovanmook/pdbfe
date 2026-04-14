@@ -20,7 +20,7 @@
  * storage so the cleartext key is never persisted.
  */
 
-import { extractSessionId, resolveSession, generateSessionId, hashKey } from '../core/auth.js';
+import { extractSessionId, resolveSession, hashKey } from '../core/auth.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
