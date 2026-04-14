@@ -333,44 +333,25 @@ export function createDetailLayout(opts) {
     const layout = document.createElement('div');
     layout.className = 'detail-layout';
 
-    // Header
+    // Header: star + title + subtitle in a single flex row
     const header = document.createElement('div');
     header.className = 'detail-header';
 
-    // Top row: star + title + subtitle
-    const titleRow = document.createElement('div');
-    titleRow.className = 'detail-header__row';
-
     // Favorite toggle button — works for anonymous (localStorage) and authenticated (D1)
     if (opts.entityType && opts.entityId) {
-        titleRow.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
+        header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
     }
 
     const h1 = document.createElement('h1');
     h1.className = 'detail-header__title';
     h1.textContent = opts.title;
-    titleRow.appendChild(h1);
+    header.appendChild(h1);
 
     if (opts.subtitle) {
         const sub = document.createElement('span');
         sub.className = 'detail-header__subtitle';
         sub.textContent = opts.subtitle;
-        titleRow.appendChild(sub);
-    }
-
-    header.appendChild(titleRow);
-
-    // Logo — rendered below the title row when available; hidden until loaded.
-    if (opts.logoUrl) {
-        const logo = document.createElement('img');
-        logo.className = 'detail-header__logo';
-        logo.src = opts.logoUrl;
-        logo.alt = `${opts.title} logo`;
-        logo.loading = 'lazy';
-        logo.style.display = 'none';
-        logo.onload = () => { logo.style.display = ''; };
-        logo.onerror = () => { logo.remove(); };
-        header.appendChild(logo);
+        header.appendChild(sub);
     }
 
     layout.appendChild(header);
@@ -386,6 +367,21 @@ export function createDetailLayout(opts) {
     // Sidebar
     const sidebarWrap = document.createElement('div');
     sidebarWrap.className = 'detail-sidebar';
+
+    // Logo — at the top of the sidebar, constrained by sidebar width.
+    // Hidden until loaded; removed on error.
+    if (opts.logoUrl) {
+        const logo = document.createElement('img');
+        logo.className = 'detail-sidebar__logo';
+        logo.src = opts.logoUrl;
+        logo.alt = `${opts.title} logo`;
+        logo.loading = 'lazy';
+        logo.style.display = 'none';
+        logo.onload = () => { logo.style.display = ''; };
+        logo.onerror = () => { logo.remove(); };
+        sidebarWrap.appendChild(logo);
+    }
+
     sidebarWrap.appendChild(opts.sidebar);
     layout.appendChild(sidebarWrap);
 
