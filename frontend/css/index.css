@@ -742,7 +742,16 @@ body[data-page="home"] .site-logo {
 }
 
 .home-top {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: var(--space-2xl);
     margin-bottom: var(--space-xl);
+}
+
+.home-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
 }
 
 /* ── Hero section (left pane) ──────────────────────────────────── */
@@ -783,15 +792,11 @@ body[data-page="home"] .site-logo {
 /* ── Homepage search ───────────────────────────────────────────── */
 
 .home-search {
-    text-align: center;
-    padding: var(--space-xl) 0;
+    padding: var(--space-sm) 0;
 }
 
 .home-search__input-wrapper {
     position: relative;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 0 var(--space-md);
 }
 
 .home-search__input {
@@ -1173,7 +1178,9 @@ body[data-page="home"] .site-logo {
         grid-template-columns: 1fr;
     }
 
-
+    .home-top {
+        grid-template-columns: 1fr;
+    }
 
     .recent-updates {
         grid-template-columns: repeat(2, 1fr);

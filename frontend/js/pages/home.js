@@ -36,26 +36,11 @@ export async function renderHome(_params) {
     h1.textContent = t('The Interconnection Database');
     frag.appendChild(h1);
 
-    // Search box
-    const searchDiv = document.createElement('div');
-    searchDiv.className = 'home-search';
-    const searchWrapper = document.createElement('div');
-    searchWrapper.className = 'home-search__input-wrapper';
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.className = 'home-search__input';
-    searchInput.placeholder = t('Search networks, exchanges, facilities...');
-    searchInput.id = 'home-search-input';
-    searchInput.autofocus = true;
-    searchWrapper.appendChild(searchInput);
-    searchDiv.appendChild(searchWrapper);
-    frag.appendChild(searchDiv);
-
-    // Top section: hero + recent updates
+    // Top section: hero (left) + search & favorites (right)
     const homeTop = document.createElement('div');
     homeTop.className = 'home-top';
 
-    // Hero
+    // ── Left column: hero text ──
     const hero = document.createElement('div');
     hero.className = 'home-hero';
 
@@ -87,6 +72,25 @@ export async function renderHome(_params) {
     hero.appendChild(desc2);
 
     homeTop.appendChild(hero);
+
+    // ── Right column: search + favorites ──
+    const rightCol = document.createElement('div');
+    rightCol.className = 'home-right';
+
+    // Search box
+    const searchDiv = document.createElement('div');
+    searchDiv.className = 'home-search';
+    const searchWrapper = document.createElement('div');
+    searchWrapper.className = 'home-search__input-wrapper';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'home-search__input';
+    searchInput.placeholder = t('Search networks, exchanges, facilities...');
+    searchInput.id = 'home-search-input';
+    searchInput.autofocus = true;
+    searchWrapper.appendChild(searchInput);
+    searchDiv.appendChild(searchWrapper);
+    rightCol.appendChild(searchDiv);
 
     // Favorites section — shows for any user with favorites
     // (anonymous: localStorage, authenticated: D1)
@@ -127,9 +131,10 @@ export async function renderHome(_params) {
         }
 
         favsSection.appendChild(favsGrid);
-        homeTop.appendChild(favsSection);
+        rightCol.appendChild(favsSection);
     }
 
+    homeTop.appendChild(rightCol);
     frag.appendChild(homeTop);
 
     // Recent updates — full width below the hero section
