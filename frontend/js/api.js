@@ -347,13 +347,13 @@ export async function searchWithAsn(query, signal) {
 
     if (asnNet) {
         const existingIds = new Set(results.net.map(/** @param {any} n */ (n) => n.id));
-        if (!existingIds.has(asnNet.id)) {
-            results.net.unshift(asnNet);
-        } else {
+        if (existingIds.has(asnNet.id)) {
             results.net = [
                 asnNet,
                 ...results.net.filter(/** @param {any} n */ (n) => n.id !== asnNet.id)
             ];
+        } else {
+            results.net.unshift(asnNet);
         }
     }
 
