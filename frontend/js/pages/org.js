@@ -38,6 +38,7 @@ export async function renderOrg(params) {
 
         app.replaceChildren(createDetailLayout({
             title: org.name,
+            logoUrl: org.logo || null,
             sidebar: buildSidebar(org),
             main: buildTables(org),
         }));
@@ -110,6 +111,8 @@ function buildTables(org) {
         const facTable = /** @type {any} */ (document.createElement('pdb-table'));
         facTable.configure({
             title: 'Facilities',
+            filterable: true,
+            filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
                 { key: 'city',    label: 'City' },
@@ -128,6 +131,8 @@ function buildTables(org) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
             title: 'Exchanges',
+            filterable: true,
+            filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
                 { key: 'city',    label: 'City' },

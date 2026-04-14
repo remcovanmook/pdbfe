@@ -46,6 +46,7 @@ export async function renderFac(params) {
         app.replaceChildren(createDetailLayout({
             title: fac.name,
             subtitle,
+            logoUrl: fac.logo || fac.org?.logo || null,
             sidebar: buildSidebar(fac),
             main: buildTables(fac),
         }));
@@ -129,6 +130,8 @@ function buildTables(fac) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
             title: 'Exchanges',
+            filterable: true,
+            filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'exchange', label: 'Exchange' },
             ],

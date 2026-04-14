@@ -36,6 +36,7 @@ export async function renderCampus(params) {
 
         app.replaceChildren(createDetailLayout({
             title: campus.name,
+            logoUrl: campus.logo || campus.org?.logo || null,
             sidebar: buildSidebar(campus),
             main: buildTables(campus),
         }));

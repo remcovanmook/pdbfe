@@ -67,6 +67,7 @@ export async function renderIx(params) {
         app.replaceChildren(createDetailLayout({
             title: ix.name,
             subtitle,
+            logoUrl: ix.logo || ix.org?.logo || null,
             statsBar,
             sidebar: buildSidebar(ix),
             main: buildTables(ix, peers),
@@ -214,6 +215,8 @@ function buildTables(ix, peers) {
         );
         facTable.configure({
             title: 'Local Facilities',
+            filterable: true,
+            filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
                 { key: 'city',    label: 'City' },

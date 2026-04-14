@@ -36,6 +36,7 @@ export async function renderCarrier(params) {
 
         app.replaceChildren(createDetailLayout({
             title: carrier.name,
+            logoUrl: carrier.logo || carrier.org?.logo || null,
             sidebar: buildSidebar(carrier),
             main: buildTables(carrier),
         }));
