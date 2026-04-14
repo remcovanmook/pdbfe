@@ -636,10 +636,10 @@ function buildFavoritesList(favorites, sid) {
         row.appendChild(link);
 
         // Remove button
-        const removeBtn = el('button', {
+        const removeBtn = /** @type {HTMLButtonElement} */ (el('button', {
             className: 'favorites-list__remove',
             text: '×',
-        });
+        }));
         removeBtn.title = t('Remove from favorites');
         removeBtn.addEventListener('click', async () => {
             removeBtn.disabled = true;
