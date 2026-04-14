@@ -378,7 +378,30 @@ export function createDetailLayout(opts) {
     const header = document.createElement('div');
     header.className = 'detail-header';
 
-    // Logo — only rendered when a URL is available; hidden until loaded.
+    // Top row: star + title + subtitle
+    const titleRow = document.createElement('div');
+    titleRow.className = 'detail-header__row';
+
+    // Favorite toggle button — works for anonymous (localStorage) and authenticated (D1)
+    if (opts.entityType && opts.entityId) {
+        titleRow.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
+    }
+
+    const h1 = document.createElement('h1');
+    h1.className = 'detail-header__title';
+    h1.textContent = opts.title;
+    titleRow.appendChild(h1);
+
+    if (opts.subtitle) {
+        const sub = document.createElement('span');
+        sub.className = 'detail-header__subtitle';
+        sub.textContent = opts.subtitle;
+        titleRow.appendChild(sub);
+    }
+
+    header.appendChild(titleRow);
+
+    // Logo — rendered below the title row when available; hidden until loaded.
     // The PeeringDB JSON dump uses 'http://testserver/m/' as the media host;
     // normalize to the production S3 bucket.
     const logoUrl = normalizeLogoUrl(opts.logoUrl);
@@ -392,23 +415,6 @@ export function createDetailLayout(opts) {
         logo.onload = () => { logo.style.display = ''; };
         logo.onerror = () => { logo.remove(); };
         header.appendChild(logo);
-    }
-
-    const h1 = document.createElement('h1');
-    h1.className = 'detail-header__title';
-    h1.textContent = opts.title;
-    header.appendChild(h1);
-
-    if (opts.subtitle) {
-        const sub = document.createElement('span');
-        sub.className = 'detail-header__subtitle';
-        sub.textContent = opts.subtitle;
-        header.appendChild(sub);
-    }
-
-    // Favorite toggle button — works for anonymous (localStorage) and authenticated (D1)
-    if (opts.entityType && opts.entityId) {
-        header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
     }
 
     layout.appendChild(header);

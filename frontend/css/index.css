@@ -447,22 +447,28 @@ body[data-page="home"] .site-logo {
 .detail-header {
     grid-column: 1 / -1;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: var(--space-md);
     padding-bottom: var(--space-lg);
     border-bottom: 1px solid var(--border-subtle);
     margin-bottom: var(--space-lg);
 }
 
+.detail-header__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
 .detail-header__logo {
     max-height: 48px;
-    max-width: 120px;
+    max-width: 200px;
     object-fit: contain;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
     background: #fff;
     padding: 4px;
-    flex-shrink: 0;
+    align-self: flex-start;
 }
 
 .detail-header__title {
