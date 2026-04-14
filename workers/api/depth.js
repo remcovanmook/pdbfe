@@ -1,7 +1,14 @@
 /**
- * @fileoverview Depth expansion for PeeringDB _set fields.
- * Handles depth=0 (omit sets), depth=1 (IDs only), and depth=2
- * (full child objects with FK column excluded).
+ * @fileoverview Depth expansion for PeeringDB API responses.
+ *
+ * Child expansion (_set fields):
+ *   depth=0 — omit sets entirely
+ *   depth=1 — arrays of child IDs
+ *   depth=2 — arrays of full child objects (FK column excluded)
+ *
+ * Parent org expansion:
+ *   depth≥1 — nests a full `org` object on entities that have an
+ *   `org_id` foreign key, matching upstream PeeringDB behaviour.
  *
  * Batches child queries per relationship across all parent rows
  * to avoid N+1 patterns.
@@ -23,16 +30,18 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
 
 
 /**
- * Expands _set fields on an array of result rows based on the
- * requested depth level. Mutates the rows in-place by adding
- * _set properties.
+ * Expands _set fields and parent org on result rows based on
+ * the requested depth level. Mutates the rows in-place.
  *
+ * Child _set expansion:
  * - depth=0: No expansion. _set fields are omitted entirely.
  * - depth=1: Each _set field contains an array of child IDs.
- *   Batches a single query per relationship across all parent rows.
  * - depth=2: Each _set field contains full child objects (all columns
- *   except the FK back to the parent). Matches upstream PeeringDB
- *   behaviour.
+ *   except the FK back to the parent).
+ *
+ * Parent org expansion (depth≥1):
+ * - If the entity has a field with foreignKey "org", the full org
+ *   object is fetched and attached as row.org for each row.
  *
  * For restricted child entities (e.g. poc), anonymous callers only
  * see records matching the entity's anonFilter (visible=Public).
@@ -45,15 +54,21 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
 export async function expandDepth(db, entity, rows, depth, authenticated = false) {
-    if (depth === 0 || rows.length === 0 || entity.relationships.length === 0) {
+    if (depth === 0 || rows.length === 0) {
         return;
     }
 
-    if (depth >= 2) {
-        await expandDepthTwo(db, entity, rows, authenticated);
-    } else {
-        await expandDepthOne(db, entity, rows, authenticated);
+    // Child _set expansion (only when relationships exist)
+    if (entity.relationships.length > 0) {
+        if (depth >= 2) {
+            await expandDepthTwo(db, entity, rows, authenticated);
+        } else {
+            await expandDepthOne(db, entity, rows, authenticated);
+        }
     }
+
+    // Parent org expansion (depth≥1, org-only to match upstream)
+    await expandParentOrg(db, entity, rows);
 }
 
 /**
@@ -272,4 +287,74 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
     });
 
     await Promise.all(tasks);
+}
+
+/**
+ * Expands the parent `org` reference on entities that have an
+ * `org_id` foreign key. Fetches the full org object from
+ * peeringdb_organization and attaches it as `row.org`.
+ *
+ * Only fires for org — other parent FKs are not expanded upstream.
+ * Uses a single batched query across all rows to avoid N+1 patterns.
+ *
+ * @param {D1Session} db - The D1 database binding.
+ * @param {EntityMeta} entity - The entity metadata for the current rows.
+ * @param {Record<string, any>[]} rows - Result rows to expand in-place.
+ * @returns {Promise<void>}
+ */
+async function expandParentOrg(db, entity, rows) {
+    // Find the org_id FK field on this entity
+    const orgFkField = entity.fields.find(f => f.foreignKey === 'org');
+    if (!orgFkField) return;
+
+    const orgEntity = ENTITIES['org'];
+    if (!orgEntity) return;
+
+    // Collect unique org IDs
+    /** @type {Set<number>} */
+    const orgIds = new Set();
+    for (const row of rows) {
+        const oid = row[orgFkField.name];
+        if (oid != null) orgIds.add(oid);
+    }
+    if (orgIds.size === 0) return;
+
+    // Batch-fetch all referenced orgs in a single query
+    const ids = [...orgIds]; // ap-ok: cold path behind cachedQuery
+    const orgColumns = getColumns(orgEntity);
+    const orgJsonCols = getJsonColumns(orgEntity);
+    const orgBoolCols = getBoolColumns(orgEntity);
+
+    const colExpr = orgColumns.map(c => `"${c}"`).join(', '); // ap-ok: SQL construction
+    const placeholders = ids.map(() => '?').join(', '); // ap-ok: SQL construction
+    const sql = `SELECT ${colExpr} FROM "${orgEntity.table}" WHERE "id" IN (${placeholders}) AND "status" != 'deleted'`;
+
+    const result = await db.prepare(sql).bind(...ids).all();
+
+    /** @type {Map<number, Record<string, any>>} */
+    const orgMap = new Map();
+    if (result.results) {
+        for (const org of result.results) {
+            // Parse JSON-stored TEXT columns
+            for (const col of orgJsonCols) {
+                if (typeof org[col] === 'string' && org[col]) {
+                    try { org[col] = JSON.parse(org[col]); } catch { /* keep as string */ }
+                }
+            }
+            // Coerce boolean columns from SQLite's 0/1
+            for (const col of orgBoolCols) {
+                if (col in org) org[col] = !!org[col];
+            }
+            orgMap.set(/** @type {number} */ (org.id), org);
+        }
+    }
+
+    // Attach the org object to each row
+    for (const row of rows) {
+        const oid = row[orgFkField.name];
+        const org = orgMap.get(oid);
+        if (org) {
+            row.org = org;
+        }
+    }
 }
