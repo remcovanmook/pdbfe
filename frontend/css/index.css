@@ -125,10 +125,10 @@
     --border:     hsl(220 10% 82%);
     --border-subtle: hsl(220 10% 88%);
 
-    /* Text (darker for legibility on white) */
+    /* Text (darker for legibility on white — WCAG AA 4.5:1 minimum) */
     --text-primary:   hsl(220 20% 10%);
     --text-secondary: hsl(220 10% 36%);
-    --text-muted:     hsl(220 10% 52%);
+    --text-muted:     hsl(220 10% 42%);
 
     /* Accent (darker for readable contrast on white) */
     --accent:       hsl(200 80% 40%);
