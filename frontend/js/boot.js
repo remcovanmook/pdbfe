@@ -21,7 +21,7 @@ import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
 import { initAuth, fetchPreferenceOptions } from './auth.js';
-import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
+import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
 import { getTimezonePreference, setTimezone } from './timezone.js';

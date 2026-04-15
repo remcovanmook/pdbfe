@@ -313,8 +313,8 @@ export async function fetchCount(type) {
  * Returns an object with the most recent sync timestamp and
  * per-entity sync metadata.
  *
- * @returns {Promise<{last_modified_at: number, entities: Record<string, {last_sync: number, row_count: number, updated_at: string, last_modified_at: number}>}|null>}
- *     The sync metadata, or null on failure.
+ * @returns {Promise<{last_modified_at: number, entities: Record<string, {last_sync: number, row_count: number, updated_at: string, last_modified_at: number}>}|{rate_limited: true}|null>}
+ *     The sync metadata, a rate-limited sentinel, or null on failure.
  */
 export async function fetchSyncStatus() {
     try {

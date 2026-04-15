@@ -361,8 +361,7 @@ export async function handleUpdateProfile(request, env) {
     }
 
     sets.push('updated_at = ?');
-    binds.push(now);
-    binds.push(user.id);
+    binds.push(now, user.id);
 
     await env.USERDB.prepare(
         `UPDATE users SET ${sets.join(', ')} WHERE id = ?`
@@ -370,7 +369,7 @@ export async function handleUpdateProfile(request, env) {
 
     return jsonResponse({
         id: user.id,
-        name: body.name !== undefined ? body.name.trim() : user.name,
+        name: body.name === undefined ? user.name : body.name.trim(),
         email: user.email,
         preferences: mergedPrefs,
         updated_at: now,

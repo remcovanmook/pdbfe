@@ -1,7 +1,7 @@
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
-import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
+import { t, setLanguage, LANGUAGES } from '../i18n.js';
 import { getTheme, setTheme } from '../theme.js';
 import { getTimezonePreference, setTimezone } from '../timezone.js';
 
