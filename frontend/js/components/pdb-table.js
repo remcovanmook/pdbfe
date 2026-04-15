@@ -39,6 +39,7 @@ const DEFAULT_PAGE_SIZE = 50;
  * @property {string} key - Column key used in cellRenderer dispatch.
  * @property {string} label - Display label (passed through t() for i18n).
  * @property {string} [class] - Optional CSS class for <td> elements.
+ * @property {string} [width] - Optional CSS width for the column (e.g. '80px', '6rem').
  */
 
 /**
@@ -177,6 +178,7 @@ class PdbTable extends HTMLElement {
             th.textContent = t(col.label);
             th.dataset.sortKey = col.key;
             th.style.cursor = 'pointer';
+            if (col.width) th.style.width = col.width;
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
         });

@@ -175,11 +175,11 @@ function buildTables(ix, peers) {
             filterPlaceholder: t('Filter by name or ASN...'),
             columns: [
                 { key: 'name',       label: 'Network' },
-                { key: 'asn',        label: 'ASN', class: 'td-right' },
-                { key: 'speed',      label: 'Speed', class: 'td-right' },
-                { key: 'ipaddr4',    label: 'IPv4', class: 'td-mono' },
-                { key: 'ipaddr6',    label: 'IPv6', class: 'td-mono' },
-                { key: 'is_rs_peer', label: 'RS' },
+                { key: 'asn',        label: 'ASN', class: 'td-right', width: '80px' },
+                { key: 'speed',      label: 'Speed', class: 'td-right', width: '90px' },
+                { key: 'ipaddr4',    label: 'IPv4', class: 'td-mono', width: '140px' },
+                { key: 'ipaddr6',    label: 'IPv6', class: 'td-mono', width: '240px' },
+                { key: 'is_rs_peer', label: 'RS', width: '50px' },
             ],
             rows: peers,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

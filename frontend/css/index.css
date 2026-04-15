@@ -655,8 +655,15 @@ body[data-page="home"] .site-logo {
 .data-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
     font-size: 0.8125rem;
     letter-spacing: -0.01em;
+}
+
+.data-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .data-table th {
