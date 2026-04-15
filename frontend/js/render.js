@@ -128,6 +128,23 @@ function getTemplate(id) {
 }
 
 /**
+ * Creates a colour-coded entity-type badge.
+ * The CSS maps `data-type` to a per-entity accent colour.
+ *
+ * @param {string} type - Entity type key (net, ix, fac, org, carrier, campus).
+ * @param {Object} [options] - Badge options.
+ * @param {boolean} [options.header] - If true, uses the larger header variant.
+ * @returns {HTMLSpanElement}
+ */
+export function createEntityBadge(type, options) {
+    const badge = document.createElement('span');
+    badge.className = 'entity-badge' + (options?.header ? ' entity-badge--header' : '');
+    badge.dataset.type = type;
+    badge.textContent = type;
+    return badge;
+}
+
+/**
  * Creates an internal SPA link element as a DOM node.
  * Uses textContent for the label, so XSS is structurally impossible.
  *
@@ -340,6 +357,11 @@ export function createDetailLayout(opts) {
     // Favorite toggle button — works for anonymous (localStorage) and authenticated (D1)
     if (opts.entityType && opts.entityId) {
         header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
+    }
+
+    // Entity-type badge (colour-coded)
+    if (opts.entityType) {
+        header.appendChild(createEntityBadge(opts.entityType, { header: true }));
     }
 
     const h1 = document.createElement('h1');

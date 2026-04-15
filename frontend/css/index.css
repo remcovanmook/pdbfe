@@ -38,6 +38,14 @@
     --status-warn:    hsl(40 90% 55%);
     --status-error:   hsl(0 70% 55%);
 
+    /* Entity-type accent colours */
+    --type-net:     hsl(200 80% 55%);   /* blue — networks       */
+    --type-ix:      hsl(160 65% 45%);   /* teal — exchanges      */
+    --type-fac:     hsl(35 85% 55%);    /* amber — facilities    */
+    --type-org:     hsl(270 55% 60%);   /* purple — orgs         */
+    --type-campus:  hsl(330 60% 55%);   /* pink — campuses       */
+    --type-carrier: hsl(95 55% 48%);    /* green — carriers      */
+
     /* Spacing */
     --space-xs: 0.25rem;
     --space-sm: 0.5rem;
@@ -1609,21 +1617,6 @@ body[data-page="home"] .site-logo {
     border-color: var(--accent);
 }
 
-.favorites-list__type {
-    display: inline-block;
-    min-width: 5.5em;
-    text-align: center;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.15em 0.5em;
-    border-radius: var(--radius);
-    background: var(--accent-dim);
-    color: var(--accent);
-    flex-shrink: 0;
-}
-
 .favorites-list__item a {
     flex: 1;
     min-width: 0;
@@ -1681,20 +1674,39 @@ body[data-page="home"] .site-logo {
     box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
-.favorites-grid__type {
+/* ── Entity-type badge ─────────────────────────────────────────── */
+/* Colour is set via --badge-color which maps to --type-<entity>.  */
+
+.entity-badge {
     display: inline-block;
     min-width: 3.5em;
     text-align: center;
-    font-size: 0.625rem;
-    font-weight: 600;
+    font-size: 0.6875rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 0.15em 0.4em;
-    border-radius: var(--radius);
-    background: var(--accent-dim);
-    color: var(--accent);
+    letter-spacing: 0.05em;
+    padding: 0.2em 0.5em;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--badge-color) 40%, transparent);
+    background: color-mix(in srgb, var(--badge-color) 14%, transparent);
+    color: var(--badge-color);
     flex-shrink: 0;
+    line-height: 1.4;
 }
+
+/* Full-size badge for detail page headers */
+.entity-badge--header {
+    font-size: 0.75rem;
+    padding: 0.25em 0.65em;
+}
+
+/* Per-type colour assignments */
+.entity-badge[data-type="net"]     { --badge-color: var(--type-net); }
+.entity-badge[data-type="ix"]      { --badge-color: var(--type-ix); }
+.entity-badge[data-type="fac"]     { --badge-color: var(--type-fac); }
+.entity-badge[data-type="org"]     { --badge-color: var(--type-org); }
+.entity-badge[data-type="campus"]  { --badge-color: var(--type-campus); }
+.entity-badge[data-type="carrier"] { --badge-color: var(--type-carrier); }
 
 .favorites-grid__name {
     flex: 1;

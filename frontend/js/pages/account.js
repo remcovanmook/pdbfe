@@ -1,6 +1,6 @@
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite } from '../auth.js';
-import { formatLocaleDate as formatDate, createLink } from '../render.js';
+import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 
 // ── DOM helpers ─────────────────────────────────────────────────────
@@ -598,20 +598,6 @@ function showRevokeDialog(sid, keyId, label, prefix) {
 }
 
 /**
- * Entity type display labels used in the favorites list.
- *
- * @type {Record<string, string>}
- */
-const ENTITY_TYPE_LABELS = {
-    net: 'Network',
-    ix: 'Exchange',
-    fac: 'Facility',
-    org: 'Organization',
-    carrier: 'Carrier',
-    campus: 'Campus',
-};
-
-/**
  * Builds the favorites list for the account page.
  * Each row shows the entity type, a link to the entity, and a remove button.
  *
@@ -625,12 +611,8 @@ function buildFavoritesList(favorites, sid) {
     for (const fav of favorites) {
         const row = el('div', { className: 'favorites-list__item' });
 
-        // Entity type badge
-        const badge = el('span', {
-            className: 'favorites-list__type',
-            text: t(ENTITY_TYPE_LABELS[fav.entity_type] || fav.entity_type),
-        });
-        row.appendChild(badge);
+        // Entity type badge (colour-coded)
+        row.appendChild(createEntityBadge(fav.entity_type));
 
         // Link to entity
         const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
