@@ -878,6 +878,64 @@ _LOCAL_FIELDS = {
     "campus":  [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
 }
 
+# Pre-built address field defs (mirrors Entity.address() — fixed order & queryable flags)
+_ADDRESS_FIELD_DEFS = (
+    {"name": "address1", "type": "string", "queryable": False},
+    {"name": "address2", "type": "string", "queryable": False},
+    {"name": "city", "type": "string"},
+    {"name": "country", "type": "string"},
+    {"name": "state", "type": "string"},
+    {"name": "zipcode", "type": "string"},
+    {"name": "floor", "type": "string", "queryable": False},
+    {"name": "suite", "type": "string", "queryable": False},
+    {"name": "latitude", "type": "number", "queryable": False},
+    {"name": "longitude", "type": "number", "queryable": False},
+)
+
+# Standard timestamp fields appended by Entity.done()
+_TIMESTAMP_FIELD_DEFS = (
+    {"name": "created", "type": "datetime"},
+    {"name": "updated", "type": "datetime"},
+    {"name": "status", "type": "string"},
+)
+
+
+def _build_single_field(field, field_override):
+    """
+    Build a single worker field dict from a schema field and its overrides.
+
+    Applies type/queryable overrides, marks JSON fields, copies nullable
+    and foreignKey attributes.
+
+    Args:
+        field: Schema field dict (name, type, nullable, foreignKey, etc.).
+        field_override: Override dict for this field (from entity-overrides.json).
+
+    Returns:
+        Field dict ready for JS emission.
+    """
+    name = field["name"]
+    effective_type = field_override.get("type", field.get("type", "string"))
+    effective_queryable = field_override.get("queryable", field.get("queryable"))
+
+    f = {"name": name, "type": effective_type}
+
+    if effective_type == "json":
+        f["queryable"] = False
+        f["json"] = True
+        return f
+
+    if effective_queryable is False:
+        f["queryable"] = False
+    if field.get("nullable"):
+        f["nullable"] = True
+    if field.get("foreignKey"):
+        f["foreignKey"] = field["foreignKey"]
+        if field_override.get("resolve"):
+            f["resolve"] = field_override["resolve"]
+
+    return f
+
 
 def _build_entity_fields(tag, schema, overrides):
     """
@@ -908,46 +966,14 @@ def _build_entity_fields(tag, schema, overrides):
         if has_address and name in _ADDRESS_FIELDS:
             continue
 
-        field_override = tag_overrides.get(name, {})
-
-        # Allow overrides to fix type or queryable
-        effective_type = field_override.get("type", field.get("type", "string"))
-        effective_queryable = field_override.get("queryable", field.get("queryable"))
-
-        f = {"name": name, "type": effective_type}
-
-        if effective_type == "json":
-            f["queryable"] = False
-            f["json"] = True
-        else:
-            if effective_queryable is False:
-                f["queryable"] = False
-            if field.get("nullable"):
-                f["nullable"] = True
-            if field.get("foreignKey"):
-                f["foreignKey"] = field["foreignKey"]
-                if field_override.get("resolve"):
-                    f["resolve"] = field_override["resolve"]
-
-        fields.append(f)
+        fields.append(_build_single_field(field, tag_overrides.get(name, {})))
 
     # Add address group (mirrors Entity.address() — fixed order & queryable flags)
     if has_address:
-        fields.append({"name": "address1", "type": "string", "queryable": False})
-        fields.append({"name": "address2", "type": "string", "queryable": False})
-        fields.append({"name": "city", "type": "string"})
-        fields.append({"name": "country", "type": "string"})
-        fields.append({"name": "state", "type": "string"})
-        fields.append({"name": "zipcode", "type": "string"})
-        fields.append({"name": "floor", "type": "string", "queryable": False})
-        fields.append({"name": "suite", "type": "string", "queryable": False})
-        fields.append({"name": "latitude", "type": "number", "queryable": False})
-        fields.append({"name": "longitude", "type": "number", "queryable": False})
+        fields.extend(_ADDRESS_FIELD_DEFS)
 
     # Seal: add standard timestamp fields (mirrors Entity.done())
-    fields.append({"name": "created", "type": "datetime"})
-    fields.append({"name": "updated", "type": "datetime"})
-    fields.append({"name": "status", "type": "string"})
+    fields.extend(_TIMESTAMP_FIELD_DEFS)
 
     # Inject local-only pdbfe fields (not from upstream)
     for local_field in _LOCAL_FIELDS.get(tag, []):
@@ -980,6 +1006,41 @@ def _derive_join_columns(entities):
         entity["joinColumns"] = joins if joins else None
 
 
+def _collect_sibling_joins(child_fields, current_field, entities):
+    """
+    Collect joinColumns from sibling FK fields that have resolve specs.
+
+    For a given FK field on a child entity, finds other FK fields on the
+    same entity that carry resolve mappings and builds their join column
+    definitions.
+
+    Args:
+        child_fields: Full field list of the child entity.
+        current_field: The FK field being processed (excluded from results).
+        entities: Full entity dict for target table lookup.
+
+    Returns:
+        List of join column dicts, or empty list if none.
+    """
+    joins = []
+    for sibling in child_fields:
+        if sibling is current_field:
+            continue
+        s_fk = sibling.get("foreignKey")
+        s_resolve = sibling.get("resolve")
+        if not s_fk or not s_resolve:
+            continue
+        s_target = entities.get(s_fk)
+        if not s_target:
+            continue
+        joins.append({
+            "table": s_target["table"],
+            "localFk": sibling["name"],
+            "columns": s_resolve,
+        })
+    return joins
+
+
 def _derive_relationships(entities):
     """
     Derive parent→child relationships from FK fields.
@@ -1004,23 +1065,9 @@ def _derive_relationships(entities):
                 "fk": field["name"],
             }
 
-            # Sibling FK fields with resolve specs → joinColumns on relationship
-            sibling_joins = []
-            for sibling in child_entity["fields"]:
-                if sibling is field:
-                    continue
-                s_fk = sibling.get("foreignKey")
-                s_resolve = sibling.get("resolve")
-                if not s_fk or not s_resolve:
-                    continue
-                s_target = entities.get(s_fk)
-                if not s_target:
-                    continue
-                sibling_joins.append({
-                    "table": s_target["table"],
-                    "localFk": sibling["name"],
-                    "columns": s_resolve,
-                })
+            sibling_joins = _collect_sibling_joins(
+                child_entity["fields"], field, entities
+            )
             if sibling_joins:
                 rel["joinColumns"] = sibling_joins
 
