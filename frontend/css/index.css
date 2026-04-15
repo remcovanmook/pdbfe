@@ -865,7 +865,7 @@ body[data-page="home"] .site-logo {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: 3px var(--space-sm);
+    padding: 8px var(--space-sm); /* increased for mobile touch targets */
     font-size: 0.75rem;
     color: var(--text-secondary);
     cursor: pointer;
