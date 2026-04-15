@@ -1151,6 +1151,7 @@ body[data-page="home"] .site-logo {
 }
 
 .site-footer__lang-select {
+    min-width: 120px;
     height: 22px;
     padding: 0 4px;
     background: var(--bg-input);
