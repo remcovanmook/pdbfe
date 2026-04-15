@@ -21,8 +21,17 @@ const STORAGE_KEY = 'pdbfe-tz';
  */
 export function getTimezone() {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && stored !== 'auto') return stored;
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!stored || stored === 'auto') {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+    // Validate stored value — purge if corrupted
+    try {
+        Intl.DateTimeFormat(undefined, { timeZone: stored });
+        return stored;
+    } catch {
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
 }
 
 /**
@@ -36,15 +45,36 @@ export function getTimezonePreference() {
 }
 
 /**
+ * Validates an IANA timezone identifier by probing Intl.DateTimeFormat.
+ * Returns true if the browser recognises the timezone, false otherwise.
+ *
+ * @param {string} tz - Timezone string to validate.
+ * @returns {boolean}
+ */
+function isValidTimezone(tz) {
+    try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Sets the timezone preference and persists to localStorage.
  * 'auto' removes the stored value so the browser default is used.
+ * Invalid timezone strings are rejected — treated as 'auto'.
  *
  * @param {string} tz - 'auto' or an IANA timezone identifier.
  */
 export function setTimezone(tz) {
-    if (tz === 'auto') {
+    if (!tz || tz === 'auto') {
         try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
-    } else {
-        try { localStorage.setItem(STORAGE_KEY, tz); } catch { /* */ }
+        return;
     }
+    if (!isValidTimezone(tz)) {
+        console.warn(`[tz] Invalid timezone "${tz}", ignoring.`);
+        return;
+    }
+    try { localStorage.setItem(STORAGE_KEY, tz); } catch { /* */ }
 }
