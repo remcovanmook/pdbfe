@@ -551,6 +551,11 @@ body[data-page="home"] .site-logo {
     align-self: flex-start;
 }
 
+:root[data-theme="light"] .detail-sidebar__logo {
+    background: transparent;
+    border-color: transparent;
+}
+
 .detail-main {
     display: flex;
     flex-direction: column;
