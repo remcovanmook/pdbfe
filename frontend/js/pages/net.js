@@ -151,7 +151,7 @@ function buildTables(net) {
                 { key: 'speed',   label: 'Speed', class: 'td-right', width: '90px' },
                 { key: 'ipaddr4', label: 'IPv4', class: 'td-mono', width: '140px' },
                 { key: 'ipaddr6', label: 'IPv6', class: 'td-mono', width: '240px' },
-                { key: 'is_rs_peer', label: 'RS', width: '50px' },
+                { key: 'is_rs_peer', label: 'RS', width: '70px' },
             ],
             rows: net.netixlan_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
