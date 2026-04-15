@@ -41,7 +41,12 @@ export function getTimezone() {
  * @returns {string} The stored preference, or 'auto' if unset.
  */
 export function getTimezonePreference() {
-    return localStorage.getItem(STORAGE_KEY) || 'auto';
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored || stored === 'auto') return 'auto';
+    if (isValidTimezone(stored)) return stored;
+    // Corrupted — purge and fall back
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+    return 'auto';
 }
 
 /**

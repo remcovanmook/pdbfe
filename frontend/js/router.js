@@ -214,7 +214,7 @@ async function dispatch(fullPath) {
     // Search link
     const searchLink = document.createElement('a');
     searchLink.href = `/search?q=${encodeURIComponent(hint)}`;
-    searchLink.setAttribute('data-link', '');
+    searchLink.dataset.link = '';
     searchLink.textContent = `Search for "${hint}"`;
     searchLink.style.color = 'var(--accent)';
     searchLink.style.fontSize = '1.1rem';
