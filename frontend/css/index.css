@@ -23,6 +23,13 @@
     --border:     hsl(220 10% 22%);
     --border-subtle: hsl(220 10% 18%);
 
+    /* Striped table rows */
+    --bg-stripe:  hsl(220 14% 11%);
+
+    /* Error message block */
+    --error-bg:     hsl(0 30% 15%);
+    --error-border: hsl(0 40% 25%);
+
     /* Text */
     --text-primary:   hsl(220 14% 90%);
     --text-secondary: hsl(220 10% 62%);
@@ -71,6 +78,51 @@
     --content-max: 1280px;
     --sidebar-width: 340px;
     --header-height: 56px;
+}
+
+/* ── Light theme ──────────────────────────────────────────────── */
+/* Applied via data-theme="light" attribute on <html>.            */
+
+:root[data-theme="light"] {
+    /* Neutrals */
+    --bg-body:    hsl(220 14% 97%);
+    --bg-surface: hsl(220 14% 94%);
+    --bg-card:    hsl(0 0% 100%);
+    --bg-hover:   hsl(220 14% 90%);
+    --bg-input:   hsl(220 14% 96%);
+    --border:     hsl(220 10% 82%);
+    --border-subtle: hsl(220 10% 88%);
+
+    /* Text */
+    --text-primary:   hsl(220 14% 15%);
+    --text-secondary: hsl(220 10% 42%);
+    --text-muted:     hsl(220 10% 58%);
+
+    /* Accent (darker for readable contrast on white) */
+    --accent:       hsl(200 80% 40%);
+    --accent-hover: hsl(200 80% 32%);
+    --accent-muted: hsl(200 40% 80%);
+
+    /* Status (darkened for white backgrounds) */
+    --status-ok:      hsl(145 60% 35%);
+    --status-warn:    hsl(35 85% 42%);
+    --status-error:   hsl(0 70% 48%);
+
+    /* Entity-type accent colours (darkened for contrast) */
+    --type-net:     hsl(200 80% 40%);
+    --type-ix:      hsl(160 65% 35%);
+    --type-fac:     hsl(35 85% 42%);
+    --type-org:     hsl(270 55% 48%);
+    --type-campus:  hsl(330 60% 45%);
+    --type-carrier: hsl(95 55% 36%);
+
+    /* Shadows (softer for light BG) */
+    --shadow-sm: 0 1px 2px hsl(220 10% 50% / 0.12);
+    --shadow-md: 0 2px 8px hsl(220 10% 50% / 0.1);
+
+    --bg-stripe:  hsl(220 14% 94%);
+    --error-bg:     hsl(0 80% 96%);
+    --error-border: hsl(0 50% 82%);
 }
 
 html {
@@ -638,7 +690,7 @@ body[data-page="home"] .site-logo {
 }
 
 .data-table tr:nth-child(even) td {
-    background: hsl(220 14% 11%);
+    background: var(--bg-stripe);
 }
 
 .data-table tr:nth-child(even):hover td {
@@ -1143,8 +1195,8 @@ body[data-page="home"] .site-logo {
 
 .error-message {
     padding: var(--space-lg);
-    background: hsl(0 30% 15%);
-    border: 1px solid hsl(0 40% 25%);
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
     border-radius: var(--radius-md);
     color: var(--status-error);
     font-size: 0.875rem;
@@ -1702,7 +1754,7 @@ body[data-page="home"] .site-logo {
     padding: 0.2em 0.6em;
     border-radius: 1em;
     background: var(--badge-color);
-    color: hsl(220 14% 10%);
+    color: var(--bg-body);
     flex-shrink: 0;
     line-height: 1.4;
 }

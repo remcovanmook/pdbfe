@@ -290,6 +290,14 @@ export async function handleUpdateProfile(request, env) {
             mergedPrefs.language = body.preferences.language;
         }
 
+        // Validate theme if provided
+        if (body.preferences.theme !== undefined) {
+            if (body.preferences.theme !== 'dark' && body.preferences.theme !== 'light') {
+                return jsonResponse({ error: `Invalid theme: ${body.preferences.theme}` }, 400, env.FRONTEND_ORIGIN);
+            }
+            mergedPrefs.theme = body.preferences.theme;
+        }
+
         sets.push('preferences = ?');
         binds.push(JSON.stringify(mergedPrefs));
     }

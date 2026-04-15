@@ -23,6 +23,7 @@ import { attachTypeahead } from './typeahead.js';
 import { initAuth } from './auth.js';
 import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
+import { initTheme, getTheme, setTheme } from './theme.js';
 
 // Register Web Components — must execute before the router dispatches.
 import './components/pdb-table.js';
@@ -48,6 +49,9 @@ globalThis.__router = { navigate };
 // Header search: typeahead with fallback Enter-to-navigate
 const headerSearch = /** @type {HTMLInputElement} */ (document.getElementById('header-search'));
 attachTypeahead(headerSearch);
+
+// Initialise theme before first paint to avoid a flash of wrong colours.
+initTheme();
 
 // Initialize i18n (loads locale dictionary if needed) before routing
 await initI18n();
@@ -85,6 +89,23 @@ if (langSelect) {
             // Re-render the current route by re-dispatching
             globalThis.location.reload();
         });
+    });
+}
+
+// Wire up the footer theme selector
+const themeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('theme-select'));
+if (themeSelect) {
+    const activeTheme = getTheme();
+    for (const [value, label] of [['dark', '🌙 Dark'], ['light', '☀️ Light']]) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        opt.selected = value === activeTheme;
+        themeSelect.appendChild(opt);
+    }
+
+    themeSelect.addEventListener('change', () => {
+        setTheme(themeSelect.value);
     });
 }
 

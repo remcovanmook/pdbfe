@@ -2,6 +2,7 @@ import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
+import { getTheme, setTheme } from '../theme.js';
 
 // ── DOM helpers ─────────────────────────────────────────────────────
 
@@ -152,6 +153,25 @@ export async function renderAccount(_params) {
     langField.appendChild(langValue);
     profileGroup.appendChild(langField);
 
+    // Theme field with <select>
+    const themeField = el('div', { className: 'info-field' });
+    themeField.appendChild(el('span', { className: 'info-field__label', text: t('Theme') }));
+    const themeValue = el('span', { className: 'info-field__value' });
+    const themeSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    themeSelect.id = 'account-theme-select';
+    themeSelect.className = 'site-footer__lang-select';
+    const currentTheme = getTheme();
+    for (const [value, label] of [['dark', t('Dark')], ['light', t('Light')]]) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        opt.selected = value === currentTheme;
+        themeSelect.appendChild(opt);
+    }
+    themeValue.appendChild(themeSelect);
+    themeField.appendChild(themeValue);
+    profileGroup.appendChild(themeField);
+
     const profileCard = card(t('Profile'), profileGroup);
     sidebar.appendChild(profileCard);
 
@@ -261,6 +281,32 @@ export async function renderAccount(_params) {
             if (footerSelect) footerSelect.value = newLang;
             renderAccount(_params);
         });
+    });
+
+    // Wire up theme preference selector — persists to server
+    themeSelect.addEventListener('change', async () => {
+        const newTheme = themeSelect.value;
+        setTheme(newTheme);
+
+        // Sync the footer theme selector
+        const footerTheme = /** @type {HTMLSelectElement|null} */ (
+            document.getElementById('theme-select')
+        );
+        if (footerTheme) footerTheme.value = newTheme;
+
+        // Persist server-side
+        try {
+            await fetch(`${AUTH_ORIGIN}/account/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: { theme: newTheme } }),
+            });
+        } catch (err) {
+            console.warn('Failed to persist theme preference:', err);
+        }
     });
 
     // Load keys

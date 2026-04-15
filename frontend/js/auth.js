@@ -25,6 +25,7 @@
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
+import { setTheme } from './theme.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -491,6 +492,13 @@ async function _fetchProfile(sid) {
                 if (serverLang && serverLang in LANGUAGES && !localLang && serverLang !== getCurrentLang()) {
                     await setLanguage(serverLang);
                     localStorage.setItem('pdbfe-lang', serverLang);
+                }
+
+                // Apply server-side theme as a default (same pattern)
+                const serverTheme = profile.preferences.theme;
+                const localTheme = localStorage.getItem('pdbfe-theme');
+                if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light') && !localTheme) {
+                    setTheme(serverTheme);
                 }
             }
         }
