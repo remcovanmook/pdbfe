@@ -510,6 +510,7 @@ export function createFavoriteButton(entityType, entityId, label) {
     btn.classList.toggle('favorite-btn--active', active);
     btn.textContent = active ? '★' : '☆';
     btn.title = active ? t('Remove from favorites') : t('Add to favorites');
+    btn.setAttribute('aria-label', active ? t('Remove from favorites') : t('Add to favorites'));
 
     btn.addEventListener('click', async () => {
         btn.disabled = true;
@@ -521,6 +522,7 @@ export function createFavoriteButton(entityType, entityId, label) {
                 btn.classList.remove('favorite-btn--active');
                 btn.textContent = '☆';
                 btn.title = t('Add to favorites');
+                btn.setAttribute('aria-label', t('Add to favorites'));
             }
         } else {
             const ok = await addFavorite(entityType, entityId, label);
@@ -528,6 +530,7 @@ export function createFavoriteButton(entityType, entityId, label) {
                 btn.classList.add('favorite-btn--active');
                 btn.textContent = '★';
                 btn.title = t('Remove from favorites');
+                btn.setAttribute('aria-label', t('Remove from favorites'));
             }
         }
 

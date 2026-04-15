@@ -215,6 +215,7 @@ globalThis.addEventListener('pdbfe:ratelimit', () => {
     const btn = document.createElement('button');
     btn.className = 'rate-limit-dismiss';
     btn.textContent = t('Dismiss');
+    btn.setAttribute('aria-label', t('Dismiss rate limit warning'));
     btn.addEventListener('click', () => overlay.remove());
     dialog.appendChild(btn);
 

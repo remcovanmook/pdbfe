@@ -86,6 +86,7 @@ export async function renderHome(_params) {
     searchInput.type = 'text';
     searchInput.className = 'home-search__input';
     searchInput.placeholder = t('Search networks, exchanges, facilities...');
+    searchInput.setAttribute('aria-label', t('Search networks, exchanges, facilities'));
     searchInput.id = 'home-search-input';
     searchInput.autofocus = true;
     searchWrapper.appendChild(searchInput);
