@@ -25,13 +25,16 @@
 </head>
 <body>
 
+    <!-- Skip navigation link (visible on focus for keyboard users) -->
+    <a href="#app" class="skip-nav">Skip to main content</a>
+
     <!-- ── Header ──────────────────────────────────────────────── -->
-    <header class="site-header">
+    <header class="site-header" role="banner">
         <div class="site-header__inner">
             <a href="/" data-link class="site-logo">Peering<span>DB</span></a>
 
-            <div class="search-wrapper">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <div class="search-wrapper" role="search" aria-label="Site search">
+                <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
                     <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
@@ -41,10 +44,11 @@
                     id="header-search"
                     placeholder="Search networks, exchanges, facilities..."
                     autocomplete="off"
+                    aria-label="Search PeeringDB"
                 >
             </div>
 
-            <nav class="site-header__nav">
+            <nav class="site-header__nav" aria-label="Primary navigation">
                 <div id="auth-container" class="auth-container"></div>
                 <a href="https://www.peeringdb.com" target="_blank" rel="noopener" class="header-external-link">peeringdb.com ↗</a>
             </nav>
@@ -52,12 +56,12 @@
     </header>
 
     <!-- ── Main content area (router renders here) ─────────────── -->
-    <main class="main-content page-active" id="app">
+    <main class="main-content page-active" id="app" role="main" aria-live="polite">
         <div class="loading">Loading</div>
     </main>
 
     <!-- ── Footer ──────────────────────────────────────────────── -->
-    <footer class="site-footer">
+    <footer class="site-footer" role="contentinfo">
         <div class="site-footer__grid">
             <div class="site-footer__col">
                 <p class="site-footer__copyright">
