@@ -1798,3 +1798,61 @@ body[data-page="home"] .site-logo {
     flex-shrink: 0;
 }
 
+/* ── Rate-limit modal ───────────────────────────────────────────── */
+
+.rate-limit-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.rate-limit-dialog {
+    background: var(--bg-card);
+    border: 1px solid var(--status-warn);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl) var(--space-2xl);
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.rate-limit-dialog h3 {
+    margin: 0 0 var(--space-sm) 0;
+    font-size: 1.125rem;
+    color: var(--status-warn);
+}
+
+.rate-limit-dialog p {
+    margin: 0 0 var(--space-lg) 0;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.rate-limit-dismiss {
+    padding: var(--space-xs) var(--space-xl);
+    background: var(--status-warn);
+    color: #000;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.rate-limit-dismiss:hover {
+    opacity: 0.85;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

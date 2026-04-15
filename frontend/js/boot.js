@@ -146,7 +146,14 @@ if (prefResult.status === 'fulfilled') {
 if (syncResult.status === 'fulfilled') {
     const sync = syncResult.value;
     const el = document.getElementById('sync-status');
-    if (el && sync?.last_modified_at) {
+
+    if (el && sync?.rate_limited) {
+        // /status itself returned 429
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'site-footer__sync-time site-footer__sync-time--warn';
+        timeSpan.textContent = `● ${t('Rate limited — try again shortly')}`;
+        el.replaceChildren(timeSpan);
+    } else if (el && sync?.last_modified_at) {
         const epochMs = sync.last_modified_at * 1000;
         const isoDate = new Date(epochMs).toISOString();
         const diffMin = (Date.now() - epochMs) / 60_000;
@@ -173,3 +180,37 @@ if (syncResult.status === 'fulfilled') {
         el.title = isoDate;
     }
 }
+
+// ── Rate-limit modal ─────────────────────────────────────────────────
+// Shown once per page load when any API request returns 429.
+// The user can dismiss it; it won't re-appear until the next page load.
+let rateLimitShown = false;
+globalThis.addEventListener('pdbfe:ratelimit', () => {
+    if (rateLimitShown) return;
+    rateLimitShown = true;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'rate-limit-overlay';
+    overlay.setAttribute('role', 'alertdialog');
+    overlay.setAttribute('aria-label', 'Rate limited');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'rate-limit-dialog';
+
+    const heading = document.createElement('h3');
+    heading.textContent = t('Rate Limited');
+    dialog.appendChild(heading);
+
+    const msg = document.createElement('p');
+    msg.textContent = t('Too many requests. Please wait a moment and try again.');
+    dialog.appendChild(msg);
+
+    const btn = document.createElement('button');
+    btn.className = 'rate-limit-dismiss';
+    btn.textContent = t('Dismiss');
+    btn.addEventListener('click', () => overlay.remove());
+    dialog.appendChild(btn);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+});

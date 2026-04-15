@@ -162,6 +162,10 @@ async function freshFetch(cacheKey, url, sid, signal) {
     }
 
     const res = await fetch(url, init);
+    if (res.status === 429) {
+        globalThis.dispatchEvent(new CustomEvent('pdbfe:ratelimit'));
+        throw new Error('Rate limited (429)');
+    }
     if (!res.ok) {
         throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
@@ -313,8 +317,15 @@ export async function fetchCount(type) {
  *     The sync metadata, or null on failure.
  */
 export async function fetchSyncStatus() {
-    const result = await cachedFetch('/status');
-    return result?.sync || null;
+    try {
+        const result = await cachedFetch('/status');
+        return result?.sync || null;
+    } catch (err) {
+        if (/** @type {Error} */ (err).message.includes('429')) {
+            return { rate_limited: true };
+        }
+        return null;
+    }
 }
 
 /**
