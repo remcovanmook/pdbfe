@@ -1141,6 +1141,7 @@ body[data-page="home"] .site-logo {
 .site-footer__lang-line {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 4px;
     margin-top: 4px;
 }
