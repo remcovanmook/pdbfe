@@ -150,6 +150,7 @@ class PdbTable extends HTMLElement {
             filterInput.type = 'text';
             filterInput.className = 'table-filter__input';
             filterInput.placeholder = cfg.filterPlaceholder || t('Filter...');
+            filterInput.setAttribute('aria-label', cfg.filterPlaceholder || t('Filter table rows'));
             filterInput.addEventListener('input', () => {
                 this._filterQuery = filterInput.value.toLowerCase();
                 this._applyFilterAndSort();
@@ -354,12 +355,16 @@ class PdbTable extends HTMLElement {
         cfg.columns.forEach((col, idx) => {
             if (this._hiddenCols.has(col.key)) return;
             const th = document.createElement('th');
+            th.setAttribute('scope', 'col');
             th.textContent = t(col.label);
             th.dataset.sortKey = col.key;
             th.style.cursor = 'pointer';
             if (col.width) th.style.width = col.width;
             if (col.maxWidth) th.style.maxWidth = col.maxWidth;
-            if (idx === this._sortColIdx) th.dataset.sortDir = this._sortDir;
+            if (idx === this._sortColIdx) {
+                th.dataset.sortDir = this._sortDir;
+                th.setAttribute('aria-sort', this._sortDir === 'asc' ? 'ascending' : 'descending');
+            }
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
         });
