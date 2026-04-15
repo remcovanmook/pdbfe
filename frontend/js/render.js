@@ -432,8 +432,8 @@ export function createDetailLayout(opts) {
             }
         }
         await navigator.clipboard.writeText(url.toString());
-        shareBtn.textContent = '✓';
-        setTimeout(() => { shareBtn.textContent = '🔗'; }, 1500);
+        shareBtn.textContent = '✓ Copied!';
+        setTimeout(() => { shareBtn.textContent = '🔗'; }, 2000);
     });
     header.appendChild(shareBtn);
 
