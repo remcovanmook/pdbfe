@@ -96,7 +96,7 @@ if (langSelect) {
 const themeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('theme-select'));
 if (themeSelect) {
     const activeTheme = getTheme();
-    for (const [value, label] of [['dark', '🌙 Dark'], ['light', '☀️ Light']]) {
+    for (const [value, label] of [['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']]) {
         const opt = document.createElement('option');
         opt.value = value;
         opt.textContent = label;

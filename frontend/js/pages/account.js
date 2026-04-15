@@ -161,7 +161,7 @@ export async function renderAccount(_params) {
     themeSelect.id = 'account-theme-select';
     themeSelect.className = 'site-footer__lang-select';
     const currentTheme = getTheme();
-    for (const [value, label] of [['dark', t('Dark')], ['light', t('Light')]]) {
+    for (const [value, label] of [['auto', t('Auto')], ['dark', t('Dark')], ['light', t('Light')]]) {
         const opt = document.createElement('option');
         opt.value = value;
         opt.textContent = label;

@@ -292,7 +292,7 @@ export async function handleUpdateProfile(request, env) {
 
         // Validate theme if provided
         if (body.preferences.theme !== undefined) {
-            if (body.preferences.theme !== 'dark' && body.preferences.theme !== 'light') {
+            if (body.preferences.theme !== 'dark' && body.preferences.theme !== 'light' && body.preferences.theme !== 'auto') {
                 return jsonResponse({ error: `Invalid theme: ${body.preferences.theme}` }, 400, env.FRONTEND_ORIGIN);
             }
             mergedPrefs.theme = body.preferences.theme;

@@ -497,7 +497,7 @@ async function _fetchProfile(sid) {
                 // Apply server-side theme as a default (same pattern)
                 const serverTheme = profile.preferences.theme;
                 const localTheme = localStorage.getItem('pdbfe-theme');
-                if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light') && !localTheme) {
+                if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') && !localTheme) {
                     setTheme(serverTheme);
                 }
             }

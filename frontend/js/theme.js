@@ -1,12 +1,16 @@
 /**
- * @fileoverview Theme management — light / dark mode toggle.
+ * @fileoverview Theme management — light / dark / auto mode toggle.
  *
  * Persists the user's choice in localStorage under 'pdbfe-theme'.
- * The theme is applied by setting data-theme="light" or data-theme="dark"
- * on the document root element. CSS custom properties in index.css
- * respond to this attribute.
+ * The theme is applied by setting data-theme="light" on the document
+ * root element. CSS custom properties in index.css respond to this
+ * attribute. Absence of the attribute = dark theme.
  *
- * The default is 'dark' (no data-theme attribute = dark).
+ * Three modes:
+ *   - 'dark'  — force dark
+ *   - 'light' — force light
+ *   - 'auto'  — follow OS prefers-color-scheme (default)
+ *
  * Server-side preferences can provide a default for new browsers
  * (same pattern as the language preference).
  */
@@ -14,36 +18,56 @@
 /** @type {string} localStorage key for theme preference. */
 const STORAGE_KEY = 'pdbfe-theme';
 
-/** @type {ReadonlySet<string>} Valid theme values. */
-const VALID_THEMES = new Set(['dark', 'light']);
+/** @type {ReadonlySet<string>} Valid stored theme values. */
+const VALID_THEMES = new Set(['dark', 'light', 'auto']);
 
 /**
- * Returns the currently active theme.
+ * Resolves the effective visual theme based on OS preference.
  *
- * @returns {string} 'dark' or 'light'.
+ * @returns {'dark'|'light'}
  */
-export function getTheme() {
-    return document.documentElement.dataset.theme || 'dark';
+function resolveOsTheme() {
+    return globalThis.matchMedia?.('(prefers-color-scheme: light)').matches
+        ? 'light' : 'dark';
 }
 
 /**
- * Applies a theme and persists the choice to localStorage.
+ * Applies a resolved theme to the document root.
  *
- * @param {string} theme - 'dark' or 'light'.
+ * @param {'dark'|'light'} resolved - The visual theme to apply.
+ */
+function applyTheme(resolved) {
+    if (resolved === 'light') {
+        document.documentElement.dataset.theme = 'light';
+    } else {
+        delete document.documentElement.dataset.theme;
+    }
+}
+
+/**
+ * Returns the stored theme preference.
+ *
+ * @returns {string} 'dark', 'light', or 'auto'.
+ */
+export function getTheme() {
+    return localStorage.getItem(STORAGE_KEY) || 'auto';
+}
+
+/**
+ * Sets the theme preference and applies it immediately.
+ * 'auto' clears the stored preference and falls back to the OS setting.
+ *
+ * @param {string} theme - 'dark', 'light', or 'auto'.
  */
 export function setTheme(theme) {
     if (!VALID_THEMES.has(theme)) return;
 
-    if (theme === 'dark') {
-        delete document.documentElement.dataset.theme;
+    if (theme === 'auto') {
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* */ }
+        applyTheme(resolveOsTheme());
     } else {
-        document.documentElement.dataset.theme = theme;
-    }
-
-    try {
-        localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-        // localStorage unavailable — apply in-memory only
+        try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* */ }
+        applyTheme(/** @type {'dark'|'light'} */ (theme));
     }
 }
 
@@ -53,14 +77,10 @@ export function setTheme(theme) {
  */
 export function initTheme() {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored && VALID_THEMES.has(stored)) {
-        setTheme(stored);
+    if (stored && (stored === 'dark' || stored === 'light')) {
+        applyTheme(stored);
         return;
     }
-
-    // Respect OS preference if no explicit choice was made
-    if (globalThis.matchMedia?.('(prefers-color-scheme: light)').matches) {
-        // Apply but don't persist — let the user make an explicit choice
-        document.documentElement.dataset.theme = 'light';
-    }
+    // 'auto' or no preference — follow OS
+    applyTheme(resolveOsTheme());
 }
