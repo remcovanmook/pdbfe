@@ -43,15 +43,6 @@ const MAX_FAVORITES_PER_USER = 50;
 /** Entity types that can be favorited. */
 const VALID_FAVORITE_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
 
-/**
- * Allowed language codes for the language preference.
- * Matches the curated set from the frontend LANGUAGES map.
- */
-const VALID_LANGUAGES = new Set([
-    'en', 'cs', 'de', 'el', 'es', 'fr', 'it',
-    'ja', 'lt', 'pt', 'ro', 'ru', 'zh-cn', 'zh-tw',
-]);
-
 // ── CORS ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -282,20 +273,19 @@ export async function handleUpdateProfile(request, env) {
             return jsonResponse({ error: 'preferences must be an object' }, 400, env.FRONTEND_ORIGIN);
         }
 
-        // Validate language if provided
-        if (body.preferences.language !== undefined) {
-            if (!VALID_LANGUAGES.has(body.preferences.language)) {
-                return jsonResponse({ error: `Invalid language: ${body.preferences.language}` }, 400, env.FRONTEND_ORIGIN);
+        // Validate each preference key/value against the preference_options table.
+        // This avoids hardcoded enum checks — adding a new preference is a DB INSERT.
+        for (const [key, value] of Object.entries(body.preferences)) {
+            if (typeof value !== 'string') {
+                return jsonResponse({ error: `Preference '${key}' must be a string` }, 400, env.FRONTEND_ORIGIN);
             }
-            mergedPrefs.language = body.preferences.language;
-        }
-
-        // Validate theme if provided
-        if (body.preferences.theme !== undefined) {
-            if (body.preferences.theme !== 'dark' && body.preferences.theme !== 'light' && body.preferences.theme !== 'auto') {
-                return jsonResponse({ error: `Invalid theme: ${body.preferences.theme}` }, 400, env.FRONTEND_ORIGIN);
+            const valid = await env.USERDB.prepare(
+                'SELECT 1 FROM preference_options WHERE pref_key = ? AND pref_value = ?'
+            ).bind(key, value).first();
+            if (!valid) {
+                return jsonResponse({ error: `Invalid preference: ${key}=${value}` }, 400, env.FRONTEND_ORIGIN);
             }
-            mergedPrefs.theme = body.preferences.theme;
+            mergedPrefs[key] = value;
         }
 
         sets.push('preferences = ?');
