@@ -71,14 +71,21 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// Fetch preference options from the API and populate footer selectors.
-// Non-blocking — selectors populate asynchronously after first paint.
-fetchPreferenceOptions().then(prefOptions => {
-    // ── Language selector ────────────────────────────────────────────
+// Populate footer selectors and sync status in parallel (non-blocking).
+// Both are non-critical — failures are silently ignored.
+const [prefResult, syncResult] = await Promise.allSettled([
+    fetchPreferenceOptions(),
+    fetchSyncStatus(),
+]);
+
+// ── Preference selectors ─────────────────────────────────────────────
+if (prefResult.status === 'fulfilled') {
+    const prefOptions = prefResult.value;
+
+    // Language
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
     if (langSelect) {
         const activeLang = getCurrentLang();
-        // Use API-provided language list, fall back to LANGUAGES map keys
         const langCodes = prefOptions.language || Object.keys(LANGUAGES);
         for (const code of langCodes) {
             const name = LANGUAGES[code] || code;
@@ -96,7 +103,7 @@ fetchPreferenceOptions().then(prefOptions => {
         });
     }
 
-    // ── Theme selector ───────────────────────────────────────────────
+    // Theme
     const themeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('theme-select'));
     if (themeSelect) {
         const activeTheme = getTheme();
@@ -116,7 +123,7 @@ fetchPreferenceOptions().then(prefOptions => {
         });
     }
 
-    // ── Timezone selector ─────────────────────────────────────────
+    // Timezone
     const tzSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('tz-select'));
     if (tzSelect) {
         const activeTz = getTimezonePreference();
@@ -133,40 +140,36 @@ fetchPreferenceOptions().then(prefOptions => {
             setTimezone(tzSelect.value);
         });
     }
-}).catch(() => {
-    // Non-critical — selectors remain empty on failure
-});
+}
 
-// Fetch and display sync status in the footer
-fetchSyncStatus().then(sync => {
+// ── Sync status indicator ────────────────────────────────────────────
+if (syncResult.status === 'fulfilled') {
+    const sync = syncResult.value;
     const el = document.getElementById('sync-status');
-    if (!el || !sync?.last_modified_at) return;
+    if (el && sync?.last_modified_at) {
+        const epochMs = sync.last_modified_at * 1000;
+        const isoDate = new Date(epochMs).toISOString();
+        const diffMin = (Date.now() - epochMs) / 60_000;
+        const timeText = formatDate(isoDate);
 
-    const epochMs = sync.last_modified_at * 1000;
-    const isoDate = new Date(epochMs).toISOString();
-    const diffMin = (Date.now() - epochMs) / 60_000;
-    const timeText = formatDate(isoDate);
+        let freshClass = '';
+        let prefix = '';
+        if (diffMin > 60) {
+            freshClass = ' site-footer__sync-time--error';
+            prefix = '✕ ';
+        } else if (diffMin > 15) {
+            freshClass = ' site-footer__sync-time--warn';
+            prefix = '● ';
+        } else {
+            freshClass = ' site-footer__sync-time--ok';
+            prefix = '✓ ';
+        }
 
-    // Determine freshness tier
-    let freshClass = '';
-    let prefix = '';
-    if (diffMin > 60) {
-        freshClass = ' site-footer__sync-time--error';
-        prefix = '✕ ';
-    } else if (diffMin > 15) {
-        freshClass = ' site-footer__sync-time--warn';
-        prefix = '● ';
-    } else {
-        freshClass = ' site-footer__sync-time--ok';
-        prefix = '✓ ';
+        const textNode = document.createTextNode(t('Last synced') + ' ');
+        const timeSpan = document.createElement('span');
+        timeSpan.className = `site-footer__sync-time${freshClass}`;
+        timeSpan.textContent = prefix + timeText;
+        el.replaceChildren(textNode, timeSpan);
+        el.title = isoDate;
     }
-
-    const textNode = document.createTextNode(t('Last synced') + ' ');
-    const timeSpan = document.createElement('span');
-    timeSpan.className = `site-footer__sync-time${freshClass}`;
-    timeSpan.textContent = prefix + timeText;
-    el.replaceChildren(textNode, timeSpan);
-    el.title = isoDate;
-}).catch(() => {
-    // Non-critical — leave the sync status empty on failure
-});
+}
