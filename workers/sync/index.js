@@ -266,8 +266,8 @@ export async function syncLogos(db, logos, tag, table) {
 
     if (!rows.results || rows.results.length === 0) return result;
 
-    for (const row of rows.results) {
-        const logoUrl = /** @type {string} */ (row.logo);
+    for (const row of /** @type {{id: number, logo: string}[]} */ (rows.results)) {
+        const logoUrl = row.logo;
         if (!logoUrl.startsWith(S3_MEDIA_PREFIX)) {
             // Unknown URL format — skip but mark as migrated to avoid retrying
             console.warn(`[sync-logos] ${tag}/${row.id}: unknown URL format: ${logoUrl}`);

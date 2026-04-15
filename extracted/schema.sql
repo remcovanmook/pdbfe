@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_campus" (
     "logo" TEXT,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_campus_name_nocase_idx" ON "peeringdb_campus" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_campus_org_id_idx" ON "peeringdb_campus" ("org_id");
@@ -54,7 +55,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_carrier" (
     "logo" TEXT,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_carrier_name_nocase_idx" ON "peeringdb_carrier" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_carrier_org_id_idx" ON "peeringdb_carrier" ("org_id");
@@ -111,7 +113,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_facility" (
     "longitude" REAL,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_facility_name_nocase_idx" ON "peeringdb_facility" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_facility_org_id_idx" ON "peeringdb_facility" ("org_id");
@@ -154,7 +157,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_ix" (
     "logo" TEXT,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_ix_name_nocase_idx" ON "peeringdb_ix" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_ix_city_nocase_idx" ON "peeringdb_ix" ("city" COLLATE NOCASE);
@@ -253,7 +257,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_network" (
     "logo" TEXT,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_network_asn_idx" ON "peeringdb_network" ("asn");
 CREATE INDEX IF NOT EXISTS "peeringdb_network_name_nocase_idx" ON "peeringdb_network" ("name" COLLATE NOCASE);
@@ -329,7 +334,8 @@ CREATE TABLE IF NOT EXISTS "peeringdb_organization" (
     "longitude" REAL,
     "created" DATETIME NOT NULL DEFAULT '',
     "updated" DATETIME NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT ''
+    "status" TEXT NOT NULL DEFAULT '',
+    "__logo_migrated" BOOL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS "peeringdb_organization_name_nocase_idx" ON "peeringdb_organization" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_organization_city_nocase_idx" ON "peeringdb_organization" ("city" COLLATE NOCASE);
