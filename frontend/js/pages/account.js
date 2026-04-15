@@ -399,7 +399,7 @@ async function loadKeys(sid) {
             revokeBtn.style.cssText = 'cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)';
             revokeBtn.textContent = t('Revoke');
             revokeBtn.addEventListener('click', () => {
-                showRevokeDialog(sid, k.id, k.label, k.prefix);
+                showRevokeDialog(sid, k.key_id, k.label, k.prefix);
             });
             tdAction.appendChild(revokeBtn);
             tr.appendChild(tdAction);
