@@ -1685,11 +1685,10 @@ body[data-page="home"] .site-logo {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    padding: 0.2em 0.5em;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--badge-color) 40%, transparent);
-    background: color-mix(in srgb, var(--badge-color) 14%, transparent);
-    color: var(--badge-color);
+    padding: 0.2em 0.6em;
+    border-radius: 1em;
+    background: var(--badge-color);
+    color: hsl(220 14% 10%);
     flex-shrink: 0;
     line-height: 1.4;
 }
@@ -1697,7 +1696,7 @@ body[data-page="home"] .site-logo {
 /* Full-size badge for detail page headers */
 .entity-badge--header {
     font-size: 0.75rem;
-    padding: 0.25em 0.65em;
+    padding: 0.25em 0.75em;
 }
 
 /* Per-type colour assignments */
