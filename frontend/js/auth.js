@@ -26,6 +26,7 @@ import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
 import { setTheme } from './theme.js';
+import { setTimezone } from './timezone.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -527,6 +528,13 @@ async function _fetchProfile(sid) {
                 const localTheme = localStorage.getItem('pdbfe-theme');
                 if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') && !localTheme) {
                     setTheme(serverTheme);
+                }
+
+                // Apply server-side timezone as a default (same pattern)
+                const serverTz = profile.preferences.timezone;
+                const localTz = localStorage.getItem('pdbfe-tz');
+                if (serverTz && !localTz) {
+                    setTimezone(serverTz);
                 }
             }
         }

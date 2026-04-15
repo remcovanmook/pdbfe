@@ -24,6 +24,7 @@ import { initAuth, fetchPreferenceOptions } from './auth.js';
 import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
+import { getTimezonePreference, setTimezone } from './timezone.js';
 
 // Register Web Components — must execute before the router dispatches.
 import './components/pdb-table.js';
@@ -112,6 +113,24 @@ fetchPreferenceOptions().then(prefOptions => {
 
         themeSelect.addEventListener('change', () => {
             setTheme(themeSelect.value);
+        });
+    }
+
+    // ── Timezone selector ─────────────────────────────────────────
+    const tzSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('tz-select'));
+    if (tzSelect) {
+        const activeTz = getTimezonePreference();
+        const tzValues = prefOptions.timezone || ['auto', 'UTC'];
+        for (const value of tzValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value === 'auto' ? 'Auto' : value.replaceAll('_', ' ');
+            opt.selected = value === activeTz;
+            tzSelect.appendChild(opt);
+        }
+
+        tzSelect.addEventListener('change', () => {
+            setTimezone(tzSelect.value);
         });
     }
 }).catch(() => {

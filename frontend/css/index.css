@@ -93,10 +93,10 @@
     --border:     hsl(220 10% 82%);
     --border-subtle: hsl(220 10% 88%);
 
-    /* Text */
-    --text-primary:   hsl(220 14% 15%);
-    --text-secondary: hsl(220 10% 42%);
-    --text-muted:     hsl(220 10% 58%);
+    /* Text (darker for legibility on white) */
+    --text-primary:   hsl(220 20% 10%);
+    --text-secondary: hsl(220 10% 36%);
+    --text-muted:     hsl(220 10% 52%);
 
     /* Accent (darker for readable contrast on white) */
     --accent:       hsl(200 80% 40%);
@@ -123,6 +123,14 @@
     --bg-stripe:  hsl(220 14% 94%);
     --error-bg:     hsl(0 80% 96%);
     --error-border: hsl(0 50% 82%);
+}
+
+/* Light-mode font rendering: heavier weight to compensate for
+   Inter's thin strokes on white, and subpixel AA for crispness. */
+:root[data-theme="light"] body {
+    font-weight: 450;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
 }
 
 html {

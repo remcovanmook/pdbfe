@@ -11,6 +11,7 @@
 import { renderMarkdown } from './markdown.js';
 import { t, getCurrentLang } from './i18n.js';
 import { isFavorite, addFavorite, removeFavorite } from './auth.js';
+import { getTimezone } from './timezone.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -58,17 +59,19 @@ export function formatDate(iso) {
 }
 
 /**
- * Formats an ISO date string as a locale-formatted absolute date
- * (e.g. "7 Apr 2026"). Used where a fixed calendar date is more
- * appropriate than a relative time.
+ * Formats an ISO date string as a locale-formatted absolute date and
+ * time (e.g. "7 Apr 2026, 14:30"). Respects the user's timezone
+ * preference from the timezone module.
  *
  * @param {string} iso - ISO 8601 date string.
  * @returns {string} Locale-formatted date, or the raw string on parse failure.
  */
 export function formatLocaleDate(iso) {
     try {
-        return new Date(iso).toLocaleDateString(getCurrentLang() || 'en', {
+        return new Date(iso).toLocaleString(getCurrentLang() || 'en', {
             year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+            timeZone: getTimezone(),
         });
     } catch {
         return iso;

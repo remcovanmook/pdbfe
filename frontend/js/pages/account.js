@@ -3,6 +3,7 @@ import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, f
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 import { getTheme, setTheme } from '../theme.js';
+import { getTimezonePreference, setTimezone } from '../timezone.js';
 
 // ── DOM helpers ─────────────────────────────────────────────────────
 
@@ -150,6 +151,17 @@ export async function renderAccount(_params) {
     themeField.appendChild(themeValue);
     profileGroup.appendChild(themeField);
 
+    // Timezone field with <select> — options loaded from API
+    const tzField = el('div', { className: 'info-field' });
+    tzField.appendChild(el('span', { className: 'info-field__label', text: t('Timezone') }));
+    const tzValue = el('span', { className: 'info-field__value' });
+    const tzSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    tzSelect.id = 'account-tz-select';
+    tzSelect.className = 'site-footer__lang-select';
+    tzValue.appendChild(tzSelect);
+    tzField.appendChild(tzValue);
+    profileGroup.appendChild(tzField);
+
     // Populate selectors from API (non-blocking)
     fetchPreferenceOptions().then(prefOptions => {
         const activeLang = getCurrentLang();
@@ -173,6 +185,16 @@ export async function renderAccount(_params) {
             opt.textContent = themeLabels[value] || value;
             opt.selected = value === currentTheme;
             themeSelect.appendChild(opt);
+        }
+
+        const activeTz = getTimezonePreference();
+        const tzValues = prefOptions.timezone || ['auto', 'UTC'];
+        for (const value of tzValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value === 'auto' ? t('Auto') : value.replaceAll('_', ' ');
+            opt.selected = value === activeTz;
+            tzSelect.appendChild(opt);
         }
     }).catch(() => { /* Non-critical */ });
 
@@ -310,6 +332,32 @@ export async function renderAccount(_params) {
             });
         } catch (err) {
             console.warn('Failed to persist theme preference:', err);
+        }
+    });
+
+    // Wire up timezone preference selector — persists to server
+    tzSelect.addEventListener('change', async () => {
+        const newTz = tzSelect.value;
+        setTimezone(newTz);
+
+        // Sync the footer timezone selector
+        const footerTz = /** @type {HTMLSelectElement|null} */ (
+            document.getElementById('tz-select')
+        );
+        if (footerTz) footerTz.value = newTz;
+
+        // Persist server-side
+        try {
+            await fetch(`${AUTH_ORIGIN}/account/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: { timezone: newTz } }),
+            });
+        } catch (err) {
+            console.warn('Failed to persist timezone preference:', err);
         }
     });
 

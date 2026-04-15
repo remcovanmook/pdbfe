@@ -30,3 +30,30 @@ INSERT OR IGNORE INTO preference_options (pref_key, pref_value) VALUES
     ('theme', 'auto'),
     ('theme', 'dark'),
     ('theme', 'light');
+
+-- Seed: timezone options (auto + major IANA timezones)
+INSERT OR IGNORE INTO preference_options (pref_key, pref_value) VALUES
+    ('timezone', 'auto'),
+    ('timezone', 'Pacific/Auckland'),
+    ('timezone', 'Australia/Sydney'),
+    ('timezone', 'Australia/Perth'),
+    ('timezone', 'Asia/Tokyo'),
+    ('timezone', 'Asia/Shanghai'),
+    ('timezone', 'Asia/Kolkata'),
+    ('timezone', 'Asia/Dubai'),
+    ('timezone', 'Europe/Moscow'),
+    ('timezone', 'Europe/Istanbul'),
+    ('timezone', 'Europe/Helsinki'),
+    ('timezone', 'Europe/Berlin'),
+    ('timezone', 'Europe/Amsterdam'),
+    ('timezone', 'Europe/Paris'),
+    ('timezone', 'Europe/London'),
+    ('timezone', 'Atlantic/Reykjavik'),
+    ('timezone', 'America/Sao_Paulo'),
+    ('timezone', 'America/New_York'),
+    ('timezone', 'America/Chicago'),
+    ('timezone', 'America/Denver'),
+    ('timezone', 'America/Los_Angeles'),
+    ('timezone', 'America/Anchorage'),
+    ('timezone', 'Pacific/Honolulu'),
+    ('timezone', 'UTC');
