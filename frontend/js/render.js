@@ -178,6 +178,7 @@ export function createLink(type, id, label) {
  * @param {number|string} [opts.linkId] - Entity ID for internal SPA link.
  * @param {boolean} [opts.markdown] - Render value as markdown (uses innerHTML for the value span only).
  * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
+ * @param {boolean} [opts.date] - Format value as a locale-aware date with timezone.
  * @returns {HTMLDivElement|null} The info-field element, or null if value is empty.
  */
 export function createField(label, value, opts = {}) {

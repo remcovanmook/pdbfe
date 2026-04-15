@@ -170,7 +170,7 @@ function buildTables(ix, peers) {
             document.createElement('pdb-table')
         );
         peerTable.configure({
-            title: 'Peers',
+            title: 'Connections',
             filterable: true,
             filterPlaceholder: t('Filter by name or ASN...'),
             columns: [
