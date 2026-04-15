@@ -147,13 +147,13 @@ if (syncResult.status === 'fulfilled') {
     const sync = syncResult.value;
     const el = document.getElementById('sync-status');
 
-    if (el && sync?.rate_limited) {
+    if (el && sync && 'rate_limited' in sync) {
         // /status itself returned 429
         const timeSpan = document.createElement('span');
         timeSpan.className = 'site-footer__sync-time site-footer__sync-time--warn';
         timeSpan.textContent = `● ${t('Rate limited — try again shortly')}`;
         el.replaceChildren(timeSpan);
-    } else if (el && sync?.last_modified_at) {
+    } else if (el && sync && 'last_modified_at' in sync) {
         const epochMs = sync.last_modified_at * 1000;
         const isoDate = new Date(epochMs).toISOString();
         const diffMin = (Date.now() - epochMs) / 60_000;
