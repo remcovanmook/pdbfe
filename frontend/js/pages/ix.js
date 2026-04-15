@@ -47,6 +47,10 @@ export async function renderIx(params) {
         const totalConnections = peers.length;
         const totalSpeed = peers.reduce((sum, p) => sum + (p.speed || 0), 0);
         const openPeers = new Set(peers.filter(p => p.operational).map(p => p.asn)).size;
+        const ipv6Count = peers.filter(p => p.ipaddr6).length;
+        const ipv6Pct = totalConnections > 0
+            ? `${Math.round((ipv6Count / totalConnections) * 100)}%`
+            : '—';
 
         const location = (ix.city || '') + (ix.country ? `, ${ix.country}` : '');
 
@@ -60,6 +64,7 @@ export async function renderIx(params) {
             { label: 'Connections', value: totalConnections.toLocaleString() },
             { label: 'Open Peers', value: openPeers.toLocaleString() },
             { label: 'Total Speed', value: formatSpeed(totalSpeed) },
+            { label: 'IPv6', value: ipv6Pct },
         ]);
 
         const subtitle = location;

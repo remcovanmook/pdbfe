@@ -22,8 +22,17 @@ import { getTimezone } from './timezone.js';
  */
 export function formatSpeed(mbps) {
     if (!mbps) return '—';
-    if (mbps >= 1_000_000) return `${mbps / 1_000_000}T`;
-    if (mbps >= 1_000) return `${mbps / 1_000}G`;
+    /**
+     * Rounds a number to 1 decimal place, dropping trailing '.0'.
+     * @param {number} n
+     * @returns {string}
+     */
+    const fmt = (n) => {
+        const r = Math.round(n * 10) / 10;
+        return r % 1 === 0 ? String(r) : r.toFixed(1);
+    };
+    if (mbps >= 1_000_000) return `${fmt(mbps / 1_000_000)}T`;
+    if (mbps >= 1_000) return `${fmt(mbps / 1_000)}G`;
     return `${mbps}M`;
 }
 
