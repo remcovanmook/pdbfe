@@ -53,6 +53,9 @@ interface TableColumn {
     key: string;
     label: string;
     class?: string;
+    width?: string;
+    maxWidth?: string;
+    defaultHidden?: boolean;
 }
 
 /**
@@ -67,6 +70,7 @@ interface CellResult {
  * Configuration accepted by <pdb-table>.configure().
  */
 interface TableConfig {
+    tableId?: string;
     title: string;
     columns: TableColumn[];
     rows: any[];

@@ -776,6 +776,14 @@ body[data-page="home"] .site-logo {
     letter-spacing: 0;
 }
 
+.ip-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 0.6875rem;
+    line-height: 1.3;
+}
+
 .data-table td.td-right {
     text-align: right;
 }
