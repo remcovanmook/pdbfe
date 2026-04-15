@@ -64,8 +64,11 @@ function corsHeaders(origin) {
 
 /**
  * Resolves the CORS origin to reflect in the response. Returns the
- * request's Origin if it matches the production FRONTEND_ORIGIN or
- * any Cloudflare Pages preview subdomain of the same project.
+ * request's Origin if it matches:
+ *   1. The production FRONTEND_ORIGIN host, or
+ *   2. Any Cloudflare Pages preview subdomain (*.pages.dev) for the
+ *      same project (configured via PAGES_PROJECT or derived from
+ *      FRONTEND_ORIGIN).
  * Falls back to the production origin otherwise.
  *
  * @param {Request} request - The inbound HTTP request.
@@ -78,7 +81,13 @@ function resolveAllowedOrigin(request, env) {
     if (!requestOrigin) return env.FRONTEND_ORIGIN;
     try {
         const reqHost = new URL(requestOrigin).host;
+        // Exact match or subdomain of production host
         if (reqHost === prodHost || reqHost.endsWith(`.${prodHost}`)) {
+            return requestOrigin;
+        }
+        // Cloudflare Pages preview: <hash|branch>.pdbfe-frontend.pages.dev
+        const pagesProject = env.PAGES_PROJECT || 'pdbfe-frontend';
+        if (reqHost.endsWith(`.${pagesProject}.pages.dev`)) {
             return requestOrigin;
         }
     } catch { /* malformed */ }
