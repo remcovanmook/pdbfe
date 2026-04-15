@@ -82,9 +82,14 @@ class PdbTable extends HTMLElement {
         /** @type {string} Current filter query (lowercased). */
         this._filterQuery = '';
 
+        /** @type {Set<string>} Keys of hidden columns. */
+        this._hiddenCols = new Set();
+
         // DOM references set during build
         /** @type {HTMLTableSectionElement|null} */
         this._tbody = null;
+        /** @type {HTMLTableSectionElement|null} */
+        this._thead = null;
         /** @type {HTMLElement|null} */
         this._pagingDiv = null;
         /** @type {HTMLSpanElement|null} */
@@ -154,6 +159,59 @@ class PdbTable extends HTMLElement {
             headerRight.appendChild(filterWrap);
         }
 
+        // Column visibility toggle (only if >1 column)
+        if (cfg.columns.length > 1) {
+            const colToggle = document.createElement('div');
+            colToggle.className = 'col-toggle';
+
+            const colBtn = document.createElement('button');
+            colBtn.className = 'col-toggle__btn';
+            colBtn.title = t('Toggle columns');
+            colBtn.textContent = '⚙';
+            colBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                colMenu.classList.toggle('is-open');
+            });
+            colToggle.appendChild(colBtn);
+
+            const colMenu = document.createElement('div');
+            colMenu.className = 'col-toggle__menu';
+
+            // Skip the first column (always visible)
+            for (let i = 1; i < cfg.columns.length; i++) {
+                const col = cfg.columns[i];
+                const label = document.createElement('label');
+                label.className = 'col-toggle__item';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = true;
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        this._hiddenCols.delete(col.key);
+                    } else {
+                        this._hiddenCols.add(col.key);
+                    }
+                    this._rebuildThead();
+                    this._renderPage();
+                });
+
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(` ${t(col.label)}`));
+                colMenu.appendChild(label);
+            }
+
+            colToggle.appendChild(colMenu);
+            headerRight.appendChild(colToggle);
+
+            // Close menu on outside click
+            document.addEventListener('click', (e) => {
+                if (!colToggle.contains(/** @type {Node} */ (e.target))) {
+                    colMenu.classList.remove('is-open');
+                }
+            });
+        }
+
         // Count badge
         this._badgeSpan = document.createElement('span');
         this._badgeSpan.className = 'card__badge';
@@ -171,19 +229,9 @@ class PdbTable extends HTMLElement {
         table.className = 'data-table';
 
         // Thead
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        cfg.columns.forEach((col, idx) => {
-            const th = document.createElement('th');
-            th.textContent = t(col.label);
-            th.dataset.sortKey = col.key;
-            th.style.cursor = 'pointer';
-            if (col.width) th.style.width = col.width;
-            th.addEventListener('click', () => this._onHeaderClick(idx));
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
+        this._thead = document.createElement('thead');
+        this._rebuildThead();
+        table.appendChild(this._thead);
 
         // Tbody (rows are rendered via _renderPage)
         this._tbody = document.createElement('tbody');
@@ -244,7 +292,7 @@ class PdbTable extends HTMLElement {
         if (cfg.columns.length > 0) {
             this._sortColIdx = 0;
             this._sortDir = 'asc';
-            const firstTh = thead.querySelector('th');
+            const firstTh = this._thead?.querySelector('th');
             if (firstTh) firstTh.dataset.sortDir = 'asc';
             this._applySortToProcessedRows();
         }
@@ -258,6 +306,37 @@ class PdbTable extends HTMLElement {
      */
     _pageSize() {
         return this._config?.pageSize || DEFAULT_PAGE_SIZE;
+    }
+
+    /**
+     * Returns visible columns (excludes hidden ones).
+     * @returns {TableColumn[]}
+     */
+    _visibleColumns() {
+        return this._config?.columns.filter(c => !this._hiddenCols.has(c.key)) || [];
+    }
+
+    /**
+     * Rebuilds the thead row based on current column visibility.
+     * Preserves sort direction indicator on the active sort column.
+     */
+    _rebuildThead() {
+        const cfg = this._config;
+        if (!cfg || !this._thead) return;
+
+        const headerRow = document.createElement('tr');
+        cfg.columns.forEach((col, idx) => {
+            if (this._hiddenCols.has(col.key)) return;
+            const th = document.createElement('th');
+            th.textContent = t(col.label);
+            th.dataset.sortKey = col.key;
+            th.style.cursor = 'pointer';
+            if (col.width) th.style.width = col.width;
+            if (idx === this._sortColIdx) th.dataset.sortDir = this._sortDir;
+            th.addEventListener('click', () => this._onHeaderClick(idx));
+            headerRow.appendChild(th);
+        });
+        this._thead.replaceChildren(headerRow);
     }
 
     /**
@@ -275,8 +354,7 @@ class PdbTable extends HTMLElement {
      * @param {number} colIdx - Column index that was clicked.
      */
     _onHeaderClick(colIdx) {
-        const thead = this.querySelector('thead');
-        if (!thead) return;
+        if (!this._thead) return;
 
         // Determine new direction
         if (this._sortColIdx === colIdx) {
@@ -287,11 +365,23 @@ class PdbTable extends HTMLElement {
         }
 
         // Update visual indicators
-        for (const th of thead.querySelectorAll('th')) {
+        for (const th of this._thead.querySelectorAll('th')) {
             delete th.dataset.sortDir;
         }
-        const activeTh = thead.querySelectorAll('th')[colIdx];
-        if (activeTh) activeTh.dataset.sortDir = this._sortDir;
+        // Find the th for this colIdx among visible headers
+        const visibleThs = this._thead.querySelectorAll('th');
+        const cfg = this._config;
+        if (cfg) {
+            let visIdx = 0;
+            for (let i = 0; i < cfg.columns.length; i++) {
+                if (this._hiddenCols.has(cfg.columns[i].key)) continue;
+                if (i === colIdx) {
+                    if (visibleThs[visIdx]) visibleThs[visIdx].dataset.sortDir = this._sortDir;
+                    break;
+                }
+                visIdx++;
+            }
+        }
 
         this._applySortToProcessedRows();
         this._page = 1;
@@ -409,6 +499,7 @@ class PdbTable extends HTMLElement {
             const tr = document.createElement('tr');
 
             for (const col of cfg.columns) {
+                if (this._hiddenCols.has(col.key)) continue;
                 const td = document.createElement('td');
                 if (col.class) td.className = col.class;
 

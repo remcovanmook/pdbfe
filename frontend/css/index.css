@@ -766,6 +766,72 @@ body[data-page="home"] .site-logo {
     border-color: var(--accent);
 }
 
+/* ── Column toggle dropdown ──────────────────────────────────── */
+
+.col-toggle {
+    position: relative;
+}
+
+.col-toggle__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.col-toggle__btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.col-toggle__menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 100;
+    min-width: 140px;
+    margin-top: 4px;
+    padding: var(--space-xs) 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.col-toggle__menu.is-open {
+    display: block;
+}
+
+.col-toggle__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 3px var(--space-sm);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.col-toggle__item:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.col-toggle__item input[type="checkbox"] {
+    margin: 0;
+}
+
 /* ── Table pagination ─────────────────────────────────────────── */
 
 .table-paging {
