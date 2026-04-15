@@ -212,6 +212,25 @@ class PdbTable extends HTMLElement {
             });
         }
 
+        // Copy-to-clipboard buttons
+        const csvBtn = document.createElement('button');
+        csvBtn.className = 'col-toggle__btn';
+        csvBtn.title = t('Copy as CSV');
+        csvBtn.textContent = 'CSV';
+        csvBtn.style.fontSize = '0.625rem';
+        csvBtn.style.fontWeight = '600';
+        csvBtn.addEventListener('click', () => this._copyToClipboard('csv'));
+        headerRight.appendChild(csvBtn);
+
+        const mdBtn = document.createElement('button');
+        mdBtn.className = 'col-toggle__btn';
+        mdBtn.title = t('Copy as Markdown');
+        mdBtn.textContent = 'MD';
+        mdBtn.style.fontSize = '0.625rem';
+        mdBtn.style.fontWeight = '600';
+        mdBtn.addEventListener('click', () => this._copyToClipboard('md'));
+        headerRight.appendChild(mdBtn);
+
         // Count badge
         this._badgeSpan = document.createElement('span');
         this._badgeSpan.className = 'card__badge';
@@ -527,6 +546,100 @@ class PdbTable extends HTMLElement {
         if (this._pageTotalSpan) this._pageTotalSpan.textContent = String(totalPages);
         if (this._prevBtn) this._prevBtn.disabled = safePage <= 1;
         if (this._nextBtn) this._nextBtn.disabled = safePage >= totalPages;
+    }
+    /**
+     * Extracts the text content from a cellRenderer result.
+     *
+     * @param {any} row - Data row.
+     * @param {TableColumn} col - Column definition.
+     * @returns {string} Plain text value for the cell.
+     */
+    _cellText(row, col) {
+        const cfg = this._config;
+        if (!cfg) return '';
+        const rendered = cfg.cellRenderer(row, col);
+        if (rendered instanceof Node) return rendered.textContent?.trim() || '';
+        if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
+            return rendered.node.textContent?.trim() || '';
+        }
+        return '';
+    }
+
+    /**
+     * Builds a formatted string from the current filtered/sorted rows
+     * and visible columns, then copies it to the clipboard.
+     * Shows a brief visual confirmation on the clicked button.
+     *
+     * @param {'csv'|'md'} format - Output format.
+     */
+    async _copyToClipboard(format) {
+        const cfg = this._config;
+        if (!cfg) return;
+
+        const cols = this._visibleColumns();
+        const headers = cols.map(c => t(c.label));
+        const rows = this._processedRows;
+
+        let output;
+        if (format === 'csv') {
+            output = this._toCSV(headers, rows, cols);
+        } else {
+            output = this._toMarkdown(headers, rows, cols);
+        }
+
+        try {
+            await navigator.clipboard.writeText(output);
+        } catch {
+            // Fallback for insecure contexts
+            const ta = document.createElement('textarea');
+            ta.value = output;
+            ta.style.cssText = 'position:fixed;left:-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        }
+    }
+
+    /**
+     * Formats rows as CSV text. Values containing commas, quotes, or
+     * newlines are wrapped in double-quotes with internal quotes escaped.
+     *
+     * @param {string[]} headers - Column header labels.
+     * @param {any[]} rows - Data rows.
+     * @param {TableColumn[]} cols - Visible column definitions.
+     * @returns {string} CSV string.
+     */
+    _toCSV(headers, rows, cols) {
+        const escape = (/** @type {string} */ v) => {
+            if (v.includes(',') || v.includes('"') || v.includes('\n')) {
+                return `"${v.replaceAll('"', '""')}"`;
+            }
+            return v;
+        };
+        const lines = [headers.map(escape).join(',')];
+        for (const row of rows) {
+            lines.push(cols.map(col => escape(this._cellText(row, col))).join(','));
+        }
+        return lines.join('\n');
+    }
+
+    /**
+     * Formats rows as a Markdown table. Pipes are escaped in cell values.
+     *
+     * @param {string[]} headers - Column header labels.
+     * @param {any[]} rows - Data rows.
+     * @param {TableColumn[]} cols - Visible column definitions.
+     * @returns {string} Markdown table string.
+     */
+    _toMarkdown(headers, rows, cols) {
+        const escape = (/** @type {string} */ v) => v.replaceAll('|', '\\|');
+        const headerLine = `| ${headers.map(escape).join(' | ')} |`;
+        const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
+        const dataLines = rows.map(row =>
+            `| ${cols.map(col => escape(this._cellText(row, col))).join(' | ')} |`
+        );
+        return [headerLine, sepLine, ...dataLines].join('\n');
     }
 }
 
