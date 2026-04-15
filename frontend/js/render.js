@@ -465,7 +465,7 @@ export function createDetailLayout(opts) {
         // load synchronously and would be missed otherwise.
         logo.onload = () => { logo.style.display = ''; };
         logo.onerror = () => { logo.remove(); };
-        if (opts.logoMigrated && opts.logoUrl.startsWith(S3_MEDIA_PREFIX)) {
+        if (IMAGES_ORIGIN && opts.logoMigrated && opts.logoUrl.startsWith(S3_MEDIA_PREFIX)) {
             logo.src = `${IMAGES_ORIGIN}/${opts.logoUrl.slice(S3_MEDIA_PREFIX.length)}`;
         } else {
             logo.src = opts.logoUrl;
