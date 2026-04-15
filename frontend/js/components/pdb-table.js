@@ -39,7 +39,8 @@ const DEFAULT_PAGE_SIZE = 50;
  * @property {string} key - Column key used in cellRenderer dispatch.
  * @property {string} label - Display label (passed through t() for i18n).
  * @property {string} [class] - Optional CSS class for <td> elements.
- * @property {string} [width] - Optional CSS width for the column (e.g. '80px', '6rem').
+ * @property {string} [width] - Optional fixed CSS width (enables table-layout: fixed).
+ * @property {string} [maxWidth] - Optional max-width (used when table-layout is auto).
  */
 
 /**
@@ -247,6 +248,12 @@ class PdbTable extends HTMLElement {
         const table = document.createElement('table');
         table.className = 'data-table';
 
+        // Enable table-layout: fixed only when columns define explicit widths.
+        // Without explicit widths, auto layout is used so max-width works.
+        if (cfg.columns.some(c => c.width)) {
+            table.style.tableLayout = 'fixed';
+        }
+
         // Thead
         this._thead = document.createElement('thead');
         this._rebuildThead();
@@ -351,6 +358,7 @@ class PdbTable extends HTMLElement {
             th.dataset.sortKey = col.key;
             th.style.cursor = 'pointer';
             if (col.width) th.style.width = col.width;
+            if (col.maxWidth) th.style.maxWidth = col.maxWidth;
             if (idx === this._sortColIdx) th.dataset.sortDir = this._sortDir;
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
@@ -521,6 +529,12 @@ class PdbTable extends HTMLElement {
                 if (this._hiddenCols.has(col.key)) continue;
                 const td = document.createElement('td');
                 if (col.class) td.className = col.class;
+                if (col.maxWidth) {
+                    td.style.maxWidth = col.maxWidth;
+                    td.style.overflow = 'hidden';
+                    td.style.textOverflow = 'ellipsis';
+                    td.style.whiteSpace = 'nowrap';
+                }
 
                 const rendered = cfg.cellRenderer(row, col);
                 if (rendered instanceof Node) {
