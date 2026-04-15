@@ -31,6 +31,7 @@ Usage:
 import ast
 import json
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -180,8 +181,6 @@ def _has_kwarg(call_node, name, value=True):
     for kw in call_node.keywords:
         if kw.arg == name:
             if isinstance(kw.value, ast.Constant):
-                return kw.value.value == value
-            if isinstance(kw.value, ast.NameConstant):  # Python 3.7 compat
                 return kw.value.value == value
     return False
 
@@ -527,7 +526,7 @@ def parse_api_spec(spec):
             schema_type = field_schema.get("type")
             if schema_type == "boolean":
                 field_info["schema_type"] = "boolean"
-            elif schema_type == "integer" or schema_type == "number":
+            elif schema_type in ("integer", "number"):
                 field_info["schema_type"] = "number"
             elif schema_type == "string":
                 fmt = field_schema.get("format")
@@ -535,7 +534,7 @@ def parse_api_spec(spec):
                     field_info["schema_type"] = "datetime"
                 else:
                     field_info["schema_type"] = "string"
-            elif schema_type == "array" or schema_type == "object":
+            elif schema_type in ("array", "object"):
                 field_info["schema_type"] = "json"
 
             if "enum" in field_schema:
