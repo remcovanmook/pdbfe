@@ -80,7 +80,7 @@ export function formatLocaleDate(iso) {
     try {
         return new Date(iso).toLocaleString(getCurrentLang() || 'en', {
             year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false,
             timeZone: getTimezone(),
         });
     } catch {
