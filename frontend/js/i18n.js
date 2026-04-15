@@ -110,16 +110,25 @@ export async function initI18n() {
  * loads the corresponding dictionary, and calls the optional callback
  * so the UI can re-render.
  *
- * @param {string} lang - ISO language code from the LANGUAGES map.
+ * Passing 'auto' clears the stored preference and resolves the language
+ * from the browser's navigator.language, falling back to English.
+ *
+ * @param {string} lang - ISO language code from the LANGUAGES map, or 'auto'.
  * @param {function(): void} [onSwitch] - Callback invoked after the
  *     new dictionary is loaded, typically used to re-render the page.
  * @returns {Promise<void>}
  */
 export async function setLanguage(lang, onSwitch) {
-    if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('pdbfe-lang', lang);
+    if (lang === 'auto') {
+        try { localStorage.removeItem('pdbfe-lang'); } catch { /* */ }
+        // Re-resolve from browser
+        await initI18n();
+    } else {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('pdbfe-lang', lang);
+        }
+        await loadLocale(lang);
     }
-    await loadLocale(lang);
     if (onSwitch) onSwitch();
 }
 

@@ -164,13 +164,13 @@ export async function renderAccount(_params) {
 
     // Populate selectors from API (non-blocking)
     fetchPreferenceOptions().then(prefOptions => {
-        const activeLang = getCurrentLang();
-        const langCodes = prefOptions.language || ['en', ...Object.keys(LANGUAGES)];
+        const storedLang = localStorage.getItem('pdbfe-lang');
+        const activeLang = storedLang || 'auto';
+        const langCodes = prefOptions.language || ['auto', 'en', ...Object.keys(LANGUAGES)];
         for (const code of langCodes) {
-            const name = LANGUAGES[code] || code;
             const opt = document.createElement('option');
             opt.value = code;
-            opt.textContent = /** @type {string} */ (name);
+            opt.textContent = code === 'auto' ? t('Auto') : /** @type {string} */ (LANGUAGES[code] || code);
             opt.selected = code === activeLang;
             langSelect.appendChild(opt);
         }

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS preference_options (
 
 -- Seed: language options (matches frontend LANGUAGES map + English)
 INSERT OR IGNORE INTO preference_options (pref_key, pref_value) VALUES
+    ('language', 'auto'),
     ('language', 'en'),
     ('language', 'cs'),
     ('language', 'de'),

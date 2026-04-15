@@ -85,13 +85,13 @@ if (prefResult.status === 'fulfilled') {
     // Language
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
     if (langSelect) {
-        const activeLang = getCurrentLang();
-        const langCodes = prefOptions.language || Object.keys(LANGUAGES);
+        const storedLang = localStorage.getItem('pdbfe-lang');
+        const activeLang = storedLang || 'auto';
+        const langCodes = prefOptions.language || ['auto', ...Object.keys(LANGUAGES)];
         for (const code of langCodes) {
-            const name = LANGUAGES[code] || code;
             const opt = document.createElement('option');
             opt.value = code;
-            opt.textContent = `${name} (${code})`;
+            opt.textContent = code === 'auto' ? 'Auto' : `${LANGUAGES[code] || code} (${code})`;
             opt.selected = code === activeLang;
             langSelect.appendChild(opt);
         }
