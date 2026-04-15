@@ -117,7 +117,7 @@ function buildTables(org) {
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City', maxWidth: '140px' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
                 { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: org.fac_set,
@@ -137,7 +137,7 @@ function buildTables(org) {
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
-                { key: 'city',    label: 'City', maxWidth: '140px' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
                 { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: org.ix_set,

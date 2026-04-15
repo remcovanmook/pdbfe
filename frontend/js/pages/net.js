@@ -182,7 +182,7 @@ function buildTables(net) {
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City', maxWidth: '140px' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
                 { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: net.netfac_set,
