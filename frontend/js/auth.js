@@ -25,6 +25,8 @@
 import { AUTH_ORIGIN } from './config.js';
 import { clearCache } from './api.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from './i18n.js';
+import { setTheme } from './theme.js';
+import { setTimezone } from './timezone.js';
 
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
@@ -54,6 +56,34 @@ const VALID_ENTITY_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campu
  * @type {RegExp}
  */
 const SID_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Cached preference options from the server.
+ * Populated by fetchPreferenceOptions() on first call.
+ *
+ * @type {Record<string, string[]>|null}
+ */
+let _cachedPrefOptions = null;
+
+/**
+ * Fetches valid preference keys and values from the auth API.
+ * Results are cached in-memory for the page lifetime.
+ *
+ * @returns {Promise<Record<string, string[]>>} Map of pref_key → allowed values.
+ */
+export async function fetchPreferenceOptions() {
+    if (_cachedPrefOptions) return _cachedPrefOptions;
+    try {
+        const res = await fetch(`${AUTH_ORIGIN}/account/preferences/options`);
+        if (res.ok) {
+            _cachedPrefOptions = await res.json();
+            return /** @type {Record<string, string[]>} */ (_cachedPrefOptions);
+        }
+    } catch {
+        // Fall through to empty default
+    }
+    return {};
+}
 
 /** @type {string|null} Cached session ID for the current page load. */
 let _cachedSid = null;
@@ -482,16 +512,29 @@ async function _fetchProfile(sid) {
             if (_cachedUser && profile.preferences) {
                 _cachedUser.preferences = profile.preferences;
 
-                // Apply server-side language preference if it differs from
-                // the current locale. This makes the preference follow the
-                // user across browsers/devices.
+                // Apply server-side language as a default for this browser
+                // if the user hasn't already set a local preference. This
+                // lets the setting follow the user to new devices without
+                // overriding a deliberate local choice.
                 const serverLang = profile.preferences.language;
-                if (serverLang && serverLang in LANGUAGES && serverLang !== getCurrentLang()) {
+                const localLang = localStorage.getItem('pdbfe-lang');
+                if (serverLang && serverLang in LANGUAGES && !localLang && serverLang !== getCurrentLang()) {
                     await setLanguage(serverLang);
-                    // Also update localStorage so the footer selector and
-                    // subsequent page loads use the right locale without
-                    // waiting for the profile fetch.
                     localStorage.setItem('pdbfe-lang', serverLang);
+                }
+
+                // Apply server-side theme as a default (same pattern)
+                const serverTheme = profile.preferences.theme;
+                const localTheme = localStorage.getItem('pdbfe-theme');
+                if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') && !localTheme) {
+                    setTheme(serverTheme);
+                }
+
+                // Apply server-side timezone as a default (same pattern)
+                const serverTz = profile.preferences.timezone;
+                const localTz = localStorage.getItem('pdbfe-tz');
+                if (serverTz && !localTz) {
+                    setTimezone(serverTz);
                 }
             }
         }

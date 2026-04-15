@@ -11,6 +11,7 @@
 import { renderMarkdown } from './markdown.js';
 import { t, getCurrentLang } from './i18n.js';
 import { isFavorite, addFavorite, removeFavorite } from './auth.js';
+import { getTimezone } from './timezone.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -21,8 +22,17 @@ import { isFavorite, addFavorite, removeFavorite } from './auth.js';
  */
 export function formatSpeed(mbps) {
     if (!mbps) return '—';
-    if (mbps >= 1_000_000) return `${mbps / 1_000_000}T`;
-    if (mbps >= 1_000) return `${mbps / 1_000}G`;
+    /**
+     * Rounds a number to 1 decimal place, dropping trailing '.0'.
+     * @param {number} n
+     * @returns {string}
+     */
+    const fmt = (n) => {
+        const r = Math.round(n * 10) / 10;
+        return r % 1 === 0 ? String(r) : r.toFixed(1);
+    };
+    if (mbps >= 1_000_000) return `${fmt(mbps / 1_000_000)}T`;
+    if (mbps >= 1_000) return `${fmt(mbps / 1_000)}G`;
     return `${mbps}M`;
 }
 
@@ -58,17 +68,19 @@ export function formatDate(iso) {
 }
 
 /**
- * Formats an ISO date string as a locale-formatted absolute date
- * (e.g. "7 Apr 2026"). Used where a fixed calendar date is more
- * appropriate than a relative time.
+ * Formats an ISO date string as a locale-formatted absolute date and
+ * time (e.g. "7 Apr 2026, 14:30"). Respects the user's timezone
+ * preference from the timezone module.
  *
  * @param {string} iso - ISO 8601 date string.
  * @returns {string} Locale-formatted date, or the raw string on parse failure.
  */
 export function formatLocaleDate(iso) {
     try {
-        return new Date(iso).toLocaleDateString(getCurrentLang() || 'en', {
+        return new Date(iso).toLocaleString(getCurrentLang() || 'en', {
             year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+            timeZone: getTimezone(),
         });
     } catch {
         return iso;
@@ -128,6 +140,23 @@ function getTemplate(id) {
 }
 
 /**
+ * Creates a colour-coded entity-type badge.
+ * The CSS maps `data-type` to a per-entity accent colour.
+ *
+ * @param {string} type - Entity type key (net, ix, fac, org, carrier, campus).
+ * @param {Object} [options] - Badge options.
+ * @param {boolean} [options.header] - If true, uses the larger header variant.
+ * @returns {HTMLSpanElement}
+ */
+export function createEntityBadge(type, options) {
+    const badge = document.createElement('span');
+    badge.className = 'entity-badge' + (options?.header ? ' entity-badge--header' : '');
+    badge.dataset.type = type;
+    badge.textContent = type;
+    return badge;
+}
+
+/**
  * Creates an internal SPA link element as a DOM node.
  * Uses textContent for the label, so XSS is structurally impossible.
  *
@@ -158,6 +187,9 @@ export function createLink(type, id, label) {
  * @param {number|string} [opts.linkId] - Entity ID for internal SPA link.
  * @param {boolean} [opts.markdown] - Render value as markdown (uses innerHTML for the value span only).
  * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
+ * @param {boolean} [opts.date] - Format value as a locale-aware date with timezone.
+ * @param {boolean} [opts.email] - Render value as a mailto: link.
+ * @param {string} [opts.map] - Google Maps search query. Wraps value in a maps link.
  * @returns {HTMLDivElement|null} The info-field element, or null if value is empty.
  */
 export function createField(label, value, opts = {}) {
@@ -188,6 +220,20 @@ export function createField(label, value, opts = {}) {
             a.target = '_blank';
             a.rel = 'noopener';
         }
+        a.textContent = displayValue;
+        valueEl.appendChild(a);
+    } else if (opts.date) {
+        valueEl.textContent = formatLocaleDate(displayValue);
+    } else if (opts.email) {
+        const a = document.createElement('a');
+        a.href = `mailto:${displayValue}`;
+        a.textContent = displayValue;
+        valueEl.appendChild(a);
+    } else if (opts.map) {
+        const a = document.createElement('a');
+        a.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(opts.map)}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
         a.textContent = displayValue;
         valueEl.appendChild(a);
     } else {
@@ -342,6 +388,11 @@ export function createDetailLayout(opts) {
         header.appendChild(createFavoriteButton(opts.entityType, opts.entityId, opts.title));
     }
 
+    // Entity-type badge (colour-coded)
+    if (opts.entityType) {
+        header.appendChild(createEntityBadge(opts.entityType, { header: true }));
+    }
+
     const h1 = document.createElement('h1');
     h1.className = 'detail-header__title';
     h1.textContent = opts.title;
@@ -353,6 +404,38 @@ export function createDetailLayout(opts) {
         sub.textContent = opts.subtitle;
         header.appendChild(sub);
     }
+
+    // Share button — copies URL with current table sort/filter state
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'detail-header__share';
+    shareBtn.textContent = '🔗';
+    shareBtn.title = t('Copy shareable link with current table state');
+    shareBtn.setAttribute('aria-label', t('Share page'));
+    shareBtn.addEventListener('click', async () => {
+        const url = new URL(globalThis.location.href);
+        // Clear existing table state params
+        for (const key of [...url.searchParams.keys()]) {
+            if (key.includes('.')) url.searchParams.delete(key);
+        }
+        // Collect state from all pdb-table elements
+        for (const table of document.querySelectorAll('pdb-table')) {
+            const state = /** @type {any} */ (table).getState?.();
+            if (!state) continue;
+            const id = /** @type {any} */ (table)._config?.tableId;
+            if (!id) continue;
+            if (state.sort) {
+                url.searchParams.set(`${id}.sort`, state.sort);
+                url.searchParams.set(`${id}.dir`, state.dir);
+            }
+            if (state.filter) {
+                url.searchParams.set(`${id}.filter`, state.filter);
+            }
+        }
+        await navigator.clipboard.writeText(url.toString());
+        shareBtn.textContent = '✓ Copied!';
+        setTimeout(() => { shareBtn.textContent = '🔗'; }, 2000);
+    });
+    header.appendChild(shareBtn);
 
     layout.appendChild(header);
 

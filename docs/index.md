@@ -6,7 +6,12 @@
 - [Developer Onboarding](../workers/ONBOARDING.md) — V8 isolate lifecycle, concurrency model, cache architecture, type safety
 - [Anti-Patterns](../workers/ANTI_PATTERNS.md) — Forbidden code patterns for hot-path performance
 - [API Worker](../workers/api/api.md) — Request flow, caching strategy, query builder, depth expansion
-- [Auth Architecture](../workers/auth/auth.md) — OAuth login flow, API key management, KV schema
+- [Auth Architecture](../workers/auth/auth.md) — OAuth login flow, API key management, user preferences, CORS
+
+## Frontend
+
+- [Frontend Architecture](../frontend/js/ARCHITECTURE.md) — Rendering pipeline, component hierarchy, data flow
+- [`<pdb-table>` Component](../frontend/js/components/pdb-table.md) — Column config, sorting, filtering, export, column toggle
 
 ## Deployment
 

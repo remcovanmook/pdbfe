@@ -47,6 +47,10 @@ export async function renderIx(params) {
         const totalConnections = peers.length;
         const totalSpeed = peers.reduce((sum, p) => sum + (p.speed || 0), 0);
         const openPeers = new Set(peers.filter(p => p.operational).map(p => p.asn)).size;
+        const ipv6Count = peers.filter(p => p.ipaddr6).length;
+        const ipv6Pct = totalConnections > 0
+            ? `${Math.round((ipv6Count / totalConnections) * 100)}%`
+            : '—';
 
         const location = (ix.city || '') + (ix.country ? `, ${ix.country}` : '');
 
@@ -60,6 +64,7 @@ export async function renderIx(params) {
             { label: 'Connections', value: totalConnections.toLocaleString() },
             { label: 'Open Peers', value: openPeers.toLocaleString() },
             { label: 'Total Speed', value: formatSpeed(totalSpeed) },
+            { label: 'IPv6', value: ipv6Pct },
         ]);
 
         const subtitle = location;
@@ -90,7 +95,7 @@ function buildSidebar(ix) {
 
     const general = createFieldGroup('General', [
         createField('Organization', ix.org_name || ix.org_id, { linkType: 'org', linkId: ix.org_id }),
-        createField('City', ix.city),
+        createField('City', ix.city, { map: [ix.city, ix.country].filter(Boolean).join(', ') }),
         createField('Country', ix.country),
         createField('Region', ix.region_continent, { translate: true }),
         createField('Media Type', ix.media, { translate: true }),
@@ -98,12 +103,12 @@ function buildSidebar(ix) {
         createField('Terms', ix.terms, { translate: true }),
         createField('Website', ix.website, { href: ix.website, external: true }),
         createField('URL Stats', ix.url_stats, { href: ix.url_stats, external: true }),
-        createField('Tech Email', ix.tech_email),
+        createField('Tech Email', ix.tech_email, { email: true }),
         createField('Tech Phone', ix.tech_phone),
-        createField('Policy Email', ix.policy_email),
+        createField('Policy Email', ix.policy_email, { email: true }),
         createField('Policy Phone', ix.policy_phone),
         createField('Notes', ix.notes, { markdown: true }),
-        createField('Last Updated', ix.updated),
+        createField('Last Updated', ix.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 
@@ -170,16 +175,17 @@ function buildTables(ix, peers) {
             document.createElement('pdb-table')
         );
         peerTable.configure({
-            title: 'Peers',
+            tableId: 'peers',
+            title: 'Connections',
             filterable: true,
             filterPlaceholder: t('Filter by name or ASN...'),
             columns: [
                 { key: 'name',       label: 'Network' },
-                { key: 'asn',        label: 'ASN', class: 'td-right' },
-                { key: 'speed',      label: 'Speed', class: 'td-right' },
-                { key: 'ipaddr4',    label: 'IPv4', class: 'td-mono' },
-                { key: 'ipaddr6',    label: 'IPv6', class: 'td-mono' },
-                { key: 'is_rs_peer', label: 'RS' },
+                { key: 'asn',        label: 'ASN', class: 'td-right', width: '80px' },
+                { key: 'speed',      label: 'Speed', class: 'td-right', width: '90px' },
+                { key: 'ipaddr4',    label: 'IPv4', class: 'td-mono', width: '140px' },
+                { key: 'ipaddr6',    label: 'IPv6', class: 'td-mono', width: '240px' },
+                { key: 'is_rs_peer', label: 'RS', width: '70px' },
             ],
             rows: peers,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -216,13 +222,14 @@ function buildTables(ix, peers) {
             document.createElement('pdb-table')
         );
         facTable.configure({
+            tableId: 'fac',
             title: 'Local Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
+                { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: ix.ixfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

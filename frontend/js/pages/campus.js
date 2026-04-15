@@ -59,11 +59,11 @@ function buildSidebar(campus) {
         createField('Website', campus.website, { href: campus.website, external: true }),
         createField('Also Known As', campus.aka),
         createField('Long Name', campus.name_long),
-        createField('City', campus.city),
+        createField('City', campus.city, { map: [campus.city, campus.country].filter(Boolean).join(', ') }),
         createField('State/Province', campus.state),
         createField('Country', campus.country),
         createField('Postal Code', campus.zipcode),
-        createField('Last Updated', campus.updated),
+        createField('Last Updated', campus.updated, { date: true }),
     ]);
 
     const frag = document.createDocumentFragment();
@@ -84,13 +84,14 @@ function buildTables(campus) {
 
     const table = /** @type {any} */ (document.createElement('pdb-table'));
     table.configure({
+        tableId: 'fac',
         title: 'Facilities',
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
         columns: [
             { key: 'name', label: 'Facility' },
-            { key: 'city', label: 'City' },
-            { key: 'country', label: 'Country' },
+            { key: 'city', label: 'City', maxWidth: '250px' },
+            { key: 'country', label: 'Country', maxWidth: '100px' },
         ],
         rows: campus.fac_set,
         cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

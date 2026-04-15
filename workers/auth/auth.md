@@ -7,11 +7,11 @@ system for the pdbfe stack.
 
 Authentication is split across two Cloudflare Workers and the frontend SPA:
 
-| Component | Role | KV Access |
+| Component | Role | Storage |
 |---|---|---|
-| **pdbfe-auth** | OAuth ceremony, session CRUD, account/key management | SESSIONS (rw), USERS (rw) |
-| **pdbfe-api** | Session + API key verification | SESSIONS (ro), USERS (ro) |
-| **Frontend (Pages)** | Token storage, UI state, /account SPA page | None |
+| **pdbfe-auth** | OAuth ceremony, session CRUD, account/key management | SESSIONS KV (rw), USERDB D1 (rw) |
+| **pdbfe-api** | Session + API key verification | SESSIONS KV (ro), USERDB D1 (ro) |
+| **Frontend (Pages)** | Token storage, UI state, /account SPA page | localStorage |
 
 ## OAuth Login Flow
 
@@ -143,6 +143,22 @@ Composite PK `(user_id, entity_type, entity_id)` prevents duplicates.
 `idx_user_favorites_list` on `(user_id, created_at DESC)` supports
 ordered listing. Maximum 50 favorites per user (application-enforced).
 
+#### `preference_options` table
+
+Lookup table defining valid preference keys and values. Used by both
+the `GET /account/preferences/options` (public) and
+`PUT /account/profile` (validation) endpoints.
+
+| Column | Type | Description |
+|---|---|---|
+| `pref_key` | TEXT (PK) | Preference key (language, theme, timezone) |
+| `pref_value` | TEXT (PK) | Valid value for that key |
+
+Seeded by migration `0002_preference_options.sql` with:
+- `language`: en, cs, de, el, es, fr, it, ja, lt, pt, ro, ru, zh-cn, zh-tw
+- `theme`: auto, dark, light
+- `timezone`: IANA timezone names
+
 ## Session Data Structure
 
 ```json
@@ -166,22 +182,28 @@ ordered listing. Maximum 50 favorites per user (application-enforced).
 Served by pdbfe-auth under `/account/*`. All endpoints require a valid
 session (`Authorization: Bearer <sid>`).
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/account/profile` | GET | Return user profile + preferences from USERDB D1 |
-| `/account/profile` | PUT | Update profile name and/or preferences |
-| `/account/keys` | GET | List API keys (label + prefix, no full keys) |
-| `/account/keys` | POST | Generate new API key, return full key once |
-| `/account/keys/:id` | DELETE | Revoke an API key |
-| `/account/favorites` | GET | List favorited entities |
-| `/account/favorites` | POST | Add a favorite (entity_type, entity_id, label) |
-| `/account/favorites/:type/:id` | DELETE | Remove a favorite |
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/account/preferences/options` | GET | No | Available preference keys/values (language, theme, timezone) |
+| `/account/profile` | GET | Yes | Return user profile + preferences from USERDB D1 |
+| `/account/profile` | PUT | Yes | Update profile name and/or preferences |
+| `/account/keys` | GET | Yes | List API keys (label + prefix, no full keys) |
+| `/account/keys` | POST | Yes | Generate new API key, return full key once |
+| `/account/keys/:id` | DELETE | Yes | Revoke an API key |
+| `/account/favorites` | GET | Yes | List favorited entities |
+| `/account/favorites` | POST | Yes | Add a favorite (entity_type, entity_id, label) |
+| `/account/favorites/:type/:id` | DELETE | Yes | Remove a favorite |
 
 User records are auto-provisioned on first OAuth login if missing.
+
+Preference validation is data-driven: `PUT /account/profile` checks each
+preference key/value pair against `preference_options` via D1 query.
+No hardcoded lists in the worker code.
 
 ## Security
 
 - **CSRF protection**: Double Submit Cookie pattern — state nonce is set as an `HttpOnly; Secure; SameSite=Lax` cookie during `/auth/login` and verified against the URL `state` parameter in `/auth/callback`. No server-side state storage needed. Cookie is cleared after use.
+- **CORS origin matching**: `resolveAllowedOrigin()` reflects the request's `Origin` header when it matches the production `FRONTEND_ORIGIN` or any Cloudflare Pages preview subdomain (`*.pdbfe-frontend.pages.dev`). This allows branch preview deployments to use the auth API without CORS failures. Non-matching origins fall back to the production origin.
 - **Session ID**: 32 bytes from `crypto.getRandomValues`, making brute-force infeasible.
 - **Query parameters**: Session IDs are passed via `?sid=` (survives Cloudflare Access redirects). The frontend strips the query param immediately after reading it.
 - **Token storage**: Frontend stores session ID in `localStorage`. Not accessible to other origins.

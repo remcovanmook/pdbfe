@@ -39,6 +39,8 @@ const DEFAULT_PAGE_SIZE = 50;
  * @property {string} key - Column key used in cellRenderer dispatch.
  * @property {string} label - Display label (passed through t() for i18n).
  * @property {string} [class] - Optional CSS class for <td> elements.
+ * @property {string} [width] - Optional fixed CSS width (enables table-layout: fixed).
+ * @property {string} [maxWidth] - Optional max-width (used when table-layout is auto).
  */
 
 /**
@@ -58,6 +60,7 @@ const DEFAULT_PAGE_SIZE = 50;
  * @property {boolean} [filterable] - Show a filter input.
  * @property {string} [filterPlaceholder] - Placeholder text for filter input.
  * @property {number} [pageSize] - Rows per page (default: DEFAULT_PAGE_SIZE).
+ * @property {string} [tableId] - Unique ID for URL state encoding (e.g. 'ix', 'fac').
  */
 
 class PdbTable extends HTMLElement {
@@ -81,9 +84,14 @@ class PdbTable extends HTMLElement {
         /** @type {string} Current filter query (lowercased). */
         this._filterQuery = '';
 
+        /** @type {Set<string>} Keys of hidden columns. */
+        this._hiddenCols = new Set();
+
         // DOM references set during build
         /** @type {HTMLTableSectionElement|null} */
         this._tbody = null;
+        /** @type {HTMLTableSectionElement|null} */
+        this._thead = null;
         /** @type {HTMLElement|null} */
         this._pagingDiv = null;
         /** @type {HTMLSpanElement|null} */
@@ -143,6 +151,7 @@ class PdbTable extends HTMLElement {
             filterInput.type = 'text';
             filterInput.className = 'table-filter__input';
             filterInput.placeholder = cfg.filterPlaceholder || t('Filter...');
+            filterInput.setAttribute('aria-label', cfg.filterPlaceholder || t('Filter table rows'));
             filterInput.addEventListener('input', () => {
                 this._filterQuery = filterInput.value.toLowerCase();
                 this._applyFilterAndSort();
@@ -152,6 +161,78 @@ class PdbTable extends HTMLElement {
             filterWrap.appendChild(filterInput);
             headerRight.appendChild(filterWrap);
         }
+
+        // Column visibility toggle (only if >1 column)
+        if (cfg.columns.length > 1) {
+            const colToggle = document.createElement('div');
+            colToggle.className = 'col-toggle';
+
+            const colBtn = document.createElement('button');
+            colBtn.className = 'col-toggle__btn';
+            colBtn.title = t('Toggle columns');
+            colBtn.textContent = '⚙';
+            colBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                colMenu.classList.toggle('is-open');
+            });
+            colToggle.appendChild(colBtn);
+
+            const colMenu = document.createElement('div');
+            colMenu.className = 'col-toggle__menu';
+
+            // Skip the first column (always visible)
+            for (let i = 1; i < cfg.columns.length; i++) {
+                const col = cfg.columns[i];
+                const label = document.createElement('label');
+                label.className = 'col-toggle__item';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = true;
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        this._hiddenCols.delete(col.key);
+                    } else {
+                        this._hiddenCols.add(col.key);
+                    }
+                    this._rebuildThead();
+                    this._renderPage();
+                });
+
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(` ${t(col.label)}`));
+                colMenu.appendChild(label);
+            }
+
+            colToggle.appendChild(colMenu);
+            headerRight.appendChild(colToggle);
+
+            // Close menu on outside click
+            document.addEventListener('click', (e) => {
+                if (!colToggle.contains(/** @type {Node} */ (e.target))) {
+                    colMenu.classList.remove('is-open');
+                }
+            });
+        }
+
+        // Copy-to-clipboard buttons
+        const csvBtn = document.createElement('button');
+        csvBtn.className = 'col-toggle__btn';
+        csvBtn.title = t('Copy as CSV');
+        csvBtn.textContent = 'CSV';
+        csvBtn.style.fontSize = '0.625rem';
+        csvBtn.style.fontWeight = '600';
+        csvBtn.addEventListener('click', () => this._copyToClipboard('csv'));
+        headerRight.appendChild(csvBtn);
+
+        const mdBtn = document.createElement('button');
+        mdBtn.className = 'col-toggle__btn';
+        mdBtn.title = t('Copy as Markdown');
+        mdBtn.textContent = 'MD';
+        mdBtn.style.fontSize = '0.625rem';
+        mdBtn.style.fontWeight = '600';
+        mdBtn.addEventListener('click', () => this._copyToClipboard('md'));
+        headerRight.appendChild(mdBtn);
 
         // Count badge
         this._badgeSpan = document.createElement('span');
@@ -169,19 +250,16 @@ class PdbTable extends HTMLElement {
         const table = document.createElement('table');
         table.className = 'data-table';
 
+        // Enable table-layout: fixed only when columns define explicit widths.
+        // Without explicit widths, auto layout is used so max-width works.
+        if (cfg.columns.some(c => c.width)) {
+            table.style.tableLayout = 'fixed';
+        }
+
         // Thead
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        cfg.columns.forEach((col, idx) => {
-            const th = document.createElement('th');
-            th.textContent = t(col.label);
-            th.dataset.sortKey = col.key;
-            th.style.cursor = 'pointer';
-            th.addEventListener('click', () => this._onHeaderClick(idx));
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
+        this._thead = document.createElement('thead');
+        this._rebuildThead();
+        table.appendChild(this._thead);
 
         // Tbody (rows are rendered via _renderPage)
         this._tbody = document.createElement('tbody');
@@ -242,12 +320,73 @@ class PdbTable extends HTMLElement {
         if (cfg.columns.length > 0) {
             this._sortColIdx = 0;
             this._sortDir = 'asc';
-            const firstTh = thead.querySelector('th');
-            if (firstTh) firstTh.dataset.sortDir = 'asc';
+            const firstTh = this._thead?.querySelector('th');
+            if (firstTh) {
+                firstTh.dataset.sortDir = 'asc';
+                firstTh.setAttribute('aria-sort', 'ascending');
+            }
             this._applySortToProcessedRows();
         }
 
+        // Restore state from URL params (e.g. ?ix.sort=speed&ix.dir=desc&ix.filter=ams)
+        this._restoreFromURL();
+
         this._renderPage();
+    }
+
+    /**
+     * Returns the current sort/filter state for URL encoding.
+     * Only useful when tableId is set in the config.
+     *
+     * @returns {{sort: string, dir: string, filter: string}|null}
+     */
+    getState() {
+        const cfg = this._config;
+        if (!cfg?.tableId) return null;
+        const col = this._sortColIdx >= 0 ? cfg.columns[this._sortColIdx] : null;
+        return {
+            sort: col ? col.key : '',
+            dir: this._sortDir,
+            filter: this._filterQuery,
+        };
+    }
+
+    /**
+     * Restores sort/filter state from the current URL search params.
+     * Looks for <tableId>.sort, <tableId>.dir, and <tableId>.filter params.
+     * Called automatically at the end of connectedCallback.
+     */
+    _restoreFromURL() {
+        const cfg = this._config;
+        if (!cfg?.tableId) return;
+        const prefix = cfg.tableId;
+        const params = new URLSearchParams(globalThis.location.search);
+
+        const sortKey = params.get(`${prefix}.sort`);
+        const sortDir = params.get(`${prefix}.dir`);
+        const filter = params.get(`${prefix}.filter`);
+
+        // Restore sort
+        if (sortKey) {
+            const colIdx = cfg.columns.findIndex(c => c.key === sortKey);
+            if (colIdx >= 0) {
+                this._sortColIdx = colIdx;
+                this._sortDir = (sortDir === 'desc') ? 'desc' : 'asc';
+                this._rebuildThead();
+                this._applySortToProcessedRows();
+            }
+        }
+
+        // Restore filter
+        if (filter) {
+            this._filterQuery = filter.toLowerCase();
+            this._applyFilterAndSort();
+            // Update the filter input value if present
+            const input = /** @type {HTMLInputElement|null} */ (
+                this.querySelector('.table-filter__input')
+            );
+            if (input) input.value = filter;
+        }
     }
 
     /**
@@ -256,6 +395,42 @@ class PdbTable extends HTMLElement {
      */
     _pageSize() {
         return this._config?.pageSize || DEFAULT_PAGE_SIZE;
+    }
+
+    /**
+     * Returns visible columns (excludes hidden ones).
+     * @returns {TableColumn[]}
+     */
+    _visibleColumns() {
+        return this._config?.columns.filter(c => !this._hiddenCols.has(c.key)) || [];
+    }
+
+    /**
+     * Rebuilds the thead row based on current column visibility.
+     * Preserves sort direction indicator on the active sort column.
+     */
+    _rebuildThead() {
+        const cfg = this._config;
+        if (!cfg || !this._thead) return;
+
+        const headerRow = document.createElement('tr');
+        cfg.columns.forEach((col, idx) => {
+            if (this._hiddenCols.has(col.key)) return;
+            const th = document.createElement('th');
+            th.setAttribute('scope', 'col');
+            th.textContent = t(col.label);
+            th.dataset.sortKey = col.key;
+            th.style.cursor = 'pointer';
+            if (col.width) th.style.width = col.width;
+            if (col.maxWidth) th.style.maxWidth = col.maxWidth;
+            if (idx === this._sortColIdx) {
+                th.dataset.sortDir = this._sortDir;
+                th.setAttribute('aria-sort', this._sortDir === 'asc' ? 'ascending' : 'descending');
+            }
+            th.addEventListener('click', () => this._onHeaderClick(idx));
+            headerRow.appendChild(th);
+        });
+        this._thead.replaceChildren(headerRow);
     }
 
     /**
@@ -273,8 +448,7 @@ class PdbTable extends HTMLElement {
      * @param {number} colIdx - Column index that was clicked.
      */
     _onHeaderClick(colIdx) {
-        const thead = this.querySelector('thead');
-        if (!thead) return;
+        if (!this._thead) return;
 
         // Determine new direction
         if (this._sortColIdx === colIdx) {
@@ -285,11 +459,23 @@ class PdbTable extends HTMLElement {
         }
 
         // Update visual indicators
-        for (const th of thead.querySelectorAll('th')) {
+        for (const th of this._thead.querySelectorAll('th')) {
             delete th.dataset.sortDir;
         }
-        const activeTh = thead.querySelectorAll('th')[colIdx];
-        if (activeTh) activeTh.dataset.sortDir = this._sortDir;
+        // Find the th for this colIdx among visible headers
+        const visibleThs = this._thead.querySelectorAll('th');
+        const cfg = this._config;
+        if (cfg) {
+            let visIdx = 0;
+            for (let i = 0; i < cfg.columns.length; i++) {
+                if (this._hiddenCols.has(cfg.columns[i].key)) continue;
+                if (i === colIdx) {
+                    if (visibleThs[visIdx]) visibleThs[visIdx].dataset.sortDir = this._sortDir;
+                    break;
+                }
+                visIdx++;
+            }
+        }
 
         this._applySortToProcessedRows();
         this._page = 1;
@@ -407,8 +593,15 @@ class PdbTable extends HTMLElement {
             const tr = document.createElement('tr');
 
             for (const col of cfg.columns) {
+                if (this._hiddenCols.has(col.key)) continue;
                 const td = document.createElement('td');
                 if (col.class) td.className = col.class;
+                if (col.maxWidth) {
+                    td.style.maxWidth = col.maxWidth;
+                    td.style.overflow = 'hidden';
+                    td.style.textOverflow = 'ellipsis';
+                    td.style.whiteSpace = 'nowrap';
+                }
 
                 const rendered = cfg.cellRenderer(row, col);
                 if (rendered instanceof Node) {
@@ -434,6 +627,89 @@ class PdbTable extends HTMLElement {
         if (this._pageTotalSpan) this._pageTotalSpan.textContent = String(totalPages);
         if (this._prevBtn) this._prevBtn.disabled = safePage <= 1;
         if (this._nextBtn) this._nextBtn.disabled = safePage >= totalPages;
+    }
+    /**
+     * Extracts the text content from a cellRenderer result.
+     *
+     * @param {any} row - Data row.
+     * @param {TableColumn} col - Column definition.
+     * @returns {string} Plain text value for the cell.
+     */
+    _cellText(row, col) {
+        const cfg = this._config;
+        if (!cfg) return '';
+        const rendered = cfg.cellRenderer(row, col);
+        if (rendered instanceof Node) return rendered.textContent?.trim() || '';
+        if (typeof rendered === 'object' && rendered !== null && 'node' in rendered) {
+            return rendered.node.textContent?.trim() || '';
+        }
+        return '';
+    }
+
+    /**
+     * Builds a formatted string from the current filtered/sorted rows
+     * and visible columns, then copies it to the clipboard.
+     * Shows a brief visual confirmation on the clicked button.
+     *
+     * @param {'csv'|'md'} format - Output format.
+     */
+    async _copyToClipboard(format) {
+        const cfg = this._config;
+        if (!cfg) return;
+
+        const cols = this._visibleColumns();
+        const headers = cols.map(c => t(c.label));
+        const rows = this._processedRows;
+
+        let output;
+        if (format === 'csv') {
+            output = this._toCSV(headers, rows, cols);
+        } else {
+            output = this._toMarkdown(headers, rows, cols);
+        }
+
+        await navigator.clipboard.writeText(output);
+    }
+
+    /**
+     * Formats rows as CSV text. Values containing commas, quotes, or
+     * newlines are wrapped in double-quotes with internal quotes escaped.
+     *
+     * @param {string[]} headers - Column header labels.
+     * @param {any[]} rows - Data rows.
+     * @param {TableColumn[]} cols - Visible column definitions.
+     * @returns {string} CSV string.
+     */
+    _toCSV(headers, rows, cols) {
+        const escape = (/** @type {string} */ v) => {
+            if (v.includes(',') || v.includes('"') || v.includes('\n')) {
+                return `"${v.replaceAll('"', '""')}"`;
+            }
+            return v;
+        };
+        const lines = [headers.map(escape).join(',')];
+        for (const row of rows) {
+            lines.push(cols.map(col => escape(this._cellText(row, col))).join(','));
+        }
+        return lines.join('\n');
+    }
+
+    /**
+     * Formats rows as a Markdown table. Pipes are escaped in cell values.
+     *
+     * @param {string[]} headers - Column header labels.
+     * @param {any[]} rows - Data rows.
+     * @param {TableColumn[]} cols - Visible column definitions.
+     * @returns {string} Markdown table string.
+     */
+    _toMarkdown(headers, rows, cols) {
+        const escape = (/** @type {string} */ v) => v.replaceAll('|', String.raw`\|`);
+        const headerLine = `| ${headers.map(escape).join(' | ')} |`;
+        const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
+        const dataLines = rows.map(row =>
+            `| ${cols.map(col => escape(this._cellText(row, col))).join(' | ')} |`
+        );
+        return [headerLine, sepLine, ...dataLines].join('\n');
     }
 }
 

@@ -323,5 +323,13 @@ export function renderMarkdown(text) {
     let output = result.join('\n');
     output = output.replace(/(<br>\s*)+$/, '');
 
+    // Rewrite upstream PeeringDB entity links to local SPA routes.
+    // Matches https://(www.)peeringdb.com/{net|ix|fac|org|carrier|campus}/{id}
+    // and converts to a local data-link anchor for SPA navigation.
+    output = output.replaceAll(
+        /<a href="https?:\/\/(?:www\.)?peeringdb\.com\/(net|ix|fac|org|carrier|campus)\/(\d+)\/?[^"]*"[^>]*>([^<]*)<\/a>/g,
+        '<a href="/$1/$2" data-link>$3</a>'
+    );
+
     return output;
 }

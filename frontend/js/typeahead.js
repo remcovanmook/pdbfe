@@ -12,6 +12,7 @@
 
 import { searchWithAsn, SEARCH_ENTITIES } from './api.js';
 import { navigate } from './router.js';
+import { createEntityBadge } from './render.js';
 
 
 
@@ -121,7 +122,8 @@ export function attachTypeahead(input, opts = {}) {
 
             const labelDiv = document.createElement('div');
             labelDiv.className = 'search-dropdown__label';
-            labelDiv.textContent = group.label;
+            labelDiv.appendChild(createEntityBadge(group.key));
+            labelDiv.appendChild(document.createTextNode(` ${group.label}`));
             groupDiv.appendChild(labelDiv);
 
             for (const item of group.items) {

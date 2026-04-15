@@ -1,7 +1,9 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite } from '../auth.js';
-import { formatLocaleDate as formatDate, createLink } from '../render.js';
-import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
+import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
+import { t, setLanguage, LANGUAGES } from '../i18n.js';
+import { getTheme, setTheme } from '../theme.js';
+import { getTimezonePreference, setTimezone } from '../timezone.js';
 
 // ── DOM helpers ─────────────────────────────────────────────────────
 
@@ -100,7 +102,7 @@ export async function renderAccount(_params) {
     // ── Page heading ─────────────────────────────────────────────
     frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-    // Top row: profile sidebar + networks side by side
+    // Top row: networks + profile sidebar side by side
     const topRow = el('div', { className: 'account-top' });
 
     // ── Sidebar: Profile card ────────────────────────────────────
@@ -127,38 +129,83 @@ export async function renderAccount(_params) {
     idField.appendChild(idValue);
     profileGroup.appendChild(idField);
 
-    // Language field with <select>
+    // Language field with <select> — options loaded from API
     const langField = el('div', { className: 'info-field' });
     langField.appendChild(el('span', { className: 'info-field__label', text: t('Language') }));
     const langValue = el('span', { className: 'info-field__value' });
     const langSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     langSelect.id = 'account-lang-select';
     langSelect.className = 'site-footer__lang-select';
-
-    const enOpt = document.createElement('option');
-    enOpt.value = 'en';
-    enOpt.textContent = 'English';
-    if (!getCurrentLang() || getCurrentLang() === 'en') enOpt.selected = true;
-    langSelect.appendChild(enOpt);
-
-    for (const [code, name] of Object.entries(LANGUAGES)) {
-        const opt = document.createElement('option');
-        opt.value = code;
-        opt.textContent = /** @type {string} */ (name);
-        if (getCurrentLang() === code) opt.selected = true;
-        langSelect.appendChild(opt);
-    }
     langValue.appendChild(langSelect);
     langField.appendChild(langValue);
     profileGroup.appendChild(langField);
 
+    // Theme field with <select> — options loaded from API
+    const themeField = el('div', { className: 'info-field' });
+    themeField.appendChild(el('span', { className: 'info-field__label', text: t('Theme') }));
+    const themeValue = el('span', { className: 'info-field__value' });
+    const themeSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    themeSelect.id = 'account-theme-select';
+    themeSelect.className = 'site-footer__lang-select';
+    themeValue.appendChild(themeSelect);
+    themeField.appendChild(themeValue);
+    profileGroup.appendChild(themeField);
+
+    // Timezone field with <select> — options loaded from API
+    const tzField = el('div', { className: 'info-field' });
+    tzField.appendChild(el('span', { className: 'info-field__label', text: t('Timezone') }));
+    const tzValue = el('span', { className: 'info-field__value' });
+    const tzSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    tzSelect.id = 'account-tz-select';
+    tzSelect.className = 'site-footer__lang-select';
+    tzValue.appendChild(tzSelect);
+    tzField.appendChild(tzValue);
+    profileGroup.appendChild(tzField);
+
+    // Populate selectors from API (non-blocking)
+    fetchPreferenceOptions().then(prefOptions => {
+        const storedLang = localStorage.getItem('pdbfe-lang');
+        const activeLang = storedLang || 'auto';
+        const langCodes = prefOptions.language || ['auto', 'en', ...Object.keys(LANGUAGES)];
+        for (const code of langCodes) {
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = code === 'auto' ? t('Auto') : /** @type {string} */ (LANGUAGES[code] || code);
+            opt.selected = code === activeLang;
+            langSelect.appendChild(opt);
+        }
+
+        const currentTheme = getTheme();
+        /** @type {Record<string, string>} */
+        const themeLabels = { auto: t('Auto'), dark: t('Dark'), light: t('Light') };
+        const themeValues = prefOptions.theme || ['auto', 'dark', 'light'];
+        for (const value of themeValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = themeLabels[value] || value;
+            opt.selected = value === currentTheme;
+            themeSelect.appendChild(opt);
+        }
+
+        const activeTz = getTimezonePreference();
+        const tzValues = prefOptions.timezone || ['auto', 'UTC'];
+        for (const value of tzValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value === 'auto' ? t('Auto') : value.replaceAll('_', ' ');
+            opt.selected = value === activeTz;
+            tzSelect.appendChild(opt);
+        }
+    }).catch(() => { /* Non-critical */ });
+
     const profileCard = card(t('Profile'), profileGroup);
     sidebar.appendChild(profileCard);
-    topRow.appendChild(sidebar);
 
-    // Networks container (populated after layout is in the DOM)
+    // Networks container on the left (populated after layout is in the DOM)
     const netsContainer = el('div', { id: 'networks-container' });
     topRow.appendChild(netsContainer);
+
+    topRow.appendChild(sidebar);
 
     frag.appendChild(topRow);
 
@@ -260,6 +307,58 @@ export async function renderAccount(_params) {
             if (footerSelect) footerSelect.value = newLang;
             renderAccount(_params);
         });
+    });
+
+    // Wire up theme preference selector — persists to server
+    themeSelect.addEventListener('change', async () => {
+        const newTheme = themeSelect.value;
+        setTheme(newTheme);
+
+        // Sync the footer theme selector
+        const footerTheme = /** @type {HTMLSelectElement|null} */ (
+            document.getElementById('theme-select')
+        );
+        if (footerTheme) footerTheme.value = newTheme;
+
+        // Persist server-side
+        try {
+            await fetch(`${AUTH_ORIGIN}/account/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: { theme: newTheme } }),
+            });
+        } catch (err) {
+            console.warn('Failed to persist theme preference:', err);
+        }
+    });
+
+    // Wire up timezone preference selector — persists to server
+    tzSelect.addEventListener('change', async () => {
+        const newTz = tzSelect.value;
+        setTimezone(newTz);
+
+        // Sync the footer timezone selector
+        const footerTz = /** @type {HTMLSelectElement|null} */ (
+            document.getElementById('tz-select')
+        );
+        if (footerTz) footerTz.value = newTz;
+
+        // Persist server-side
+        try {
+            await fetch(`${AUTH_ORIGIN}/account/profile`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${sid}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ preferences: { timezone: newTz } }),
+            });
+        } catch (err) {
+            console.warn('Failed to persist timezone preference:', err);
+        }
     });
 
     // Load keys
@@ -597,20 +696,6 @@ function showRevokeDialog(sid, keyId, label, prefix) {
 }
 
 /**
- * Entity type display labels used in the favorites list.
- *
- * @type {Record<string, string>}
- */
-const ENTITY_TYPE_LABELS = {
-    net: 'Network',
-    ix: 'Exchange',
-    fac: 'Facility',
-    org: 'Organization',
-    carrier: 'Carrier',
-    campus: 'Campus',
-};
-
-/**
  * Builds the favorites list for the account page.
  * Each row shows the entity type, a link to the entity, and a remove button.
  *
@@ -624,12 +709,8 @@ function buildFavoritesList(favorites, sid) {
     for (const fav of favorites) {
         const row = el('div', { className: 'favorites-list__item' });
 
-        // Entity type badge
-        const badge = el('span', {
-            className: 'favorites-list__type',
-            text: t(ENTITY_TYPE_LABELS[fav.entity_type] || fav.entity_type),
-        });
-        row.appendChild(badge);
+        // Entity type badge (colour-coded)
+        row.appendChild(createEntityBadge(fav.entity_type));
 
         // Link to entity
         const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);

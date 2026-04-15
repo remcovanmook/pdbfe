@@ -4,7 +4,7 @@
  * to the appropriate page renderer via registered route patterns.
  */
 
-import { createError, createEmptyState } from './render.js';
+import { createError } from './render.js';
 
 /**
  * @typedef {Object} Route
@@ -103,6 +103,15 @@ export function navigate(path) {
 }
 
 /**
+ * Re-renders the current page without changing the URL.
+ * Used when a preference (timezone, theme) changes and the
+ * displayed content needs to reflect the new setting.
+ */
+export function redispatch() {
+    dispatch(globalThis.location.pathname + globalThis.location.search);
+}
+
+/**
  * Matches the given path against registered routes and calls the
  * appropriate handler. Shows a 404 message for unmatched routes.
  *
@@ -136,8 +145,22 @@ async function dispatch(fullPath) {
             // Homepage gets a larger logo and no header search bar.
             document.body.dataset.page = (path === '/' || path === '') ? 'home' : 'detail';
 
+            // Restore cached render as instant preload while fresh data loads.
+            // The handler replaces this with live content once the API responds.
+            const cacheKey = `pdbfe-page:${fullPath}`;
+            try {
+                const cached = sessionStorage.getItem(cacheKey);
+                if (cached) {
+                    _appContainer.innerHTML = cached;
+                }
+            } catch { /* sessionStorage may be unavailable */ }
+
             try {
                 await route.handler(params);
+                // Cache the rendered page for preload on next visit
+                try {
+                    sessionStorage.setItem(cacheKey, _appContainer.innerHTML);
+                } catch { /* quota exceeded or unavailable */ }
             } catch (err) {
                 _appContainer.replaceChildren(
                     createError(`Failed to load page: ${err.message}`)
@@ -156,7 +179,46 @@ async function dispatch(fullPath) {
         }
     }
 
-    // No route matched
-    _appContainer.replaceChildren(createEmptyState('Page not found'));
+    // No route matched — build a helpful 404 page
     document.title = 'Not Found — PeeringDB';
+    document.body.dataset.page = 'detail';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'not-found';
+    wrap.style.textAlign = 'center';
+    wrap.style.padding = 'var(--space-2xl) var(--space-md)';
+
+    const h1 = document.createElement('h1');
+    h1.textContent = 'Page not found';
+    h1.style.marginBottom = 'var(--space-md)';
+    wrap.appendChild(h1);
+
+    const msg = document.createElement('p');
+    msg.style.color = 'var(--text-secondary)';
+    msg.style.marginBottom = 'var(--space-lg)';
+
+    // Extract a search hint from the URL path.
+    // Handles /net/20940, /ix/123 — common pattern of people typing entity URLs
+    const segments = path.replace(/^\/+|\/+$/g, '').split('/');
+    const entityTypes = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
+    const isEntityPath = segments.length >= 2 && entityTypes.has(segments[0]);
+    const hint = isEntityPath ? segments[1] : segments.join(' ');
+
+    if (isEntityPath) {
+        msg.textContent = `The ${segments[0]} "${segments[1]}" was not found. Try searching instead:`;
+    } else {
+        msg.textContent = 'The page you requested does not exist.';
+    }
+    wrap.appendChild(msg);
+
+    // Search link
+    const searchLink = document.createElement('a');
+    searchLink.href = `/search?q=${encodeURIComponent(hint)}`;
+    searchLink.dataset.link = '';
+    searchLink.textContent = `Search for "${hint}"`;
+    searchLink.style.color = 'var(--accent)';
+    searchLink.style.fontSize = '1.1rem';
+    wrap.appendChild(searchLink);
+
+    _appContainer.replaceChildren(wrap);
 }

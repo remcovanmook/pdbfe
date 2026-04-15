@@ -4,6 +4,7 @@
  * Provides CRUD operations for user profiles, preferences, favorites,
  * and API keys:
  *
+ *   GET    /account/preferences/options → Available preference keys/values (public)
  *   GET    /account/profile           → Return user profile & preferences
  *   PUT    /account/profile           → Update profile & preferences
  *   GET    /account/keys              → List API keys (prefix + label only)
@@ -43,15 +44,6 @@ const MAX_FAVORITES_PER_USER = 50;
 /** Entity types that can be favorited. */
 const VALID_FAVORITE_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
 
-/**
- * Allowed language codes for the language preference.
- * Matches the curated set from the frontend LANGUAGES map.
- */
-const VALID_LANGUAGES = new Set([
-    'en', 'cs', 'de', 'el', 'es', 'fr', 'it',
-    'ja', 'lt', 'pt', 'ro', 'ru', 'zh-cn', 'zh-tw',
-]);
-
 // ── CORS ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -68,6 +60,29 @@ function corsHeaders(origin) {
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Max-Age': '86400',
     };
+}
+
+/**
+ * Resolves the CORS origin to reflect in the response. Returns the
+ * request's Origin if it matches the production FRONTEND_ORIGIN or
+ * any Cloudflare Pages preview subdomain of the same project.
+ * Falls back to the production origin otherwise.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {string} The origin to use in Access-Control-Allow-Origin.
+ */
+function resolveAllowedOrigin(request, env) {
+    const prodHost = new URL(env.FRONTEND_ORIGIN).host;
+    const requestOrigin = request.headers.get('Origin') || '';
+    if (!requestOrigin) return env.FRONTEND_ORIGIN;
+    try {
+        const reqHost = new URL(requestOrigin).host;
+        if (reqHost === prodHost || reqHost.endsWith(`.${prodHost}`)) {
+            return requestOrigin;
+        }
+    } catch { /* malformed */ }
+    return env.FRONTEND_ORIGIN;
 }
 
 /**
@@ -209,6 +224,46 @@ function keyPrefix(fullKey) {
 // ── Endpoint Handlers ────────────────────────────────────────────────────────
 
 /**
+ * GET /account/preferences/options — Returns available preference keys
+ * and their valid values from the preference_options table.
+ *
+ * Public endpoint (no auth required) so the UI can populate selectors
+ * before login. Response is grouped by pref_key:
+ *   { "language": ["en", "de", ...], "theme": ["auto", "dark", "light"] }
+ *
+ * CORS: reflects the request Origin when it matches the production
+ * FRONTEND_ORIGIN or any Cloudflare Pages preview subdomain of the
+ * same project. This avoids CORS failures on branch previews.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handlePreferenceOptions(request, env) {
+    const { results } = await env.USERDB.prepare(
+        'SELECT pref_key, pref_value FROM preference_options ORDER BY pref_key, pref_value'
+    ).all();
+
+    /** @type {Record<string, string[]>} */
+    const grouped = {};
+    for (const row of results) {
+        const key = /** @type {string} */ (row.pref_key);
+        const val = /** @type {string} */ (row.pref_value);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(val);
+    }
+
+    return new Response(JSON.stringify(grouped) + '\n', {
+        status: 200,
+        headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+            ...corsHeaders(resolveAllowedOrigin(request, env)),
+        },
+    });
+}
+
+/**
  * GET /account/profile — Returns the user's profile.
  * Auto-provisions a user record if this is the first access.
  *
@@ -282,12 +337,19 @@ export async function handleUpdateProfile(request, env) {
             return jsonResponse({ error: 'preferences must be an object' }, 400, env.FRONTEND_ORIGIN);
         }
 
-        // Validate language if provided
-        if (body.preferences.language !== undefined) {
-            if (!VALID_LANGUAGES.has(body.preferences.language)) {
-                return jsonResponse({ error: `Invalid language: ${body.preferences.language}` }, 400, env.FRONTEND_ORIGIN);
+        // Validate each preference key/value against the preference_options table.
+        // This avoids hardcoded enum checks — adding a new preference is a DB INSERT.
+        for (const [key, value] of Object.entries(body.preferences)) {
+            if (typeof value !== 'string') {
+                return jsonResponse({ error: `Preference '${key}' must be a string` }, 400, env.FRONTEND_ORIGIN);
             }
-            mergedPrefs.language = body.preferences.language;
+            const valid = await env.USERDB.prepare(
+                'SELECT 1 FROM preference_options WHERE pref_key = ? AND pref_value = ?'
+            ).bind(key, value).first();
+            if (!valid) {
+                return jsonResponse({ error: `Invalid preference: ${key}=${value}` }, 400, env.FRONTEND_ORIGIN);
+            }
+            mergedPrefs[key] = value;
         }
 
         sets.push('preferences = ?');
@@ -299,8 +361,7 @@ export async function handleUpdateProfile(request, env) {
     }
 
     sets.push('updated_at = ?');
-    binds.push(now);
-    binds.push(user.id);
+    binds.push(now, user.id);
 
     await env.USERDB.prepare(
         `UPDATE users SET ${sets.join(', ')} WHERE id = ?`
@@ -308,7 +369,7 @@ export async function handleUpdateProfile(request, env) {
 
     return jsonResponse({
         id: user.id,
-        name: body.name !== undefined ? body.name.trim() : user.name,
+        name: body.name === undefined ? user.name : body.name.trim(),
         email: user.email,
         preferences: mergedPrefs,
         updated_at: now,
@@ -580,13 +641,15 @@ export async function handleRemoveFavorite(request, env, entityType, entityId) {
 
 /**
  * OPTIONS preflight for /account/* endpoints.
+ * Reflects the request origin for Pages preview subdomain support.
  *
+ * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Response}
  */
-export function handleAccountPreflight(env) {
+export function handleAccountPreflight(request, env) {
     return new Response(null, {
         status: 204,
-        headers: corsHeaders(env.FRONTEND_ORIGIN),
+        headers: corsHeaders(resolveAllowedOrigin(request, env)),
     });
 }

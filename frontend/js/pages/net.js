@@ -78,7 +78,7 @@ function buildSidebar(net) {
             ? `${net.info_prefixes4 || 0} IPv4 / ${net.info_prefixes6 || 0} IPv6` : null),
         createField('IPv6', net.info_ipv6 ? t('Yes') : t('No')),
         createField('Multicast', net.info_multicast ? t('Yes') : t('No')),
-        createField('Last Updated', net.updated),
+        createField('Last Updated', net.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 
@@ -143,15 +143,16 @@ function buildTables(net) {
     if (net.netixlan_set && net.netixlan_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchange Points',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
-                { key: 'speed',   label: 'Speed', class: 'td-right' },
-                { key: 'ipaddr4', label: 'IPv4', class: 'td-mono' },
-                { key: 'ipaddr6', label: 'IPv6', class: 'td-mono' },
-                { key: 'is_rs_peer', label: 'RS' },
+                { key: 'speed',   label: 'Speed', class: 'td-right', width: '90px' },
+                { key: 'ipaddr4', label: 'IPv4', class: 'td-mono', width: '140px' },
+                { key: 'ipaddr6', label: 'IPv6', class: 'td-mono', width: '240px' },
+                { key: 'is_rs_peer', label: 'RS', width: '70px' },
             ],
             rows: net.netixlan_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -177,13 +178,14 @@ function buildTables(net) {
     if (net.netfac_set && net.netfac_set.length > 0) {
         const facTable = /** @type {any} */ (document.createElement('pdb-table'));
         facTable.configure({
+            tableId: 'fac',
             title: 'Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
+                { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: net.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

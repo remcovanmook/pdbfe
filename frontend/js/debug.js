@@ -259,15 +259,42 @@ function buildOverlayDOM(syncStatus, localCache) {
     header.appendChild(_el('span', { className: 'debug-header__hint', text: 'Ctrl+Shift+D' }));
     inner.appendChild(header);
 
-    // ── Section 1: Current Page Context ──────────────────────────
+    // Filter cache entries relevant to the current page.
+    // On homepage (/), show /status and /api/ (sync status + recent updates).
+    // On entity pages (/net/694), show /api/net/694* requests.
     const pageEntries = localCache.filter((/** @type {any} */ c) => {
-        const path = keyToPath(c.key);
-        return path.startsWith('/api' + currentPath) || path.startsWith('/status');
+        const keyPath = keyToPath(c.key);
+        if (keyPath.startsWith('/status')) return true;
+        if (currentPath === '/' || currentPath === '') {
+            // Homepage: show recent-updates requests (typically /api/<entity>?limit=...)
+            return keyPath.startsWith('/api/') && !keyPath.includes('depth=');
+        }
+        return keyPath.startsWith('/api' + currentPath);
     });
 
     const pageSection = _el('div', { className: 'debug-section' });
     const pageHeading = _el('h4', { text: `${t('Current Page')}: ${currentPath}` });
     pageSection.appendChild(pageHeading);
+
+    // Session cache stats
+    let sessionCacheCount = 0;
+    let sessionCacheBytes = 0;
+    try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const k = sessionStorage.key(i);
+            if (k?.startsWith('pdbfe-page:')) {
+                sessionCacheCount++;
+                sessionCacheBytes += (sessionStorage.getItem(k) || '').length * 2; // UTF-16
+            }
+        }
+    } catch { /* unavailable */ }
+    if (sessionCacheCount > 0) {
+        const sizeKB = (sessionCacheBytes / 1024).toFixed(1);
+        pageSection.appendChild(_el('p', {
+            className: 'debug-meta',
+            text: `${t('Session page cache')}: ${sessionCacheCount} ${t('pages')}, ${sizeKB} KB`
+        }));
+    }
 
     if (pageEntries.length > 0) {
         pageSection.appendChild(buildTelemetryTable(
@@ -396,6 +423,7 @@ function buildOverlayDOM(syncStatus, localCache) {
     // ── Actions ──────────────────────────────────────────────────
     const actions = _el('div', { className: 'debug-actions' });
     actions.appendChild(_el('button', { className: 'debug-btn', id: 'debug-clear-cache', text: t('Clear Browser Cache') }));
+    actions.appendChild(_el('button', { className: 'debug-btn', id: 'debug-clear-session', text: t('Clear Session Cache') }));
     actions.appendChild(_el('button', { className: 'debug-btn', id: 'debug-force-refresh', text: t('Force Reload') }));
     actions.appendChild(_el('button', { className: 'debug-btn debug-btn--close', id: 'debug-close', text: '\u2715' }));
     inner.appendChild(actions);
@@ -458,6 +486,18 @@ function wireButtons() {
     document.getElementById('debug-clear-cache')?.addEventListener('click', () => {
         clearCache();
         toggleOverlay();
+    });
+
+    document.getElementById('debug-clear-session')?.addEventListener('click', () => {
+        try {
+            const keys = [];
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                if (k?.startsWith('pdbfe-page:')) keys.push(k);
+            }
+            for (const k of keys) sessionStorage.removeItem(k);
+        } catch { /* unavailable */ }
+        refreshOverlay();
     });
 
     document.getElementById('debug-force-refresh')?.addEventListener('click', () => {

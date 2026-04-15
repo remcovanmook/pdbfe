@@ -54,3 +54,11 @@ CREATE TABLE IF NOT EXISTS user_favorites (
 -- Index for listing a user's favorites sorted by creation date.
 CREATE INDEX IF NOT EXISTS idx_user_favorites_list
     ON user_favorites(user_id, created_at DESC);
+
+-- Preference options: lookup table for validating user preference values.
+-- Adding a new preference or allowed value is an INSERT, not a code change.
+CREATE TABLE IF NOT EXISTS preference_options (
+    pref_key    TEXT NOT NULL,   -- e.g. 'language', 'theme'
+    pref_value  TEXT NOT NULL,   -- e.g. 'en', 'dark'
+    PRIMARY KEY (pref_key, pref_value)
+);

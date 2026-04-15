@@ -63,14 +63,14 @@ function buildSidebar(org) {
         createField('Long Name', org.name_long),
         createField('Website', org.website, { href: org.website, external: true }),
         createField('Notes', org.notes, { markdown: true }),
-        createField('Last Updated', org.updated),
+        createField('Last Updated', org.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 
     const address = createFieldGroup('Address', [
         createField('Address', org.address1),
         createField('Address 2', org.address2),
-        createField('City', org.city),
+        createField('City', org.city, { map: [org.address1, org.city, org.country].filter(Boolean).join(', ') }),
         createField('State', org.state),
         createField('Postal Code', org.zipcode),
         createField('Country', org.country),
@@ -92,12 +92,13 @@ function buildTables(org) {
     if (org.net_set && org.net_set.length > 0) {
         const netTable = /** @type {any} */ (document.createElement('pdb-table'));
         netTable.configure({
+            tableId: 'net',
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
             columns: [
                 { key: 'name', label: 'Network' },
-                { key: 'asn',  label: 'ASN', class: 'td-right' },
+                { key: 'asn',  label: 'ASN', class: 'td-right', width: '100px' },
             ],
             rows: org.net_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -112,13 +113,14 @@ function buildTables(org) {
     if (org.fac_set && org.fac_set.length > 0) {
         const facTable = /** @type {any} */ (document.createElement('pdb-table'));
         facTable.configure({
+            tableId: 'fac',
             title: 'Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
+                { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: org.fac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -132,13 +134,14 @@ function buildTables(org) {
     if (org.ix_set && org.ix_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchanges',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', maxWidth: '250px' },
+                { key: 'country', label: 'Country', maxWidth: '100px' },
             ],
             rows: org.ix_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

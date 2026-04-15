@@ -9,7 +9,7 @@
  */
 
 import { fetchList, fetchCount, fetchEntity } from '../api.js';
-import { createLink, createLoading, formatDate } from '../render.js';
+import { createLink, createLoading, formatDate, createEntityBadge } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
 import { getLabel } from '../entities.js';
@@ -113,10 +113,7 @@ export async function renderHome(_params) {
             item.dataset.type = fav.entity_type;
             item.dataset.id = String(fav.entity_id);
 
-            const typeBadge = document.createElement('span');
-            typeBadge.className = 'favorites-grid__type';
-            typeBadge.textContent = fav.entity_type;
-            item.appendChild(typeBadge);
+            item.appendChild(createEntityBadge(fav.entity_type));
 
             const nameLink = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
             nameLink.className += ' favorites-grid__name';

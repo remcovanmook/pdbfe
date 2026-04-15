@@ -73,14 +73,18 @@ function buildSidebar(fac) {
         createField('Rencode', fac.rencode),
         createField('NPA-NXX', fac.npanxx),
         createField('Notes', fac.notes, { markdown: true }),
-        createField('Last Updated', fac.updated),
+        createField('Last Updated', fac.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
+
+    const facMapQuery = fac.latitude && fac.longitude
+        ? `${fac.latitude},${fac.longitude}`
+        : [fac.address1, fac.city, fac.country].filter(Boolean).join(', ');
 
     const address = createFieldGroup('Location', [
         createField('Address', fac.address1),
         createField('Address 2', fac.address2),
-        createField('City', fac.city),
+        createField('City', fac.city, { map: facMapQuery }),
         createField('State', fac.state),
         createField('Postal Code', fac.zipcode),
         createField('Country', fac.country),
@@ -104,12 +108,13 @@ function buildTables(fac) {
     if (fac.netfac_set && fac.netfac_set.length > 0) {
         const netTable = /** @type {any} */ (document.createElement('pdb-table'));
         netTable.configure({
+            tableId: 'net',
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
             columns: [
                 { key: 'network',   label: 'Network' },
-                { key: 'local_asn', label: 'ASN', class: 'td-right' },
+                { key: 'local_asn', label: 'ASN', class: 'td-right', width: '100px' },
             ],
             rows: fac.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -131,6 +136,7 @@ function buildTables(fac) {
     if (fac.ixfac_set && fac.ixfac_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchanges',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
