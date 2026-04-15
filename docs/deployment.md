@@ -121,6 +121,9 @@ Bootstrap the users database schema (required before any logins or API key creat
 ```bash
 # From the repo root
 npx wrangler d1 execute pdbfe-users --file=database/users/schema.sql --remote
+
+# Seed preference options (language, theme, timezone values)
+npx wrangler d1 execute pdbfe-users --file=database/users/0002_preference_options.sql --remote
 ```
 
 ## 7. Worker Deployment

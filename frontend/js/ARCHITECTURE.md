@@ -26,6 +26,9 @@ boot.js
 ├── router.js                    → SPA routing, history API
 ├── render.js                    → DOM builders + formatting helpers
 │   ├── createField()            → Info field (template clone)
+│   │   ├── opts.email           → mailto: link
+│   │   ├── opts.map             → Google Maps link
+│   │   └── opts.date            → Formatted date
 │   ├── createFieldGroup()       → Field group (template clone)
 │   ├── createLink()             → SPA <a> element
 │   ├── createStatsBar()         → Stats bar (template clone)
@@ -33,14 +36,16 @@ boot.js
 │   ├── createLoading()          → Loading spinner
 │   ├── createError()            → Error message
 │   ├── createEmptyState()       → Empty state message
-│   └── createDetailLayout()     → Page layout grid
+│   ├── createDetailLayout()     → Page layout grid
+│   ├── createFavoriteButton()   → Star toggle (auth or localStorage)
+│   └── formatSpeed()            → Mbps → G/T with 1-decimal rounding
 └── pages/
     ├── net.js, ix.js, fac.js, org.js, carrier.js, campus.js
     │   → Entity detail pages using createDetailLayout + <pdb-table>
-    ├── home.js     → Homepage with recent updates grid
+    ├── home.js     → Homepage with favorites + recent updates grid
     ├── search.js   → Search results using createLink
     ├── about.js    → Fetches /content/about.md, renders via renderMarkdown
-    ├── account.js  → Profile + API key management (DOM builders for data)
+    ├── account.js  → Profile, preferences, favorites, API key management
     └── asn.js      → ASN → network redirect
 ```
 
@@ -70,6 +75,14 @@ The table component uses **slice-based paging**:
 Sort direction and filter state are tracked as instance properties.
 The `cellRenderer` callback returns DOM Nodes (not HTML strings).
 
+Additional features:
+- **Column visibility toggle**: ⚙ gear button hides/shows columns (except first)
+- **CSV / Markdown export**: copies filtered/sorted data to clipboard
+- **Conditional layout**: `table-layout: fixed` only when columns use `width`;
+  `maxWidth` works for auto-layout tables
+
+See [components/pdb-table.md](components/pdb-table.md) for the full architecture.
+
 ## Templates (index.html)
 
 ```html
@@ -82,9 +95,14 @@ The `cellRenderer` callback returns DOM Nodes (not HTML strings).
 ## Markdown Rendering
 
 The `about.js` page fetches `/content/about.md` at runtime and renders it
-through `renderMarkdown()` (from `markdown.js`). This is the only place where
-`innerHTML` is used on non-trivial content — the markdown pipeline has its own
-sanitization (allowlisted tags, URL protocol validation).
+through `renderMarkdown()` (from `markdown.js`). Notes fields on entity pages
+also use this renderer.
+
+Key features:
+- Allowlisted HTML tags, URL protocol validation, `target`/`rel` enforcement
+- PeeringDB link rewriting: `peeringdb.com/{net|ix|fac|org|carrier|campus}/{id}`
+  links are converted to local SPA routes with `data-link`
+- Fenced code blocks, headings, bold/italic, images, lists
 
 ## Remaining innerHTML Usage
 
