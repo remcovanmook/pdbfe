@@ -170,6 +170,7 @@ class PdbTable extends HTMLElement {
             const colBtn = document.createElement('button');
             colBtn.className = 'col-toggle__btn';
             colBtn.title = t('Toggle columns');
+            colBtn.setAttribute('aria-label', t('Toggle columns'));
             colBtn.textContent = '⚙';
             colBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -219,6 +220,7 @@ class PdbTable extends HTMLElement {
         const csvBtn = document.createElement('button');
         csvBtn.className = 'col-toggle__btn';
         csvBtn.title = t('Copy as CSV');
+        csvBtn.setAttribute('aria-label', t('Copy as CSV'));
         csvBtn.textContent = 'CSV';
         csvBtn.style.fontSize = '0.625rem';
         csvBtn.style.fontWeight = '600';
@@ -228,6 +230,7 @@ class PdbTable extends HTMLElement {
         const mdBtn = document.createElement('button');
         mdBtn.className = 'col-toggle__btn';
         mdBtn.title = t('Copy as Markdown');
+        mdBtn.setAttribute('aria-label', t('Copy as Markdown'));
         mdBtn.textContent = 'MD';
         mdBtn.style.fontSize = '0.625rem';
         mdBtn.style.fontWeight = '600';
@@ -277,6 +280,7 @@ class PdbTable extends HTMLElement {
             this._prevBtn = document.createElement('button');
             this._prevBtn.className = 'table-paging__btn';
             this._prevBtn.textContent = `\u2190 ${t('Prev')}`;
+            this._prevBtn.setAttribute('aria-label', t('Previous page'));
             this._prevBtn.disabled = true;
             this._prevBtn.addEventListener('click', () => {
                 if (this._page > 1) {
@@ -299,6 +303,7 @@ class PdbTable extends HTMLElement {
             this._nextBtn = document.createElement('button');
             this._nextBtn.className = 'table-paging__btn';
             this._nextBtn.textContent = `${t('Next')} \u2192`;
+            this._nextBtn.setAttribute('aria-label', t('Next page'));
             this._nextBtn.addEventListener('click', () => {
                 const totalPages = this._totalPages();
                 if (this._page < totalPages) {

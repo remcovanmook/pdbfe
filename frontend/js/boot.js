@@ -156,8 +156,19 @@ if (syncResult.status === 'fulfilled') {
         timeSpan.textContent = `● ${t('Rate limited — try again shortly')}`;
         el.replaceChildren(timeSpan);
         el.title = t('The mirror API is temporarily rate-limiting requests. Data shown may be stale.');
-    } else if (el && sync && 'last_modified_at' in sync) {
-        const epochMs = sync.last_modified_at * 1000;
+    } else if (el && sync && 'entities' in sync) {
+        // Derive sync freshness from the most recent last_sync across all
+        // entities. last_modified_at tracks when upstream data last changed,
+        // which can lag if nothing was modified — last_sync tracks when we
+        // last successfully polled, which is the metric users care about.
+        const entities = sync.entities;
+        let latestSync = 0;
+        for (const tag in entities) {
+            const ls = entities[tag].last_sync || 0;
+            if (ls > latestSync) latestSync = ls;
+        }
+
+        const epochMs = latestSync * 1000;
         const isoDate = new Date(epochMs).toISOString();
         const diffMin = (Date.now() - epochMs) / 60_000;
         const timeText = formatDate(isoDate);
@@ -215,6 +226,7 @@ globalThis.addEventListener('pdbfe:ratelimit', () => {
     const btn = document.createElement('button');
     btn.className = 'rate-limit-dismiss';
     btn.textContent = t('Dismiss');
+    btn.setAttribute('aria-label', t('Dismiss rate limit warning'));
     btn.addEventListener('click', () => overlay.remove());
     dialog.appendChild(btn);
 

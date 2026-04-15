@@ -136,6 +136,7 @@ export async function renderAccount(_params) {
     const langSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     langSelect.id = 'account-lang-select';
     langSelect.className = 'site-footer__lang-select';
+    langSelect.setAttribute('aria-label', t('Language'));
     langValue.appendChild(langSelect);
     langField.appendChild(langValue);
     profileGroup.appendChild(langField);
@@ -147,6 +148,7 @@ export async function renderAccount(_params) {
     const themeSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     themeSelect.id = 'account-theme-select';
     themeSelect.className = 'site-footer__lang-select';
+    themeSelect.setAttribute('aria-label', t('Theme'));
     themeValue.appendChild(themeSelect);
     themeField.appendChild(themeValue);
     profileGroup.appendChild(themeField);
@@ -158,6 +160,7 @@ export async function renderAccount(_params) {
     const tzSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     tzSelect.id = 'account-tz-select';
     tzSelect.className = 'site-footer__lang-select';
+    tzSelect.setAttribute('aria-label', t('Timezone'));
     tzValue.appendChild(tzSelect);
     tzField.appendChild(tzValue);
     profileGroup.appendChild(tzField);
@@ -497,6 +500,7 @@ async function loadKeys(sid) {
             revokeBtn.className = 'auth-link btn-delete-key';
             revokeBtn.style.cssText = 'cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)';
             revokeBtn.textContent = t('Revoke');
+            revokeBtn.setAttribute('aria-label', t('Revoke API key'));
             revokeBtn.addEventListener('click', () => {
                 showRevokeDialog(sid, k.key_id, k.label, k.prefix);
             });
@@ -722,6 +726,7 @@ function buildFavoritesList(favorites, sid) {
             text: '×',
         }));
         removeBtn.title = t('Remove from favorites');
+        removeBtn.setAttribute('aria-label', t('Remove from favorites'));
         removeBtn.addEventListener('click', async () => {
             removeBtn.disabled = true;
             const ok = await removeFavorite(fav.entity_type, fav.entity_id);
