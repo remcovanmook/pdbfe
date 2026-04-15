@@ -221,8 +221,8 @@ function buildTables(ix, peers) {
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', width: '140px' },
+                { key: 'country', label: 'Country', width: '100px' },
             ],
             rows: ix.ixfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

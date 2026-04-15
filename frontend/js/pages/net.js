@@ -148,10 +148,10 @@ function buildTables(net) {
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
                 { key: 'name',    label: 'Exchange' },
-                { key: 'speed',   label: 'Speed', class: 'td-right' },
-                { key: 'ipaddr4', label: 'IPv4', class: 'td-mono' },
-                { key: 'ipaddr6', label: 'IPv6', class: 'td-mono' },
-                { key: 'is_rs_peer', label: 'RS' },
+                { key: 'speed',   label: 'Speed', class: 'td-right', width: '90px' },
+                { key: 'ipaddr4', label: 'IPv4', class: 'td-mono', width: '140px' },
+                { key: 'ipaddr6', label: 'IPv6', class: 'td-mono', width: '240px' },
+                { key: 'is_rs_peer', label: 'RS', width: '50px' },
             ],
             rows: net.netixlan_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -182,8 +182,8 @@ function buildTables(net) {
             filterPlaceholder: t('Filter facilities...'),
             columns: [
                 { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City' },
-                { key: 'country', label: 'Country' },
+                { key: 'city',    label: 'City', width: '140px' },
+                { key: 'country', label: 'Country', width: '100px' },
             ],
             rows: net.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

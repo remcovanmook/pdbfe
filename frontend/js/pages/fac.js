@@ -109,7 +109,7 @@ function buildTables(fac) {
             filterPlaceholder: t('Filter networks...'),
             columns: [
                 { key: 'network',   label: 'Network' },
-                { key: 'local_asn', label: 'ASN', class: 'td-right' },
+                { key: 'local_asn', label: 'ASN', class: 'td-right', width: '100px' },
             ],
             rows: fac.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
