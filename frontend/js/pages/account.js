@@ -1,5 +1,5 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { t, setLanguage, getCurrentLang, LANGUAGES } from '../i18n.js';
 import { getTheme, setTheme } from '../theme.js';
@@ -128,49 +128,53 @@ export async function renderAccount(_params) {
     idField.appendChild(idValue);
     profileGroup.appendChild(idField);
 
-    // Language field with <select>
+    // Language field with <select> — options loaded from API
     const langField = el('div', { className: 'info-field' });
     langField.appendChild(el('span', { className: 'info-field__label', text: t('Language') }));
     const langValue = el('span', { className: 'info-field__value' });
     const langSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     langSelect.id = 'account-lang-select';
     langSelect.className = 'site-footer__lang-select';
-
-    const enOpt = document.createElement('option');
-    enOpt.value = 'en';
-    enOpt.textContent = 'English';
-    if (!getCurrentLang() || getCurrentLang() === 'en') enOpt.selected = true;
-    langSelect.appendChild(enOpt);
-
-    for (const [code, name] of Object.entries(LANGUAGES)) {
-        const opt = document.createElement('option');
-        opt.value = code;
-        opt.textContent = /** @type {string} */ (name);
-        if (getCurrentLang() === code) opt.selected = true;
-        langSelect.appendChild(opt);
-    }
     langValue.appendChild(langSelect);
     langField.appendChild(langValue);
     profileGroup.appendChild(langField);
 
-    // Theme field with <select>
+    // Theme field with <select> — options loaded from API
     const themeField = el('div', { className: 'info-field' });
     themeField.appendChild(el('span', { className: 'info-field__label', text: t('Theme') }));
     const themeValue = el('span', { className: 'info-field__value' });
     const themeSelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
     themeSelect.id = 'account-theme-select';
     themeSelect.className = 'site-footer__lang-select';
-    const currentTheme = getTheme();
-    for (const [value, label] of [['auto', t('Auto')], ['dark', t('Dark')], ['light', t('Light')]]) {
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = label;
-        opt.selected = value === currentTheme;
-        themeSelect.appendChild(opt);
-    }
     themeValue.appendChild(themeSelect);
     themeField.appendChild(themeValue);
     profileGroup.appendChild(themeField);
+
+    // Populate selectors from API (non-blocking)
+    fetchPreferenceOptions().then(prefOptions => {
+        const activeLang = getCurrentLang();
+        const langCodes = prefOptions.language || ['en', ...Object.keys(LANGUAGES)];
+        for (const code of langCodes) {
+            const name = LANGUAGES[code] || code;
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = /** @type {string} */ (name);
+            opt.selected = code === activeLang;
+            langSelect.appendChild(opt);
+        }
+
+        const currentTheme = getTheme();
+        /** @type {Record<string, string>} */
+        const themeLabels = { auto: t('Auto'), dark: t('Dark'), light: t('Light') };
+        const themeValues = prefOptions.theme || ['auto', 'dark', 'light'];
+        for (const value of themeValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = themeLabels[value] || value;
+            opt.selected = value === currentTheme;
+            themeSelect.appendChild(opt);
+        }
+    }).catch(() => { /* Non-critical */ });
 
     const profileCard = card(t('Profile'), profileGroup);
     sidebar.appendChild(profileCard);

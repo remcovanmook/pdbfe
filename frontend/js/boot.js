@@ -20,7 +20,7 @@ import { renderAccount } from './pages/account.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
-import { initAuth } from './auth.js';
+import { initAuth, fetchPreferenceOptions } from './auth.js';
 import { initI18n, setLanguage, getCurrentLang, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
@@ -70,44 +70,53 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// Wire up the footer language selector. Populated after initAuth() so that
-// getCurrentLang() reflects any server-side language preference applied
-// during profile fetch.
-const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
-if (langSelect) {
-    const activeLang = getCurrentLang();
-    for (const [code, name] of Object.entries(LANGUAGES)) {
-        const opt = document.createElement('option');
-        opt.value = code;
-        opt.textContent = `${name} (${code})`;
-        opt.selected = code === activeLang;
-        langSelect.appendChild(opt);
-    }
+// Fetch preference options from the API and populate footer selectors.
+// Non-blocking — selectors populate asynchronously after first paint.
+fetchPreferenceOptions().then(prefOptions => {
+    // ── Language selector ────────────────────────────────────────────
+    const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
+    if (langSelect) {
+        const activeLang = getCurrentLang();
+        // Use API-provided language list, fall back to LANGUAGES map keys
+        const langCodes = prefOptions.language || Object.keys(LANGUAGES);
+        for (const code of langCodes) {
+            const name = LANGUAGES[code] || code;
+            const opt = document.createElement('option');
+            opt.value = code;
+            opt.textContent = `${name} (${code})`;
+            opt.selected = code === activeLang;
+            langSelect.appendChild(opt);
+        }
 
-    langSelect.addEventListener('change', () => {
-        setLanguage(langSelect.value, () => {
-            // Re-render the current route by re-dispatching
-            globalThis.location.reload();
+        langSelect.addEventListener('change', () => {
+            setLanguage(langSelect.value, () => {
+                globalThis.location.reload();
+            });
         });
-    });
-}
-
-// Wire up the footer theme selector
-const themeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('theme-select'));
-if (themeSelect) {
-    const activeTheme = getTheme();
-    for (const [value, label] of [['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']]) {
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = label;
-        opt.selected = value === activeTheme;
-        themeSelect.appendChild(opt);
     }
 
-    themeSelect.addEventListener('change', () => {
-        setTheme(themeSelect.value);
-    });
-}
+    // ── Theme selector ───────────────────────────────────────────────
+    const themeSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('theme-select'));
+    if (themeSelect) {
+        const activeTheme = getTheme();
+        /** @type {Record<string, string>} */
+        const themeLabels = { auto: 'Auto', dark: 'Dark', light: 'Light' };
+        const themeValues = prefOptions.theme || ['auto', 'dark', 'light'];
+        for (const value of themeValues) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = themeLabels[value] || value;
+            opt.selected = value === activeTheme;
+            themeSelect.appendChild(opt);
+        }
+
+        themeSelect.addEventListener('change', () => {
+            setTheme(themeSelect.value);
+        });
+    }
+}).catch(() => {
+    // Non-critical — selectors remain empty on failure
+});
 
 // Fetch and display sync status in the footer
 fetchSyncStatus().then(sync => {

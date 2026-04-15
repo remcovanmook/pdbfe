@@ -56,6 +56,34 @@ const VALID_ENTITY_TYPES = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campu
  */
 const SID_PATTERN = /^[0-9a-f]{64}$/;
 
+/**
+ * Cached preference options from the server.
+ * Populated by fetchPreferenceOptions() on first call.
+ *
+ * @type {Record<string, string[]>|null}
+ */
+let _cachedPrefOptions = null;
+
+/**
+ * Fetches valid preference keys and values from the auth API.
+ * Results are cached in-memory for the page lifetime.
+ *
+ * @returns {Promise<Record<string, string[]>>} Map of pref_key → allowed values.
+ */
+export async function fetchPreferenceOptions() {
+    if (_cachedPrefOptions) return _cachedPrefOptions;
+    try {
+        const res = await fetch(`${AUTH_ORIGIN}/account/preferences/options`);
+        if (res.ok) {
+            _cachedPrefOptions = await res.json();
+            return /** @type {Record<string, string[]>} */ (_cachedPrefOptions);
+        }
+    } catch {
+        // Fall through to empty default
+    }
+    return {};
+}
+
 /** @type {string|null} Cached session ID for the current page load. */
 let _cachedSid = null;
 
