@@ -264,3 +264,53 @@ describe("renderMarkdown — fenced code blocks", () => {
         assert.equal(preCount, 2, 'should have two code blocks');
     });
 });
+
+describe("renderMarkdown — PeeringDB link rewriting", () => {
+    it("should rewrite www.peeringdb.com/net/ to local /net/", () => {
+        const input = '[My Network](https://www.peeringdb.com/net/694)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="/net/694"'), `expected local href, got: ${result}`);
+        assert.ok(result.includes('data-link'), 'should have data-link attribute');
+        assert.ok(!result.includes('peeringdb.com'), 'should not contain peeringdb.com');
+    });
+
+    it("should rewrite peeringdb.com without www", () => {
+        const input = '[IX](https://peeringdb.com/ix/42)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="/ix/42"'));
+        assert.ok(result.includes('data-link'));
+    });
+
+    it("should rewrite facility links", () => {
+        const input = '<a href="https://www.peeringdb.com/fac/123">Facility</a>';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="/fac/123"'));
+        assert.ok(result.includes('data-link'));
+    });
+
+    it("should rewrite org, carrier, and campus links", () => {
+        for (const type of ['org', 'carrier', 'campus']) {
+            const input = `[Link](https://www.peeringdb.com/${type}/99)`;
+            const result = renderMarkdown(input);
+            assert.ok(result.includes(`href="/${type}/99"`), `${type} should be rewritten`);
+        }
+    });
+
+    it("should preserve non-entity peeringdb.com links", () => {
+        const input = '[API docs](https://www.peeringdb.com/apidocs/)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('peeringdb.com/apidocs'), 'non-entity link should be preserved');
+    });
+
+    it("should handle trailing slash on entity URLs", () => {
+        const input = '[Net](https://www.peeringdb.com/net/694/)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="/net/694"'));
+    });
+
+    it("should handle http:// (non-https) links", () => {
+        const input = '[Net](http://peeringdb.com/net/111)';
+        const result = renderMarkdown(input);
+        assert.ok(result.includes('href="/net/111"'));
+    });
+});
