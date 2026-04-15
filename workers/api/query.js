@@ -116,7 +116,7 @@ function coerceValue(value, fieldType) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Pagination and depth.
+ * @param {QueryOpts} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
@@ -209,7 +209,7 @@ function buildJoinFragments(joinDefs) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
+ * @param {QueryOpts} opts - Pagination.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
@@ -267,7 +267,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
+ * @param {QueryOpts} opts - Pagination and depth.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
@@ -310,7 +310,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
+ * @param {QueryOpts} opts - Pagination.
  * @param {number|null} singleId - Single-row ID or null.
  * @param {string} [tableAlias] - Optional table alias for column qualification.
  * @returns {{ clauses: string[], params: (string|number)[], pagination: string, orderBy: string }}
@@ -455,7 +455,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Only since is used.
+ * @param {QueryOpts} opts - Only since is used.
  * @returns {BuiltQuery} Parameterised SQL returning { cnt: number }.
  */
 export function buildCountQuery(entity, filters, opts) {
@@ -480,7 +480,7 @@ export function buildCountQuery(entity, filters, opts) {
  * (no limit set, or single-row fetch).
  *
  * @param {ParsedFilter[]} filters - The current query filters.
- * @param {{depth: number, limit: number, skip: number, since: number}} opts - Current pagination.
+ * @param {QueryOpts} opts - Current pagination.
  * @param {number} resultCount - Number of rows returned by the current query.
  * @returns {{limit: number, skip: number}|null} Next-page pagination, or null.
  */

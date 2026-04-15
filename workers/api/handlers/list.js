@@ -25,7 +25,7 @@ import { parseJsonFields, countRows } from './shared.js';
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {string} entityTag - Entity tag (e.g. "net").
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination and depth.
+ * @param {QueryOpts} opts - Pagination and depth.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
@@ -75,7 +75,7 @@ export async function handleList(request, db, ctx, entityTag, filters, opts, raw
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
+ * @param {QueryOpts} opts - Query options.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for empty result.
  *          Note: empty lists return EMPTY_ENVELOPE (not null) since an empty
@@ -115,7 +115,7 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
+ * @param {QueryOpts} opts - Query options.
  * @param {string} rawPath - Original URL path.
  * @param {string} queryString - Original query string.
  * @param {boolean} authenticated - Whether the caller is authenticated (for X-Auth-Status).
@@ -170,7 +170,7 @@ async function handleCount(request, db, ctx, entity, entityTag, filters, opts, r
  * @param {EntityMeta} entity - Entity metadata.
  * @param {string} entityTag - Entity tag for cache metadata.
  * @param {ParsedFilter[]} filters - Query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
+ * @param {QueryOpts} opts - Pagination.
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
@@ -193,7 +193,7 @@ async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cach
  * Used to build the cache key for the pre-fetched next page.
  *
  * @param {ParsedFilter[]} filters - The current query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Pagination.
+ * @param {QueryOpts} opts - Pagination.
  * @returns {string} Sorted query string.
  */
 function buildSortedQS(filters, opts) {

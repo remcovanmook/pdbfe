@@ -51,6 +51,7 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
  * @param {Record<string, any>[]} rows - The parent result rows to expand.
  * @param {number} depth - Depth level (0, 1, or 2).
  * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
+ * @param {boolean} [pdbfe=false] - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
 export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false) {
@@ -83,6 +84,7 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
 async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
@@ -151,6 +153,7 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
 async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
@@ -300,6 +303,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The entity metadata for the current rows.
  * @param {Record<string, any>[]} rows - Result rows to expand in-place.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
 async function expandParentOrg(db, entity, rows, pdbfe) {

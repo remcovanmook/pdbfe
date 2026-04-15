@@ -23,7 +23,7 @@ import { parseJsonFields } from './shared.js';
  * @param {string} entityTag - Entity tag.
  * @param {number} id - Entity ID.
  * @param {ParsedFilter[]} filters - Parsed query filters (only depth is relevant here).
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Depth option.
+ * @param {QueryOpts} opts - Depth option.
  * @param {string} rawPath - Original URL path for cache key.
  * @param {string} queryString - Original query string for cache key.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
@@ -51,7 +51,7 @@ export async function handleDetail(request, db, ctx, entityTag, id, filters, opt
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {{depth: number, limit: number, skip: number, since: number, sort: string, fields?: string[]}} opts - Query options.
+ * @param {QueryOpts} opts - Query options.
  * @param {number} id - Entity ID.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Uint8Array|null>} Payload bytes, or null for 404.
