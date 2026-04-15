@@ -179,9 +179,8 @@ def _resolve_field_type(call_node):
 def _has_kwarg(call_node, name, value=True):
     """Check whether a Call node has keyword arg `name` set to `value`."""
     for kw in call_node.keywords:
-        if kw.arg == name:
-            if isinstance(kw.value, ast.Constant):
-                return kw.value.value == value
+        if kw.arg == name and isinstance(kw.value, ast.Constant):
+            return kw.value.value == value
     return False
 
 
