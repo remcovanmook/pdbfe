@@ -294,8 +294,17 @@ export async function syncLogos(db, logos, tag, table) {
             // Fetch from S3
             const resp = await fetch(logoUrl);
             if (!resp.ok) {
-                console.error(`[sync-logos] ${tag}/${row.id}: S3 returned ${resp.status}`);
-                result.errors++;
+                if (resp.status === 404 || resp.status === 403) {
+                    // Logo deleted upstream — mark as migrated to prevent retries
+                    console.warn(`[sync-logos] ${tag}/${row.id}: S3 returned ${resp.status}, marking done`);
+                    await db.prepare(
+                        `UPDATE "${table}" SET "__logo_migrated" = 1 WHERE id = ?`
+                    ).bind(row.id).run();
+                    result.fetched++;
+                } else {
+                    console.error(`[sync-logos] ${tag}/${row.id}: S3 returned ${resp.status}`);
+                    result.errors++;
+                }
                 continue;
             }
 

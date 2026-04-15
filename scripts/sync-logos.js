@@ -56,8 +56,8 @@ export default {
                 // syncLogos processes up to 20 per call; stop when none left
                 if (lr.fetched === 0 && lr.errors === 0) break;
 
-                // Safety: bail after 50 batches (1000 logos) per entity
-                if (batch >= 50) {
+                // Safety: bail after 300 batches (6000 logos) per entity
+                if (batch >= 300) {
                     console.warn(`[backfill] ${tag}: hit batch limit (${batch}), continuing next run`);
                     break;
                 }
