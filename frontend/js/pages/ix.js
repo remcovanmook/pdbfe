@@ -73,6 +73,7 @@ export async function renderIx(params) {
             title: ix.name,
             subtitle,
             logoUrl: ix.logo || ix.org?.logo || null,
+            logoMigrated: Boolean(ix.logo ? ix.__logo_migrated : ix.org?.__logo_migrated),
             entityType: 'ix',
             entityId: ix.id,
             statsBar,

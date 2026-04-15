@@ -31,6 +31,7 @@ Usage:
 import ast
 import json
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -178,11 +179,8 @@ def _resolve_field_type(call_node):
 def _has_kwarg(call_node, name, value=True):
     """Check whether a Call node has keyword arg `name` set to `value`."""
     for kw in call_node.keywords:
-        if kw.arg == name:
-            if isinstance(kw.value, ast.Constant):
-                return kw.value.value == value
-            if isinstance(kw.value, ast.NameConstant):  # Python 3.7 compat
-                return kw.value.value == value
+        if kw.arg == name and isinstance(kw.value, ast.Constant):
+            return kw.value.value == value
     return False
 
 
@@ -527,7 +525,7 @@ def parse_api_spec(spec):
             schema_type = field_schema.get("type")
             if schema_type == "boolean":
                 field_info["schema_type"] = "boolean"
-            elif schema_type == "integer" or schema_type == "number":
+            elif schema_type in ("integer", "number"):
                 field_info["schema_type"] = "number"
             elif schema_type == "string":
                 fmt = field_schema.get("format")
@@ -535,7 +533,7 @@ def parse_api_spec(spec):
                     field_info["schema_type"] = "datetime"
                 else:
                     field_info["schema_type"] = "string"
-            elif schema_type == "array" or schema_type == "object":
+            elif schema_type in ("array", "object"):
                 field_info["schema_type"] = "json"
 
             if "enum" in field_schema:
@@ -759,6 +757,18 @@ def generate_schema_sql(entities, schema_version="unknown"):
                 cols.append(f'    "{name}" {sql_type} NOT NULL DEFAULT \'\'')
 
         cols.extend(META_COLUMNS)
+
+        # Local-only pdbfe columns (not from upstream schema)
+        for local_field in _LOCAL_FIELDS.get(tag, []):
+            lname = local_field["name"]
+            ltype = local_field["type"]
+            lsql = SQL_TYPE_MAP.get(ltype, "TEXT")
+            if lsql == "BOOL":
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT 0')
+            elif lsql == "INTEGER":
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT 0')
+            else:
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT \'\'')
         col_str = ",\n".join(cols)
 
         lines.append(f'CREATE TABLE IF NOT EXISTS "{table}" (')
@@ -867,90 +877,128 @@ _CACHE_TIERS = {
 
 _DEFAULT_TIER = {"slots": 128, "maxSize": 1 * 1024 * 1024}
 
+# Local-only fields added by pdbfe that don't exist in upstream PeeringDB.
+# Keyed by entity tag. These are injected after the standard fields during
+# worker entity generation so they survive schema regeneration.
+_LOCAL_FIELDS = {
+    "org":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "net":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "ix":      [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "fac":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "carrier": [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "campus":  [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+}
 
-def _build_worker_entities(merged_entities, overrides):
+# Pre-built address field defs (mirrors Entity.address() — fixed order & queryable flags)
+_ADDRESS_FIELD_DEFS = (
+    {"name": "address1", "type": "string", "queryable": False},
+    {"name": "address2", "type": "string", "queryable": False},
+    {"name": "city", "type": "string"},
+    {"name": "country", "type": "string"},
+    {"name": "state", "type": "string"},
+    {"name": "zipcode", "type": "string"},
+    {"name": "floor", "type": "string", "queryable": False},
+    {"name": "suite", "type": "string", "queryable": False},
+    {"name": "latitude", "type": "number", "queryable": False},
+    {"name": "longitude", "type": "number", "queryable": False},
+)
+
+# Standard timestamp fields appended by Entity.done()
+_TIMESTAMP_FIELD_DEFS = (
+    {"name": "created", "type": "datetime"},
+    {"name": "updated", "type": "datetime"},
+    {"name": "status", "type": "string"},
+)
+
+
+def _build_single_field(field, field_override):
     """
-    Replicate the Entity builder pipeline (buildEntities + overrides +
-    deriveRelationships + cacheFieldLookups) in Python.
+    Build a single worker field dict from a schema field and its overrides.
 
-    Takes the merged entity schema dict and entity-overrides.json dict.
-    Returns a dict of tag → fully-built entity data ready for JS emission.
+    Applies type/queryable overrides, marks JSON fields, copies nullable
+    and foreignKey attributes.
+
+    Args:
+        field: Schema field dict (name, type, nullable, foreignKey, etc.).
+        field_override: Override dict for this field (from entity-overrides.json).
+
+    Returns:
+        Field dict ready for JS emission.
     """
-    # ── Phase 1: build fields (mirrors buildEntities in entities.js) ────────
+    name = field["name"]
+    effective_type = field_override.get("type", field.get("type", "string"))
+    effective_queryable = field_override.get("queryable", field.get("queryable"))
 
-    entities = {}
-    for tag, schema in merged_entities.items():
-        tag_overrides = overrides.get(tag, {}).get("fieldOverrides", {})
+    f = {"name": name, "type": effective_type}
 
-        # Start with id field
-        fields = [{"name": "id", "type": "number"}]
+    if effective_type == "json":
+        f["queryable"] = False
+        f["json"] = True
+        return f
 
-        # Track which fields are address fields handled by .address()
-        has_address = schema.get("address", False)
-        address_done = set()
+    if effective_queryable is False:
+        f["queryable"] = False
+    if field.get("nullable"):
+        f["nullable"] = True
+    if field.get("foreignKey"):
+        f["foreignKey"] = field["foreignKey"]
+        if field_override.get("resolve"):
+            f["resolve"] = field_override["resolve"]
 
-        for field in schema["fields"]:
-            name = field["name"]
+    return f
 
-            # Skip address fields if the entity uses .address()
-            if has_address and name in _ADDRESS_FIELDS:
-                address_done.add(name)
-                continue
 
-            field_override = tag_overrides.get(name, {})
+def _build_entity_fields(tag, schema, overrides):
+    """
+    Build the field list for a single entity.
 
-            # Allow overrides to fix type or queryable
-            effective_type = field_override.get("type", field.get("type", "string"))
-            effective_queryable = field_override.get("queryable", field.get("queryable"))
+    Mirrors the Entity builder pipeline from buildEntities in entities.js:
+    schema fields → override application → address group → timestamps → local fields.
 
-            f = {"name": name, "type": effective_type}
+    Args:
+        tag: Entity tag (e.g. 'net').
+        schema: Merged entity schema dict for this tag.
+        overrides: Entity-overrides.json dict (full, not per-tag).
 
-            if effective_type == "json":
-                f["queryable"] = False
-                f["json"] = True
-            else:
-                if effective_queryable is False:
-                    f["queryable"] = False
-                if field.get("nullable"):
-                    f["nullable"] = True
-                if field.get("foreignKey"):
-                    f["foreignKey"] = field["foreignKey"]
-                    if field_override.get("resolve"):
-                        f["resolve"] = field_override["resolve"]
+    Returns:
+        List of field dicts ready for JS emission.
+    """
+    tag_overrides = overrides.get(tag, {}).get("fieldOverrides", {})
 
-            fields.append(f)
+    # Start with id field
+    fields = [{"name": "id", "type": "number"}]
 
-        # Add address group (mirrors Entity.address() — fixed order & queryable flags)
-        if has_address:
-            fields.append({"name": "address1", "type": "string", "queryable": False})
-            fields.append({"name": "address2", "type": "string", "queryable": False})
-            fields.append({"name": "city", "type": "string"})
-            fields.append({"name": "country", "type": "string"})
-            fields.append({"name": "state", "type": "string"})
-            fields.append({"name": "zipcode", "type": "string"})
-            fields.append({"name": "floor", "type": "string", "queryable": False})
-            fields.append({"name": "suite", "type": "string", "queryable": False})
-            fields.append({"name": "latitude", "type": "number", "queryable": False})
-            fields.append({"name": "longitude", "type": "number", "queryable": False})
+    has_address = schema.get("address", False)
 
-        # Seal: add standard timestamp fields (mirrors Entity.done())
-        fields.append({"name": "created", "type": "datetime"})
-        fields.append({"name": "updated", "type": "datetime"})
-        fields.append({"name": "status", "type": "string"})
+    for field in schema["fields"]:
+        name = field["name"]
 
-        entity = {
-            "tag": tag,
-            "table": schema["table"],
-            "fields": fields,
-            "_restricted": schema.get("restricted", False),
-            "_anonFilter": schema.get("anonFilter"),
-            "joinColumns": None,
-            "relationships": [],
-        }
-        entities[tag] = entity
+        # Skip address fields if the entity uses .address()
+        if has_address and name in _ADDRESS_FIELDS:
+            continue
 
-    # ── Phase 2: derive joinColumns (mirrors deriveRelationships pass 1) ────
+        fields.append(_build_single_field(field, tag_overrides.get(name, {})))
 
+    # Add address group (mirrors Entity.address() — fixed order & queryable flags)
+    if has_address:
+        fields.extend(_ADDRESS_FIELD_DEFS)
+
+    # Seal: add standard timestamp fields (mirrors Entity.done())
+    fields.extend(_TIMESTAMP_FIELD_DEFS)
+
+    # Inject local-only pdbfe fields (not from upstream)
+    for local_field in _LOCAL_FIELDS.get(tag, []):
+        fields.append(dict(local_field))
+
+    return fields
+
+
+def _derive_join_columns(entities):
+    """
+    Derive joinColumns for each entity from FK fields with resolve specs.
+
+    Mirrors deriveRelationships pass 1 in entities.js. Mutates entities in-place.
+    """
     for entity in entities.values():
         joins = []
         for field in entity["fields"]:
@@ -968,8 +1016,48 @@ def _build_worker_entities(merged_entities, overrides):
             })
         entity["joinColumns"] = joins if joins else None
 
-    # ── Phase 3: derive relationships (mirrors deriveRelationships pass 2) ──
 
+def _collect_sibling_joins(child_fields, current_field, entities):
+    """
+    Collect joinColumns from sibling FK fields that have resolve specs.
+
+    For a given FK field on a child entity, finds other FK fields on the
+    same entity that carry resolve mappings and builds their join column
+    definitions.
+
+    Args:
+        child_fields: Full field list of the child entity.
+        current_field: The FK field being processed (excluded from results).
+        entities: Full entity dict for target table lookup.
+
+    Returns:
+        List of join column dicts, or empty list if none.
+    """
+    joins = []
+    for sibling in child_fields:
+        if sibling is current_field:
+            continue
+        s_fk = sibling.get("foreignKey")
+        s_resolve = sibling.get("resolve")
+        if not s_fk or not s_resolve:
+            continue
+        s_target = entities.get(s_fk)
+        if not s_target:
+            continue
+        joins.append({
+            "table": s_target["table"],
+            "localFk": sibling["name"],
+            "columns": s_resolve,
+        })
+    return joins
+
+
+def _derive_relationships(entities):
+    """
+    Derive parent→child relationships from FK fields.
+
+    Mirrors deriveRelationships pass 2 in entities.js. Mutates entities in-place.
+    """
     for entity in entities.values():
         entity["relationships"] = []
 
@@ -988,30 +1076,23 @@ def _build_worker_entities(merged_entities, overrides):
                 "fk": field["name"],
             }
 
-            # Sibling FK fields with resolve specs → joinColumns on relationship
-            sibling_joins = []
-            for sibling in child_entity["fields"]:
-                if sibling is field:
-                    continue
-                s_fk = sibling.get("foreignKey")
-                s_resolve = sibling.get("resolve")
-                if not s_fk or not s_resolve:
-                    continue
-                s_target = entities.get(s_fk)
-                if not s_target:
-                    continue
-                sibling_joins.append({
-                    "table": s_target["table"],
-                    "localFk": sibling["name"],
-                    "columns": s_resolve,
-                })
+            sibling_joins = _collect_sibling_joins(
+                child_entity["fields"], field, entities
+            )
             if sibling_joins:
                 rel["joinColumns"] = sibling_joins
 
             parent["relationships"].append(rel)
 
-    # ── Phase 4: compute field lookup caches ────────────────────────────────
 
+def _compute_field_caches(entities):
+    """
+    Compute precompiled field lookup caches for each entity.
+
+    Builds _columns, _jsonColumns, _boolColumns, _nullableColumns,
+    _fieldNames, and _filterTypes from the entity's field list.
+    Mutates entities in-place.
+    """
     for entity in entities.values():
         columns = []
         json_columns = set()
@@ -1039,6 +1120,31 @@ def _build_worker_entities(merged_entities, overrides):
         entity["_nullableColumns"] = sorted(nullable_columns)
         entity["_fieldNames"] = sorted(field_names)
         entity["_filterTypes"] = filter_types
+
+
+def _build_worker_entities(merged_entities, overrides):
+    """
+    Replicate the Entity builder pipeline (buildEntities + overrides +
+    deriveRelationships + cacheFieldLookups) in Python.
+
+    Takes the merged entity schema dict and entity-overrides.json dict.
+    Returns a dict of tag → fully-built entity data ready for JS emission.
+    """
+    entities = {}
+    for tag, schema in merged_entities.items():
+        entities[tag] = {
+            "tag": tag,
+            "table": schema["table"],
+            "fields": _build_entity_fields(tag, schema, overrides),
+            "_restricted": schema.get("restricted", False),
+            "_anonFilter": schema.get("anonFilter"),
+            "joinColumns": None,
+            "relationships": [],
+        }
+
+    _derive_join_columns(entities)
+    _derive_relationships(entities)
+    _compute_field_caches(entities)
 
     return entities
 
@@ -1126,10 +1232,10 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
         lines.append(" * Used by the API worker for the X-App-Version response header.")
         lines.append(" * @type {{django_peeringdb: string, api_schema: string}}")
         lines.append(" */")
-        lines.append(f"export const VERSIONS = Object.freeze({{")
+        lines.append("export const VERSIONS = Object.freeze({")
         lines.append(f"    django_peeringdb: {json.dumps(versions.get('django_peeringdb', 'unknown'))},")
         lines.append(f"    api_schema: {json.dumps(versions.get('api_schema', 'unknown'))},")
-        lines.append(f"}});")
+        lines.append("});")
         lines.append("")
 
     # Emit each entity as a const
@@ -1169,15 +1275,15 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
             af = entity["_anonFilter"]
             anon_filter_str = f'{{ field: {json.dumps(af["field"])}, value: {json.dumps(af["value"])} }}'
 
-        lines.append(f"/** @type {{EntityMeta}} */")
+        lines.append("/** @type {EntityMeta} */")
         lines.append(f"const {var_name} = {{")
         lines.append(f"    tag: {json.dumps(tag)},")
         lines.append(f"    table: {json.dumps(entity['table'])},")
         lines.append(f"    _restricted: {json.dumps(entity['_restricted'])},")
         lines.append(f"    _anonFilter: {anon_filter_str},")
-        lines.append(f"    fields: [")
+        lines.append("    fields: [")
         lines.append(f"        {fields_str}")
-        lines.append(f"    ],")
+        lines.append("    ],")
         lines.append(f"    joinColumns: {joins_str},")
         lines.append(f"    relationships: {rels_str},")
         lines.append(f"    _columns: {columns_str},")
@@ -1186,7 +1292,7 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
         lines.append(f"    _nullableColumns: new Set({nullable_cols_str}),")
         lines.append(f"    _fieldNames: new Set({field_names_str}),")
         lines.append(f"    _filterTypes: new Map([{ft_pairs}]),")
-        lines.append(f"}};")
+        lines.append("};")
         lines.append("")
 
     # ENTITIES record

@@ -95,6 +95,57 @@ interface KVNamespace<Key extends string = string> {
     }>;
 }
 
+// ── R2 Object Storage ────────────────────────────────────────────────────────
+
+interface R2HTTPMetadata {
+    contentType?: string;
+    contentLanguage?: string;
+    contentDisposition?: string;
+    contentEncoding?: string;
+    cacheControl?: string;
+    cacheExpiry?: Date;
+}
+
+interface R2PutOptions {
+    httpMetadata?: R2HTTPMetadata;
+    customMetadata?: Record<string, string>;
+}
+
+interface R2ObjectBody {
+    readonly key: string;
+    readonly size: number;
+    readonly etag: string;
+    readonly httpEtag: string;
+    readonly httpMetadata?: R2HTTPMetadata;
+    readonly customMetadata?: Record<string, string>;
+    arrayBuffer(): Promise<ArrayBuffer>;
+    text(): Promise<string>;
+    json<T = unknown>(): Promise<T>;
+    blob(): Promise<Blob>;
+}
+
+interface R2Object {
+    readonly key: string;
+    readonly size: number;
+    readonly etag: string;
+    readonly httpEtag: string;
+    readonly httpMetadata?: R2HTTPMetadata;
+    readonly customMetadata?: Record<string, string>;
+}
+
+interface R2Bucket {
+    head(key: string): Promise<R2Object | null>;
+    get(key: string): Promise<R2ObjectBody | null>;
+    put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob, options?: R2PutOptions): Promise<R2Object>;
+    delete(key: string | string[]): Promise<void>;
+    list(options?: { prefix?: string; limit?: number; cursor?: string; delimiter?: string }): Promise<{
+        objects: R2Object[];
+        truncated: boolean;
+        cursor?: string;
+        delimitedPrefixes: string[];
+    }>;
+}
+
 // ── Scheduled Events ─────────────────────────────────────────────────────────
 
 interface ScheduledEvent {
@@ -161,6 +212,7 @@ type D1Session = D1Database | D1DatabaseSession;
  */
 interface PdbSyncEnv {
     PDB: D1Database;
+    LOGOS?: R2Bucket;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
 }
@@ -420,4 +472,20 @@ interface ParsedFilter {
 interface BuiltQuery {
     sql: string;
     params: (string | number)[];
+}
+
+/**
+ * Pagination, depth, and feature-flag options passed through the query
+ * pipeline. Constructed by the router and threaded to query builders,
+ * handlers, and depth expansion.
+ */
+interface QueryOpts {
+    depth: number;
+    limit: number;
+    skip: number;
+    since: number;
+    sort: string;
+    fields?: string[];
+    /** When true, include pdbfe-local extension columns (e.g. __logo_migrated). */
+    pdbfe?: boolean;
 }

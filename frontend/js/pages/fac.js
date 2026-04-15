@@ -47,6 +47,7 @@ export async function renderFac(params) {
             title: fac.name,
             subtitle,
             logoUrl: fac.logo || fac.org?.logo || null,
+            logoMigrated: Boolean(fac.logo ? fac.__logo_migrated : fac.org?.__logo_migrated),
             entityType: 'fac',
             entityId: fac.id,
             sidebar: buildSidebar(fac),

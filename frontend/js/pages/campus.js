@@ -37,6 +37,7 @@ export async function renderCampus(params) {
         app.replaceChildren(createDetailLayout({
             title: campus.name,
             logoUrl: campus.logo || campus.org?.logo || null,
+            logoMigrated: Boolean(campus.logo ? campus.__logo_migrated : campus.org?.__logo_migrated),
             entityType: 'campus',
             entityId: campus.id,
             sidebar: buildSidebar(campus),

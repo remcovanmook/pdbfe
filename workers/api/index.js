@@ -169,7 +169,7 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
-    const { filters, depth, limit, skip, since, sort, fields: rawFields } = parseQueryFilters(queryString);
+    const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe } = parseQueryFilters(queryString);
 
     if (limit < -1 || skip < 0) {
         return jsonError(400, 'limit and skip must be non-negative integers', hNocache);
@@ -212,7 +212,7 @@ async function handleRequest(request, env, ctx) {
     const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
 
-    const opts = { depth, limit, skip, since, sort, fields };
+    const opts = { depth, limit, skip, since, sort, fields, pdbfe };
 
     // ── Handler dispatch ─────────────────────────────────────────────
     const response = id > 0

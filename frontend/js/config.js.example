@@ -10,3 +10,9 @@ export const AUTH_ORIGIN = 'https://pdbfe-auth.<your-subdomain>';
 
 /** Origin of the pdbfe-api worker (no trailing slash). */
 export const API_ORIGIN = 'https://api.<your-domain>';
+
+/** Public R2 bucket origin for mirrored entity logos (no trailing slash). Empty to use upstream logos. */
+export const IMAGES_ORIGIN = '';
+
+/** S3 URL prefix to strip when building R2 logo paths. */
+export const S3_MEDIA_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';

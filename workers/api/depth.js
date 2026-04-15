@@ -51,9 +51,10 @@ for (const [tag, meta] of Object.entries(ENTITIES)) {
  * @param {Record<string, any>[]} rows - The parent result rows to expand.
  * @param {number} depth - Depth level (0, 1, or 2).
  * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
+ * @param {boolean} [pdbfe=false] - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
-export async function expandDepth(db, entity, rows, depth, authenticated = false) {
+export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false) {
     if (depth === 0 || rows.length === 0) {
         return;
     }
@@ -61,14 +62,14 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
     // Child _set expansion (only when relationships exist)
     if (entity.relationships.length > 0) {
         if (depth >= 2) {
-            await expandDepthTwo(db, entity, rows, authenticated);
+            await expandDepthTwo(db, entity, rows, authenticated, pdbfe);
         } else {
-            await expandDepthOne(db, entity, rows, authenticated);
+            await expandDepthOne(db, entity, rows, authenticated, pdbfe);
         }
     }
 
     // Parent org expansion (depth≥1, org-only to match upstream)
-    await expandParentOrg(db, entity, rows);
+    await expandParentOrg(db, entity, rows, pdbfe);
 }
 
 /**
@@ -83,9 +84,10 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
-async function expandDepthOne(db, entity, rows, authenticated) {
+async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
     const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
     if (parentIds.length === 0) return;
 
@@ -151,9 +153,10 @@ async function expandDepthOne(db, entity, rows, authenticated) {
  * @param {EntityMeta} entity - The parent entity metadata.
  * @param {Record<string, any>[]} rows - The parent result rows.
  * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
-async function expandDepthTwo(db, entity, rows, authenticated) {
+async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
     const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
     if (parentIds.length === 0) return;
 
@@ -185,7 +188,7 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
         /** @type {Set<string>} */
         let childBoolCols;
         if (childEntity) {
-            childColumns = getColumns(childEntity).filter(c => c !== rel.fk); // ap-ok: SQL construction
+            childColumns = getColumns(childEntity, pdbfe).filter(c => c !== rel.fk); // ap-ok: SQL construction
             childJsonCols = getJsonColumns(childEntity);
             childBoolCols = getBoolColumns(childEntity);
         } else {
@@ -300,9 +303,10 @@ async function expandDepthTwo(db, entity, rows, authenticated) {
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The entity metadata for the current rows.
  * @param {Record<string, any>[]} rows - Result rows to expand in-place.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @returns {Promise<void>}
  */
-async function expandParentOrg(db, entity, rows) {
+async function expandParentOrg(db, entity, rows, pdbfe) {
     // Find the org_id FK field on this entity
     const orgFkField = entity.fields.find(f => f.foreignKey === 'org');
     if (!orgFkField) return;
@@ -321,7 +325,7 @@ async function expandParentOrg(db, entity, rows) {
 
     // Batch-fetch all referenced orgs in a single query
     const ids = [...orgIds]; // ap-ok: cold path behind cachedQuery
-    const orgColumns = getColumns(orgEntity);
+    const orgColumns = getColumns(orgEntity, pdbfe);
     const orgJsonCols = getJsonColumns(orgEntity);
     const orgBoolCols = getBoolColumns(orgEntity);
 

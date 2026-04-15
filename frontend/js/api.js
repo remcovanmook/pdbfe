@@ -6,7 +6,7 @@
  */
 
 import { getSessionId } from './auth.js';
-import { API_ORIGIN } from './config.js';
+import { API_ORIGIN, IMAGES_ORIGIN } from './config.js';
 import { ENTITIES, getLabel } from './entities.js';
 
 /**
@@ -214,14 +214,23 @@ function revalidate(cacheKey, url, sid) {
  */
 function buildURL(path, params) {
     const base = `${API_BASE}${path}`;
-    if (!params) return base;
 
-    const qs = Object.entries(params)
-        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    const entries = params
+        ? Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+        : [];
+
+    // Request pdbfe extension fields only when talking to our own API
+    if (IMAGES_ORIGIN) {
+        entries.push(['__pdbfe', '1']);
+    }
+
+    if (entries.length === 0) return base;
+
+    const qs = entries
         .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
         .join('&');
 
-    return qs ? `${base}?${qs}` : base;
+    return `${base}?${qs}`;
 }
 
 /**
