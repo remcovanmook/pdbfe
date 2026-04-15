@@ -987,8 +987,13 @@ body[data-page="home"] .site-logo {
     color: var(--accent);
 }
 
-.site-footer__sync-time--stale {
+.site-footer__sync-time--warn {
+    color: var(--status-warn);
+}
+
+.site-footer__sync-time--error {
     color: var(--status-error);
+    font-weight: 600;
 }
 
 .site-footer__lang-line {

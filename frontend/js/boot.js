@@ -95,15 +95,23 @@ fetchSyncStatus().then(sync => {
 
     const epochMs = sync.last_modified_at * 1000;
     const isoDate = new Date(epochMs).toISOString();
-    const diffMs = Date.now() - epochMs;
-    const isStale = diffMs > 3 * 3600 * 1000; // >3 hours
+    const diffMin = (Date.now() - epochMs) / 60_000;
     const timeText = formatDate(isoDate);
-    const staleClass = isStale ? ' site-footer__sync-time--stale' : '';
+
+    // Determine freshness tier
+    let freshClass = '';
+    let prefix = '';
+    if (diffMin > 60) {
+        freshClass = ' site-footer__sync-time--error';
+        prefix = '✕ ';
+    } else if (diffMin > 15) {
+        freshClass = ' site-footer__sync-time--warn';
+    }
 
     const textNode = document.createTextNode(t('Last synced') + ' ');
     const timeSpan = document.createElement('span');
-    timeSpan.className = `site-footer__sync-time${staleClass}`;
-    timeSpan.textContent = timeText;
+    timeSpan.className = `site-footer__sync-time${freshClass}`;
+    timeSpan.textContent = prefix + timeText;
     el.replaceChildren(textNode, timeSpan);
     el.title = isoDate;
 }).catch(() => {
