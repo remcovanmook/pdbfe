@@ -30,6 +30,7 @@ import {
 import {
     handleGetProfile,
     handleUpdateProfile,
+    handlePreferenceOptions,
     handleListKeys,
     handleCreateKey,
     handleDeleteKey,
@@ -87,6 +88,11 @@ async function handleRequest(request, env, _ctx) {
     }
 
     // ── Account routes (mixed methods) ──────────────────────────────────
+
+    // Public: preference options (no auth required)
+    if (path === '/account/preferences/options' && request.method === 'GET') {
+        return handlePreferenceOptions(request, env);
+    }
 
     if (path === '/account/profile') {
         if (request.method === 'GET')  return handleGetProfile(request, env);

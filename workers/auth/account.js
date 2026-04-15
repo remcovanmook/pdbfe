@@ -4,6 +4,7 @@
  * Provides CRUD operations for user profiles, preferences, favorites,
  * and API keys:
  *
+ *   GET    /account/preferences/options → Available preference keys/values (public)
  *   GET    /account/profile           → Return user profile & preferences
  *   PUT    /account/profile           → Update profile & preferences
  *   GET    /account/keys              → List API keys (prefix + label only)
@@ -198,6 +199,42 @@ function keyPrefix(fullKey) {
 }
 
 // ── Endpoint Handlers ────────────────────────────────────────────────────────
+
+/**
+ * GET /account/preferences/options — Returns available preference keys
+ * and their valid values from the preference_options table.
+ *
+ * Public endpoint (no auth required) so the UI can populate selectors
+ * before login. Response is grouped by pref_key:
+ *   { "language": ["en", "de", ...], "theme": ["auto", "dark", "light"] }
+ *
+ * @param {Request} _request - The inbound HTTP request (unused).
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handlePreferenceOptions(_request, env) {
+    const { results } = await env.USERDB.prepare(
+        'SELECT pref_key, pref_value FROM preference_options ORDER BY pref_key, pref_value'
+    ).all();
+
+    /** @type {Record<string, string[]>} */
+    const grouped = {};
+    for (const row of results) {
+        const key = /** @type {string} */ (row.pref_key);
+        const val = /** @type {string} */ (row.pref_value);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(val);
+    }
+
+    return new Response(JSON.stringify(grouped) + '\n', {
+        status: 200,
+        headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+            ...corsHeaders(env.FRONTEND_ORIGIN),
+        },
+    });
+}
 
 /**
  * GET /account/profile — Returns the user's profile.
