@@ -214,14 +214,16 @@ function revalidate(cacheKey, url, sid) {
  */
 function buildURL(path, params) {
     const base = `${API_BASE}${path}`;
-    if (!params) return base;
+    // Always request pdbfe extension fields (__logo_migrated, etc.)
+    const pdbfe = '__pdbfe=1';
+    if (!params) return `${base}?${pdbfe}`;
 
     const qs = Object.entries(params)
         .filter(([, v]) => v !== undefined && v !== null && v !== '')
         .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
         .join('&');
 
-    return qs ? `${base}?${qs}` : base;
+    return qs ? `${base}?${qs}&${pdbfe}` : `${base}?${pdbfe}`;
 }
 
 /**

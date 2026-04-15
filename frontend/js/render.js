@@ -12,6 +12,7 @@ import { renderMarkdown } from './markdown.js';
 import { t, getCurrentLang } from './i18n.js';
 import { isFavorite, addFavorite, removeFavorite } from './auth.js';
 import { getTimezone } from './timezone.js';
+import { IMAGES_ORIGIN, S3_MEDIA_PREFIX } from './config.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -368,6 +369,7 @@ export function createTextNode(text) {
  * @param {string} opts.title - Page title (h1).
  * @param {string} [opts.subtitle] - Subtitle text below the title.
  * @param {string} [opts.logoUrl] - URL of the entity or org logo. Skipped when falsy.
+ * @param {boolean} [opts.logoMigrated] - Whether the logo has been mirrored to R2.
  * @param {string} [opts.entityType] - Entity type for favorite button (net, ix, fac, etc.).
  * @param {number} [opts.entityId] - Entity ID for favorite button.
  * @param {HTMLElement} [opts.statsBar] - Optional stats bar element.
@@ -463,7 +465,11 @@ export function createDetailLayout(opts) {
         // load synchronously and would be missed otherwise.
         logo.onload = () => { logo.style.display = ''; };
         logo.onerror = () => { logo.remove(); };
-        logo.src = opts.logoUrl;
+        if (opts.logoMigrated && opts.logoUrl.startsWith(S3_MEDIA_PREFIX)) {
+            logo.src = `${IMAGES_ORIGIN}/${opts.logoUrl.slice(S3_MEDIA_PREFIX.length)}`;
+        } else {
+            logo.src = opts.logoUrl;
+        }
 
         // Catch already-cached images where load fired before insertion
         if (logo.complete && logo.naturalWidth > 0) {

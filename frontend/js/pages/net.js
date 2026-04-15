@@ -44,6 +44,7 @@ export async function renderNet(params) {
             title: net.name,
             subtitle: `AS${net.asn}`,
             logoUrl: net.logo || net.org?.logo || null,
+            logoMigrated: Boolean(net.logo ? net.__logo_migrated : net.org?.__logo_migrated),
             entityType: 'net',
             entityId: net.id,
             sidebar: buildSidebar(net),

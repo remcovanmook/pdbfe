@@ -39,6 +39,7 @@ export async function renderOrg(params) {
         app.replaceChildren(createDetailLayout({
             title: org.name,
             logoUrl: org.logo || null,
+            logoMigrated: Boolean(org.__logo_migrated),
             entityType: 'org',
             entityId: org.id,
             sidebar: buildSidebar(org),

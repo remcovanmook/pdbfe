@@ -37,6 +37,7 @@ export async function renderCarrier(params) {
         app.replaceChildren(createDetailLayout({
             title: carrier.name,
             logoUrl: carrier.logo || carrier.org?.logo || null,
+            logoMigrated: Boolean(carrier.logo ? carrier.__logo_migrated : carrier.org?.__logo_migrated),
             entityType: 'carrier',
             entityId: carrier.id,
             sidebar: buildSidebar(carrier),
