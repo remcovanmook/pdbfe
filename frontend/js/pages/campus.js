@@ -63,7 +63,7 @@ function buildSidebar(campus) {
         createField('State/Province', campus.state),
         createField('Country', campus.country),
         createField('Postal Code', campus.zipcode),
-        createField('Last Updated', campus.updated),
+        createField('Last Updated', campus.updated, { date: true }),
     ]);
 
     const frag = document.createDocumentFragment();

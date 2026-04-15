@@ -62,7 +62,7 @@ function buildSidebar(carrier) {
         createField('Also Known As', carrier.aka),
         createField('Long Name', carrier.name_long),
         createField('Facilities', carrier.fac_count),
-        createField('Last Updated', carrier.updated),
+        createField('Last Updated', carrier.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 

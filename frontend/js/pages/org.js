@@ -63,7 +63,7 @@ function buildSidebar(org) {
         createField('Long Name', org.name_long),
         createField('Website', org.website, { href: org.website, external: true }),
         createField('Notes', org.notes, { markdown: true }),
-        createField('Last Updated', org.updated),
+        createField('Last Updated', org.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 

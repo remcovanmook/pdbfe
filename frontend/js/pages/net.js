@@ -78,7 +78,7 @@ function buildSidebar(net) {
             ? `${net.info_prefixes4 || 0} IPv4 / ${net.info_prefixes6 || 0} IPv6` : null),
         createField('IPv6', net.info_ipv6 ? t('Yes') : t('No')),
         createField('Multicast', net.info_multicast ? t('Yes') : t('No')),
-        createField('Last Updated', net.updated),
+        createField('Last Updated', net.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 

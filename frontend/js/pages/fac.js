@@ -73,7 +73,7 @@ function buildSidebar(fac) {
         createField('Rencode', fac.rencode),
         createField('NPA-NXX', fac.npanxx),
         createField('Notes', fac.notes, { markdown: true }),
-        createField('Last Updated', fac.updated),
+        createField('Last Updated', fac.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 

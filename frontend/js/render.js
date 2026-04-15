@@ -210,6 +210,8 @@ export function createField(label, value, opts = {}) {
         }
         a.textContent = displayValue;
         valueEl.appendChild(a);
+    } else if (opts.date) {
+        valueEl.textContent = formatLocaleDate(displayValue);
     } else {
         valueEl.textContent = displayValue;
     }

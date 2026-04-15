@@ -103,7 +103,7 @@ function buildSidebar(ix) {
         createField('Policy Email', ix.policy_email),
         createField('Policy Phone', ix.policy_phone),
         createField('Notes', ix.notes, { markdown: true }),
-        createField('Last Updated', ix.updated),
+        createField('Last Updated', ix.updated, { date: true }),
     ]);
     if (general) frag.appendChild(general);
 
