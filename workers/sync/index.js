@@ -23,6 +23,15 @@ import { ENTITIES } from './entities.js';
 
 const API_BASE = 'https://www.peeringdb.com/api';
 
+/** Prefix to strip from S3 logo URLs to derive R2 keys. */
+const S3_MEDIA_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
+
+/**
+ * Entity tags that have a `logo` field and __logo_migrated column.
+ * @type {Set<string>}
+ */
+const LOGO_ENTITIES = new Set(['org', 'net', 'ix', 'fac', 'carrier', 'campus']);
+
 /**
  * Builds an INSERT OR REPLACE statement for a single row.
  * Handles all value types: null, boolean, number, string, array/object.
@@ -231,6 +240,93 @@ export async function syncEntity(db, tag, meta, apiKey) {
 }
 
 /**
+ * Syncs unmigrated logos for a single entity type from upstream S3
+ * to the R2 bucket. Finds rows where logo is non-empty and
+ * __logo_migrated is 0, fetches each image, stores it in R2, then
+ * sets the flag.
+ *
+ * Failures are logged but do not affect the data sync or other logos.
+ * Processes sequentially with a brief delay to avoid hammering S3.
+ *
+ * @param {D1Database} db - D1 database binding.
+ * @param {R2Bucket} logos - R2 bucket binding for logo storage.
+ * @param {string} tag - Entity tag (e.g. "org").
+ * @param {string} table - D1 table name.
+ * @returns {Promise<{ fetched: number, errors: number }>}
+ */
+export async function syncLogos(db, logos, tag, table) {
+    const result = { fetched: 0, errors: 0 };
+    if (!logos) return result;
+
+    // Find rows with logos that haven't been synced to R2 yet.
+    // Limit to 20 per cron run to stay within Worker CPU time limits.
+    const rows = await db.prepare(
+        `SELECT id, logo FROM "${table}" WHERE logo != '' AND logo IS NOT NULL AND "__logo_migrated" = 0 LIMIT 20`
+    ).all();
+
+    if (!rows.results || rows.results.length === 0) return result;
+
+    for (const row of rows.results) {
+        const logoUrl = /** @type {string} */ (row.logo);
+        if (!logoUrl.startsWith(S3_MEDIA_PREFIX)) {
+            // Unknown URL format — skip but mark as migrated to avoid retrying
+            console.warn(`[sync-logos] ${tag}/${row.id}: unknown URL format: ${logoUrl}`);
+            await db.prepare(
+                `UPDATE "${table}" SET "__logo_migrated" = 1 WHERE id = ?`
+            ).bind(row.id).run();
+            continue;
+        }
+
+        const r2Key = logoUrl.slice(S3_MEDIA_PREFIX.length);
+
+        try {
+            // Check if already in R2 (HEAD is free)
+            const existing = await logos.head(r2Key);
+            if (existing) {
+                // Already there — just set the flag
+                await db.prepare(
+                    `UPDATE "${table}" SET "__logo_migrated" = 1 WHERE id = ?`
+                ).bind(row.id).run();
+                result.fetched++;
+                continue;
+            }
+
+            // Fetch from S3
+            const resp = await fetch(logoUrl);
+            if (!resp.ok) {
+                console.error(`[sync-logos] ${tag}/${row.id}: S3 returned ${resp.status}`);
+                result.errors++;
+                continue;
+            }
+
+            const contentType = resp.headers.get('content-type') || 'application/octet-stream';
+            const body = await resp.arrayBuffer();
+
+            // Store in R2
+            await logos.put(r2Key, body, {
+                httpMetadata: { contentType },
+            });
+
+            // Mark as migrated
+            await db.prepare(
+                `UPDATE "${table}" SET "__logo_migrated" = 1 WHERE id = ?`
+            ).bind(row.id).run();
+
+            result.fetched++;
+            console.log(`[sync-logos] ${tag}/${row.id}: stored ${r2Key} (${body.byteLength} bytes)`);
+        } catch (err) {
+            console.error(`[sync-logos] ${tag}/${row.id}: ${/** @type {Error} */(err).message}`);
+            result.errors++;
+        }
+
+        // Brief delay between fetches to avoid hammering S3
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    return result;
+}
+
+/**
  * Validates a secret from the URL path against ADMIN_SECRET.
  * Uses constant-time comparison to prevent timing side-channels.
  *
@@ -272,11 +368,23 @@ export default {
             await new Promise(r => setTimeout(r, 200));
         }
 
+        // Sync logos to R2 for entity types that have them
+        /** @type {string[]} */
+        const logoSummary = [];
+        for (const [tag, meta] of Object.entries(ENTITIES)) {
+            if (!LOGO_ENTITIES.has(tag)) continue;
+            const lr = await syncLogos(env.PDB, env.LOGOS, tag, meta.table);
+            if (lr.fetched > 0 || lr.errors > 0) {
+                logoSummary.push(`${tag}:+${lr.fetched}e${lr.errors}`);
+            }
+        }
+
         const summary = results.map(r =>
             `${r.tag}: +${r.updated} -${r.deleted}${r.error ? ` ERR:${r.error}` : ''}`
         ).join(', ');
 
-        console.log(`[sync] ${new Date().toISOString()} ${summary}`);
+        const logoInfo = logoSummary.length > 0 ? ` | logos: ${logoSummary.join(', ')}` : '';
+        console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}`);
     },
 
     /**
