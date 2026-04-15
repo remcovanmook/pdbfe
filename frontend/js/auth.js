@@ -482,15 +482,14 @@ async function _fetchProfile(sid) {
             if (_cachedUser && profile.preferences) {
                 _cachedUser.preferences = profile.preferences;
 
-                // Apply server-side language preference if it differs from
-                // the current locale. This makes the preference follow the
-                // user across browsers/devices.
+                // Apply server-side language as a default for this browser
+                // if the user hasn't already set a local preference. This
+                // lets the setting follow the user to new devices without
+                // overriding a deliberate local choice.
                 const serverLang = profile.preferences.language;
-                if (serverLang && serverLang in LANGUAGES && serverLang !== getCurrentLang()) {
+                const localLang = localStorage.getItem('pdbfe-lang');
+                if (serverLang && serverLang in LANGUAGES && !localLang && serverLang !== getCurrentLang()) {
                     await setLanguage(serverLang);
-                    // Also update localStorage so the footer selector and
-                    // subsequent page loads use the right locale without
-                    // waiting for the profile fetch.
                     localStorage.setItem('pdbfe-lang', serverLang);
                 }
             }
