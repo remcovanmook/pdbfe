@@ -555,9 +555,8 @@ body[data-page="home"] .site-logo {
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    padding-bottom: var(--space-lg);
-    border-bottom: 1px solid var(--border-subtle);
-    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-sm);
+    margin-bottom: var(--space-sm);
 }
 
 .detail-header__title {
