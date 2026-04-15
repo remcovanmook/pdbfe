@@ -984,7 +984,11 @@ body[data-page="home"] .site-logo {
 }
 
 .site-footer__sync-time {
-    color: var(--accent);
+    color: var(--text-secondary);
+}
+
+.site-footer__sync-time--ok {
+    color: var(--status-ok);
 }
 
 .site-footer__sync-time--warn {

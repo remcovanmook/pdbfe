@@ -106,6 +106,10 @@ fetchSyncStatus().then(sync => {
         prefix = '✕ ';
     } else if (diffMin > 15) {
         freshClass = ' site-footer__sync-time--warn';
+        prefix = '● ';
+    } else {
+        freshClass = ' site-footer__sync-time--ok';
+        prefix = '✓ ';
     }
 
     const textNode = document.createTextNode(t('Last synced') + ' ');
