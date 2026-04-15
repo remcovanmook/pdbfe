@@ -95,7 +95,7 @@ function buildSidebar(ix) {
 
     const general = createFieldGroup('General', [
         createField('Organization', ix.org_name || ix.org_id, { linkType: 'org', linkId: ix.org_id }),
-        createField('City', ix.city),
+        createField('City', ix.city, { map: [ix.city, ix.country].filter(Boolean).join(', ') }),
         createField('Country', ix.country),
         createField('Region', ix.region_continent, { translate: true }),
         createField('Media Type', ix.media, { translate: true }),

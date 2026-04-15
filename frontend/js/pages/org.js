@@ -70,7 +70,7 @@ function buildSidebar(org) {
     const address = createFieldGroup('Address', [
         createField('Address', org.address1),
         createField('Address 2', org.address2),
-        createField('City', org.city),
+        createField('City', org.city, { map: [org.address1, org.city, org.country].filter(Boolean).join(', ') }),
         createField('State', org.state),
         createField('Postal Code', org.zipcode),
         createField('Country', org.country),

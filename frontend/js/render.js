@@ -189,6 +189,7 @@ export function createLink(type, id, label) {
  * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
  * @param {boolean} [opts.date] - Format value as a locale-aware date with timezone.
  * @param {boolean} [opts.email] - Render value as a mailto: link.
+ * @param {string} [opts.map] - Google Maps search query. Wraps value in a maps link.
  * @returns {HTMLDivElement|null} The info-field element, or null if value is empty.
  */
 export function createField(label, value, opts = {}) {
@@ -226,6 +227,13 @@ export function createField(label, value, opts = {}) {
     } else if (opts.email) {
         const a = document.createElement('a');
         a.href = `mailto:${displayValue}`;
+        a.textContent = displayValue;
+        valueEl.appendChild(a);
+    } else if (opts.map) {
+        const a = document.createElement('a');
+        a.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(opts.map)}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
         a.textContent = displayValue;
         valueEl.appendChild(a);
     } else {

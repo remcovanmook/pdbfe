@@ -59,7 +59,7 @@ function buildSidebar(campus) {
         createField('Website', campus.website, { href: campus.website, external: true }),
         createField('Also Known As', campus.aka),
         createField('Long Name', campus.name_long),
-        createField('City', campus.city),
+        createField('City', campus.city, { map: [campus.city, campus.country].filter(Boolean).join(', ') }),
         createField('State/Province', campus.state),
         createField('Country', campus.country),
         createField('Postal Code', campus.zipcode),

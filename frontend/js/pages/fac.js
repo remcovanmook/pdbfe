@@ -77,10 +77,14 @@ function buildSidebar(fac) {
     ]);
     if (general) frag.appendChild(general);
 
+    const facMapQuery = fac.latitude && fac.longitude
+        ? `${fac.latitude},${fac.longitude}`
+        : [fac.address1, fac.city, fac.country].filter(Boolean).join(', ');
+
     const address = createFieldGroup('Location', [
         createField('Address', fac.address1),
         createField('Address 2', fac.address2),
-        createField('City', fac.city),
+        createField('City', fac.city, { map: facMapQuery }),
         createField('State', fac.state),
         createField('Postal Code', fac.zipcode),
         createField('Country', fac.country),
