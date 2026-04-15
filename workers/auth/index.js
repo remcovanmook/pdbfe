@@ -33,6 +33,9 @@ import {
     handleListKeys,
     handleCreateKey,
     handleDeleteKey,
+    handleListFavorites,
+    handleAddFavorite,
+    handleRemoveFavorite,
     handleAccountPreflight,
 } from './account.js';
 
@@ -107,6 +110,35 @@ async function handleRequest(request, env, _ctx) {
             );
         }
         return handleDeleteKey(request, env, keyId);
+    }
+
+    // ── Favorites routes ────────────────────────────────────────────────
+
+    if (path === '/account/favorites') {
+        if (request.method === 'GET')  return handleListFavorites(request, env);
+        if (request.method === 'POST') return handleAddFavorite(request, env);
+        return methodNotAllowed('GET, POST, OPTIONS');
+    }
+
+    // DELETE /account/favorites/:type/:id
+    if (path.startsWith('/account/favorites/') && request.method === 'DELETE') {
+        const rest = path.slice('/account/favorites/'.length);
+        const slashIdx = rest.indexOf('/');
+        if (slashIdx < 1 || slashIdx === rest.length - 1) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid favorites path, expected /account/favorites/:type/:id' }) + '\n',
+                { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+        }
+        const entityType = rest.slice(0, slashIdx);
+        const entityId = rest.slice(slashIdx + 1);
+        if (entityId.includes('/')) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid favorites path' }) + '\n',
+                { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+        }
+        return handleRemoveFavorite(request, env, entityType, entityId);
     }
 
     // ── Default ─────────────────────────────────────────────────────────

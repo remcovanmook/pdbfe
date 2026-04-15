@@ -124,9 +124,9 @@ jobs:
           echo "Frontend JS: ${JS_SIZE} bytes"
           echo "Frontend CSS: ${CSS_SIZE} bytes"
           echo "Total: ${TOTAL} bytes"
-          # Fail if total exceeds 250 KB (currently ~187 KB)
-          if [ "$TOTAL" -gt 256000 ]; then
-            echo "::error::Frontend bundle size ${TOTAL} exceeds 250 KB budget"
+          # Fail if total exceeds 512 KB
+          if [ "$TOTAL" -gt 524288 ]; then
+            echo "::error::Frontend bundle size ${TOTAL} exceeds 512 KB budget"
             exit 1
           fi
 

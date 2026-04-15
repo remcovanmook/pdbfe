@@ -47,6 +47,8 @@ export async function renderFac(params) {
             title: fac.name,
             subtitle,
             logoUrl: fac.logo || fac.org?.logo || null,
+            entityType: 'fac',
+            entityId: fac.id,
             sidebar: buildSidebar(fac),
             main: buildTables(fac),
         }));

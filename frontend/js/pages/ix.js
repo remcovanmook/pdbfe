@@ -68,6 +68,8 @@ export async function renderIx(params) {
             title: ix.name,
             subtitle,
             logoUrl: ix.logo || ix.org?.logo || null,
+            entityType: 'ix',
+            entityId: ix.id,
             statsBar,
             sidebar: buildSidebar(ix),
             main: buildTables(ix, peers),

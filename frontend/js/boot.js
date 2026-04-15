@@ -53,7 +53,9 @@ attachTypeahead(headerSearch);
 await initI18n();
 
 // Bootstrap OAuth session state before routing, so isAuthenticated()
-// returns the correct value when page handlers run.
+// returns the correct value when page handlers run. initAuth() also
+// fetches the user profile and may apply a server-side language preference,
+// which updates getCurrentLang().
 await initAuth().catch(() => {
     // Non-critical — auth UI will show "Sign in" on failure
 });
@@ -64,15 +66,17 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// Wire up the footer language selector
+// Wire up the footer language selector. Populated after initAuth() so that
+// getCurrentLang() reflects any server-side language preference applied
+// during profile fetch.
 const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
 if (langSelect) {
-    // Populate options
+    const activeLang = getCurrentLang();
     for (const [code, name] of Object.entries(LANGUAGES)) {
         const opt = document.createElement('option');
         opt.value = code;
         opt.textContent = `${name} (${code})`;
-        opt.selected = code === getCurrentLang();
+        opt.selected = code === activeLang;
         langSelect.appendChild(opt);
     }
 

@@ -111,6 +111,7 @@ by mirror rebuilds and provides ACID guarantees on key operations.
 | `id` | INTEGER PK | PeeringDB user ID |
 | `name` | TEXT | Display name |
 | `email` | TEXT | Email address |
+| `preferences` | TEXT | JSON preferences (`{ language?, ... }`) |
 | `created_at` | TEXT | ISO 8601 timestamp |
 | `updated_at` | TEXT | ISO 8601 timestamp |
 
@@ -127,6 +128,20 @@ by mirror rebuilds and provides ACID guarantees on key operations.
 
 The `idx_api_keys_hash` index on `hash` serves the API worker's key
 verification hot path. The full key is never stored.
+
+#### `user_favorites` table
+
+| Column | Type | Description |
+|---|---|---|
+| `user_id` | INTEGER (PK, FK) | References users.id |
+| `entity_type` | TEXT (PK) | Entity type tag (net, ix, fac, org, carrier, campus) |
+| `entity_id` | INTEGER (PK) | Entity ID in the mirror database |
+| `label` | TEXT | Cached display name |
+| `created_at` | TEXT | ISO 8601 timestamp |
+
+Composite PK `(user_id, entity_type, entity_id)` prevents duplicates.
+`idx_user_favorites_list` on `(user_id, created_at DESC)` supports
+ordered listing. Maximum 50 favorites per user (application-enforced).
 
 ## Session Data Structure
 
@@ -153,10 +168,14 @@ session (`Authorization: Bearer <sid>`).
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/account/profile` | GET | Return user profile from USERDB D1 |
+| `/account/profile` | GET | Return user profile + preferences from USERDB D1 |
+| `/account/profile` | PUT | Update profile name and/or preferences |
 | `/account/keys` | GET | List API keys (label + prefix, no full keys) |
 | `/account/keys` | POST | Generate new API key, return full key once |
 | `/account/keys/:id` | DELETE | Revoke an API key |
+| `/account/favorites` | GET | List favorited entities |
+| `/account/favorites` | POST | Add a favorite (entity_type, entity_id, label) |
+| `/account/favorites/:type/:id` | DELETE | Remove a favorite |
 
 User records are auto-provisioned on first OAuth login if missing.
 

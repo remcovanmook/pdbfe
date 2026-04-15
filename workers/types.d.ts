@@ -215,10 +215,38 @@ interface UserRecord {
     name: string;
     /** Email address. */
     email: string;
+    /** JSON-encoded user preferences (language, etc.). */
+    preferences: string;
     /** ISO 8601 timestamp of record creation. */
     created_at: string;
     /** ISO 8601 timestamp of last modification. */
     updated_at: string;
+}
+
+/**
+ * Parsed user preferences object. Stored as JSON TEXT in the
+ * users.preferences column. All fields are optional — absent
+ * keys mean "use platform defaults."
+ */
+interface UserPreferences {
+    /** ISO language code (e.g. 'en', 'de', 'ja'). */
+    language?: string;
+}
+
+/**
+ * A single favorited entity row from the user_favorites table.
+ */
+interface UserFavorite {
+    /** PeeringDB user ID. */
+    user_id: number;
+    /** Entity type tag ('net', 'ix', 'fac', 'org', 'carrier', 'campus'). */
+    entity_type: string;
+    /** Entity ID in the PeeringDB mirror. */
+    entity_id: number;
+    /** Cached display name (for listing without an API roundtrip). */
+    label: string;
+    /** ISO 8601 timestamp of when the favorite was added. */
+    created_at: string;
 }
 
 /**
