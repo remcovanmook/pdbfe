@@ -867,6 +867,18 @@ _CACHE_TIERS = {
 
 _DEFAULT_TIER = {"slots": 128, "maxSize": 1 * 1024 * 1024}
 
+# Local-only fields added by pdbfe that don't exist in upstream PeeringDB.
+# Keyed by entity tag. These are injected after the standard fields during
+# worker entity generation so they survive schema regeneration.
+_LOCAL_FIELDS = {
+    "org":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "net":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "ix":      [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "fac":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "carrier": [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "campus":  [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+}
+
 
 def _build_worker_entities(merged_entities, overrides):
     """
@@ -937,6 +949,10 @@ def _build_worker_entities(merged_entities, overrides):
         fields.append({"name": "created", "type": "datetime"})
         fields.append({"name": "updated", "type": "datetime"})
         fields.append({"name": "status", "type": "string"})
+
+        # Inject local-only pdbfe fields (not from upstream)
+        for local_field in _LOCAL_FIELDS.get(tag, []):
+            fields.append(dict(local_field))
 
         entity = {
             "tag": tag,
