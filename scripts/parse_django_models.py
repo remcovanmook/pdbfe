@@ -758,6 +758,18 @@ def generate_schema_sql(entities, schema_version="unknown"):
                 cols.append(f'    "{name}" {sql_type} NOT NULL DEFAULT \'\'')
 
         cols.extend(META_COLUMNS)
+
+        # Local-only pdbfe columns (not from upstream schema)
+        for local_field in _LOCAL_FIELDS.get(tag, []):
+            lname = local_field["name"]
+            ltype = local_field["type"]
+            lsql = SQL_TYPE_MAP.get(ltype, "TEXT")
+            if lsql == "BOOL":
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT 0')
+            elif lsql == "INTEGER":
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT 0')
+            else:
+                cols.append(f'    "{lname}" {lsql} NOT NULL DEFAULT \'\'')
         col_str = ",\n".join(cols)
 
         lines.append(f'CREATE TABLE IF NOT EXISTS "{table}" (')
