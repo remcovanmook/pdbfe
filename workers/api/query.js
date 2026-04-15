@@ -214,7 +214,7 @@ function buildJoinFragments(joinDefs) {
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
-    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity);
+    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity, opts.pdbfe);
     const jsonCols = getJsonColumns(entity);
     const boolCols = getBoolColumns(entity);
     const nullableCols = getNullableColumns(entity);
@@ -272,7 +272,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
 export function buildRowQuery(entity, filters, opts, singleId = null) {
-    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity);
+    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity, opts.pdbfe);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(

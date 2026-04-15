@@ -87,7 +87,7 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
         const result = await db.prepare(sql).bind(...params).all();
         const rows = result.results || [];
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(db, entity, rows, opts.depth, authenticated);
+        await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe);
         return encodeJSON({ data: rows, meta: {} });
     }
 

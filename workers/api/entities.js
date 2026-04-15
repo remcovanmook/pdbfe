@@ -30,11 +30,24 @@ import { ENTITIES } from '../../extracted/entities-worker.js';
  * Returns column names for an entity. Uses precompiled _columns cache,
  * falls back to deriving from fields (for test mocks).
  *
+ * By default, columns with a __ prefix (local pdbfe extension fields
+ * like __logo_migrated) are excluded from the result. This keeps the
+ * API surface upstream-compatible for third-party consumers. Pass
+ * includePdbfe=true to include them (triggered by ?__pdbfe=1).
+ *
  * @param {EntityMeta} entity - Entity metadata.
+ * @param {boolean} [includePdbfe=false] - Include __ prefixed local fields.
  * @returns {string[]} Ordered column names.
  */
-export function getColumns(entity) {
-    return /** @type {any} */ (entity)._columns || entity.fields.map(f => f.name);
+export function getColumns(entity, includePdbfe = false) {
+    const all = /** @type {any} */ (entity)._columns || entity.fields.map(f => f.name);
+    if (includePdbfe) return all;
+    // Lazy-cache the filtered column list to avoid re-filtering per request.
+    const e = /** @type {any} */ (entity);
+    if (!e._columnsPublic) {
+        e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__'));
+    }
+    return e._columnsPublic;
 }
 
 /**

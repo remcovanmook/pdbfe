@@ -20,7 +20,7 @@ import { FILTER_OPS } from './query.js';
  * and returned in the `pagination` and `meta` objects.
  *
  * @param {string} queryString - Raw query string without the leading '?'.
- * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[]}} Parsed query components.
+ * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[], pdbfe: boolean}} Parsed query components.
  */
 export function parseQueryFilters(queryString) {
     /** @type {ParsedFilter[]} */
@@ -32,11 +32,12 @@ export function parseQueryFilters(queryString) {
     let sort = '';
     /** @type {string[]} */
     let fields = [];
+    let pdbfe = false;
 
     /** @type {Map<string, number>} Track filter index by "field:op" to implement last-value-wins */
     const filterIdx = new Map();
 
-    if (!queryString) return { filters, depth, limit, skip, since, sort, fields };
+    if (!queryString) return { filters, depth, limit, skip, since, sort, fields, pdbfe };
 
     const pairs = queryString.indexOf('&') !== -1
         ? tokenizeString(queryString, '&', -1)
@@ -76,6 +77,10 @@ export function parseQueryFilters(queryString) {
         }
         if (rawKey === "fields") {
             fields = rawValue.split(",").map(s => s.trim()).filter(Boolean); // ap-ok: ?fields= parsing, small input
+            continue;
+        }
+        if (rawKey === "__pdbfe") {
+            pdbfe = rawValue === '1';
             continue;
         }
 
@@ -120,5 +125,5 @@ export function parseQueryFilters(queryString) {
         }
     }
 
-    return { filters, depth, limit, skip, since, sort, fields };
+    return { filters, depth, limit, skip, since, sort, fields, pdbfe };
 }

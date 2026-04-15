@@ -65,7 +65,7 @@ async function executeDetailQuery(db, entity, filters, opts, id, authenticated) 
         if (rows.length === 0) return null;
 
         for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(db, entity, rows, opts.depth, authenticated);
+        await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe);
         return encodeJSON({ data: rows, meta: {} });
     }
 
