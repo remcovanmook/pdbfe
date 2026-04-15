@@ -7,7 +7,7 @@
  * <pdb-field-group>) and the createField/createLink builders.
  */
 
-import { fetchEntity, fetchIxPeers } from '../api.js';
+import { fetchEntity, fetchIxPeers, fetchList } from '../api.js';
 import {
     createField, createFieldGroup, createLink, createBool,
     createLoading, createError, createEmptyState,
@@ -29,16 +29,24 @@ export async function renderIx(params) {
     app.replaceChildren(createLoading('Loading exchange'));
 
     try {
-        // Parallel fetch: IX entity + peer table
-        const [ix, peers] = await Promise.all([
-            fetchEntity('ix', id, 2),
-            fetchIxPeers(id)
-        ]);
+        const ix = await fetchEntity('ix', id, 2);
 
         if (!ix) {
             app.replaceChildren(createError(`Exchange ${id} not found`));
             return;
         }
+
+        // Fetch peers and LAN prefixes in parallel.
+        // ixpfx is a child of ixlan (not ix), so depth=2 on ix doesn't
+        // include them — we need a separate query using the ixlan_id.
+        const ixlanId = ix.ixlan_set?.[0]?.id;
+        const [peers, prefixes] = await Promise.all([
+            fetchIxPeers(id),
+            ixlanId ? fetchList('ixpfx', { ixlan_id: ixlanId }) : Promise.resolve([]),
+        ]);
+
+        // Attach prefixes so the sidebar renderer picks them up
+        ix.ixpfx_set = prefixes;
 
         document.title = `${ix.name} — PeeringDB`;
 
@@ -171,7 +179,31 @@ function buildSidebar(ix) {
 function buildTables(ix, peers) {
     const frag = document.createDocumentFragment();
 
+    // Build facility lookup: fac_id → {name, fac_id} for resolving
+    // netixlan.ix_side_id (which is a fac_id) to facility name.
+    /** @type {Map<number, {name: string, fac_id: number}>} */
+    const ixfacMap = new Map();
+    for (const f of ix.ixfac_set || []) {
+        ixfacMap.set(f.fac_id, { name: f.name || `Facility ${f.fac_id}`, fac_id: f.fac_id });
+    }
     if (peers.length > 0) {
+        // Only show Facility column when ix_side_id data exists
+        const hasFacData = peers.some(p => p.ix_side_id);
+
+        /** @type {TableColumn[]} */
+        const columns = [
+            { key: 'name',       label: 'Network' },
+            { key: 'asn',        label: 'ASN', class: 'td-right', width: '80px' },
+            { key: 'speed',      label: 'Speed', class: 'td-right', width: '90px' },
+        ];
+        if (hasFacData) {
+            columns.push({ key: 'facility', label: 'Facility' });
+        }
+        columns.push(
+            { key: 'ip',         label: 'IP Address', class: 'td-mono' },
+            { key: 'is_rs_peer', label: 'RS', width: '70px' },
+        );
+
         const peerTable = /** @type {HTMLElement & {configure: Function}} */ (
             document.createElement('pdb-table')
         );
@@ -180,14 +212,7 @@ function buildTables(ix, peers) {
             title: 'Connections',
             filterable: true,
             filterPlaceholder: t('Filter by name or ASN...'),
-            columns: [
-                { key: 'name',       label: 'Network' },
-                { key: 'asn',        label: 'ASN', class: 'td-right', width: '80px' },
-                { key: 'speed',      label: 'Speed', class: 'td-right', width: '90px' },
-                { key: 'ipaddr4',    label: 'IPv4', class: 'td-mono', width: '140px' },
-                { key: 'ipaddr6',    label: 'IPv6', class: 'td-mono', width: '240px' },
-                { key: 'is_rs_peer', label: 'RS', width: '70px' },
-            ],
+            columns,
             rows: peers,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
                 switch (col.key) {
@@ -204,10 +229,29 @@ function buildTables(ix, peers) {
                             node: document.createTextNode(formatSpeed(row.speed)),
                             sortValue: row.speed || 0
                         };
-                    case 'ipaddr4':
-                        return document.createTextNode(row.ipaddr4 || '—');
-                    case 'ipaddr6':
-                        return document.createTextNode(row.ipaddr6 || '—');
+                    case 'ip': {
+                        const wrap = document.createElement('span');
+                        wrap.className = 'ip-stack';
+                        if (row.ipaddr4) {
+                            const v4 = document.createElement('span');
+                            v4.textContent = row.ipaddr4;
+                            wrap.appendChild(v4);
+                        }
+                        if (row.ipaddr6) {
+                            const v6 = document.createElement('span');
+                            v6.textContent = row.ipaddr6;
+                            wrap.appendChild(v6);
+                        }
+                        if (!row.ipaddr4 && !row.ipaddr6) {
+                            wrap.textContent = '—';
+                        }
+                        return wrap;
+                    }
+                    case 'facility': {
+                        const fac = ixfacMap.get(row.ix_side_id);
+                        if (!fac) return document.createTextNode('—');
+                        return createLink('fac', fac.fac_id, fac.name);
+                    }
                     case 'is_rs_peer':
                         return createBool(row.is_rs_peer);
                     default:

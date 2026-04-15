@@ -34,35 +34,6 @@ import { t } from '../i18n.js';
 /** Default number of rows per page. */
 const DEFAULT_PAGE_SIZE = 50;
 
-/**
- * @typedef {Object} TableColumn
- * @property {string} key - Column key used in cellRenderer dispatch.
- * @property {string} label - Display label (passed through t() for i18n).
- * @property {string} [class] - Optional CSS class for <td> elements.
- * @property {string} [width] - Optional fixed CSS width (enables table-layout: fixed).
- * @property {string} [maxWidth] - Optional max-width (used when table-layout is auto).
- */
-
-/**
- * @typedef {Object} CellResult
- * @property {Node} node - DOM node for the cell content.
- * @property {string|number} sortValue - Value used for sorting.
- */
-
-/**
- * @typedef {Object} TableConfig
- * @property {string} title - Card header title.
- * @property {TableColumn[]} columns - Column definitions.
- * @property {any[]} rows - Data rows.
- * @property {function(any, TableColumn): (Node|CellResult)} cellRenderer
- *     Returns a DOM node for a cell. May return a plain Node or an object
- *     with `node` and `sortValue` for sortable cells.
- * @property {boolean} [filterable] - Show a filter input.
- * @property {string} [filterPlaceholder] - Placeholder text for filter input.
- * @property {number} [pageSize] - Rows per page (default: DEFAULT_PAGE_SIZE).
- * @property {string} [tableId] - Unique ID for URL state encoding (e.g. 'ix', 'fac').
- */
-
 class PdbTable extends HTMLElement {
     constructor() {
         super();
@@ -189,7 +160,8 @@ class PdbTable extends HTMLElement {
 
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
-                cb.checked = true;
+                cb.checked = !col.defaultHidden;
+                if (col.defaultHidden) this._hiddenCols.add(col.key);
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
                         this._hiddenCols.delete(col.key);
@@ -617,6 +589,10 @@ class PdbTable extends HTMLElement {
                         td.dataset.sortValue = String(rendered.sortValue);
                     }
                 }
+
+                // Native tooltip for truncated cells
+                const text = td.textContent?.trim();
+                if (text) td.title = text;
 
                 tr.appendChild(td);
             }
