@@ -57,7 +57,23 @@
 
     <!-- ── Main content area (router renders here) ─────────────── -->
     <main class="main-content page-active" id="app" role="main" aria-live="polite">
-        <div class="loading">Loading</div>
+        <noscript>
+            <div style="max-width:640px;margin:4rem auto;padding:1.5rem;text-align:center;font-family:system-ui,sans-serif;color:#ccc">
+                <h1 style="margin-bottom:1rem">PeeringDB Mirror</h1>
+                <p style="margin-bottom:1rem;line-height:1.6">
+                    This site requires JavaScript for interactive search, filtering, and navigation.
+                </p>
+                <p style="margin-bottom:1.5rem;line-height:1.6">
+                    You can access the data directly via the
+                    <a href="/api/" style="color:#4db8ff">REST API</a>, or visit the upstream
+                    <a href="https://www.peeringdb.com" style="color:#4db8ff">PeeringDB</a>.
+                </p>
+                <p style="font-size:0.875rem;color:#888">
+                    Example: <code style="background:#1a1a2e;padding:2px 6px;border-radius:3px">/api/net?asn=20940</code>
+                </p>
+            </div>
+        </noscript>
+        <div class="loading" id="app-loading">Loading</div>
     </main>
 
     <!-- ── Footer ──────────────────────────────────────────────── -->

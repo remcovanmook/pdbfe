@@ -145,8 +145,22 @@ async function dispatch(fullPath) {
             // Homepage gets a larger logo and no header search bar.
             document.body.dataset.page = (path === '/' || path === '') ? 'home' : 'detail';
 
+            // Restore cached render as instant preload while fresh data loads.
+            // The handler replaces this with live content once the API responds.
+            const cacheKey = `pdbfe-page:${fullPath}`;
+            try {
+                const cached = sessionStorage.getItem(cacheKey);
+                if (cached) {
+                    _appContainer.innerHTML = cached;
+                }
+            } catch { /* sessionStorage may be unavailable */ }
+
             try {
                 await route.handler(params);
+                // Cache the rendered page for preload on next visit
+                try {
+                    sessionStorage.setItem(cacheKey, _appContainer.innerHTML);
+                } catch { /* quota exceeded or unavailable */ }
             } catch (err) {
                 _appContainer.replaceChildren(
                     createError(`Failed to load page: ${err.message}`)

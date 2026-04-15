@@ -155,6 +155,7 @@ if (syncResult.status === 'fulfilled') {
         timeSpan.className = 'site-footer__sync-time site-footer__sync-time--warn';
         timeSpan.textContent = `● ${t('Rate limited — try again shortly')}`;
         el.replaceChildren(timeSpan);
+        el.title = t('The mirror API is temporarily rate-limiting requests. Data shown may be stale.');
     } else if (el && sync && 'last_modified_at' in sync) {
         const epochMs = sync.last_modified_at * 1000;
         const isoDate = new Date(epochMs).toISOString();
@@ -163,15 +164,19 @@ if (syncResult.status === 'fulfilled') {
 
         let freshClass = '';
         let prefix = '';
+        let tooltip = '';
         if (diffMin > 60) {
             freshClass = ' site-footer__sync-time--error';
             prefix = '✕ ';
+            tooltip = t('Mirror data is over 1 hour old. The sync worker may have stopped.');
         } else if (diffMin > 15) {
             freshClass = ' site-footer__sync-time--warn';
             prefix = '● ';
+            tooltip = t('Mirror data is slightly stale. The sync worker runs every 15 minutes.');
         } else {
             freshClass = ' site-footer__sync-time--ok';
             prefix = '✓ ';
+            tooltip = t('Mirror data is up to date with upstream PeeringDB.');
         }
 
         const textNode = document.createTextNode(t('Last synced') + ' ');
@@ -179,7 +184,7 @@ if (syncResult.status === 'fulfilled') {
         timeSpan.className = `site-footer__sync-time${freshClass}`;
         timeSpan.textContent = prefix + timeText;
         el.replaceChildren(textNode, timeSpan);
-        el.title = isoDate;
+        el.title = `${tooltip}\n${isoDate}`;
     }
 }
 
