@@ -122,7 +122,8 @@ export function attachTypeahead(input, opts = {}) {
 
             const labelDiv = document.createElement('div');
             labelDiv.className = 'search-dropdown__label';
-            labelDiv.appendChild(createEntityBadge(group.key, group.label));
+            labelDiv.appendChild(createEntityBadge(group.key));
+            labelDiv.appendChild(document.createTextNode(` ${group.label}`));
             groupDiv.appendChild(labelDiv);
 
             for (const item of group.items) {
