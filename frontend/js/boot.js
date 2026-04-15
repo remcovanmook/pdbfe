@@ -5,7 +5,7 @@
  * bootstraps OAuth session state, and initializes i18n.
  */
 
-import { addRoute, initRouter, navigate } from './router.js';
+import { addRoute, initRouter, navigate, redispatch } from './router.js';
 import { renderHome } from './pages/home.js';
 import { renderSearch } from './pages/search.js';
 import { renderNet } from './pages/net.js';
@@ -20,7 +20,6 @@ import { renderAccount } from './pages/account.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
-import { redispatch } from './router.js';
 import { initAuth, fetchPreferenceOptions } from './auth.js';
 import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';

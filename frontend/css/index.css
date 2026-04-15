@@ -660,9 +660,12 @@ body[data-page="home"] .site-logo {
 }
 
 .data-table td {
+    padding: var(--space-xs) var(--space-md);
+    border-bottom: 1px solid var(--border-subtle);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    color: var(--text-primary);
 }
 
 .data-table th {
@@ -695,13 +698,6 @@ body[data-page="home"] .site-logo {
 .data-table th[data-sort-dir="desc"]::after {
     content: " ▼";
     font-size: 0.5625rem;
-}
-
-.data-table td {
-    padding: var(--space-xs) var(--space-md);
-    border-bottom: 1px solid var(--border-subtle);
-    white-space: nowrap;
-    color: var(--text-primary);
 }
 
 .data-table tr:hover td {

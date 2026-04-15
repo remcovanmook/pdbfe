@@ -601,18 +601,7 @@ class PdbTable extends HTMLElement {
             output = this._toMarkdown(headers, rows, cols);
         }
 
-        try {
-            await navigator.clipboard.writeText(output);
-        } catch {
-            // Fallback for insecure contexts
-            const ta = document.createElement('textarea');
-            ta.value = output;
-            ta.style.cssText = 'position:fixed;left:-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            ta.remove();
-        }
+        await navigator.clipboard.writeText(output);
     }
 
     /**
@@ -647,7 +636,7 @@ class PdbTable extends HTMLElement {
      * @returns {string} Markdown table string.
      */
     _toMarkdown(headers, rows, cols) {
-        const escape = (/** @type {string} */ v) => v.replaceAll('|', '\\|');
+        const escape = (/** @type {string} */ v) => v.replaceAll('|', String.raw`\|`);
         const headerLine = `| ${headers.map(escape).join(' | ')} |`;
         const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
         const dataLines = rows.map(row =>
