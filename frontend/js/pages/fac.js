@@ -108,6 +108,7 @@ function buildTables(fac) {
     if (fac.netfac_set && fac.netfac_set.length > 0) {
         const netTable = /** @type {any} */ (document.createElement('pdb-table'));
         netTable.configure({
+            tableId: 'net',
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
@@ -135,6 +136,7 @@ function buildTables(fac) {
     if (fac.ixfac_set && fac.ixfac_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchanges',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),

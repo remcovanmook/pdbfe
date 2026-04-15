@@ -405,6 +405,38 @@ export function createDetailLayout(opts) {
         header.appendChild(sub);
     }
 
+    // Share button — copies URL with current table sort/filter state
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'detail-header__share';
+    shareBtn.textContent = '🔗';
+    shareBtn.title = t('Copy shareable link with current table state');
+    shareBtn.setAttribute('aria-label', t('Share page'));
+    shareBtn.addEventListener('click', async () => {
+        const url = new URL(globalThis.location.href);
+        // Clear existing table state params
+        for (const key of [...url.searchParams.keys()]) {
+            if (key.includes('.')) url.searchParams.delete(key);
+        }
+        // Collect state from all pdb-table elements
+        for (const table of document.querySelectorAll('pdb-table')) {
+            const state = /** @type {any} */ (table).getState?.();
+            if (!state) continue;
+            const id = /** @type {any} */ (table)._config?.tableId;
+            if (!id) continue;
+            if (state.sort) {
+                url.searchParams.set(`${id}.sort`, state.sort);
+                url.searchParams.set(`${id}.dir`, state.dir);
+            }
+            if (state.filter) {
+                url.searchParams.set(`${id}.filter`, state.filter);
+            }
+        }
+        await navigator.clipboard.writeText(url.toString());
+        shareBtn.textContent = '✓';
+        setTimeout(() => { shareBtn.textContent = '🔗'; }, 1500);
+    });
+    header.appendChild(shareBtn);
+
     layout.appendChild(header);
 
     // Stats bar (full-width row)

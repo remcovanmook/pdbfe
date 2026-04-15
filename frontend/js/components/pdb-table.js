@@ -60,6 +60,7 @@ const DEFAULT_PAGE_SIZE = 50;
  * @property {boolean} [filterable] - Show a filter input.
  * @property {string} [filterPlaceholder] - Placeholder text for filter input.
  * @property {number} [pageSize] - Rows per page (default: DEFAULT_PAGE_SIZE).
+ * @property {string} [tableId] - Unique ID for URL state encoding (e.g. 'ix', 'fac').
  */
 
 class PdbTable extends HTMLElement {
@@ -320,11 +321,72 @@ class PdbTable extends HTMLElement {
             this._sortColIdx = 0;
             this._sortDir = 'asc';
             const firstTh = this._thead?.querySelector('th');
-            if (firstTh) firstTh.dataset.sortDir = 'asc';
+            if (firstTh) {
+                firstTh.dataset.sortDir = 'asc';
+                firstTh.setAttribute('aria-sort', 'ascending');
+            }
             this._applySortToProcessedRows();
         }
 
+        // Restore state from URL params (e.g. ?ix.sort=speed&ix.dir=desc&ix.filter=ams)
+        this._restoreFromURL();
+
         this._renderPage();
+    }
+
+    /**
+     * Returns the current sort/filter state for URL encoding.
+     * Only useful when tableId is set in the config.
+     *
+     * @returns {{sort: string, dir: string, filter: string}|null}
+     */
+    getState() {
+        const cfg = this._config;
+        if (!cfg?.tableId) return null;
+        const col = this._sortColIdx >= 0 ? cfg.columns[this._sortColIdx] : null;
+        return {
+            sort: col ? col.key : '',
+            dir: this._sortDir,
+            filter: this._filterQuery,
+        };
+    }
+
+    /**
+     * Restores sort/filter state from the current URL search params.
+     * Looks for <tableId>.sort, <tableId>.dir, and <tableId>.filter params.
+     * Called automatically at the end of connectedCallback.
+     */
+    _restoreFromURL() {
+        const cfg = this._config;
+        if (!cfg?.tableId) return;
+        const prefix = cfg.tableId;
+        const params = new URLSearchParams(globalThis.location.search);
+
+        const sortKey = params.get(`${prefix}.sort`);
+        const sortDir = params.get(`${prefix}.dir`);
+        const filter = params.get(`${prefix}.filter`);
+
+        // Restore sort
+        if (sortKey) {
+            const colIdx = cfg.columns.findIndex(c => c.key === sortKey);
+            if (colIdx >= 0) {
+                this._sortColIdx = colIdx;
+                this._sortDir = (sortDir === 'desc') ? 'desc' : 'asc';
+                this._rebuildThead();
+                this._applySortToProcessedRows();
+            }
+        }
+
+        // Restore filter
+        if (filter) {
+            this._filterQuery = filter.toLowerCase();
+            this._applyFilterAndSort();
+            // Update the filter input value if present
+            const input = /** @type {HTMLInputElement|null} */ (
+                this.querySelector('.table-filter__input')
+            );
+            if (input) input.value = filter;
+        }
     }
 
     /**

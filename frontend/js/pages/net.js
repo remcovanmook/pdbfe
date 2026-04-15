@@ -143,6 +143,7 @@ function buildTables(net) {
     if (net.netixlan_set && net.netixlan_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchange Points',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
@@ -177,6 +178,7 @@ function buildTables(net) {
     if (net.netfac_set && net.netfac_set.length > 0) {
         const facTable = /** @type {any} */ (document.createElement('pdb-table'));
         facTable.configure({
+            tableId: 'fac',
             title: 'Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),

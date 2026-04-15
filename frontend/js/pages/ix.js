@@ -175,6 +175,7 @@ function buildTables(ix, peers) {
             document.createElement('pdb-table')
         );
         peerTable.configure({
+            tableId: 'peers',
             title: 'Connections',
             filterable: true,
             filterPlaceholder: t('Filter by name or ASN...'),
@@ -221,6 +222,7 @@ function buildTables(ix, peers) {
             document.createElement('pdb-table')
         );
         facTable.configure({
+            tableId: 'fac',
             title: 'Local Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),

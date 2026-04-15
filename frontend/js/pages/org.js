@@ -92,6 +92,7 @@ function buildTables(org) {
     if (org.net_set && org.net_set.length > 0) {
         const netTable = /** @type {any} */ (document.createElement('pdb-table'));
         netTable.configure({
+            tableId: 'net',
             title: 'Networks',
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
@@ -112,6 +113,7 @@ function buildTables(org) {
     if (org.fac_set && org.fac_set.length > 0) {
         const facTable = /** @type {any} */ (document.createElement('pdb-table'));
         facTable.configure({
+            tableId: 'fac',
             title: 'Facilities',
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
@@ -132,6 +134,7 @@ function buildTables(org) {
     if (org.ix_set && org.ix_set.length > 0) {
         const ixTable = /** @type {any} */ (document.createElement('pdb-table'));
         ixTable.configure({
+            tableId: 'ix',
             title: 'Exchanges',
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),

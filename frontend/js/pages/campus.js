@@ -84,6 +84,7 @@ function buildTables(campus) {
 
     const table = /** @type {any} */ (document.createElement('pdb-table'));
     table.configure({
+        tableId: 'fac',
         title: 'Facilities',
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
