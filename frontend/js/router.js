@@ -103,6 +103,15 @@ export function navigate(path) {
 }
 
 /**
+ * Re-renders the current page without changing the URL.
+ * Used when a preference (timezone, theme) changes and the
+ * displayed content needs to reflect the new setting.
+ */
+export function redispatch() {
+    dispatch(globalThis.location.pathname + globalThis.location.search);
+}
+
+/**
  * Matches the given path against registered routes and calls the
  * appropriate handler. Shows a 404 message for unmatched routes.
  *

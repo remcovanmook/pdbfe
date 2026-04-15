@@ -20,6 +20,7 @@ import { renderAccount } from './pages/account.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
+import { redispatch } from './router.js';
 import { initAuth, fetchPreferenceOptions } from './auth.js';
 import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
@@ -120,6 +121,7 @@ if (prefResult.status === 'fulfilled') {
 
         themeSelect.addEventListener('change', () => {
             setTheme(themeSelect.value);
+            redispatch();
         });
     }
 
@@ -138,6 +140,7 @@ if (prefResult.status === 'fulfilled') {
 
         tzSelect.addEventListener('change', () => {
             setTimezone(tzSelect.value);
+            redispatch();
         });
     }
 }
