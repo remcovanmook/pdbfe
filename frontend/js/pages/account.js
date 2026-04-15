@@ -100,7 +100,7 @@ export async function renderAccount(_params) {
     // ── Page heading ─────────────────────────────────────────────
     frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-    // Top row: profile sidebar + networks side by side
+    // Top row: networks + profile sidebar side by side
     const topRow = el('div', { className: 'account-top' });
 
     // ── Sidebar: Profile card ────────────────────────────────────
@@ -154,11 +154,12 @@ export async function renderAccount(_params) {
 
     const profileCard = card(t('Profile'), profileGroup);
     sidebar.appendChild(profileCard);
-    topRow.appendChild(sidebar);
 
-    // Networks container (populated after layout is in the DOM)
+    // Networks container on the left (populated after layout is in the DOM)
     const netsContainer = el('div', { id: 'networks-container' });
     topRow.appendChild(netsContainer);
+
+    topRow.appendChild(sidebar);
 
     frag.appendChild(topRow);
 
