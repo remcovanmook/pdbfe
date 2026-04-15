@@ -1063,25 +1063,25 @@ body[data-page="home"] .site-logo {
 .site-footer__lang-line {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
-    margin-top: var(--space-sm);
+    gap: 4px;
+    margin-top: 4px;
 }
 
 .site-footer__lang-label {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     cursor: pointer;
 }
 
 .site-footer__lang-select {
     width: 100%;
-    height: 26px;
-    padding: 0 var(--space-sm);
+    height: 22px;
+    padding: 0 4px;
     background: var(--bg-input);
     color: var(--text-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     font-family: inherit;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     text-align: right;
     outline: none;
     cursor: pointer;
