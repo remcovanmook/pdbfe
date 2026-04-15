@@ -63,6 +63,29 @@ function corsHeaders(origin) {
 }
 
 /**
+ * Resolves the CORS origin to reflect in the response. Returns the
+ * request's Origin if it matches the production FRONTEND_ORIGIN or
+ * any Cloudflare Pages preview subdomain of the same project.
+ * Falls back to the production origin otherwise.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {string} The origin to use in Access-Control-Allow-Origin.
+ */
+function resolveAllowedOrigin(request, env) {
+    const prodHost = new URL(env.FRONTEND_ORIGIN).host;
+    const requestOrigin = request.headers.get('Origin') || '';
+    if (!requestOrigin) return env.FRONTEND_ORIGIN;
+    try {
+        const reqHost = new URL(requestOrigin).host;
+        if (reqHost === prodHost || reqHost.endsWith(`.${prodHost}`)) {
+            return requestOrigin;
+        }
+    } catch { /* malformed */ }
+    return env.FRONTEND_ORIGIN;
+}
+
+/**
  * Returns a JSON response with CORS headers.
  *
  * @param {any} body - Response body (will be JSON.stringify'd).
@@ -208,11 +231,15 @@ function keyPrefix(fullKey) {
  * before login. Response is grouped by pref_key:
  *   { "language": ["en", "de", ...], "theme": ["auto", "dark", "light"] }
  *
- * @param {Request} _request - The inbound HTTP request (unused).
+ * CORS: reflects the request Origin when it matches the production
+ * FRONTEND_ORIGIN or any Cloudflare Pages preview subdomain of the
+ * same project. This avoids CORS failures on branch previews.
+ *
+ * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Promise<Response>}
  */
-export async function handlePreferenceOptions(_request, env) {
+export async function handlePreferenceOptions(request, env) {
     const { results } = await env.USERDB.prepare(
         'SELECT pref_key, pref_value FROM preference_options ORDER BY pref_key, pref_value'
     ).all();
@@ -231,7 +258,7 @@ export async function handlePreferenceOptions(_request, env) {
         headers: {
             'Content-Type': 'application/json; charset=utf-8',
             'Cache-Control': 'public, max-age=3600',
-            ...corsHeaders(env.FRONTEND_ORIGIN),
+            ...corsHeaders(resolveAllowedOrigin(request, env)),
         },
     });
 }
@@ -615,13 +642,15 @@ export async function handleRemoveFavorite(request, env, entityType, entityId) {
 
 /**
  * OPTIONS preflight for /account/* endpoints.
+ * Reflects the request origin for Pages preview subdomain support.
  *
+ * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Response}
  */
-export function handleAccountPreflight(env) {
+export function handleAccountPreflight(request, env) {
     return new Response(null, {
         status: 204,
-        headers: corsHeaders(env.FRONTEND_ORIGIN),
+        headers: corsHeaders(resolveAllowedOrigin(request, env)),
     });
 }

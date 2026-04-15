@@ -55,7 +55,7 @@ async function handleRequest(request, env, _ctx) {
     // CORS preflight
     if (request.method === 'OPTIONS') {
         if (path.startsWith('/account')) {
-            return handleAccountPreflight(env);
+            return handleAccountPreflight(request, env);
         }
         return handleAuthPreflight(env);
     }
