@@ -188,6 +188,7 @@ export function createLink(type, id, label) {
  * @param {boolean} [opts.markdown] - Render value as markdown (uses innerHTML for the value span only).
  * @param {boolean} [opts.translate] - Pass value through t() for enum translations.
  * @param {boolean} [opts.date] - Format value as a locale-aware date with timezone.
+ * @param {boolean} [opts.email] - Render value as a mailto: link.
  * @returns {HTMLDivElement|null} The info-field element, or null if value is empty.
  */
 export function createField(label, value, opts = {}) {
@@ -222,6 +223,11 @@ export function createField(label, value, opts = {}) {
         valueEl.appendChild(a);
     } else if (opts.date) {
         valueEl.textContent = formatLocaleDate(displayValue);
+    } else if (opts.email) {
+        const a = document.createElement('a');
+        a.href = `mailto:${displayValue}`;
+        a.textContent = displayValue;
+        valueEl.appendChild(a);
     } else {
         valueEl.textContent = displayValue;
     }
