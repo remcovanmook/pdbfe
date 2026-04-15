@@ -892,6 +892,9 @@ body[data-page="home"] .site-logo {
 }
 
 .global-stats__item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
     font-size: 0.8125rem;
     color: var(--text-secondary);
 }
@@ -899,7 +902,9 @@ body[data-page="home"] .site-logo {
 .global-stats__count {
     font-weight: 700;
     color: var(--text-primary);
-    margin-right: var(--space-xs);
+    min-width: 4.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ── Search results page ───────────────────────────────────────── */
