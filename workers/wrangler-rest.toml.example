@@ -1,0 +1,28 @@
+# Template for pdbfe-rest worker. Copy to wrangler-rest.toml and fill in IDs.
+name = "pdbfe-rest"
+main = "rest/index.js"
+compatibility_date = "2026-03-18"
+workers_dev = true
+
+# JSON import for openapi.json
+rules = [
+  { type = "Data", globs = ["extracted/*.json"], fallthrough = true }
+]
+
+routes = [
+  { pattern = "rest.example.dev/*", zone_name = "example.dev" }
+]
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "YOUR_USERDB_DATABASE_ID"

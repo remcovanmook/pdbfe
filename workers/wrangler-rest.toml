@@ -1,0 +1,27 @@
+name = "pdbfe-rest"
+main = "rest/index.js"
+compatibility_date = "2026-03-18"
+workers_dev = true
+
+# JSON import for openapi.json
+rules = [
+  { type = "Data", globs = ["extracted/*.json"], fallthrough = true }
+]
+
+routes = [
+  { pattern = "rest.pdbfe.dev/*", zone_name = "pdbfe.dev" }
+]
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "cb04e911-4ce9-4158-b096-1894055fd157"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "7519b86fa9914b5288ba261f91d87fa0"
+
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "151cb6a6-5b9b-41ce-8fd2-1fb3c00ac43e"
