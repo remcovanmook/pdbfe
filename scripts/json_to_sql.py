@@ -72,7 +72,6 @@ def main():
     MAX_STMT = 90_000
     # Leave room for the UPDATE boilerplate when calculating chunk size.
     CHUNK_SIZE = MAX_STMT - 200
-    skipped = 0
 
     for row in rows:
         # The PeeringDB JSON dump uses Django's test server hostname for
@@ -94,13 +93,12 @@ def main():
             continue
 
         # Find the oversized column (longest SQL value)
-        longest_idx = max(range(len(cols)), key=lambda i: len(vals[i]))
+        longest_idx = max(range(len(cols)), key=lambda i, v=vals: len(v[i]))
         col_name = cols[longest_idx]
         original = row.get(col_name, "")
         row_id = row.get("id", "?")
 
         if not isinstance(original, str):
-            skipped += 1
             print(f"    WARNING: skipped id={row_id} (non-string overflow in {col_name}, {len(stmt)} bytes)", file=sys.stderr)
             continue
 
