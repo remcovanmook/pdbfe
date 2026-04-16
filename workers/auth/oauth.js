@@ -26,6 +26,7 @@ import {
     writeSession,
     deleteSession
 } from '../core/auth.js';
+import { resolveAllowedOrigin } from './account.js';
 
 // ── PeeringDB OAuth2 Constants ───────────────────────────────────────────────
 
@@ -242,7 +243,7 @@ export async function handleLogout(request, env) {
  * @returns {Promise<Response>} JSON response with session data or 401.
  */
 export async function handleMe(request, env) {
-    const headers = corsHeaders(env.FRONTEND_ORIGIN);
+    const headers = corsHeaders(resolveAllowedOrigin(request, env));
 
     const sid = extractSessionId(request);
     if (!sid) {
@@ -272,10 +273,10 @@ export async function handleMe(request, env) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Response} 204 with CORS headers.
  */
-export function handleAuthPreflight(env) {
+export function handleAuthPreflight(request, env) {
     return new Response(null, {
         status: 204,
-        headers: corsHeaders(env.FRONTEND_ORIGIN),
+        headers: corsHeaders(resolveAllowedOrigin(request, env)),
     });
 }
 

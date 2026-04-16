@@ -63,10 +63,23 @@ function corsHeaders(origin) {
 }
 
 /**
+ * Strips a leading "www." from a hostname, returning the bare apex.
+ * Used to normalise www vs apex comparisons in CORS origin matching.
+ *
+ * @param {string} host - Hostname to strip.
+ * @returns {string} The hostname without a leading "www.".
+ */
+function stripWww(host) {
+    return host.startsWith('www.') ? host.slice(4) : host;
+}
+
+/**
  * Resolves the CORS origin to reflect in the response. Returns the
  * request's Origin if it matches:
- *   1. The production FRONTEND_ORIGIN host, or
- *   2. Any Cloudflare Pages preview subdomain (*.pages.dev) for the
+ *   1. The production FRONTEND_ORIGIN host (treating www. and apex
+ *      as equivalent — e.g. pdbfe.dev and www.pdbfe.dev both match), or
+ *   2. Any subdomain of the production host, or
+ *   3. Any Cloudflare Pages preview subdomain (*.pages.dev) for the
  *      same project (configured via PAGES_PROJECT or derived from
  *      FRONTEND_ORIGIN).
  * Falls back to the production origin otherwise.
@@ -75,14 +88,20 @@ function corsHeaders(origin) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {string} The origin to use in Access-Control-Allow-Origin.
  */
-function resolveAllowedOrigin(request, env) {
+export function resolveAllowedOrigin(request, env) {
     const prodHost = new URL(env.FRONTEND_ORIGIN).host;
     const requestOrigin = request.headers.get('Origin') || '';
     if (!requestOrigin) return env.FRONTEND_ORIGIN;
     try {
         const reqHost = new URL(requestOrigin).host;
-        // Exact match or subdomain of production host
-        if (reqHost === prodHost || reqHost.endsWith(`.${prodHost}`)) {
+        // Exact match (covers identical host including www prefix)
+        if (reqHost === prodHost) return requestOrigin;
+        // Apex/www equivalence: strip www. from both and compare.
+        // Handles FRONTEND_ORIGIN=https://www.pdbfe.dev with request
+        // from https://pdbfe.dev, and vice versa.
+        if (stripWww(reqHost) === stripWww(prodHost)) return requestOrigin;
+        // Subdomain of production host (e.g. staging.pdbfe.dev)
+        if (reqHost.endsWith(`.${stripWww(prodHost)}`)) {
             return requestOrigin;
         }
         // Cloudflare Pages preview: <hash|branch>.pdbfe-frontend.pages.dev

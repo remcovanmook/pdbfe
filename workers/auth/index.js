@@ -57,7 +57,7 @@ async function handleRequest(request, env, _ctx) {
         if (path.startsWith('/account')) {
             return handleAccountPreflight(request, env);
         }
-        return handleAuthPreflight(env);
+        return handleAuthPreflight(request, env);
     }
 
     // Validate required environment variables early
