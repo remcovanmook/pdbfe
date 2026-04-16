@@ -14,7 +14,7 @@
  * to avoid N+1 patterns.
  */
 
-import { ENTITIES, getColumns, getJsonColumns, getBoolColumns } from './entities.js';
+import { ENTITIES, getColumns } from './entities.js';
 import { parseJsonFields } from './handlers/shared.js';
 
 /**

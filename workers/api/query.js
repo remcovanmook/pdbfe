@@ -140,8 +140,7 @@ function coerceValue(value, fieldType) {
 function jsonObjectArgs(columns, jsonCols, boolCols, nullableCols, prefix) {
     const pfx = prefix ? `${prefix}.` : '';
     const parts = [];
-    for (let i = 0; i < columns.length; i++) {
-        const c = columns[i];
+    for (const c of columns) {
         if (jsonCols.has(c)) {
             parts.push(`'${c}', json(${pfx}"${c}")`);
         } else if (boolCols.has(c)) {
@@ -409,43 +408,65 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         }
     }
 
-    // Pagination: limit <= 0 means no user-specified limit (the router
-    // rejects negative limits with 400, so we only see -1 sentinel or 0).
-    // depth>0 caps at 250 (matching upstream PeeringDB). depth=0 has no
-    // artificial cap — upstream allows full table reads.
-    let effectiveLimit = limit > 0 ? limit : 0;
+    // Resolve effective limit: depth>0 caps at 250 (matching upstream).
+    let effectiveLimit = Math.max(limit, 0);
     if (opts.depth > 0 && (effectiveLimit === 0 || effectiveLimit > 250)) {
         effectiveLimit = 250;
     }
 
-    let pagination = "";
-    if (effectiveLimit > 0) {
-        pagination += ` LIMIT ?`;
-        params.push(effectiveLimit);
-        if (skip > 0) {
-            pagination += ` OFFSET ?`;
-            params.push(skip);
-        }
-    } else if (skip > 0) {
-        // Skip without limit requires LIMIT -1 in SQLite (unbounded).
-        // This is safe because negative limits are rejected at the router.
-        pagination += ` LIMIT -1 OFFSET ?`;
-        params.push(skip);
-    }
-
-    // Sort: parse Django-style sort parameter (e.g. "-updated" → DESC).
-    // Only columns that exist on the entity are allowed (prevents injection).
-    let orderBy = `${pfx}"id" ASC`;
-    if (sort) {
-        const desc = sort.startsWith('-');
-        const col = desc ? sort.slice(1) : sort;
-        const allCols = getColumns(entity);
-        if (allCols.includes(col)) {
-            orderBy = `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}`;
-        }
-    }
+    const pagination = buildPagination(effectiveLimit, skip, params);
+    const orderBy = buildOrderBy(entity, sort, pfx);
 
     return { clauses, params, pagination, orderBy };
+}
+
+/**
+ * Builds the LIMIT/OFFSET pagination clause, appending bind params
+ * as needed. Returns the raw SQL fragment (may be empty string).
+ *
+ * @param {number} effectiveLimit - Resolved row limit (0 = unlimited).
+ * @param {number} skip - Row offset.
+ * @param {(string|number)[]} params - Bind params array (mutated in-place).
+ * @returns {string} SQL pagination fragment.
+ */
+function buildPagination(effectiveLimit, skip, params) {
+    if (effectiveLimit > 0) {
+        if (skip > 0) {
+            params.push(effectiveLimit, skip);
+            return ` LIMIT ? OFFSET ?`;
+        }
+        params.push(effectiveLimit);
+        return ` LIMIT ?`;
+    }
+    if (skip > 0) {
+        // Skip without limit requires LIMIT -1 in SQLite (unbounded).
+        // This is safe because negative limits are rejected at the router.
+        params.push(skip);
+        return ` LIMIT -1 OFFSET ?`;
+    }
+    return '';
+}
+
+/**
+ * Resolves the ORDER BY clause from a Django-style sort parameter.
+ * Returns a safe SQL fragment — only columns present on the entity
+ * are allowed (prevents injection).
+ *
+ * @param {EntityMeta} entity - Entity metadata for column validation.
+ * @param {string} sort - Sort parameter (e.g. "-updated", "name").
+ * @param {string} pfx - Table alias prefix (e.g. "t." or "").
+ * @returns {string} SQL ORDER BY expression.
+ */
+function buildOrderBy(entity, sort, pfx) {
+    if (!sort) return `${pfx}"id" ASC`;
+
+    const desc = sort.startsWith('-');
+    const col = desc ? sort.slice(1) : sort;
+    const allCols = getColumns(entity);
+    if (allCols.includes(col)) {
+        return `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}`;
+    }
+    return `${pfx}"id" ASC`;
 }
 
 /**
@@ -464,9 +485,12 @@ export function buildCountQuery(entity, filters, opts) {
     // query doesn't use. Extract only the WHERE-related params.
     const { clauses, params } = buildWherePagination(entity, filters, opts, null);
 
-    const whereParamCount = clauses.reduce(
-        (/** @type {number} */ n, /** @type {string} */ c) => n + (c.match(/\?/g) || []).length, 0 // ap-ok: param counting at query build time
-    );
+    let whereParamCount = 0;
+    for (const c of clauses) {
+        for (let i = 0; i < c.length; i++) {
+            if (c.codePointAt(i) === 63) whereParamCount++; // '?'
+        }
+    }
     const whereParams = params.slice(0, whereParamCount);
 
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
@@ -485,7 +509,12 @@ export function buildCountQuery(entity, filters, opts) {
  * @returns {{limit: number, skip: number}|null} Next-page pagination, or null.
  */
 export function nextPageParams(filters, opts, resultCount) {
-    const effectiveLimit = opts.limit > 0 ? opts.limit : (opts.depth > 0 ? 250 : 0);
+    let effectiveLimit = 0;
+    if (opts.limit > 0) {
+        effectiveLimit = opts.limit;
+    } else if (opts.depth > 0) {
+        effectiveLimit = 250;
+    }
     if (effectiveLimit === 0) return null;
     if (resultCount < effectiveLimit) return null; // Last page
     return { limit: effectiveLimit, skip: (opts.skip || 0) + effectiveLimit };

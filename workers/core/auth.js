@@ -159,8 +159,8 @@ export function extractSessionId(request) {
     // Fall back to cookie
     const cookie = request.headers.get('Cookie');
     if (cookie) {
-        const match = cookie.match(/(?:^|;\s*)pdbfe_sid=([^;]+)/); // ap-ok: single fixed-pattern match on short cookie header
-        if (match && match[1]) return match[1].trim();
+        const match = /(?:^|;\s*)pdbfe_sid=([^;]+)/.exec(cookie); // ap-ok: single fixed-pattern match on short cookie header
+        if (match?.[1]) return match[1].trim();
     }
 
     return null;
