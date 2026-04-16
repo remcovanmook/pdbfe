@@ -21,8 +21,9 @@ import { buildJsonQuery, buildRowQuery } from '../api/query.js';
 import { parseQueryFilters } from '../api/utils.js';
 import { expandDepth } from '../api/depth.js';
 import { resolveAuth } from '../core/auth.js';
-import { wrapHandler, validateRequest, handleAdmin } from '../core/admin.js';
-import { handlePreflight, jsonError, serveJSON, encodeJSON, encoder, H_API_AUTH, H_API_ANON } from '../core/http.js';
+import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
+import { handlePreflight, jsonError, encodeJSON, encoder } from '../core/http.js';
+import { serveJSON, H_API_AUTH, H_API_ANON } from '../api/http.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { normaliseCacheKey } from '../core/cache.js';
 import { initL2 } from '../core/l2cache.js';
@@ -108,7 +109,7 @@ async function handleRequest(request, env, ctx) {
 
     const db = env.PDB.withSession('first-unconstrained');
 
-    const adminResponse = await handleAdmin(request, rawPath, env, ctx, {
+    const adminResponse = await routeAdminPath(request, rawPath, env, ctx, {
         db,
         serviceName: 'pdbfe-rest',
         getStats: () => ({
