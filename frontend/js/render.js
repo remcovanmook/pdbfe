@@ -433,7 +433,7 @@ export function createDetailLayout(opts) {
                 url.searchParams.set(`${id}.filter`, state.filter);
             }
         }
-        await navigator.clipboard.writeText(url.toString());
+        await navigator.clipboard.writeText(url.href);
         shareBtn.textContent = '✓ Copied!';
         setTimeout(() => { shareBtn.textContent = '🔗'; }, 2000);
     });

@@ -684,7 +684,7 @@ class PdbTable extends HTMLElement {
      * @returns {string} Markdown table string.
      */
     _toMarkdown(headers, rows, cols) {
-        const escape = (/** @type {string} */ v) => v.replaceAll('|', String.raw`\|`);
+        const escape = (/** @type {string} */ v) => v.replaceAll('|', '\\|');
         const headerLine = `| ${headers.map(escape).join(' | ')} |`;
         const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
         const dataLines = rows.map(row =>
