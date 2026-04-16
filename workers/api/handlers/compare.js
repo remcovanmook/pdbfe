@@ -82,7 +82,8 @@ function pairKey(tagA, tagB) {
 async function fetchEntityHeader(db, tag, id) {
     const meta = ENTITY_META[tag];
     const cols = ['id', meta.nameCol, ...(meta.extraCols || [])]; // ap-ok: cold path, max 4 cols per entity header
-    const sql = `SELECT ${cols.map(c => `"${c}"`).join(', ')} FROM "${meta.table}" WHERE "id" = ? AND "status" = 'ok'`; // ap-ok: cold path, builds SQL once per header lookup
+    const colList = cols.map(c => '"' + c + '"').join(', '); // ap-ok: avoids nested template literal (sonar rule)
+    const sql = `SELECT ${colList} FROM "${meta.table}" WHERE "id" = ? AND "status" = 'ok'`; // ap-ok: cold path, builds SQL once per header lookup
     const row = await db.prepare(sql).bind(id).first();
     if (!row) return null;
     return { tag, ...row };
