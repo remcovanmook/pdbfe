@@ -1388,6 +1388,10 @@ body[data-page="home"] .site-logo {
         grid-template-columns: 1fr;
     }
 
+    .compare-grid {
+        grid-template-columns: 1fr;
+    }
+
     .account-top {
         grid-template-columns: 1fr;
     }
@@ -1884,6 +1888,54 @@ body[data-page="home"] .site-logo {
 .favorites-grid__item:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent-dim);
+}
+
+/* ── Compare page ──────────────────────────────────────────────── */
+/* Side-by-side entity selector grid, submit button, and search
+   wrapper positioning. All visual components (cards, tables, stats
+   bars, badges, search dropdowns) use classes defined above.       */
+
+.compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+}
+
+.compare-actions {
+    display: flex;
+    justify-content: center;
+    padding-top: var(--space-md);
+}
+
+.compare-search-wrap {
+    position: relative;
+}
+
+.compare-selected {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: 0.8125rem;
+    min-height: 1.5em;
+    margin-top: var(--space-xs);
+    color: var(--text-secondary);
+}
+
+.compare-submit {
+    padding: var(--space-sm) var(--space-xl);
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity var(--transition-fast);
+}
+
+.compare-submit:hover {
+    opacity: 0.85;
 }
 
 /* ── Entity-type badge ─────────────────────────────────────────── */
