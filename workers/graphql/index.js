@@ -26,7 +26,7 @@ import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
-import { brandedHeader } from '../core/branding.js';
+import { brandedHead, brandedHeader } from '../core/branding.js';
 
 /**
  * Rate limiter instance for GraphQL requests.
@@ -54,6 +54,7 @@ const GRAPHIQL_HTML = `<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Interactive GraphQL explorer for the PeeringDB dataset." />
+  ${brandedHead()}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphiql@3/graphiql.min.css" />
 </head>
 <body style="margin:0; height:100vh; display:flex; flex-direction:column">

@@ -1,85 +1,56 @@
 /**
- * @fileoverview Shared branding HTML fragment for worker landing pages.
+ * @fileoverview Shared branding HTML fragments for worker landing pages.
  *
- * Provides a header bar that matches the main PDBFE frontend design
- * (Inter font, dark surface, accent colour). Injected at the top of
- * the Scalar and GraphiQL pages for consistent branding across all
- * worker endpoints.
+ * Generates <head> includes and a header bar that reference the main
+ * PDBFE frontend assets (CSS, fonts) rather than duplicating them
+ * inline. This keeps design tokens in a single source of truth.
+ *
+ * The frontend is served from pdbfe.dev via Cloudflare Pages with
+ * aggressive caching, so the cross-origin CSS loads are fast and
+ * typically already cached after a first visit.
  */
 
 /**
- * Inline CSS for the branded header bar.
- * Uses the same design tokens as the frontend (hardcoded here since
- * the workers don't load the frontend stylesheet).
+ * Frontend origin used for asset URLs. All CSS, fonts, and
+ * static assets are served from here.
  * @type {string}
  */
-const BRAND_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-  .pdbfe-bar {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: hsl(220 14% 12%);
-    border-bottom: 1px solid hsl(220 10% 22%);
-    padding: 0 1.5rem;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    z-index: 1000;
-    position: relative;
-  }
-  .pdbfe-bar__logo {
-    font-size: 1.125rem;
-    font-weight: 700;
-    color: hsl(220 14% 90%);
-    text-decoration: none;
-    letter-spacing: -0.02em;
-  }
-  .pdbfe-bar__logo span {
-    color: hsl(200 80% 55%);
-  }
-  .pdbfe-bar__sep {
-    color: hsl(220 10% 35%);
-    font-weight: 300;
-  }
-  .pdbfe-bar__label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: hsl(220 10% 62%);
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-  }
-  .pdbfe-bar__nav {
-    margin-left: auto;
-    display: flex;
-    gap: 1rem;
-  }
-  .pdbfe-bar__link {
-    font-size: 0.8rem;
-    color: hsl(220 10% 62%);
-    text-decoration: none;
-    transition: color 0.15s;
-  }
-  .pdbfe-bar__link:hover {
-    color: hsl(200 80% 65%);
-  }
-`;
+const FRONTEND = 'https://pdbfe.dev';
 
 /**
- * Generates the branded header bar HTML for a worker page.
+ * Generates <link> tags for the frontend's CSS and font assets.
+ * Include in the <head> of any worker HTML page.
  *
- * @param {string} label - Section label (e.g. "GraphQL", "REST API").
- * @returns {string} HTML fragment: <style> + <header> elements.
+ * @returns {string} HTML link elements.
+ */
+export function brandedHead() {
+    return [
+        `<link rel="stylesheet" href="${FRONTEND}/third_party/inter/inter.css">`,
+        `<link rel="stylesheet" href="${FRONTEND}/css/index.css">`,
+    ].join('\n  ');
+}
+
+/**
+ * Generates a header bar matching the main PDBFE frontend layout.
+ * Uses the same .site-header classes from the frontend CSS.
+ *
+ * The header includes the PDBFE logo, a section label (e.g. "GraphQL"),
+ * and navigation links to the other worker endpoints.
+ *
+ * @param {string} label - Section label displayed next to the logo.
+ * @returns {string} HTML fragment for the header bar.
  */
 export function brandedHeader(label) {
-    return `<style>${BRAND_CSS}</style>
-<header class="pdbfe-bar">
-  <a href="https://pdbfe.dev/" class="pdbfe-bar__logo">PDB<span>FE</span></a>
-  <span class="pdbfe-bar__sep">|</span>
-  <span class="pdbfe-bar__label">${label}</span>
-  <nav class="pdbfe-bar__nav">
-    <a href="https://graphql.pdbfe.dev/" class="pdbfe-bar__link">GraphQL</a>
-    <a href="https://rest.pdbfe.dev/" class="pdbfe-bar__link">REST Docs</a>
-    <a href="https://pdbfe.dev/about" class="pdbfe-bar__link">About</a>
-  </nav>
+    return `<header class="site-header" role="banner">
+  <div class="site-header__inner">
+    <a href="${FRONTEND}/" class="site-logo">PDB<span>FE</span></a>
+    <span style="color:var(--text-muted);font-weight:300">|</span>
+    <span style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);letter-spacing:0.03em;text-transform:uppercase">${label}</span>
+    <nav class="site-header__nav" aria-label="API navigation">
+      <a href="https://graphql.pdbfe.dev/" class="header-external-link">GraphQL</a>
+      <a href="https://rest.pdbfe.dev/" class="header-external-link">REST Docs</a>
+      <a href="${FRONTEND}/about" class="header-external-link">About</a>
+    </nav>
+  </div>
 </header>`;
 }
