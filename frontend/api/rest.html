@@ -33,7 +33,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   <script>
     Scalar.createApiReference('#api-reference', {
-      url: '/openapi.json',
+      spec: {
+        url: '/openapi.json'
+      },
       theme: 'kepler',
     })
   </script>
