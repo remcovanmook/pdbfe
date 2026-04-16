@@ -108,10 +108,10 @@ describe('/status endpoint', () => {
 
         // The response should include every known entity tag,
         // even if _sync_meta had no row for it (defaults to 0/'')
-        assert.ok(body.sync.entities.net !== undefined, 'should have net');
-        assert.ok(body.sync.entities.fac !== undefined, 'should have fac');
-        assert.ok(body.sync.entities.ix !== undefined, 'should have ix');
-        assert.ok(body.sync.entities.org !== undefined, 'should have org');
+        assert.ok(body.sync.entities.net, 'should have net');
+        assert.ok(body.sync.entities.fac, 'should have fac');
+        assert.ok(body.sync.entities.ix, 'should have ix');
+        assert.ok(body.sync.entities.org, 'should have org');
     });
 
     it('serves consistent response from cached buffer', async () => {

@@ -17,19 +17,12 @@ import { parseJsonFields } from './shared.js';
  * Handles a detail request for a single entity (GET /api/{entity}/{id}).
  * Uses the zero-allocation path for depth=0, row expansion for depth>0.
  *
- * @param {Request} request - The inbound HTTP request.
- * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
- * @param {ExecutionContext} ctx - Worker execution context.
- * @param {string} entityTag - Entity tag.
+ * @param {HandlerContext} hc - Common handler context.
  * @param {number} id - Entity ID.
- * @param {ParsedFilter[]} filters - Parsed query filters (only depth is relevant here).
- * @param {QueryOpts} opts - Depth option.
- * @param {string} rawPath - Original URL path for cache key.
- * @param {string} queryString - Original query string for cache key.
- * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleDetail(request, db, ctx, entityTag, id, filters, opts, rawPath, queryString, authenticated) {
+export async function handleDetail(hc, id) {
+    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 

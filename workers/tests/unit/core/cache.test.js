@@ -15,7 +15,7 @@ describe("LRUCache core operations", () => {
         const buf = new Uint8Array([1, 2, 3]);
         cache.add("key1", buf, { tag: "test" }, Date.now());
         const entry = cache.get("key1");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.buf, buf);
         assert.equal(entry.meta.tag, "test");
         assert.equal(entry.hits, 1);
@@ -40,8 +40,8 @@ describe("LRUCache core operations", () => {
 
         // 'b' should be evicted (was LRU)
         assert.equal(cache.get("b"), null);
-        assert.ok(cache.get("a") !== null);
-        assert.ok(cache.get("c") !== null);
+        assert.notStrictEqual(cache.get("a"), null);
+        assert.notStrictEqual(cache.get("c"), null);
     });
 
     it("should evict when byte limit exceeded", () => {
@@ -50,7 +50,7 @@ describe("LRUCache core operations", () => {
         cache.add("b", new Uint8Array(3), {}, 2);
         // Total would be 6, exceeding limit. 'a' should be evicted.
         assert.equal(cache.get("a"), null);
-        assert.ok(cache.get("b") !== null);
+        assert.notStrictEqual(cache.get("b"), null);
     });
 
     it("should update existing entry without creating a new slot", () => {
@@ -58,7 +58,7 @@ describe("LRUCache core operations", () => {
         cache.add("k", new Uint8Array([1]), { v: 1 }, 1);
         cache.add("k", new Uint8Array([2]), { v: 2 }, 2);
         const entry = cache.get("k");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.meta.v, 2);
         assert.equal(cache.getStats().items, 1);
     });
@@ -69,7 +69,7 @@ describe("LRUCache core operations", () => {
         cache.add("y", new Uint8Array([2]), {}, 2);
         cache.purge("x");
         assert.equal(cache.get("x"), null);
-        assert.ok(cache.get("y") !== null);
+        assert.notStrictEqual(cache.get("y"), null);
         assert.equal(cache.getStats().items, 1);
     });
 
@@ -100,7 +100,7 @@ describe("Per-entity cache configuration", () => {
                       "ixfac", "campus", "as_set"];
         for (const tag of tags) {
             const cache = getEntityCache(tag);
-            assert.ok(cache !== null && cache !== undefined, `No cache for ${tag}`);
+            assert.ok(cache, `No cache for ${tag}`);
             assert.equal(typeof cache.add, "function");
             assert.equal(typeof cache.get, "function");
         }
@@ -124,8 +124,8 @@ describe("Aggregate cache operations", () => {
     it("should aggregate stats across all entity caches", () => {
         purgeAllCaches(); // Start clean
         const stats = getCacheStats();
-        assert.ok(stats.entities !== undefined);
-        assert.ok(stats.totals !== undefined);
+        assert.ok(stats.entities);
+        assert.ok(stats.totals);
         assert.equal(stats.totals.items, 0);
         assert.equal(stats.totals.bytes, 0);
     });
@@ -192,7 +192,7 @@ describe("Negative cache in LRU", () => {
         const cache = LRUCache(8, 1024 * 1024);
         cache.add("api/net/999999", EMPTY_ENVELOPE, { entityTag: "net" }, Date.now());
         const entry = cache.get("api/net/999999");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.buf.byteLength, EMPTY_ENVELOPE.byteLength);
     });
 
@@ -225,7 +225,7 @@ describe("Negative cache in LRU", () => {
         const entry = cache.get("api/net/999999");
         // Entry still exists in cache (LRU doesn't enforce TTL)
         // but the handler should check addedAt against NEGATIVE_TTL
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.ok((Date.now() - entry.addedAt) > NEGATIVE_TTL,
             "Entry should be older than NEGATIVE_TTL");
     });

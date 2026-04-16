@@ -132,7 +132,7 @@ describe('syncEntity pagination', () => {
             const { db } = mockD1({ lastSync: 1712000000 });
             await syncEntity(db, 'net', TEST_META, '');
 
-            assert.ok(capturedUrl !== null, 'Expected fetch to be called');
+            assert.notStrictEqual(capturedUrl, null, 'Expected fetch to be called');
             assert.ok(
                 capturedUrl.includes('limit=0'),
                 `Expected URL to contain limit=0, got: "${capturedUrl}"`

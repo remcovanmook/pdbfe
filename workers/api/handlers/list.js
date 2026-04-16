@@ -20,24 +20,17 @@ import { parseJsonFields, countRows } from './shared.js';
  * Checks the per-entity LRU cache first. On miss, delegates to
  * cachedQuery() which handles coalescing, L2, and D1.
  *
- * @param {Request} request - The inbound HTTP request.
- * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
- * @param {ExecutionContext} ctx - Worker execution context.
- * @param {string} entityTag - Entity tag (e.g. "net").
- * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {QueryOpts} opts - Pagination and depth.
- * @param {string} rawPath - Original URL path for cache key.
- * @param {string} queryString - Original query string for cache key.
- * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
+ * @param {HandlerContext} hc - Common handler context.
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleList(request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated) {
+export async function handleList(hc) {
+    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
     // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
     if (opts.limit === 0 && opts.skip === 0) {
-        return handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString, authenticated);
+        return handleCount(hc, entity);
     }
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
@@ -109,19 +102,12 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
  * Falls back to withEdgeSWR() pipeline with SELECT COUNT(*).
  * Caches the count envelope with COUNT_TTL (15 min).
  *
- * @param {Request} request - The inbound HTTP request.
- * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
- * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
- * @param {EntityMeta} entity - Entity metadata.
- * @param {string} entityTag - Entity tag.
- * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {QueryOpts} opts - Query options.
- * @param {string} rawPath - Original URL path.
- * @param {string} queryString - Original query string.
- * @param {boolean} authenticated - Whether the caller is authenticated (for X-Auth-Status).
+ * @param {HandlerContext} hc - Common handler context.
+ * @param {EntityMeta} entity - Resolved entity metadata.
  * @returns {Promise<Response>} JSON response with count in meta.
  */
-async function handleCount(request, db, ctx, entity, entityTag, filters, opts, rawPath, queryString, authenticated) {
+async function handleCount(hc, entity) {
+    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const hApi = authenticated ? H_API_AUTH : H_API_ANON;
 

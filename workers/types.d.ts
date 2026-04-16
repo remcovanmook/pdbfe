@@ -489,3 +489,19 @@ interface QueryOpts {
     /** When true, include pdbfe-local extension columns (e.g. __logo_migrated). */
     pdbfe?: boolean;
 }
+
+/**
+ * Common context passed to list/detail handlers, bundling request
+ * metadata and parsed query state to reduce parameter counts.
+ */
+interface HandlerContext {
+    request: Request;
+    db: D1Session;
+    ctx: ExecutionContext;
+    entityTag: string;
+    filters: ParsedFilter[];
+    opts: QueryOpts;
+    rawPath: string;
+    queryString: string;
+    authenticated: boolean;
+}

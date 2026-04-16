@@ -46,7 +46,7 @@ describe('withEdgeSWR', () => {
 
         assert.equal(queryCalled, false, 'queryFn should not be called on fresh L1 hit');
         assert.equal(result.tier, 'L1');
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
         assert.ok(result.hits >= 1);
 
         // Clean up
@@ -74,7 +74,7 @@ describe('withEdgeSWR', () => {
 
         // Should serve the stale data
         assert.equal(result.tier, 'L1');
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
 
         // Should have fired a background refresh via ctx.waitUntil
         assert.equal(waitUntilCalls.length, 1, 'should fire exactly one background refresh');
@@ -107,7 +107,7 @@ describe('withEdgeSWR', () => {
 
         assert.equal(queryCalled, true, 'queryFn should be called (blocking)');
         assert.notEqual(result.tier, 'L1', 'should not report as L1 hit');
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
         assert.equal(result.hits, 0);
         // L2 write-back fires via ctx.waitUntil (even though the Cache API
         // is unavailable in Node.js, the putL2 promise is still registered).
@@ -130,7 +130,7 @@ describe('withEdgeSWR', () => {
         );
 
         assert.equal(queryCalled, true);
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
         assert.equal(result.hits, 0);
     });
 
@@ -260,7 +260,7 @@ describe('withEdgeSWR', () => {
 
         // Stale data should still be returned
         assert.equal(result.tier, 'L1');
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
 
         // Background refresh should not throw — error is caught internally
         assert.equal(waitUntilCalls.length, 1);
