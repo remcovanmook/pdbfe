@@ -318,6 +318,20 @@ export async function fetchCount(type) {
 }
 
 /**
+ * Fetches entity overlap analysis between two entities.
+ * Both entities are specified as "{tag}:{id}" strings.
+ *
+ * The __pdbfe=1 flag is already appended by buildURL.
+ *
+ * @param {string} a - First entity reference (e.g. "net:13335").
+ * @param {string} b - Second entity reference (e.g. "net:15169").
+ * @returns {Promise<any>} Overlap analysis result.
+ */
+export async function fetchCompare(a, b) {
+    return cachedFetch('/api/compare', { a, b });
+}
+
+/**
  * Fetches the database sync status from the /status endpoint.
  * Returns an object with the most recent sync timestamp and
  * per-entity sync metadata.
