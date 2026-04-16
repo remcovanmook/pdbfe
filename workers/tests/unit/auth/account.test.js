@@ -182,7 +182,7 @@ describe('extractApiKey + verifyApiKey integration', () => {
 function mockRequest(origin) {
     const headers = new Headers();
     if (origin) headers.set('Origin', origin);
-    return new Request('https://pdbfe-auth.remco-vanmook.workers.dev/account/preferences/options', { headers });
+    return new Request('https://auth.pdbfe.dev/account/preferences/options', { headers });
 }
 
 /**
