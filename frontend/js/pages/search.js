@@ -23,7 +23,7 @@ export async function renderSearch(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const query = params.q || '';
 
-    document.title = `Search: ${query} — PeeringDB`;
+    document.title = `Search: ${query} — PDBFE`;
 
     if (!query) {
         app.replaceChildren(createEmptyState('Enter a search term'));

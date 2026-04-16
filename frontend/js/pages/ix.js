@@ -25,7 +25,7 @@ export async function renderIx(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Exchange — PeeringDB`;
+    document.title = `Exchange — PDBFE`;
     app.replaceChildren(createLoading('Loading exchange'));
 
     try {
@@ -48,7 +48,7 @@ export async function renderIx(params) {
         // Attach prefixes so the sidebar renderer picks them up
         ix.ixpfx_set = prefixes;
 
-        document.title = `${ix.name} — PeeringDB`;
+        document.title = `${ix.name} — PDBFE`;
 
         // Compute stats from peer table
         const totalPeers = new Set(peers.map(p => p.asn)).size;

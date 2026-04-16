@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateApiKey } from '../../../auth/account.js';
+import { generateApiKey, resolveAllowedOrigin } from '../../../auth/account.js';
 import { verifyApiKey, extractApiKey, hashKey } from '../../../core/auth.js';
 
 // ── Mock D1 database ─────────────────────────────────────────────────────────
@@ -168,5 +168,101 @@ describe('extractApiKey + verifyApiKey integration', () => {
         const extracted = extractApiKey(request);
         const result = await verifyApiKey(db, extracted);
         assert.equal(result.valid, false);
+    });
+});
+
+// ── resolveAllowedOrigin ─────────────────────────────────────────────────────
+
+/**
+ * Builds a minimal mock Request with the given Origin header.
+ *
+ * @param {string} [origin] - Origin header value. Omit for no Origin.
+ * @returns {Request}
+ */
+function mockRequest(origin) {
+    const headers = new Headers();
+    if (origin) headers.set('Origin', origin);
+    return new Request('https://auth.pdbfe.dev/account/preferences/options', { headers });
+}
+
+/**
+ * Builds a minimal mock PdbAuthEnv with FRONTEND_ORIGIN and optional PAGES_PROJECT.
+ *
+ * @param {string} frontendOrigin - Production frontend origin.
+ * @param {string} [pagesProject] - Cloudflare Pages project name.
+ * @returns {PdbAuthEnv}
+ */
+function mockEnv(frontendOrigin, pagesProject) {
+    return /** @type {any} */ ({ FRONTEND_ORIGIN: frontendOrigin, PAGES_PROJECT: pagesProject });
+}
+
+describe('resolveAllowedOrigin', () => {
+    it('returns FRONTEND_ORIGIN when request has no Origin header', () => {
+        const result = resolveAllowedOrigin(mockRequest(), mockEnv('https://www.pdbfe.dev'));
+        assert.equal(result, 'https://www.pdbfe.dev');
+    });
+
+    it('reflects exact match', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://www.pdbfe.dev'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://www.pdbfe.dev');
+    });
+
+    it('reflects apex when FRONTEND_ORIGIN has www', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://pdbfe.dev'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://pdbfe.dev');
+    });
+
+    it('reflects www when FRONTEND_ORIGIN is apex', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://www.pdbfe.dev'),
+            mockEnv('https://pdbfe.dev')
+        );
+        assert.equal(result, 'https://www.pdbfe.dev');
+    });
+
+    it('reflects subdomain of production host', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://staging.pdbfe.dev'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://staging.pdbfe.dev');
+    });
+
+    it('reflects Cloudflare Pages preview subdomain', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://abc123.pdbfe-frontend.pages.dev'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://abc123.pdbfe-frontend.pages.dev');
+    });
+
+    it('reflects custom PAGES_PROJECT preview subdomain', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://feature-x.my-project.pages.dev'),
+            mockEnv('https://pdbfe.dev', 'my-project')
+        );
+        assert.equal(result, 'https://feature-x.my-project.pages.dev');
+    });
+
+    it('falls back to FRONTEND_ORIGIN for unrelated origin', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('https://evil.example.com'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://www.pdbfe.dev');
+    });
+
+    it('falls back to FRONTEND_ORIGIN for malformed origin', () => {
+        const result = resolveAllowedOrigin(
+            mockRequest('not-a-url'),
+            mockEnv('https://www.pdbfe.dev')
+        );
+        assert.equal(result, 'https://www.pdbfe.dev');
     });
 });

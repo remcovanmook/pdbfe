@@ -10,10 +10,7 @@
 #   D1_DATABASE_ID         — PeeringDB D1 database ID
 #   D1_USERDB_ID           — Users D1 database ID (pdbfe-users)
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
-#   OAUTH_REDIRECT_URI     — OAuth redirect URI for auth worker
-#   FRONTEND_ORIGIN        — Frontend origin URL
-#   WORKERS_DOMAIN         — Workers subdomain (e.g. "remco-vanmook.workers.dev")
-#   API_DOMAIN             — Custom domain for the API worker (e.g. "pdbfe.dev")
+#   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev"), used for API, auth, and frontend origins
 
 name: Deploy
 
@@ -63,9 +60,6 @@ jobs:
           D1_USERDB_ID: ${{ secrets.D1_USERDB_ID }}
           KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
           API_DOMAIN: ${{ secrets.API_DOMAIN }}
-          WORKERS_DOMAIN: ${{ secrets.WORKERS_DOMAIN }}
-          OAUTH_REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
-          FRONTEND_ORIGIN: ${{ secrets.FRONTEND_ORIGIN }}
         run: |
           sed \
             -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
@@ -81,13 +75,11 @@ jobs:
           sed \
             -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
             -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback|${OAUTH_REDIRECT_URI}|" \
-            -e "s|https://<your-pages-project>.pages.dev|${FRONTEND_ORIGIN}|" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
             workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
 
-          # Frontend config (also gitignored)
+          # Frontend config (also gitignored) — all origins derive from API_DOMAIN
           sed \
-            -e "s|<your-subdomain>|${WORKERS_DOMAIN}|g" \
             -e "s|<your-domain>|${API_DOMAIN}|g" \
             frontend/js/config.js.example > frontend/js/config.js
 

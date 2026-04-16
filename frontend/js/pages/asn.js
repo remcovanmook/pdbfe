@@ -25,11 +25,11 @@ export async function renderAsn(params) {
 
     if (Number.isNaN(asn) || asn <= 0) {
         app.replaceChildren(createError(`Invalid ASN: ${params.asn}`));
-        document.title = 'Invalid ASN — PeeringDB';
+        document.title = 'Invalid ASN — PDBFE';
         return;
     }
 
-    document.title = `AS${asn} — PeeringDB`;
+    document.title = `AS${asn} — PDBFE`;
     app.replaceChildren(createLoading(`Looking up AS${asn}`));
 
     try {

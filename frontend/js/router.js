@@ -180,7 +180,7 @@ async function dispatch(fullPath) {
     }
 
     // No route matched — build a helpful 404 page
-    document.title = 'Not Found — PeeringDB';
+    document.title = 'Not Found — PDBFE';
     document.body.dataset.page = 'detail';
 
     const wrap = document.createElement('div');

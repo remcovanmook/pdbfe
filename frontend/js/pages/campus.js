@@ -22,7 +22,7 @@ export async function renderCampus(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Campus — PeeringDB`;
+    document.title = `Campus — PDBFE`;
     app.replaceChildren(createLoading('Loading campus'));
 
     try {
@@ -32,7 +32,7 @@ export async function renderCampus(params) {
             return;
         }
 
-        document.title = `${campus.name} — PeeringDB`;
+        document.title = `${campus.name} — PDBFE`;
 
         app.replaceChildren(createDetailLayout({
             title: campus.name,

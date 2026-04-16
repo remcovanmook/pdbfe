@@ -23,7 +23,7 @@ export async function renderFac(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Facility — PeeringDB`;
+    document.title = `Facility — PDBFE`;
     app.replaceChildren(createLoading('Loading facility'));
 
     try {
@@ -35,7 +35,7 @@ export async function renderFac(params) {
 
         const location = (fac.city || '') + (fac.country ? `, ${fac.country}` : '');
 
-        document.title = `${fac.name} — PeeringDB`;
+        document.title = `${fac.name} — PDBFE`;
         setOGTags(
             fac.name,
             `Facility — ${location}`

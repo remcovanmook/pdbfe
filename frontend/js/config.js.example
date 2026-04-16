@@ -6,7 +6,7 @@
  */
 
 /** Origin of the pdbfe-auth worker (no trailing slash). */
-export const AUTH_ORIGIN = 'https://pdbfe-auth.<your-subdomain>';
+export const AUTH_ORIGIN = 'https://auth.<your-domain>';
 
 /** Origin of the pdbfe-api worker (no trailing slash). */
 export const API_ORIGIN = 'https://api.<your-domain>';
