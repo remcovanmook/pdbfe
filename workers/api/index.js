@@ -152,7 +152,7 @@ async function handleRequest(request, env, ctx) {
     // Entity overlap analysis — PDBFE extension endpoint.
     // Dispatched before the entity tag check since "compare" is not an entity tag.
     if (entityTag === "compare") {
-        return handleCompare(request, db, ctx, queryString, hNocache);
+        return handleCompare(request, db, ctx, queryString, authenticated, hNocache);
     }
 
     // ── Shared entity request pipeline ───────────────────────────────

@@ -15,7 +15,7 @@
  * Route: GET /api/compare?a={tag}:{id}&b={tag}:{id}&__pdbfe=1
  */
 
-import { encodeJSON, serveJSON, jsonError, H_API_ANON } from '../http.js';
+import { encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
 import { normaliseCacheKey, DETAIL_TTL } from '../cache.js';
 import { withEdgeSWR } from '../swr.js';
 
@@ -378,10 +378,11 @@ async function executeCompareQuery(db, refA, refB, pk) {
  * @param {D1Session} db - D1 database session (with read replication).
  * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {string} queryString - Raw query string (without leading '?').
+ * @param {boolean} authenticated - Whether the caller is authenticated.
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Promise<Response>} JSON response with overlap data.
  */
-export async function handleCompare(request, db, ctx, queryString, hNocache) {
+export async function handleCompare(request, db, ctx, queryString, authenticated, hNocache) {
     // Parse query parameters manually (no URLSearchParams allocation)
     const params = new Map();
     if (queryString) {
@@ -433,5 +434,5 @@ export async function handleCompare(request, db, ctx, queryString, hNocache) {
         return jsonError(404, 'One or both entities not found', hNocache);
     }
 
-    return serveJSON(request, buf, { tier, hits }, H_API_ANON);
+    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
 }

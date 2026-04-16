@@ -60,13 +60,14 @@ function mockCtx() {
  *
  * @param {D1Session} db - Mock D1 session.
  * @param {string} qs - Query string without leading '?'.
+ * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
  * @returns {Promise<Response>} The response.
  */
-async function callCompare(db, qs) {
+async function callCompare(db, qs, authenticated = false) {
     const req = new Request('https://test.workers.dev/api/compare?' + qs, {
         method: 'GET',
     });
-    return handleCompare(req, db, mockCtx(), qs, hNocache);
+    return handleCompare(req, db, mockCtx(), qs, authenticated, hNocache);
 }
 
 describe('handleCompare', () => {
