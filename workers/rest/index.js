@@ -28,7 +28,7 @@ import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
 import { withEdgeSWR } from '../api/swr.js';
 import { EMPTY_ENVELOPE } from '../core/pipeline.js';
-import { getRestCache, getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
+import { getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
 import { serveScalarUI } from './scalar.js';
 import openApiSpec from '../../extracted/openapi.json';
 
@@ -60,6 +60,26 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
 });
 
 /**
+ * Serves static assets: Scalar UI and OpenAPI spec.
+ * Returns null if the path doesn't match a static asset.
+ *
+ * @param {string} rawPath - URL path without leading slash.
+ * @returns {Response|null} Static response or null.
+ */
+function serveStaticAsset(rawPath) {
+    if (rawPath === '' || rawPath === 'index.html') {
+        return serveScalarUI();
+    }
+    if (rawPath === 'openapi.json') {
+        return new Response(
+            /** @type {BodyInit} */ (/** @type {unknown} */ (SPEC_BYTES)),
+            { status: 200, headers: H_SPEC }
+        );
+    }
+    return null;
+}
+
+/**
  * Handles incoming requests to the REST worker.
  *
  * Routing:
@@ -77,19 +97,15 @@ async function handleRequest(request, env, ctx) {
     initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
-    // Validate request
     const validationError = validateRequest(request, rawPath);
     if (validationError) return validationError;
 
-    // CORS preflight
     if (request.method === 'OPTIONS') {
         return handlePreflight(request);
     }
 
-    // D1 session for read replication
     const db = env.PDB.withSession('first-unconstrained');
 
-    // Admin endpoints
     const adminResponse = await handleAdmin(request, rawPath, env, ctx, {
         db,
         serviceName: 'pdbfe-rest',
@@ -101,32 +117,34 @@ async function handleRequest(request, env, ctx) {
     });
     if (adminResponse) return adminResponse;
 
-    // Root → Scalar UI
-    if (rawPath === '' || rawPath === 'index.html') {
-        return serveScalarUI();
-    }
-
-    // OpenAPI spec
-    if (rawPath === 'openapi.json') {
-        return new Response(
-            /** @type {BodyInit} */ (/** @type {unknown} */ (SPEC_BYTES)),
-            { status: 200, headers: H_SPEC }
-        );
-    }
+    // Static assets (Scalar UI, OpenAPI spec) — no auth needed
+    const staticResponse = serveStaticAsset(rawPath);
+    if (staticResponse) return staticResponse;
 
     // Auth resolution
     const { authenticated, identity, rejection } = await resolveAuth(request, env);
     if (rejection) return jsonError(403, rejection);
 
-    // Rate limiting
     const callerKey = identity || normaliseIP(request);
     if (isRateLimited(callerKey, authenticated, Date.now())) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
+    return routeApiRequest(request, { db, ctx, rawPath, queryString, authenticated });
+}
+
+/**
+ * Routes /v1/* API requests to the list or detail handler.
+ * Extracted from handleRequest to reduce cognitive complexity.
+ *
+ * @param {Request} request - Inbound request.
+ * @param {{db: D1Session, ctx: ExecutionContext, rawPath: string, queryString: string, authenticated: boolean}} rc - Request context.
+ * @returns {Promise<Response>}
+ */
+async function routeApiRequest(request, rc) {
+    const { db, ctx, rawPath, queryString, authenticated } = rc;
     const hResponse = authenticated ? H_API_AUTH : H_API_ANON;
 
-    // Only /v1/* paths from here
     if (!rawPath.startsWith('v1/')) {
         return jsonError(404, 'Not found');
     }
@@ -139,8 +157,6 @@ async function handleRequest(request, env, ctx) {
     }
 
     const entity = ENTITIES[entityTag];
-
-    // Parse query string into filters and options
     const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe } = parseQueryFilters(queryString);
 
     if (limit < -1 || skip < 0) {
@@ -159,44 +175,37 @@ async function handleRequest(request, env, ctx) {
 
     resolveImplicitFilters(entity, filters);
 
-    // Validate filters and sort
     const queryError = validateQuery(entity, filters, sort);
-    if (queryError) {
-        return jsonError(400, queryError);
-    }
+    if (queryError) return jsonError(400, queryError);
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe };
+    /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} */
+    const qc = { db, ctx, entityTag, authenticated, hResponse, queryString };
 
     if (idStr !== undefined) {
-        // Detail: GET /v1/{entity}/{id}
         const id = Number.parseInt(idStr, 10);
         if (Number.isNaN(id) || id <= 0) {
             return jsonError(400, `Invalid ID: ${idStr}`);
         }
-        return handleDetail(request, db, ctx, entity, entityTag, id, opts, authenticated, hResponse, queryString);
+        return handleDetail(request, entity, id, opts, qc);
     }
 
-    // List: GET /v1/{entity}
-    return handleListRequest(request, db, ctx, entity, entityTag, filters, opts, authenticated, hResponse, rawPath, queryString);
+    return handleListRequest(request, entity, filters, opts, rawPath, qc);
 }
 
 /**
  * Handles a detail request for a single entity by ID.
- * Uses withEdgeSWR for L1/L2 caching, with the REST cache instance.
+ * Uses withEdgeSWR for L1/L2 caching.
  *
  * @param {Request} request - Inbound request.
- * @param {D1Session} db - D1 database session.
- * @param {ExecutionContext} ctx - Execution context.
  * @param {EntityMeta} entity - Entity metadata.
- * @param {string} entityTag - Entity tag.
  * @param {number} id - Entity primary key.
  * @param {QueryOpts} opts - Parsed query options.
- * @param {boolean} authenticated - Caller auth state.
- * @param {Record<string, string>} hResponse - Response headers.
- * @param {string} queryString - Raw query string.
+ * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} qc - Query context.
  * @returns {Promise<Response>}
  */
-async function handleDetail(request, db, ctx, entity, entityTag, id, opts, authenticated, hResponse, queryString) {
+async function handleDetail(request, entity, id, opts, qc) {
+    const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     const cacheKey = normaliseCacheKey(`v1/${entityTag}/${id}`, queryString);
 
     const { buf, tier, hits } = await withEdgeSWR(
@@ -226,22 +235,18 @@ async function handleDetail(request, db, ctx, entity, entityTag, id, opts, authe
 
 /**
  * Handles a list request for entities matching the given filters.
- * Uses withEdgeSWR for L1/L2 caching, with the REST cache instance.
+ * Uses withEdgeSWR for L1/L2 caching.
  *
  * @param {Request} request - Inbound request.
- * @param {D1Session} db - D1 database session.
- * @param {ExecutionContext} ctx - Execution context.
  * @param {EntityMeta} entity - Entity metadata.
- * @param {string} entityTag - Entity tag.
  * @param {ParsedFilter[]} filters - Query filters.
  * @param {QueryOpts} opts - Parsed query options.
- * @param {boolean} authenticated - Caller auth state.
- * @param {Record<string, string>} hResponse - Response headers.
- * @param {string} rawPath - Raw URL path.
- * @param {string} queryString - Raw query string.
+ * @param {string} rawPath - Raw URL path (for cache key).
+ * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} qc - Query context.
  * @returns {Promise<Response>}
  */
-async function handleListRequest(request, db, ctx, entity, entityTag, filters, opts, authenticated, hResponse, rawPath, queryString) {
+async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
+    const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     const cacheKey = normaliseCacheKey(rawPath, queryString);
 
     const { buf, tier, hits } = await withEdgeSWR(

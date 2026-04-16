@@ -55,7 +55,7 @@ function whereToFilters(where) {
  * Creates a list resolver for the given entity tag.
  *
  * @param {string} tag - Entity tag (e.g. "net").
- * @returns {Function} GraphQL resolver function.
+  @returns {Function} GraphQL resolver function.
  */
 function listResolver(tag) {
     return async (_parent, args, ctx) => {
@@ -78,7 +78,7 @@ function listResolver(tag) {
  * Creates a detail resolver for the given entity tag.
  *
  * @param {string} tag - Entity tag (e.g. "net").
- * @returns {Function} GraphQL resolver function.
+  @returns {Function} GraphQL resolver function.
  */
 function detailResolver(tag) {
     return async (_parent, args, ctx) => {
@@ -96,7 +96,7 @@ function detailResolver(tag) {
  *
  * @param {string} fkField - The FK field name on the parent (e.g. "org_id").
  * @param {string} targetTag - Target entity tag (e.g. "org").
- * @returns {Function} GraphQL resolver function.
+  @returns {Function} GraphQL resolver function.
  */
 function fkResolver(fkField, targetTag) {
     return async (parent, _args, ctx) => {

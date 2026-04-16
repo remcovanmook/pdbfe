@@ -30,8 +30,8 @@ export async function graphqlCacheKey(query, variables) {
     );
     const arr = new Uint8Array(digest);
     let hex = '';
-    for (let i = 0; i < arr.length; i++) {
-        hex += arr[i].toString(16).padStart(2, '0');
+    for (const byte of arr) {
+        hex += byte.toString(16).padStart(2, '0');
     }
     return `gql/${hex}`;
 }

@@ -31,7 +31,7 @@
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://cdn.jsdelivr.net/npm/graphiql@3/graphiql.min.js" crossorigin></script>
   <script>
-    const fetcher = GraphiQL.createFetcher({ url: window.location.origin });
+    const fetcher = GraphiQL.createFetcher({ url: globalThis.location.origin });
     const root = ReactDOM.createRoot(document.getElementById('graphiql'));
     root.render(React.createElement(GraphiQL, { fetcher: fetcher }));
   </script>

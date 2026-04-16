@@ -112,7 +112,7 @@ def gql_type(field_type):
 
 # ── SDL Generation ───────────────────────────────────────────────────────────
 
-def generate_type(tag, entity, entities):
+def generate_type(tag, entity):
     """
     Generate a GraphQL type definition for a single entity.
 
@@ -217,7 +217,7 @@ def generate_sdl(entities):
     parts.append("")
 
     for tag, entity in entities.items():
-        parts.append(generate_type(tag, entity, entities))
+        parts.append(generate_type(tag, entity))
         parts.append("")
         parts.append(generate_where_input(tag, entity))
         parts.append("")
@@ -293,11 +293,18 @@ def generate_resolvers_js(entities):
     lines.append('')
 
     # Build a list resolver factory and a detail resolver factory
+    # Shared code fragments used by multiple resolver factories.
+    # Extracted here to avoid duplicating string literals.
+    RESOLVER_RETURN_DOC = ' * @returns {Function} GraphQL resolver function.'
+    BUILD_ROW = '        const { sql, params } = buildRowQuery(entity, filters, opts);'
+    EXEC_QUERY = '        const result = await ctx.db.prepare(sql).bind(...params).all();'
+    CLOSE_FN = '    };'
+
     lines.append('/**')
     lines.append(' * Creates a list resolver for the given entity tag.')
     lines.append(' *')
     lines.append(' * @param {string} tag - Entity tag (e.g. "net").')
-    lines.append(' * @returns {Function} GraphQL resolver function.')
+    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function listResolver(tag) {')
     lines.append('    return async (_parent, args, ctx) => {')
@@ -310,27 +317,27 @@ def generate_resolvers_js(entities):
     lines.append('            since: 0,')
     lines.append("            sort: '',")
     lines.append('        };')
-    lines.append('        const { sql, params } = buildRowQuery(entity, filters, opts);')
-    lines.append('        const result = await ctx.db.prepare(sql).bind(...params).all();')
+    lines.append(BUILD_ROW)
+    lines.append(EXEC_QUERY)
     lines.append('        return result.results || [];')
-    lines.append('    };')
+    lines.append(CLOSE_FN)
     lines.append('}')
     lines.append('')
     lines.append('/**')
     lines.append(' * Creates a detail resolver for the given entity tag.')
     lines.append(' *')
     lines.append(' * @param {string} tag - Entity tag (e.g. "net").')
-    lines.append(' * @returns {Function} GraphQL resolver function.')
+    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function detailResolver(tag) {')
     lines.append('    return async (_parent, args, ctx) => {')
     lines.append('        const entity = ENTITIES[tag];')
     lines.append("        const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];")
     lines.append('        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: \'\' };')
-    lines.append('        const { sql, params } = buildRowQuery(entity, filters, opts);')
-    lines.append('        const result = await ctx.db.prepare(sql).bind(...params).all();')
+    lines.append(BUILD_ROW)
+    lines.append(EXEC_QUERY)
     lines.append('        return (result.results || [])[0] || null;')
-    lines.append('    };')
+    lines.append(CLOSE_FN)
     lines.append('}')
     lines.append('')
 
@@ -340,7 +347,7 @@ def generate_resolvers_js(entities):
     lines.append(' *')
     lines.append(' * @param {string} fkField - The FK field name on the parent (e.g. "org_id").')
     lines.append(' * @param {string} targetTag - Target entity tag (e.g. "org").')
-    lines.append(' * @returns {Function} GraphQL resolver function.')
+    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function fkResolver(fkField, targetTag) {')
     lines.append('    return async (parent, _args, ctx) => {')
@@ -349,10 +356,10 @@ def generate_resolvers_js(entities):
     lines.append('        const entity = ENTITIES[targetTag];')
     lines.append("        const filters = [{ field: 'id', op: 'eq', value: String(id) }];")
     lines.append("        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };")
-    lines.append('        const { sql, params } = buildRowQuery(entity, filters, opts);')
-    lines.append('        const result = await ctx.db.prepare(sql).bind(...params).all();')
+    lines.append(BUILD_ROW)
+    lines.append(EXEC_QUERY)
     lines.append('        return (result.results || [])[0] || null;')
-    lines.append('    };')
+    lines.append(CLOSE_FN)
     lines.append('}')
     lines.append('')
 

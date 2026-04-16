@@ -30,6 +30,9 @@ TYPE_MAP = {
     "json":     {},  # Any type (mixed arrays/objects)
 }
 
+# Media type constant used across response definitions.
+MEDIA_JSON = "application/json"
+
 # Maps entity tags to human-readable names (singular).
 TAG_TO_LABEL = {
     "org": "Organization",
@@ -77,7 +80,7 @@ def openapi_type(field):
     return base if base else {}
 
 
-def build_entity_schema(tag, entity):
+def build_entity_schema(entity):
     """
     Build an OpenAPI schema object for a single entity.
 
@@ -212,7 +215,7 @@ def build_spec(entities, schema_version):
         schema_name = label.replace(" ", "")
 
         # Build the entity schema
-        schemas[schema_name] = build_entity_schema(tag, entity)
+        schemas[schema_name] = build_entity_schema(entity)
 
         # Envelope schema for list responses
         envelope_name = schema_name + "ListResponse"
@@ -259,7 +262,7 @@ def build_spec(entities, schema_version):
                     "200": {
                         "description": f"List of {entity['label'].lower()}.",
                         "content": {
-                            "application/json": {
+                            MEDIA_JSON: {
                                 "schema": {"$ref": f"#/components/schemas/{envelope_name}"},
                             },
                         },
@@ -267,7 +270,7 @@ def build_spec(entities, schema_version):
                     "400": {
                         "description": "Invalid filter parameter.",
                         "content": {
-                            "application/json": {
+                            MEDIA_JSON: {
                                 "schema": {"$ref": "#/components/schemas/Error"},
                             },
                         },
@@ -299,7 +302,7 @@ def build_spec(entities, schema_version):
                     "200": {
                         "description": f"The {label.lower()}.",
                         "content": {
-                            "application/json": {
+                            MEDIA_JSON: {
                                 "schema": {"$ref": f"#/components/schemas/{detail_envelope_name}"},
                             },
                         },
@@ -307,7 +310,7 @@ def build_spec(entities, schema_version):
                     "404": {
                         "description": f"{label} not found.",
                         "content": {
-                            "application/json": {
+                            MEDIA_JSON: {
                                 "schema": {"$ref": "#/components/schemas/Error"},
                             },
                         },
