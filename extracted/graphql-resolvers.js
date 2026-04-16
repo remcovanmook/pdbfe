@@ -309,8 +309,8 @@ export const resolvers = {
         carrierFacilities: reverseEdgeResolver('fac_id', 'carrierfac'),
         exchangeFacilities: reverseEdgeResolver('fac_id', 'ixfac'),
         networkFacilities: reverseEdgeResolver('fac_id', 'netfac'),
-        networkExchangeLans: reverseEdgeResolver('net_side_id', 'netixlan'),
-        networkExchangeLans: reverseEdgeResolver('ix_side_id', 'netixlan'),
+        networkExchangeLansByNetSideId: reverseEdgeResolver('net_side_id', 'netixlan'),
+        networkExchangeLansByIxSideId: reverseEdgeResolver('ix_side_id', 'netixlan'),
     },
     Network: {
         org: fkResolver('org_id', 'org'),

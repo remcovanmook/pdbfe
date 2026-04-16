@@ -298,8 +298,8 @@ type Facility {
   carrierFacilities(limit: Int, skip: Int): [CarrierFacility!]!
   exchangeFacilities(limit: Int, skip: Int): [ExchangeFacility!]!
   networkFacilities(limit: Int, skip: Int): [NetworkFacility!]!
-  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
-  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
+  networkExchangeLansByNetSideId(limit: Int, skip: Int): [NetworkExchangeLan!]!
+  networkExchangeLansByIxSideId(limit: Int, skip: Int): [NetworkExchangeLan!]!
 }
 
 input FacilityWhere {

@@ -148,9 +148,13 @@ def generate_type(tag, entity, reverse_map, entities):
             lines.append(f"  {rel_name}: {rel_type}")
 
     # Reverse edges: child collections
+    child_tags = [c for c, _ in reverse_map.get(tag, [])]
     for child_tag, fk_field in reverse_map.get(tag, []):
         child_type = _type_name(entities[child_tag])
         child_plural = _plural(entities[child_tag])
+        if child_tags.count(child_tag) > 1:
+            suffix = "By" + "".join(word.capitalize() for word in fk_field.split('_'))
+            child_plural += suffix
         lines.append(f"  {child_plural}(limit: Int, skip: Int): [{child_type}!]!")
 
     lines.append("}")
@@ -647,8 +651,12 @@ def generate_resolvers_js(entities, reverse_map):
             lines.append(f"        {rel_name}: fkResolver('{name}', '{fk_target}'),")
 
         # Reverse edge resolvers
+        child_tags = [c for c, _ in rev_edges]
         for child_tag, fk_field in rev_edges:
             plural = _plural(entities[child_tag])
+            if child_tags.count(child_tag) > 1:
+                suffix = "By" + "".join(word.capitalize() for word in fk_field.split('_'))
+                plural += suffix
             lines.append(f"        {plural}: reverseEdgeResolver('{fk_field}', '{child_tag}'),")
 
         lines.append('    },')

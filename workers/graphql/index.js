@@ -20,7 +20,7 @@ import { createSchema, createYoga } from 'graphql-yoga';
 import { typeDefs } from '../../extracted/graphql-typedefs.js';
 import { resolvers } from '../../extracted/graphql-resolvers.js';
 import { resolveAuth } from '../core/auth.js';
-import { wrapHandler, validateRequest, handleAdmin } from '../core/admin.js';
+import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
@@ -119,7 +119,7 @@ async function handleRequest(request, env, ctx) {
     const db = env.PDB.withSession('first-unconstrained');
 
     // Admin endpoints (/_admin/*, /robots.txt, /health)
-    const adminResponse = await handleAdmin(request, rawPath, env, ctx, {
+    const adminResponse = await routeAdminPath(request, rawPath, env, ctx, {
         db,
         serviceName: 'pdbfe-graphql',
         getStats: () => ({
