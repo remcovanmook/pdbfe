@@ -8,7 +8,7 @@ import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
-import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
+import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
@@ -147,6 +147,12 @@ async function handleRequest(request, env, ctx) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
         return handleAsSet(request, db, ctx, asn, authenticated);
+    }
+
+    // Entity overlap analysis — PDBFE extension endpoint.
+    // Dispatched before the entity tag check since "compare" is not an entity tag.
+    if (entityTag === "compare") {
+        return handleCompare(request, db, queryString, hNocache);
     }
 
     // ── Shared entity request pipeline ───────────────────────────────
