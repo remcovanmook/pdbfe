@@ -157,7 +157,7 @@ def generate_type(tag, entity, reverse_map, entities):
     return "\n".join(lines)
 
 
-def generate_where_input(tag, entity):
+def generate_where_input(entity):
     """
     Generate a WhereInput type for filtering list queries.
 
@@ -305,7 +305,7 @@ def generate_sdl(entities, reverse_map):
     for tag, entity in entities.items():
         parts.append(generate_type(tag, entity, reverse_map, entities))
         parts.append("")
-        parts.append(generate_where_input(tag, entity))
+        parts.append(generate_where_input(entity))
         parts.append("")
 
     parts.append(generate_connection_types(entities))
@@ -348,6 +348,12 @@ def generate_resolvers_js(entities, reverse_map):
     BUILD_ROW = '        const { sql, params } = buildRowQuery(entity, filters, opts);'
     EXEC_QUERY = '        const result = await ctx.db.prepare(sql).bind(...params).all();'
     CLOSE_FN = '    };'
+
+    # Common resolver generator string literals
+    RES_PARAM_TAG = ' * @param {string} tag - Entity tag (e.g. "net").'
+    RES_ASYNC_FN = '    return async (_parent, args, ctx) => {'
+    RES_GET_ENT = '        const entity = ENTITIES[tag];'
+    RES_OBJ_CLOSE = '        };'
 
     # ── OP_MAP for whereToFilters ────────────────────────────────────────
     lines.append('/**')
@@ -431,12 +437,12 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append('/**')
     lines.append(' * Creates a list resolver for the given entity tag.')
     lines.append(' *')
-    lines.append(' * @param {string} tag - Entity tag (e.g. "net").')
+    lines.append(RES_PARAM_TAG)
     lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function listResolver(tag) {')
-    lines.append('    return async (_parent, args, ctx) => {')
-    lines.append('        const entity = ENTITIES[tag];')
+    lines.append(RES_ASYNC_FN)
+    lines.append(RES_GET_ENT)
     lines.append('        const filters = whereToFilters(args.where);')
     lines.append('        const opts = {')
     lines.append('            depth: 0,')
@@ -444,7 +450,7 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append('            skip: args.skip ?? 0,')
     lines.append('            since: 0,')
     lines.append("            sort: '',")
-    lines.append('        };')
+    lines.append(RES_OBJ_CLOSE)
     lines.append(BUILD_ROW)
     lines.append(EXEC_QUERY)
     lines.append('        return result.results || [];')
@@ -455,12 +461,12 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append('/**')
     lines.append(' * Creates a detail resolver for the given entity tag.')
     lines.append(' *')
-    lines.append(' * @param {string} tag - Entity tag (e.g. "net").')
+    lines.append(RES_PARAM_TAG)
     lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function detailResolver(tag) {')
-    lines.append('    return async (_parent, args, ctx) => {')
-    lines.append('        const entity = ENTITIES[tag];')
+    lines.append(RES_ASYNC_FN)
+    lines.append(RES_GET_ENT)
     lines.append("        const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];")
     lines.append("        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };")
     lines.append(BUILD_ROW)
@@ -503,17 +509,14 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append('function reverseEdgeResolver(fkField, childTag) {')
     lines.append('    return async (parent, args, ctx) => {')
     lines.append('        const entity = ENTITIES[childTag];')
-    lines.append(f"        const filters = [{{ field: '{{}}'.replace('{{}}', fkField), op: 'eq', value: String(parent.id) }}];".replace(
-        "{ field: '{}'.replace('{}', fkField)", "{ field: fkField"))
-    # Rewrite this more cleanly
-    lines[-1] = "        const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];"
+    lines.append("        const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];")
     lines.append('        const opts = {')
     lines.append('            depth: 0,')
     lines.append('            limit: Math.min(args.limit ?? 250, 250),')
     lines.append('            skip: args.skip ?? 0,')
     lines.append('            since: 0,')
     lines.append("            sort: '',")
-    lines.append('        };')
+    lines.append(RES_OBJ_CLOSE)
     lines.append(BUILD_ROW)
     lines.append(EXEC_QUERY)
     lines.append('        return result.results || [];')
@@ -526,12 +529,12 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append(' * Creates a Relay connection resolver for the given entity tag.')
     lines.append(' * Supports forward pagination (after + first) and backward (before + last).')
     lines.append(' *')
-    lines.append(' * @param {string} tag - Entity tag (e.g. "net").')
+    lines.append(RES_PARAM_TAG)
     lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
     lines.append(' */')
     lines.append('function connectionResolver(tag) {')
-    lines.append('    return async (_parent, args, ctx) => {')
-    lines.append('        const entity = ENTITIES[tag];')
+    lines.append(RES_ASYNC_FN)
+    lines.append(RES_GET_ENT)
     lines.append('        const filters = whereToFilters(args.where);')
     lines.append('')
     lines.append('        // Count query')
@@ -575,7 +578,7 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append('                endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,')
     lines.append('            },')
     lines.append('            totalCount,')
-    lines.append('        };')
+    lines.append(RES_OBJ_CLOSE)
     lines.append(CLOSE_FN)
     lines.append('}')
     lines.append('')
