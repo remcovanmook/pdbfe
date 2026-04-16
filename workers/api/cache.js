@@ -134,19 +134,6 @@ export function purgeAllCaches() {
     }
 }
 
-
-
-/**
- * Normalises a cache key from a URL path and query string.
- * Sorts query parameters alphabetically to ensure that identical
- * queries with different parameter orderings hit the same cache slot.
- *
- * @param {string} path - The URL path (e.g. "api/net").
- * @param {string} queryString - Raw query string without leading '?'.
- * @returns {string} Normalised cache key.
- */
-export function normaliseCacheKey(path, queryString) {
-    if (!queryString) return path;
-    const sorted = queryString.split("&").sort((a, b) => a < b ? -1 : a > b ? 1 : 0).join("&"); // ap-ok: bounded by URL length
-    return `${path}?${sorted}`;
-}
+// Re-export normaliseCacheKey from core so api/ modules can import
+// from './cache.js' without changing their import paths.
+export { normaliseCacheKey } from '../core/cache.js';
