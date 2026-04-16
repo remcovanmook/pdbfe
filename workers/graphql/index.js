@@ -68,6 +68,7 @@ function getYoga() {
             schema: createSchema({ typeDefs, resolvers }),
             graphiql: false,
             landingPage: false,
+            graphqlEndpoint: '*',
         });
     }
     return _yoga;

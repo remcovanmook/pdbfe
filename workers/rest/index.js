@@ -75,7 +75,7 @@ function serveStaticAsset(rawPath) {
     }
     if (rawPath === 'openapi.json') {
         return new Response(
-            /** @type {BodyInit} */ (/** @type {unknown} */ (SPEC_BYTES)),
+            /** @type {BodyInit} */(/** @type {unknown} */ (SPEC_BYTES)),
             { status: 200, headers: H_SPEC }
         );
     }
@@ -232,7 +232,7 @@ async function handleDetail(request, entity, id, opts, qc) {
             const { sql, params } = buildJsonQuery(entity, [], opts, id);
             const row = await db.prepare(sql).bind(...params).first();
             if (!row?.payload) return null;
-            return encoder.encode(/** @type {string} */ (row.payload));
+            return encoder.encode(/** @type {string} */(row.payload));
         }
     );
 
@@ -272,7 +272,7 @@ async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
             const { sql, params } = buildJsonQuery(entity, filters, opts);
             const row = await db.prepare(sql).bind(...params).first();
             if (!row?.payload) return null;
-            return encoder.encode(/** @type {string} */ (row.payload));
+            return encoder.encode(/** @type {string} */(row.payload));
         }
     );
 
