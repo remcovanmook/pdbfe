@@ -78,7 +78,7 @@ function modal(id, title, body) {
  */
 export async function renderAccount(_params) {
     const container = /** @type {HTMLElement} */ (document.getElementById('app'));
-    document.title = 'Account — PeeringDB';
+    document.title = 'Account — PDBFE';
 
     if (!isAuthenticated()) {
         const card_ = el('div', { className: 'card', style: 'max-width:480px;margin:var(--space-2xl) auto;text-align:center' });

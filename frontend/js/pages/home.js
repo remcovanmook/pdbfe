@@ -25,7 +25,7 @@ let _app;
  */
 export async function renderHome(_params) {
     _app = /** @type {HTMLElement} */ (document.getElementById('app'));
-    document.title = 'PeeringDB';
+    document.title = 'PDBFE';
 
     // Build the page structure with DOM nodes
     const frag = document.createDocumentFragment();

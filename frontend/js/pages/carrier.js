@@ -22,7 +22,7 @@ export async function renderCarrier(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Carrier — PeeringDB`;
+    document.title = `Carrier — PDBFE`;
     app.replaceChildren(createLoading('Loading carrier'));
 
     try {
@@ -32,7 +32,7 @@ export async function renderCarrier(params) {
             return;
         }
 
-        document.title = `${carrier.name} — PeeringDB`;
+        document.title = `${carrier.name} — PDBFE`;
 
         app.replaceChildren(createDetailLayout({
             title: carrier.name,

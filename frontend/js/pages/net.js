@@ -24,7 +24,7 @@ export async function renderNet(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Network — PeeringDB`;
+    document.title = `Network — PDBFE`;
     app.replaceChildren(createLoading('Loading network'));
 
     try {
@@ -34,7 +34,7 @@ export async function renderNet(params) {
             return;
         }
 
-        document.title = `${net.name} (AS${net.asn}) — PeeringDB`;
+        document.title = `${net.name} (AS${net.asn}) — PDBFE`;
         setOGTags(
             `${net.name} (AS${net.asn})`,
             `${net.info_type || 'Network'} — ${net.policy_general || 'Peering policy not listed'}`

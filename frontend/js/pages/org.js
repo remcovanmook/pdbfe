@@ -23,7 +23,7 @@ export async function renderOrg(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const id = params.id;
 
-    document.title = `Organization — PeeringDB`;
+    document.title = `Organization — PDBFE`;
     app.replaceChildren(createLoading('Loading organization'));
 
     try {
@@ -33,8 +33,8 @@ export async function renderOrg(params) {
             return;
         }
 
-        document.title = `${org.name} — PeeringDB`;
-        setOGTags(org.name, `Organization — PeeringDB`);
+        document.title = `${org.name} — PDBFE`;
+        setOGTags(org.name, `Organization — PDBFE`);
 
         app.replaceChildren(createDetailLayout({
             title: org.name,

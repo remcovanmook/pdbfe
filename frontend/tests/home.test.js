@@ -317,7 +317,7 @@ describe('renderHome', () => {
         try {
             const { renderHome } = await import('../js/pages/home.js');
             await renderHome({});
-            assert.equal(document.title, 'PeeringDB');
+            assert.equal(document.title, 'PDBFE');
         } finally {
             globalThis.fetch = originalFetch;
         }
@@ -388,7 +388,7 @@ describe('renderAbout', () => {
         try {
             const { renderAbout } = await import('../js/pages/about.js');
             await renderAbout({});
-            assert.equal(document.title, 'About — PeeringDB Mirror');
+            assert.equal(document.title, 'About — PDBFE');
         } finally {
             globalThis.fetch = originalFetch;
         }

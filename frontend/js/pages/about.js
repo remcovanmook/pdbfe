@@ -16,7 +16,7 @@ import { createLoading, createError } from '../render.js';
  */
 export async function renderAbout(_params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
-    document.title = 'About — PeeringDB Mirror';
+    document.title = 'About — PDBFE';
 
     app.replaceChildren(createLoading('Loading'));
 
