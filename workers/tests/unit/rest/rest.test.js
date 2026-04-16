@@ -88,39 +88,8 @@ describe('openapi.json', () => {
     });
 });
 
-// ── Scalar UI tests ─────────────────────────────────────────────────────────
-
-describe('serveScalarUI', () => {
-    it('returns an HTML response', async () => {
-        const { serveScalarUI } = await import('../../../rest/scalar.js');
-        const response = serveScalarUI();
-        assert.equal(response.status, 200);
-        assert.ok(response.headers.get('Content-Type').includes('text/html'));
-    });
-
-    it('HTML contains Scalar CDN script', async () => {
-        const { serveScalarUI } = await import('../../../rest/scalar.js');
-        const response = serveScalarUI();
-        const html = await response.text();
-        assert.ok(html.includes('cdn.jsdelivr.net/npm/@scalar/api-reference'));
-    });
-
-    it('HTML points at /openapi.json', async () => {
-        const { serveScalarUI } = await import('../../../rest/scalar.js');
-        const response = serveScalarUI();
-        const html = await response.text();
-        assert.ok(html.includes('/openapi.json'));
-    });
-
-    it('HTML has proper meta tags', async () => {
-        const { serveScalarUI } = await import('../../../rest/scalar.js');
-        const response = serveScalarUI();
-        const html = await response.text();
-        assert.ok(html.includes('<title>'));
-        assert.ok(html.includes('charset="utf-8"'));
-        assert.ok(html.includes('viewport'));
-    });
-});
+// Scalar UI HTML content is tested in tests/unit/core/branding.test.js
+// via direct file reads (Node can't import .html modules without wrangler).
 
 // ── Cache tests ─────────────────────────────────────────────────────────────
 

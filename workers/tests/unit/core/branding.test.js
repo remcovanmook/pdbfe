@@ -1,68 +1,81 @@
 /**
- * @fileoverview Unit tests for the shared branding module.
+ * @fileoverview Tests for the static API landing pages in frontend/api/.
  *
- * Validates that brandedHead() and brandedHeader() produce HTML
- * referencing the frontend assets rather than inlining styles.
+ * Validates that the HTML files reference the frontend CSS,
+ * use the correct class names, and contain the expected content.
  */
 
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 
-describe('brandedHead', () => {
-    it('links to the frontend CSS', async () => {
-        const { brandedHead } = await import('../../../core/branding.js');
-        const html = brandedHead();
-        assert.ok(html.includes('pdbfe.dev/css/index.css'));
+const REPO_ROOT = resolve(import.meta.dirname, '../../../../');
+const graphqlHtml = readFileSync(resolve(REPO_ROOT, 'frontend/api/graphql.html'), 'utf-8');
+const restHtml = readFileSync(resolve(REPO_ROOT, 'frontend/api/rest.html'), 'utf-8');
+
+describe('frontend/api/graphql.html', () => {
+    it('links to the frontend CSS', () => {
+        assert.ok(graphqlHtml.includes('/css/index.css'));
     });
 
-    it('links to the Inter font stylesheet', async () => {
-        const { brandedHead } = await import('../../../core/branding.js');
-        const html = brandedHead();
-        assert.ok(html.includes('pdbfe.dev/third_party/inter/inter.css'));
+    it('links to the Inter font', () => {
+        assert.ok(graphqlHtml.includes('/third_party/inter/inter.css'));
     });
 
-    it('uses <link> tags (not inline styles)', async () => {
-        const { brandedHead } = await import('../../../core/branding.js');
-        const html = brandedHead();
-        assert.ok(html.includes('<link rel="stylesheet"'));
-        assert.ok(!html.includes('<style>'));
+    it('uses the site-header class', () => {
+        assert.ok(graphqlHtml.includes('site-header'));
+        assert.ok(graphqlHtml.includes('site-logo'));
+    });
+
+    it('includes the PDBFE logo', () => {
+        assert.ok(graphqlHtml.includes('PDB<span>FE</span>'));
+    });
+
+    it('includes the GraphQL label', () => {
+        assert.ok(graphqlHtml.includes('GraphQL'));
+    });
+
+    it('loads GraphiQL from CDN', () => {
+        assert.ok(graphqlHtml.includes('graphiql'));
+        assert.ok(graphqlHtml.includes('cdn.jsdelivr.net'));
+    });
+
+    it('has cross-nav links', () => {
+        assert.ok(graphqlHtml.includes('graphql.pdbfe.dev'));
+        assert.ok(graphqlHtml.includes('rest.pdbfe.dev'));
+        assert.ok(graphqlHtml.includes('/about'));
     });
 });
 
-describe('brandedHeader', () => {
-    it('includes the PDBFE logo', async () => {
-        const { brandedHeader } = await import('../../../core/branding.js');
-        const html = brandedHeader('Test');
-        assert.ok(html.includes('PDB<span>FE</span>'));
+describe('frontend/api/rest.html', () => {
+    it('links to the frontend CSS', () => {
+        assert.ok(restHtml.includes('/css/index.css'));
     });
 
-    it('includes the label argument', async () => {
-        const { brandedHeader } = await import('../../../core/branding.js');
-        const html = brandedHeader('GraphQL');
-        assert.ok(html.includes('GraphQL'));
+    it('links to the Inter font', () => {
+        assert.ok(restHtml.includes('/third_party/inter/inter.css'));
     });
 
-    it('uses the frontend CSS class names', async () => {
-        const { brandedHeader } = await import('../../../core/branding.js');
-        const html = brandedHeader('REST API');
-        assert.ok(html.includes('site-header'));
-        assert.ok(html.includes('site-header__inner'));
-        assert.ok(html.includes('site-logo'));
+    it('uses the site-header class', () => {
+        assert.ok(restHtml.includes('site-header'));
+        assert.ok(restHtml.includes('site-logo'));
     });
 
-    it('includes cross-nav links', async () => {
-        const { brandedHeader } = await import('../../../core/branding.js');
-        const html = brandedHeader('REST API');
-        assert.ok(html.includes('graphql.pdbfe.dev'));
-        assert.ok(html.includes('rest.pdbfe.dev'));
-        assert.ok(html.includes('/about'));
+    it('includes the PDBFE logo', () => {
+        assert.ok(restHtml.includes('PDB<span>FE</span>'));
     });
 
-    it('uses CSS variables (not hardcoded colours)', async () => {
-        const { brandedHeader } = await import('../../../core/branding.js');
-        const html = brandedHeader('Test');
-        assert.ok(html.includes('var(--text-'));
-        // Should not inline colour definitions
-        assert.ok(!html.includes('hsl(220 14% 12%)'));
+    it('includes the REST API label', () => {
+        assert.ok(restHtml.includes('REST API'));
+    });
+
+    it('loads Scalar from CDN', () => {
+        assert.ok(restHtml.includes('@scalar/api-reference'));
+        assert.ok(restHtml.includes('cdn.jsdelivr.net'));
+    });
+
+    it('points at /openapi.json', () => {
+        assert.ok(restHtml.includes('/openapi.json'));
     });
 });

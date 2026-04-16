@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>REST API — PDBFE</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Interactive API documentation for the PeeringDB REST API." />
+  <link rel="stylesheet" href="/third_party/inter/inter.css">
+  <link rel="stylesheet" href="/css/index.css">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+</head>
+<body style="margin:0">
+
+  <header class="site-header" role="banner">
+    <div class="site-header__inner">
+      <a href="https://pdbfe.dev/" class="site-logo">PDB<span>FE</span></a>
+      <span style="color:var(--text-muted);font-weight:300">|</span>
+      <span style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);letter-spacing:0.03em;text-transform:uppercase">REST API</span>
+      <nav class="site-header__nav" aria-label="API navigation">
+        <a href="https://graphql.pdbfe.dev/" class="header-external-link">GraphQL</a>
+        <a href="https://rest.pdbfe.dev/" class="header-external-link">REST Docs</a>
+        <a href="https://pdbfe.dev/about" class="header-external-link">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <div id="api-reference"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  <script>
+    Scalar.createApiReference('#api-reference', {
+      url: '/openapi.json',
+      theme: 'kepler',
+    })
+  </script>
+
+</body>
+</html>

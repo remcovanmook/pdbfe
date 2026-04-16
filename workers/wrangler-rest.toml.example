@@ -4,8 +4,9 @@ main = "rest/index.js"
 compatibility_date = "2026-03-18"
 workers_dev = true
 
-# JSON import for openapi.json
+# Static asset imports (HTML as text, JSON as data)
 rules = [
+  { type = "Text", globs = ["**/*.html"], fallthrough = true },
   { type = "Data", globs = ["extracted/*.json"], fallthrough = true }
 ]
 

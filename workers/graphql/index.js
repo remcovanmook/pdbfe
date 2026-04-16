@@ -6,8 +6,8 @@
  * from the extracted entity definitions.
  *
  * Architecture:
- *   - graphql-yoga handles the HTTP layer (POST parsing, subscriptions)
- *   - Browser landing page: branded GraphiQL with PDBFE header bar
+ *   - graphql-yoga handles the HTTP layer (POST parsing)
+ *   - Browser landing page: frontend/api/graphql.html (imported at bundle time)
  *   - Resolvers use the shared query builder from workers/api/query.js
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
@@ -26,7 +26,7 @@ import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
-import { brandedHead, brandedHeader } from '../core/branding.js';
+import GRAPHIQL_HTML from '../../frontend/api/graphql.html';
 
 /**
  * Rate limiter instance for GraphQL requests.
@@ -41,37 +41,7 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
     limitAuth: 300,
 });
 
-/**
- * Branded GraphiQL HTML page.
- * Embeds the GraphiQL React component from CDN with the PDBFE header
- * bar for visual consistency with the main frontend.
- * @type {string}
- */
-const GRAPHIQL_HTML = `<!doctype html>
-<html>
-<head>
-  <title>GraphQL — PDBFE</title>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Interactive GraphQL explorer for the PeeringDB dataset." />
-  ${brandedHead()}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphiql@3/graphiql.min.css" />
-</head>
-<body style="margin:0; height:100vh; display:flex; flex-direction:column">
-  ${brandedHeader('GraphQL')}
-  <div id="graphiql" style="flex:1"></div>
-  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://cdn.jsdelivr.net/npm/graphiql@3/graphiql.min.js" crossorigin></script>
-  <script>
-    const fetcher = GraphiQL.createFetcher({ url: window.location.origin });
-    const root = ReactDOM.createRoot(document.getElementById('graphiql'));
-    root.render(React.createElement(GraphiQL, { fetcher: fetcher }));
-  </script>
-</body>
-</html>`;
-
-/** Pre-built headers for GraphiQL HTML. */
+/** Pre-built headers for the GraphiQL HTML page. */
 const H_GRAPHIQL = Object.freeze({
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'public, max-age=3600',
@@ -88,7 +58,7 @@ let _yoga = null;
 /**
  * Returns the graphql-yoga instance, creating it on first call.
  * The schema is compiled once and reused for the isolate lifetime.
- * GraphiQL is disabled — we serve our own branded version instead.
+ * GraphiQL is disabled — we serve our own branded page instead.
  *
  * @returns {ReturnType<typeof createYoga>} The yoga instance.
  */
