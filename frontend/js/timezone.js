@@ -78,7 +78,7 @@ export function setTimezone(tz) {
         return;
     }
     if (!isValidTimezone(tz)) {
-        console.warn(`[tz] Invalid timezone "${tz}", ignoring.`);
+        console.warn('[tz] Invalid timezone %s, ignoring.', JSON.stringify(tz));
         return;
     }
     try { localStorage.setItem(STORAGE_KEY, tz); } catch { /* */ }
