@@ -119,7 +119,7 @@ async function handleRequest(request, env, ctx) {
     const db = env.PDB.withSession('first-unconstrained');
 
     // Admin endpoints (/_admin/*, /robots.txt, /health)
-    const adminResponse = await routeAdminPath(request, rawPath, env, ctx, {
+    const adminResponse = await routeAdminPath(rawPath, env, {
         db,
         serviceName: 'pdbfe-graphql',
         getStats: () => ({

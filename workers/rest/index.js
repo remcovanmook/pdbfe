@@ -109,7 +109,7 @@ async function handleRequest(request, env, ctx) {
 
     const db = env.PDB.withSession('first-unconstrained');
 
-    const adminResponse = await routeAdminPath(request, rawPath, env, ctx, {
+    const adminResponse = await routeAdminPath(rawPath, env, {
         db,
         serviceName: 'pdbfe-rest',
         getStats: () => ({
