@@ -69,7 +69,7 @@ async function loadLocale(lang) {
             _currentLang = 'en';
         }
     } catch (e) {
-        console.warn(`[i18n] Failed to load locale ${lang}, falling back to English.`);
+        console.warn(`[i18n] Failed to load locale ${lang}, falling back to English.`, e);
         _dict = {};
         _currentLang = 'en';
     }
@@ -83,9 +83,7 @@ async function loadLocale(lang) {
  * @returns {Promise<void>}
  */
 export async function initI18n() {
-    const stored = typeof localStorage !== 'undefined'
-        ? localStorage.getItem('pdbfe-lang')
-        : null;
+    const stored = globalThis.localStorage?.getItem('pdbfe-lang') ?? null;
 
     let lang = 'en';
 
@@ -94,7 +92,7 @@ export async function initI18n() {
     } else if (typeof navigator !== 'undefined') {
         const browserLang = navigator.language.slice(0, 2);
         // Check for full code first (zh-cn, zh-tw) then short code
-        const fullCode = navigator.language.toLowerCase().replace('_', '-');
+        const fullCode = navigator.language.toLowerCase().replaceAll('_', '-');
         if (fullCode in LANGUAGES) {
             lang = fullCode;
         } else if (browserLang in LANGUAGES) {
@@ -145,7 +143,7 @@ export function t(key, vars = {}) {
 
     if (Object.keys(vars).length > 0) {
         str = str.replaceAll(/\{(\w+)\}/g, (_, varName) => {
-            return vars[varName] !== undefined ? escapeHTML(String(vars[varName])) : `{${varName}}`;
+            return varName in vars ? escapeHTML(String(vars[varName])) : `{${varName}}`;
         });
     }
 

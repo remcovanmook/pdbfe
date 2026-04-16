@@ -391,8 +391,8 @@ class PdbTable extends HTMLElement {
         if (!cfg || !this._thead) return;
 
         const headerRow = document.createElement('tr');
-        cfg.columns.forEach((col, idx) => {
-            if (this._hiddenCols.has(col.key)) return;
+        for (const [idx, col] of cfg.columns.entries()) {
+            if (this._hiddenCols.has(col.key)) continue;
             const th = document.createElement('th');
             th.setAttribute('scope', 'col');
             th.textContent = t(col.label);
@@ -406,7 +406,7 @@ class PdbTable extends HTMLElement {
             }
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
-        });
+        }
         this._thead.replaceChildren(headerRow);
     }
 
@@ -684,7 +684,7 @@ class PdbTable extends HTMLElement {
      * @returns {string} Markdown table string.
      */
     _toMarkdown(headers, rows, cols) {
-        const escape = (/** @type {string} */ v) => v.replaceAll('|', '\\|');
+        const escape = (/** @type {string} */ v) => v.replaceAll('|', String.raw`\|`);
         const headerLine = `| ${headers.map(escape).join(' | ')} |`;
         const sepLine = `| ${headers.map(() => '---').join(' | ')} |`;
         const dataLines = rows.map(row =>

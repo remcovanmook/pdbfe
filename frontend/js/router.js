@@ -34,7 +34,7 @@ export function addRoute(pattern, handler) {
             return `(?<${name}>[^/]+)`;
         });
     _routes.push({
-        pattern: new RegExp(`^${regexStr}\\/?$`),
+        pattern: new RegExp(String.raw`^${regexStr}\/?$`),
         handler
     });
 }
@@ -79,7 +79,7 @@ export function initRouter(appContainer) {
     // Ensure external links open in a new tab
     document.addEventListener('click', (e) => {
         const anchor = /** @type {HTMLAnchorElement|null} */ (e.target)?.closest('a');
-        if (!anchor || anchor.hasAttribute('data-link')) return;
+        if (!anchor || 'link' in anchor.dataset) return;
 
         const href = anchor.getAttribute('href') || '';
         if (/^https?:\/\/|^mailto:/i.test(href) && !anchor.hasAttribute('target')) {
@@ -199,7 +199,7 @@ async function dispatch(fullPath) {
 
     // Extract a search hint from the URL path.
     // Handles /net/20940, /ix/123 — common pattern of people typing entity URLs
-    const segments = path.replace(/^\/+|\/+$/g, '').split('/');
+    const segments = path.replaceAll(/^\/+|\/+$/g, '').split('/');
     const entityTypes = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
     const isEntityPath = segments.length >= 2 && entityTypes.has(segments[0]);
     const hint = isEntityPath ? segments[1] : segments.join(' ');
