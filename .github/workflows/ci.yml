@@ -34,7 +34,7 @@ jobs:
           cache: npm
           cache-dependency-path: workers/package-lock.json
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
 
       - name: TypeScript
         run: npm run typecheck
@@ -60,7 +60,7 @@ jobs:
 
       # Frontend typecheck depends on tsc from workers/node_modules
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: workers
 
       # config.js is gitignored (deployment-specific); use the example stub
@@ -110,7 +110,7 @@ jobs:
       # which needs @cloudflare/workers-types for tsc, but runs
       # fine in plain Node.js without it. Install for safety.
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: workers
 
       - name: Locale completeness
@@ -151,7 +151,7 @@ jobs:
         run: pip install pyyaml
 
       - name: Install Node dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: workers
 
       - name: Regenerate schema artifacts
