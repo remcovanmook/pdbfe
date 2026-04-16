@@ -28,25 +28,16 @@ import { jsonError } from '../core/http.js';
  */
 
 /**
- * Maps descriptive relation names to PeeringDB entity tag names.
- * Used for generating human-readable URL slugs.
- * @type {Record<string, string>}
+ * Returns the sub-resource URL slug for an entity tag.
+ * Reads from the entity's naming metadata set by the codegen pipeline.
+ *
+ * @param {string} tag - Entity tag.
+ * @returns {string} Sub-resource slug (e.g. "networks", "facilities").
  */
-const TAG_TO_RELATION_PLURAL = {
-    org: 'organization',
-    campus: 'campuses',
-    fac: 'facilities',
-    net: 'networks',
-    ix: 'exchanges',
-    carrier: 'carriers',
-    carrierfac: 'carrier-facilities',
-    ixfac: 'exchange-facilities',
-    ixlan: 'exchange-lans',
-    ixpfx: 'exchange-prefixes',
-    poc: 'contacts',
-    netfac: 'network-facilities',
-    netixlan: 'network-exchange-lans',
-};
+function subresourceSlug(tag) {
+    const entity = ENTITIES[tag];
+    return entity?.naming?.subresource || tag;
+}
 
 /**
  * Builds the sub-resource relationship map from entity FK definitions.
@@ -75,8 +66,7 @@ function buildSubResourceMap() {
             const fkTarget = field.foreignKey;
             if (!fkTarget || !ENTITY_TAGS.has(fkTarget)) continue;
 
-            // Relation name: "organization" for org_id, "campus" for campus_id, etc.
-            const relName = TAG_TO_RELATION_PLURAL[fkTarget] || fkTarget;
+            const relName = subresourceSlug(fkTarget);
             rels.set(relName, {
                 targetTag: fkTarget,
                 fkField: field.name,
@@ -94,8 +84,7 @@ function buildSubResourceMap() {
             const parentRels = map.get(fkTarget);
             if (!parentRels) continue;
 
-            // Relation name: use the child entity's descriptive plural
-            const relName = TAG_TO_RELATION_PLURAL[childTag] || childTag;
+            const relName = subresourceSlug(childTag);
 
             // Avoid overwriting an existing relation with the same name
             // (e.g. fac has forward FK to org as "organization", don't overwrite)

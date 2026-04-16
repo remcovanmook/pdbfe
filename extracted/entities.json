@@ -84,7 +84,14 @@
           "name": "longitude",
           "type": "number"
         }
-      ]
+      ],
+      "naming": {
+        "type": "Organization",
+        "singular": "organization",
+        "plural": "organizations",
+        "subresource": "organization",
+        "label": "Organization"
+      }
     },
     "campus": {
       "tag": "campus",
@@ -156,7 +163,14 @@
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Campus",
+        "singular": "campus",
+        "plural": "campuses",
+        "subresource": "campuses",
+        "label": "Campus"
+      }
     },
     "fac": {
       "tag": "fac",
@@ -319,7 +333,14 @@
           "type": "number",
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Facility",
+        "singular": "facility",
+        "plural": "facilities",
+        "subresource": "facilities",
+        "label": "Facility"
+      }
     },
     "net": {
       "tag": "net",
@@ -490,7 +511,14 @@
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Network",
+        "singular": "network",
+        "plural": "networks",
+        "subresource": "networks",
+        "label": "Network"
+      }
     },
     "ix": {
       "tag": "ix",
@@ -629,7 +657,18 @@
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Exchange",
+        "singular": "exchange",
+        "plural": "exchanges",
+        "subresource": "exchanges",
+        "label": "Exchange",
+        "aliases": {
+          "singular": "internetExchange",
+          "plural": "internetExchanges"
+        }
+      }
     },
     "carrier": {
       "tag": "carrier",
@@ -684,7 +723,14 @@
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Carrier",
+        "singular": "carrier",
+        "plural": "carriers",
+        "subresource": "carriers",
+        "label": "Carrier"
+      }
     },
     "carrierfac": {
       "tag": "carrierfac",
@@ -708,7 +754,14 @@
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "CarrierFacility",
+        "singular": "carrierFacility",
+        "plural": "carrierFacilities",
+        "subresource": "carrier-facilities",
+        "label": "Carrier Facility"
+      }
     },
     "ixfac": {
       "tag": "ixfac",
@@ -742,7 +795,18 @@
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangeFacility",
+        "singular": "exchangeFacility",
+        "plural": "exchangeFacilities",
+        "subresource": "exchange-facilities",
+        "label": "Exchange Facility",
+        "aliases": {
+          "singular": "ixFacility",
+          "plural": "ixFacilities"
+        }
+      }
     },
     "ixlan": {
       "tag": "ixlan",
@@ -800,7 +864,18 @@
           "name": "ixf_ixp_import_enabled",
           "type": "boolean"
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangeLan",
+        "singular": "exchangeLan",
+        "plural": "exchangeLans",
+        "subresource": "exchange-lans",
+        "label": "Exchange LAN",
+        "aliases": {
+          "singular": "ixLan",
+          "plural": "ixLans"
+        }
+      }
     },
     "ixpfx": {
       "tag": "ixpfx",
@@ -830,7 +905,18 @@
           "type": "number",
           "foreignKey": "ixlan"
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangePrefix",
+        "singular": "exchangePrefix",
+        "plural": "exchangePrefixes",
+        "subresource": "exchange-prefixes",
+        "label": "Exchange Prefix",
+        "aliases": {
+          "singular": "ixPrefix",
+          "plural": "ixPrefixes"
+        }
+      }
     },
     "poc": {
       "tag": "poc",
@@ -872,6 +958,17 @@
       "anonFilter": {
         "field": "visible",
         "value": "Public"
+      },
+      "naming": {
+        "type": "PointOfContact",
+        "singular": "pointOfContact",
+        "plural": "pointsOfContact",
+        "subresource": "contacts",
+        "label": "Point of Contact",
+        "aliases": {
+          "singular": "poc",
+          "plural": "pocs"
+        }
       }
     },
     "netfac": {
@@ -920,7 +1017,14 @@
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "NetworkFacility",
+        "singular": "networkFacility",
+        "plural": "networkFacilities",
+        "subresource": "network-facilities",
+        "label": "Network Facility"
+      }
     },
     "netixlan": {
       "tag": "netixlan",
@@ -994,7 +1098,18 @@
           "name": "name",
           "type": "string"
         }
-      ]
+      ],
+      "naming": {
+        "type": "NetworkExchangeLan",
+        "singular": "networkExchangeLan",
+        "plural": "networkExchangeLans",
+        "subresource": "network-exchange-lans",
+        "label": "Network Exchange LAN",
+        "aliases": {
+          "singular": "networkIxLan",
+          "plural": "networkIxLans"
+        }
+      }
     }
   }
 }

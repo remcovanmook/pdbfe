@@ -43,76 +43,34 @@ TYPE_MAP = {
     "json": "JSON",
 }
 
-# Maps entity tags to GraphQL type names.
-TAG_TO_TYPE = {
-    "org": "Organization",
-    "campus": "Campus",
-    "fac": "Facility",
-    "net": "Network",
-    "ix": "Exchange",
-    "carrier": "Carrier",
-    "carrierfac": "CarrierFacility",
-    "ixfac": "ExchangeFacility",
-    "ixlan": "ExchangeLan",
-    "ixpfx": "ExchangePrefix",
-    "poc": "PointOfContact",
-    "netfac": "NetworkFacility",
-    "netixlan": "NetworkExchangeLan",
-}
+# ── Naming helpers ───────────────────────────────────────────────────────────
+# All naming (type, singular, plural, aliases) is read from entities.json's
+# naming property, which is the single source of truth set by
+# parse_django_models.py's ENTITY_NAMING dict.
 
-# Maps entity tags to singular query names.
-TAG_TO_SINGULAR = {
-    "org": "organization",
-    "campus": "campus",
-    "fac": "facility",
-    "net": "network",
-    "ix": "exchange",
-    "carrier": "carrier",
-    "carrierfac": "carrierFacility",
-    "ixfac": "exchangeFacility",
-    "ixlan": "exchangeLan",
-    "ixpfx": "exchangePrefix",
-    "poc": "pointOfContact",
-    "netfac": "networkFacility",
-    "netixlan": "networkExchangeLan",
-}
+def _naming(entity):
+    """Return the naming dict for an entity, falling back to tag-derived defaults."""
+    return entity.get("naming", {})
 
-# Maps entity tags to plural query names.
-TAG_TO_PLURAL = {
-    "org": "organizations",
-    "campus": "campuses",
-    "fac": "facilities",
-    "net": "networks",
-    "ix": "exchanges",
-    "carrier": "carriers",
-    "carrierfac": "carrierFacilities",
-    "ixfac": "exchangeFacilities",
-    "ixlan": "exchangeLans",
-    "ixpfx": "exchangePrefixes",
-    "poc": "pointsOfContact",
-    "netfac": "networkFacilities",
-    "netixlan": "networkExchangeLans",
-}
 
-# Aliases for PDB+ naming compatibility. Only entries that differ
-# from the primary names are listed here.
-TAG_TO_ALIAS_SINGULAR = {
-    "ix": "internetExchange",
-    "ixfac": "ixFacility",
-    "ixlan": "ixLan",
-    "ixpfx": "ixPrefix",
-    "poc": "poc",
-    "netixlan": "networkIxLan",
-}
+def _type_name(entity):
+    """Return the GraphQL type name for an entity."""
+    return _naming(entity).get("type", entity.get("tag", "Unknown"))
 
-TAG_TO_ALIAS_PLURAL = {
-    "ix": "internetExchanges",
-    "ixfac": "ixFacilities",
-    "ixlan": "ixLans",
-    "ixpfx": "ixPrefixes",
-    "poc": "pocs",
-    "netixlan": "networkIxLans",
-}
+
+def _singular(entity):
+    """Return the singular query name for an entity."""
+    return _naming(entity).get("singular", entity.get("tag", "unknown"))
+
+
+def _plural(entity):
+    """Return the plural query name for an entity."""
+    return _naming(entity).get("plural", entity.get("tag", "unknowns"))
+
+
+def _aliases(entity):
+    """Return the PDB+ aliases dict, or None if no aliases defined."""
+    return _naming(entity).get("aliases")
 
 # Filter operators per field type. Includes negation, suffix, and nil
 # operators alongside the PeeringDB-compatible set.
@@ -153,14 +111,14 @@ def build_reverse_map(entities):
     for tag, entity in entities.items():
         for field in entity["fields"]:
             fk_target = field.get("foreignKey")
-            if fk_target and fk_target in TAG_TO_TYPE:
+            if fk_target and fk_target in entities:
                 reverse[fk_target].append((tag, field["name"]))
     return reverse
 
 
 # ── SDL Generation ───────────────────────────────────────────────────────────
 
-def generate_type(tag, entity, reverse_map):
+def generate_type(tag, entity, reverse_map, entities):
     """
     Generate a GraphQL type definition for a single entity.
 
@@ -168,7 +126,7 @@ def generate_type(tag, entity, reverse_map):
     fields get an additional resolved field pointing to the related type.
     Reverse edges add list fields for child entities.
     """
-    type_name = TAG_TO_TYPE[tag]
+    type_name = _type_name(entity)
     lines = [f"type {type_name} {{"]
     lines.append("  id: Int!")
     lines.append('  status: String!')
@@ -184,16 +142,16 @@ def generate_type(tag, entity, reverse_map):
 
         # For FK fields, add a resolved relationship field
         fk_target = field.get("foreignKey")
-        if fk_target and fk_target in TAG_TO_TYPE:
+        if fk_target and fk_target in entities:
             rel_name = name[:-3] if name.endswith("_id") else fk_target
-            rel_type = TAG_TO_TYPE[fk_target]
+            rel_type = _type_name(entities[fk_target])
             lines.append(f"  {rel_name}: {rel_type}")
 
     # Reverse edges: child collections
     for child_tag, fk_field in reverse_map.get(tag, []):
-        child_type = TAG_TO_TYPE[child_tag]
-        plural = TAG_TO_PLURAL[child_tag]
-        lines.append(f"  {plural}(limit: Int, skip: Int): [{child_type}!]!")
+        child_type = _type_name(entities[child_tag])
+        child_plural = _plural(entities[child_tag])
+        lines.append(f"  {child_plural}(limit: Int, skip: Int): [{child_type}!]!")
 
     lines.append("}")
     return "\n".join(lines)
@@ -206,7 +164,7 @@ def generate_where_input(tag, entity):
     Only queryable fields get filter predicates. Includes negation,
     suffix, fold, and nil operators alongside the standard set.
     """
-    type_name = TAG_TO_TYPE[tag]
+    type_name = _type_name(entity)
     lines = [f"input {type_name}Where {{"]
 
     for field in entity["fields"]:
@@ -255,7 +213,7 @@ def generate_connection_types(entities):
     parts.append("")
 
     for tag in entities:
-        type_name = TAG_TO_TYPE[tag]
+        type_name = _type_name(entities[tag])
 
         # Edge type
         parts.append(f"type {type_name}Edge {{")
@@ -284,9 +242,10 @@ def generate_query_type(entities):
     lines = ["type Query {"]
 
     for tag in entities:
-        type_name = TAG_TO_TYPE[tag]
-        singular = TAG_TO_SINGULAR[tag]
-        plural = TAG_TO_PLURAL[tag]
+        entity = entities[tag]
+        type_name = _type_name(entity)
+        singular = _singular(entity)
+        plural = _plural(entity)
 
         # Detail query
         lines.append(f"  {singular}(id: Int!): {type_name}")
@@ -303,18 +262,20 @@ def generate_query_type(entities):
         )
 
         # PDB+ naming aliases (only for entities that differ)
-        alias_s = TAG_TO_ALIAS_SINGULAR.get(tag)
-        alias_p = TAG_TO_ALIAS_PLURAL.get(tag)
-        if alias_s:
-            lines.append(f"  {alias_s}(id: Int!): {type_name}")
-        if alias_p:
-            lines.append(f"  {alias_p}(where: {type_name}Where, limit: Int, skip: Int): [{type_name}!]!")
-            lines.append(
-                f"  {alias_p}Connection("
-                f"after: String, first: Int, before: String, last: Int, "
-                f"where: {type_name}Where"
-                f"): {type_name}Connection!"
-            )
+        entity_aliases = _aliases(entity)
+        if entity_aliases:
+            alias_s = entity_aliases.get("singular")
+            alias_p = entity_aliases.get("plural")
+            if alias_s:
+                lines.append(f"  {alias_s}(id: Int!): {type_name}")
+            if alias_p:
+                lines.append(f"  {alias_p}(where: {type_name}Where, limit: Int, skip: Int): [{type_name}!]!")
+                lines.append(
+                    f"  {alias_p}Connection("
+                    f"after: String, first: Int, before: String, last: Int, "
+                    f"where: {type_name}Where"
+                    f"): {type_name}Connection!"
+                )
 
     # Convenience query for ASN lookup
     lines.append("  networkByAsn(asn: Int!): Network")
@@ -337,7 +298,7 @@ def generate_sdl(entities, reverse_map):
     parts.append("")
 
     for tag, entity in entities.items():
-        parts.append(generate_type(tag, entity, reverse_map))
+        parts.append(generate_type(tag, entity, reverse_map, entities))
         parts.append("")
         parts.append(generate_where_input(tag, entity))
         parts.append("")
@@ -608,20 +569,23 @@ def generate_resolvers_js(entities, reverse_map):
     # Query resolvers
     lines.append('    Query: {')
     for tag in entities:
-        singular = TAG_TO_SINGULAR[tag]
-        plural = TAG_TO_PLURAL[tag]
+        entity = entities[tag]
+        singular = _singular(entity)
+        plural = _plural(entity)
         lines.append(f"        {singular}: detailResolver('{tag}'),")
         lines.append(f"        {plural}: listResolver('{tag}'),")
         lines.append(f"        {plural}Connection: connectionResolver('{tag}'),")
 
         # Aliases
-        alias_s = TAG_TO_ALIAS_SINGULAR.get(tag)
-        alias_p = TAG_TO_ALIAS_PLURAL.get(tag)
-        if alias_s:
-            lines.append(f"        {alias_s}: detailResolver('{tag}'),")
-        if alias_p:
-            lines.append(f"        {alias_p}: listResolver('{tag}'),")
-            lines.append(f"        {alias_p}Connection: connectionResolver('{tag}'),")
+        entity_aliases = _aliases(entity)
+        if entity_aliases:
+            alias_s = entity_aliases.get("singular")
+            alias_p = entity_aliases.get("plural")
+            if alias_s:
+                lines.append(f"        {alias_s}: detailResolver('{tag}'),")
+            if alias_p:
+                lines.append(f"        {alias_p}: listResolver('{tag}'),")
+                lines.append(f"        {alias_p}Connection: connectionResolver('{tag}'),")
 
     lines.append("        networkByAsn: async (_parent, args, ctx) => {")
     lines.append("            const entity = ENTITIES['net'];")
@@ -635,7 +599,7 @@ def generate_resolvers_js(entities, reverse_map):
 
     # Type resolvers for FK fields + reverse edges
     for tag, entity in entities.items():
-        type_name = TAG_TO_TYPE[tag]
+        type_name = _type_name(entity)
         fk_fields = [f for f in entity["fields"] if "foreignKey" in f]
         rev_edges = reverse_map.get(tag, [])
 
@@ -647,7 +611,7 @@ def generate_resolvers_js(entities, reverse_map):
         # Forward FK resolvers
         for field in fk_fields:
             fk_target = field["foreignKey"]
-            if fk_target not in TAG_TO_TYPE:
+            if fk_target not in entities:
                 continue
             name = field["name"]
             rel_name = name[:-3] if name.endswith("_id") else fk_target
@@ -655,7 +619,7 @@ def generate_resolvers_js(entities, reverse_map):
 
         # Reverse edge resolvers
         for child_tag, fk_field in rev_edges:
-            plural = TAG_TO_PLURAL[child_tag]
+            plural = _plural(entities[child_tag])
             lines.append(f"        {plural}: reverseEdgeResolver('{fk_field}', '{child_tag}'),")
 
         lines.append('    },')

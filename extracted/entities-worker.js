@@ -22,6 +22,7 @@ export const VERSIONS = Object.freeze({
 const _entity_org = {
     tag: "org",
     table: "peeringdb_organization",
+    naming: Object.freeze({"type": "Organization", "singular": "organization", "plural": "organizations", "subresource": "organization", "label": "Organization"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -68,6 +69,7 @@ const _entity_org = {
 const _entity_campus = {
     tag: "campus",
     table: "peeringdb_campus",
+    naming: Object.freeze({"type": "Campus", "singular": "campus", "plural": "campuses", "subresource": "campuses", "label": "Campus"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -106,6 +108,7 @@ const _entity_campus = {
 const _entity_fac = {
     tag: "fac",
     table: "peeringdb_facility",
+    naming: Object.freeze({"type": "Facility", "singular": "facility", "plural": "facilities", "subresource": "facilities", "label": "Facility"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -170,6 +173,7 @@ const _entity_fac = {
 const _entity_net = {
     tag: "net",
     table: "peeringdb_network",
+    naming: Object.freeze({"type": "Network", "singular": "network", "plural": "networks", "subresource": "networks", "label": "Network"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -235,6 +239,7 @@ const _entity_net = {
 const _entity_ix = {
     tag: "ix",
     table: "peeringdb_ix",
+    naming: Object.freeze({"type": "Exchange", "singular": "exchange", "plural": "exchanges", "subresource": "exchanges", "label": "Exchange", "aliases": {"singular": "internetExchange", "plural": "internetExchanges"}}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -292,6 +297,7 @@ const _entity_ix = {
 const _entity_carrier = {
     tag: "carrier",
     table: "peeringdb_carrier",
+    naming: Object.freeze({"type": "Carrier", "singular": "carrier", "plural": "carriers", "subresource": "carriers", "label": "Carrier"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -327,6 +333,7 @@ const _entity_carrier = {
 const _entity_carrierfac = {
     tag: "carrierfac",
     table: "peeringdb_ix_carrier_facility",
+    naming: Object.freeze({"type": "CarrierFacility", "singular": "carrierFacility", "plural": "carrierFacilities", "subresource": "carrier-facilities", "label": "Carrier Facility"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -352,6 +359,7 @@ const _entity_carrierfac = {
 const _entity_ixfac = {
     tag: "ixfac",
     table: "peeringdb_ix_facility",
+    naming: Object.freeze({"type": "ExchangeFacility", "singular": "exchangeFacility", "plural": "exchangeFacilities", "subresource": "exchange-facilities", "label": "Exchange Facility", "aliases": {"singular": "ixFacility", "plural": "ixFacilities"}}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -379,6 +387,7 @@ const _entity_ixfac = {
 const _entity_ixlan = {
     tag: "ixlan",
     table: "peeringdb_ixlan",
+    naming: Object.freeze({"type": "ExchangeLan", "singular": "exchangeLan", "plural": "exchangeLans", "subresource": "exchange-lans", "label": "Exchange LAN", "aliases": {"singular": "ixLan", "plural": "ixLans"}}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -415,6 +424,7 @@ const _entity_ixlan = {
 const _entity_ixpfx = {
     tag: "ixpfx",
     table: "peeringdb_ixlan_prefix",
+    naming: Object.freeze({"type": "ExchangePrefix", "singular": "exchangePrefix", "plural": "exchangePrefixes", "subresource": "exchange-prefixes", "label": "Exchange Prefix", "aliases": {"singular": "ixPrefix", "plural": "ixPrefixes"}}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -442,6 +452,7 @@ const _entity_ixpfx = {
 const _entity_poc = {
     tag: "poc",
     table: "peeringdb_network_contact",
+    naming: Object.freeze({"type": "PointOfContact", "singular": "pointOfContact", "plural": "pointsOfContact", "subresource": "contacts", "label": "Point of Contact", "aliases": {"singular": "poc", "plural": "pocs"}}),
     _restricted: true,
     _anonFilter: { field: "visible", value: "Public" },
     fields: [
@@ -471,6 +482,7 @@ const _entity_poc = {
 const _entity_netfac = {
     tag: "netfac",
     table: "peeringdb_network_facility",
+    naming: Object.freeze({"type": "NetworkFacility", "singular": "networkFacility", "plural": "networkFacilities", "subresource": "network-facilities", "label": "Network Facility"}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [
@@ -502,6 +514,7 @@ const _entity_netfac = {
 const _entity_netixlan = {
     tag: "netixlan",
     table: "peeringdb_network_ixlan",
+    naming: Object.freeze({"type": "NetworkExchangeLan", "singular": "networkExchangeLan", "plural": "networkExchangeLans", "subresource": "network-exchange-lans", "label": "Network Exchange LAN", "aliases": {"singular": "networkIxLan", "plural": "networkIxLans"}}),
     _restricted: false,
     _anonFilter: undefined,
     fields: [

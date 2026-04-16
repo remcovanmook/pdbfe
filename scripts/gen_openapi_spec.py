@@ -33,22 +33,17 @@ TYPE_MAP = {
 # Media type constant used across response definitions.
 MEDIA_JSON = "application/json"
 
-# Maps entity tags to human-readable names (singular).
-TAG_TO_LABEL = {
-    "org": "Organization",
-    "campus": "Campus",
-    "fac": "Facility",
-    "net": "Network",
-    "ix": "Exchange",
-    "carrier": "Carrier",
-    "carrierfac": "Carrier Facility",
-    "ixfac": "Exchange Facility",
-    "ixlan": "Exchange LAN",
-    "ixpfx": "Exchange Prefix",
-    "poc": "Point of Contact",
-    "netfac": "Network Facility",
-    "netixlan": "Network Exchange LAN",
-}
+# ── Naming helpers ───────────────────────────────────────────────────────────
+# Read from entities.json's naming property (set by parse_django_models.py).
+
+def _label(entity):
+    """Return the human-readable label for an entity."""
+    return entity.get("naming", {}).get("label", entity.get("tag", "Unknown"))
+
+
+def _subresource(entity):
+    """Return the REST sub-resource URL slug for an entity."""
+    return entity.get("naming", {}).get("subresource", entity.get("tag", "unknown"))
 
 # Filter operators by field type, matching PeeringDB conventions.
 FILTER_OPS = {
@@ -56,23 +51,6 @@ FILTER_OPS = {
     "number":   ["", "__lt", "__gt", "__lte", "__gte", "__in"],
     "boolean":  [""],
     "datetime": ["", "__lt", "__gt", "__lte", "__gte"],
-}
-
-# Maps entity tags to descriptive sub-resource URL slugs.
-TAG_TO_SUBRESOURCE = {
-    "org": "organization",
-    "campus": "campuses",
-    "fac": "facilities",
-    "net": "networks",
-    "ix": "exchanges",
-    "carrier": "carriers",
-    "carrierfac": "carrier-facilities",
-    "ixfac": "exchange-facilities",
-    "ixlan": "exchange-lans",
-    "ixpfx": "exchange-prefixes",
-    "poc": "contacts",
-    "netfac": "network-facilities",
-    "netixlan": "network-exchange-lans",
 }
 
 
@@ -228,7 +206,7 @@ def build_spec(entities, schema_version):
     common_params = build_common_params()
 
     for tag, entity in entities.items():
-        label = TAG_TO_LABEL.get(tag, tag)
+        label = _label(entity)
         schema_name = label.replace(" ", "")
 
         # Build the entity schema
@@ -340,11 +318,12 @@ def build_spec(entities, schema_version):
         # Forward FKs: /v1/{tag}/{id}/{relation} → parent entity
         for field in entity["fields"]:
             fk_target = field.get("foreignKey")
-            if not fk_target or fk_target not in TAG_TO_LABEL:
+            if not fk_target or fk_target not in entities:
                 continue
 
-            fk_label = TAG_TO_LABEL[fk_target]
-            rel_name = TAG_TO_SUBRESOURCE.get(fk_target, fk_target)
+            fk_entity = entities[fk_target]
+            fk_label = _label(fk_entity)
+            rel_name = _subresource(fk_entity)
             sub_path = f"/v1/{tag}/{{id}}/{rel_name}"
 
             fk_schema_name = f"{fk_target.capitalize()}DetailEnvelope"
@@ -394,8 +373,8 @@ def build_spec(entities, schema_version):
                 if fk_target != tag:
                     continue
 
-                child_label = TAG_TO_LABEL.get(child_tag, child_tag)
-                rel_name = TAG_TO_SUBRESOURCE.get(child_tag, child_tag)
+                child_label = _label(child_entity)
+                rel_name = _subresource(child_entity)
                 sub_path = f"/v1/{tag}/{{id}}/{rel_name}"
 
                 # Avoid duplicate paths (e.g. fac←netixlan via net_side_id and ix_side_id)

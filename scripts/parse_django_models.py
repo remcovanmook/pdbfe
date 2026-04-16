@@ -88,6 +88,116 @@ FIELD_TYPE_MAP = {
 
 TABLE_PREFIX = "peeringdb_"
 
+# ── Entity naming ────────────────────────────────────────────────────────────
+
+# Single source of truth for all entity names used by codegen and runtime.
+# Each entry maps a tag to its naming metadata:
+#   - type:          GraphQL type name (PascalCase)
+#   - singular:      GraphQL singular query name
+#   - plural:        GraphQL plural query / reverse-edge field name
+#   - subresource:   REST sub-resource URL slug
+#   - label:         Human-readable label for OpenAPI tags and UI
+#   - aliases:       Optional PDB+ naming aliases {singular: str, plural: str}
+ENTITY_NAMING = {
+    "org": {
+        "type": "Organization",
+        "singular": "organization",
+        "plural": "organizations",
+        "subresource": "organization",
+        "label": "Organization",
+    },
+    "campus": {
+        "type": "Campus",
+        "singular": "campus",
+        "plural": "campuses",
+        "subresource": "campuses",
+        "label": "Campus",
+    },
+    "fac": {
+        "type": "Facility",
+        "singular": "facility",
+        "plural": "facilities",
+        "subresource": "facilities",
+        "label": "Facility",
+    },
+    "net": {
+        "type": "Network",
+        "singular": "network",
+        "plural": "networks",
+        "subresource": "networks",
+        "label": "Network",
+    },
+    "ix": {
+        "type": "Exchange",
+        "singular": "exchange",
+        "plural": "exchanges",
+        "subresource": "exchanges",
+        "label": "Exchange",
+        "aliases": {"singular": "internetExchange", "plural": "internetExchanges"},
+    },
+    "carrier": {
+        "type": "Carrier",
+        "singular": "carrier",
+        "plural": "carriers",
+        "subresource": "carriers",
+        "label": "Carrier",
+    },
+    "carrierfac": {
+        "type": "CarrierFacility",
+        "singular": "carrierFacility",
+        "plural": "carrierFacilities",
+        "subresource": "carrier-facilities",
+        "label": "Carrier Facility",
+    },
+    "ixfac": {
+        "type": "ExchangeFacility",
+        "singular": "exchangeFacility",
+        "plural": "exchangeFacilities",
+        "subresource": "exchange-facilities",
+        "label": "Exchange Facility",
+        "aliases": {"singular": "ixFacility", "plural": "ixFacilities"},
+    },
+    "ixlan": {
+        "type": "ExchangeLan",
+        "singular": "exchangeLan",
+        "plural": "exchangeLans",
+        "subresource": "exchange-lans",
+        "label": "Exchange LAN",
+        "aliases": {"singular": "ixLan", "plural": "ixLans"},
+    },
+    "ixpfx": {
+        "type": "ExchangePrefix",
+        "singular": "exchangePrefix",
+        "plural": "exchangePrefixes",
+        "subresource": "exchange-prefixes",
+        "label": "Exchange Prefix",
+        "aliases": {"singular": "ixPrefix", "plural": "ixPrefixes"},
+    },
+    "poc": {
+        "type": "PointOfContact",
+        "singular": "pointOfContact",
+        "plural": "pointsOfContact",
+        "subresource": "contacts",
+        "label": "Point of Contact",
+        "aliases": {"singular": "poc", "plural": "pocs"},
+    },
+    "netfac": {
+        "type": "NetworkFacility",
+        "singular": "networkFacility",
+        "plural": "networkFacilities",
+        "subresource": "network-facilities",
+        "label": "Network Facility",
+    },
+    "netixlan": {
+        "type": "NetworkExchangeLan",
+        "singular": "networkExchangeLan",
+        "plural": "networkExchangeLans",
+        "subresource": "network-exchange-lans",
+        "label": "Network Exchange LAN",
+        "aliases": {"singular": "networkIxLan", "plural": "networkIxLans"},
+    },
+}
+
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -1132,9 +1242,11 @@ def _build_worker_entities(merged_entities, overrides):
     """
     entities = {}
     for tag, schema in merged_entities.items():
+        naming = ENTITY_NAMING.get(tag, {})
         entities[tag] = {
             "tag": tag,
             "table": schema["table"],
+            "naming": naming,
             "fields": _build_entity_fields(tag, schema, overrides),
             "_restricted": schema.get("restricted", False),
             "_anonFilter": schema.get("anonFilter"),
@@ -1279,6 +1391,7 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
         lines.append(f"const {var_name} = {{")
         lines.append(f"    tag: {json.dumps(tag)},")
         lines.append(f"    table: {json.dumps(entity['table'])},")
+        lines.append(f"    naming: Object.freeze({json.dumps(entity['naming'])}),")
         lines.append(f"    _restricted: {json.dumps(entity['_restricted'])},")
         lines.append(f"    _anonFilter: {anon_filter_str},")
         lines.append("    fields: [")
@@ -1424,6 +1537,10 @@ def main():
     print("Merging models + spec...")
     merged = merge_models_and_spec(model_entities, spec_entities)
     print(f"  {len(merged)} entities in final schema")
+
+    # Inject naming metadata from ENTITY_NAMING into each entity
+    for tag, entity in merged.items():
+        entity["naming"] = ENTITY_NAMING.get(tag, {})
 
     # ── Output: entities.json ───────────────────────────────────────────
     schema_version = f"{django_peeringdb_version}+{peeringdb_version}"
