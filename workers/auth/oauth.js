@@ -291,8 +291,8 @@ export function handleAuthPreflight(env) {
 function extractCookie(request, name) {
     const header = request.headers.get('Cookie');
     if (!header) return null;
-    const re = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`); // ap-ok: auth worker only, not API hot path
-    const match = header.match(re);
+    const re = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]+)`); // ap-ok: auth worker only, not API hot path
+    const match = re.exec(header);
     return match ? match[1].trim() : null;
 }
 

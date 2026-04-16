@@ -39,7 +39,7 @@ export function parseQueryFilters(queryString) {
 
     if (!queryString) return { filters, depth, limit, skip, since, sort, fields, pdbfe };
 
-    const pairs = queryString.indexOf('&') !== -1
+    const pairs = queryString.includes('&')
         ? tokenizeString(queryString, '&', -1)
         : { p0: queryString };
 

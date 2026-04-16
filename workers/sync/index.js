@@ -33,6 +33,26 @@ const S3_MEDIA_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
 const LOGO_ENTITIES = new Set(['org', 'net', 'ix', 'fac', 'carrier', 'campus']);
 
 /**
+ * Coerces a single API field value to a D1-compatible SQL parameter.
+ * @param {string} col - Column name.
+ * @param {any} v - Raw value from the API row.
+ * @param {Set<string>} notNullStrings - Column names that are NOT NULL strings.
+ * @returns {string|number|null} D1-compatible parameter value.
+ */
+function coerceValue(col, v, notNullStrings) {
+    if (v === undefined || v === null) {
+        // Django CharField(blank=True, null=False) stores "" not NULL.
+        // Coerce to "" for NOT NULL string columns to match upstream
+        // and satisfy the D1 schema constraint.
+        return notNullStrings.has(col) ? '' : null;
+    }
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    if (typeof v === 'number') return v;
+    if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+}
+
+/**
  * Builds an INSERT OR REPLACE statement for a single row.
  * Handles all value types: null, boolean, number, string, array/object.
  *
@@ -52,19 +72,7 @@ export function buildUpsert(table, columns, row, notNullStrings) {
     const quotedCols = columns.map(c => `"${c}"`).join(',');
     const sql = `INSERT OR REPLACE INTO "${table}" (${quotedCols}) VALUES (${placeholders})`;
 
-    const params = columns.map(col => {
-        const v = row[col];
-        if (v === undefined || v === null) {
-            // Django CharField(blank=True, null=False) stores "" not NULL.
-            // Coerce to "" for NOT NULL string columns to match upstream
-            // and satisfy the D1 schema constraint.
-            return notNullStrings.has(col) ? '' : null;
-        }
-        if (typeof v === 'boolean') return v ? 1 : 0;
-        if (typeof v === 'number') return v;
-        if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
-        return String(v);
-    });
+    const params = columns.map(col => coerceValue(col, row[col], notNullStrings));
 
     return { sql, params };
 }
@@ -98,7 +106,7 @@ export async function ensureColumns(db, table, apiColumns) {
         // Upstream PeeringDB JSON keys are trusted but not controlled — a
         // compromised or buggy upstream could inject arbitrary keys that
         // result in SQL injection via ALTER TABLE if not validated.
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(col)) {
+        if (!/^[a-zA-Z_]\w*$/.test(col)) {
             console.error(`[sync] rejected invalid column name: ${JSON.stringify(col)} on ${table}`);
             continue;
         }
@@ -389,9 +397,10 @@ export default {
             }
         }
 
-        const summary = results.map(r =>
-            `${r.tag}: +${r.updated} -${r.deleted}${r.error ? ` ERR:${r.error}` : ''}`
-        ).join(', ');
+        const summary = results.map(r => {
+            const errSuffix = r.error ? ` ERR:${r.error}` : '';
+            return `${r.tag}: +${r.updated} -${r.deleted}${errSuffix}`;
+        }).join(', ');
 
         const logoInfo = logoSummary.length > 0 ? ` | logos: ${logoSummary.join(', ')}` : '';
         console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}`);

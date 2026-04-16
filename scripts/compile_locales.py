@@ -229,7 +229,7 @@ def main():
 
     for locale_dir, short_code in sorted(LANGUAGES.items()):
         print(f"  {locale_dir} -> {short_code}.json ...", end=" ", flush=True)
-        included, from_overrides, upstream_total = compile_locale(locale_dir, short_code, ui_strings)
+        included, from_overrides, _ = compile_locale(locale_dir, short_code, ui_strings)
         if included < 0:
             print("SKIP (no translations found)")
             skipped += 1
