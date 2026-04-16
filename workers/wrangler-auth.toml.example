@@ -2,6 +2,10 @@ name = "pdbfe-auth"
 main = "auth/index.js"
 compatibility_date = "2026-03-18"
 
+routes = [
+  { pattern = "auth.<your-domain>/*", zone_name = "<your-domain>" }
+]
+
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "<your-sessions-kv-namespace-id>"
@@ -23,5 +27,5 @@ database_id = "<your-users-d1-database-id>"
 # FRONTEND_ORIGIN = "http://localhost:8080"
 
 [vars]
-OAUTH_REDIRECT_URI = "https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback"
-FRONTEND_ORIGIN = "https://<your-pages-project>.pages.dev"
+OAUTH_REDIRECT_URI = "https://auth.<your-domain>/auth/callback"
+FRONTEND_ORIGIN = "https://<your-domain>"
