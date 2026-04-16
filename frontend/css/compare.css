@@ -18,20 +18,8 @@
     padding-top: var(--space-md);
 }
 
-/* Entity select row: badge + search input */
-.compare-input-row {
-    display: flex;
-    gap: var(--space-sm);
-    align-items: start;
-}
-
-.compare-input-row .search-input {
-    flex: 1;
-}
-
 /* Wrap the search input so the dropdown can position against it */
 .compare-search-wrap {
-    flex: 1;
     position: relative;
 }
 

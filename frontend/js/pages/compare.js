@@ -2,12 +2,14 @@
  * @fileoverview Compare page renderer.
  *
  * Displays an entity overlap analysis between two PeeringDB entities.
- * The user selects two entities via side-by-side search inputs (each
- * prefixed with an entity badge), and the page shows shared and
- * exclusive resources using <pdb-table> components.
+ * The user selects two entities via side-by-side typeahead search inputs,
+ * and the page shows shared and exclusive resources using <pdb-table>.
+ *
+ * Entity type is inferred from the selected search result — no separate
+ * type selector needed. The typeahead is filtered to only return types
+ * that support comparison (net, ix).
  *
  * URL: /compare?a={tag}:{id}&b={tag}:{id}
- * If query params are missing, shows the selection form.
  */
 
 import { fetchCompare, searchWithAsn } from '../api.js';
@@ -18,7 +20,13 @@ import {
 import { t } from '../i18n.js';
 
 /**
- * Entity type labels for the selector dropdowns.
+ * Entity types that support comparison — used to filter typeahead results.
+ * @type {string[]}
+ */
+const COMPARE_TYPES = ['net', 'ix'];
+
+/**
+ * Display labels keyed by entity tag.
  * @type {Record<string, string>}
  */
 const TYPE_LABELS = { net: 'Network', ix: 'Exchange' };
@@ -43,8 +51,8 @@ export async function renderCompare(params) {
 
 /**
  * Renders the entity selection form with two side-by-side search inputs.
- * Uses card, detail-header, entity-badge, and search-input classes from
- * the existing design system — no custom heading or input styles.
+ * The type is inferred from the selected typeahead result — each result
+ * shows an entity badge indicating its type.
  *
  * @param {HTMLElement} app - App container element.
  * @param {string} initialA - Pre-filled value for entity A.
@@ -87,7 +95,7 @@ function renderSelector(app, initialA, initialB) {
         }
     });
 
-    // Side-by-side grid
+    // Side-by-side grid — just two search inputs
     const grid = document.createElement('div');
     grid.className = 'compare-grid';
     grid.appendChild(createEntityInput('A', 'compare-a', initialA));
@@ -109,7 +117,7 @@ function renderSelector(app, initialA, initialB) {
     card.appendChild(cardBody);
     wrap.appendChild(card);
 
-    // Supported pairs hint — uses card__title style for muted small text
+    // Supported pairs hint
     const hint = document.createElement('p');
     hint.className = 'detail-header__subtitle';
     hint.style.textAlign = 'center';
@@ -121,9 +129,10 @@ function renderSelector(app, initialA, initialB) {
 }
 
 /**
- * Creates an entity input group with an entity badge, search input,
- * typeahead dropdown, and hidden ref field. Each group is one column
- * in the side-by-side grid.
+ * Creates an entity input group with a search input that doubles as the
+ * type selector. The typeahead only returns compare-supported types
+ * (net, ix), and each dropdown result shows an entity badge so the
+ * user can distinguish types visually.
  *
  * @param {string} label - Display label (e.g. "A", "B").
  * @param {string} prefix - ID prefix for the input elements.
@@ -133,32 +142,14 @@ function renderSelector(app, initialA, initialB) {
 function createEntityInput(label, prefix, initialRef) {
     const group = document.createElement('div');
 
-    // Section label — reuses card__title style
+    // Section label
     const lbl = document.createElement('div');
     lbl.className = 'card__title';
     lbl.style.marginBottom = 'var(--space-sm)';
     lbl.textContent = `${t('Entity')} ${label}`;
     group.appendChild(lbl);
 
-    // Badge + type selector + search input row
-    const row = document.createElement('div');
-    row.className = 'compare-input-row';
-
-    // Type selector (as a badge-styled select)
-    const typeSelect = document.createElement('select');
-    typeSelect.id = `${prefix}-type`;
-    typeSelect.className = 'search-input';
-    typeSelect.style.width = '130px';
-    typeSelect.style.flex = 'none';
-    for (const [tag, name] of Object.entries(TYPE_LABELS)) {
-        const opt = document.createElement('option');
-        opt.value = tag;
-        opt.textContent = t(name);
-        typeSelect.appendChild(opt);
-    }
-    row.appendChild(typeSelect);
-
-    // Search input with typeahead — reuses search-input class
+    // Search input with typeahead
     const searchWrap = document.createElement('div');
     searchWrap.className = 'compare-search-wrap';
 
@@ -175,8 +166,7 @@ function createEntityInput(label, prefix, initialRef) {
     dropdown.className = 'search-dropdown';
     searchWrap.appendChild(dropdown);
 
-    row.appendChild(searchWrap);
-    group.appendChild(row);
+    group.appendChild(searchWrap);
 
     // Hidden field to store the resolved entity ref
     const refInput = document.createElement('input');
@@ -188,18 +178,22 @@ function createEntityInput(label, prefix, initialRef) {
     }
     group.appendChild(refInput);
 
-    // Selection confirmation — shows badge + entity name
+    // Selection confirmation — shows badge + entity name after pick
     const selected = document.createElement('div');
     selected.className = 'compare-selected';
     selected.id = `${prefix}-selected`;
     group.appendChild(selected);
 
-    // Wire up typeahead
+    // Wire up typeahead — filtered to COMPARE_TYPES only
     let debounceTimer = 0;
     let abortCtrl = /** @type {AbortController|null} */ (null);
 
     input.addEventListener('input', () => {
         clearTimeout(debounceTimer);
+        // Clear the previous selection when the user edits
+        refInput.value = '';
+        selected.replaceChildren();
+
         const q = input.value.trim();
         if (q.length < 2) {
             dropdown.classList.remove('is-open');
@@ -209,16 +203,17 @@ function createEntityInput(label, prefix, initialRef) {
             if (abortCtrl) abortCtrl.abort();
             abortCtrl = new AbortController();
             try {
-                const results = await searchWithAsn(q, abortCtrl.signal);
-                renderDropdown(dropdown, results, typeSelect.value, (tag, id, name) => {
+                const results = await searchWithAsn(q, abortCtrl.signal, COMPARE_TYPES);
+                renderDropdown(dropdown, results, (tag, id, name) => {
                     refInput.value = `${tag}:${id}`;
                     input.value = name;
                     dropdown.classList.remove('is-open');
                     // Show badge + name in selection confirmation
                     selected.replaceChildren();
                     selected.appendChild(createEntityBadge(tag));
-                    selected.appendChild(document.createTextNode(` ${name}`));
-                    if (TYPE_LABELS[tag]) typeSelect.value = tag;
+                    const desc = document.createElement('span');
+                    desc.textContent = ` ${name}`;
+                    selected.appendChild(desc);
                 });
             } catch { /* aborted or network error */ }
         }, 250);
@@ -233,20 +228,18 @@ function createEntityInput(label, prefix, initialRef) {
 
 /**
  * Renders typeahead search results into a dropdown using the
- * existing search-dropdown structure from index.css.
+ * search-dropdown structure from index.css. Results are grouped by
+ * type, each item prefixed with an entity badge.
  *
  * @param {HTMLElement} dropdown - Dropdown container.
  * @param {Record<string, any[]>} results - Search results grouped by type.
- * @param {string} preferredType - Currently selected entity type.
  * @param {(tag: string, id: number, name: string) => void} onSelect - Selection callback.
  */
-function renderDropdown(dropdown, results, preferredType, onSelect) {
+function renderDropdown(dropdown, results, onSelect) {
     dropdown.replaceChildren();
 
-    const types = [preferredType, ...Object.keys(TYPE_LABELS).filter(k => k !== preferredType)];
-
     let hasResults = false;
-    for (const tag of types) {
+    for (const tag of COMPARE_TYPES) {
         const items = results[tag];
         if (!items || items.length === 0) continue;
         hasResults = true;
@@ -340,7 +333,7 @@ async function renderResults(app, refA, refB) {
             header.appendChild(asnB);
         }
 
-        // "New comparison" link in header
+        // "New comparison" link
         const newLink = document.createElement('a');
         newLink.href = '/compare';
         newLink.dataset.link = '';
@@ -350,7 +343,6 @@ async function renderResults(app, refA, refB) {
 
         wrap.appendChild(header);
 
-        // Render sections based on the pair type
         const pairType = `${data.a.tag}+${data.b.tag}`;
         if (pairType === 'net+net') {
             renderNetNetResults(wrap, data);
