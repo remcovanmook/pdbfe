@@ -234,7 +234,7 @@ export function wrapHandler(handler, serviceName) {
             } catch (err) {
                 console.error(err.stack || err);
                 response = new Response(
-                    JSON.stringify({ error: "Internal Server Error" }) + "\n",
+                    JSON.stringify({ error: "Internal Server Error", stack: err.stack }) + "\n",
                     {
                         status: 500,
                         headers: {

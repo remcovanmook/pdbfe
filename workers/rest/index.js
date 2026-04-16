@@ -27,7 +27,7 @@ import { serveJSON, H_API_AUTH, H_API_ANON } from '../api/http.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { normaliseCacheKey } from '../core/cache.js';
 import { initL2 } from '../core/l2cache.js';
-import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
+import { createRateLimiter } from '../core/ratelimit.js';
 import { withEdgeSWR } from '../api/swr.js';
 import { EMPTY_ENVELOPE } from '../core/pipeline.js';
 import { getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
@@ -128,7 +128,8 @@ async function handleRequest(request, env, ctx) {
     const { authenticated, identity, rejection } = await resolveAuth(request, env);
     if (rejection) return jsonError(403, rejection);
 
-    const callerKey = identity || normaliseIP(request);
+    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
+    const callerKey = identity || clientIP;
     if (isRateLimited(callerKey, authenticated, Date.now())) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }

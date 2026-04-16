@@ -24,7 +24,7 @@ import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
-import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
+import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
 import GRAPHIQL_HTML from '../../frontend/api/graphql.html';
 
@@ -141,7 +141,8 @@ async function handleRequest(request, env, ctx) {
     if (rejection) return jsonError(403, rejection);
 
     // Rate limiting
-    const callerKey = identity || normaliseIP(request);
+    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
+    const callerKey = identity || clientIP;
     const now = Date.now();
     if (isRateLimited(callerKey, authenticated, now)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
