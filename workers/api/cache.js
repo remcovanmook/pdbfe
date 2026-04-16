@@ -88,6 +88,10 @@ for (const tag of ENTITY_TAGS) {
 // Special cache for as_set lookups
 caches["as_set"] = LRUCache(DEFAULT_TIER.slots, DEFAULT_TIER.maxSize, DETAIL_TTL);
 
+// Compare endpoint cache — overlap results are expensive to compute
+// but stable between syncs. Uses DETAIL_TTL (60 min) with SWR.
+caches["compare"] = LRUCache(DEFAULT_TIER.slots, DEFAULT_TIER.maxSize, DETAIL_TTL);
+
 /**
  * Returns the LRU cache instance for the given entity tag.
  *

@@ -1,33 +1,34 @@
-/* ── Compare page styles ─────────────────────────────────────────── */
+/* ── Compare page — layout-only additions ────────────────────────
+   Tables, cards, stats bars, badges, dropdowns are all handled by
+   the existing design system in index.css. This file covers only
+   the compare-specific form layout and page structure.
+   ───────────────────────────────────────────────────────────────── */
 
 .compare-page {
-    max-width: 1200px;
+    max-width: var(--content-max);
     margin: 0 auto;
     padding: var(--space-lg) var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
 }
 
 .compare-page h1 {
-    font-size: 1.75rem;
-    margin-bottom: var(--space-xs);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
 }
 
 .compare-page__desc {
     color: var(--text-secondary);
-    margin-bottom: var(--space-lg);
+    margin: 0;
 }
 
 .compare-page__hint {
     color: var(--text-muted);
-    font-size: 0.85rem;
-    margin-top: var(--space-md);
+    font-size: 0.8125rem;
     text-align: center;
-}
-
-.compare-page__back {
-    display: inline-block;
-    color: var(--accent);
-    margin-bottom: var(--space-lg);
-    font-size: 0.9rem;
 }
 
 /* ── Selection form ──────────────────────────────────────────────── */
@@ -36,8 +37,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-lg);
-    max-width: 600px;
-    margin: 0 auto;
 }
 
 .compare-form__group {
@@ -48,23 +47,27 @@
 
 .compare-form__label {
     font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--text-primary);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
 }
 
 .compare-form__row {
     display: flex;
-    gap: var(--space-xs);
+    gap: var(--space-sm);
 }
 
 .compare-form__type {
-    width: 120px;
-    padding: var(--space-xs) var(--space-sm);
+    width: 130px;
+    height: 36px;
+    padding: 0 var(--space-sm);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--bg-input);
     color: var(--text-primary);
-    font-size: 0.9rem;
+    font-family: inherit;
+    font-size: 0.875rem;
 }
 
 .compare-form__search-wrapper {
@@ -72,233 +75,39 @@
     position: relative;
 }
 
-.compare-form__search {
-    width: 100%;
-    padding: var(--space-xs) var(--space-sm);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-input);
-    color: var(--text-primary);
-    font-size: 0.9rem;
-    box-sizing: border-box;
-}
+/* Reuses .search-input from index.css for the input itself.
+   The dropdown reuses .search-dropdown + .is-open toggle. */
 
-.compare-form__search:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-muted);
-}
-
-.compare-form__dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-md);
-    z-index: 100;
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-.compare-form__dropdown-item {
+.compare-form__selected {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-    cursor: pointer;
-    transition: background-color var(--transition-fast);
-}
-
-.compare-form__dropdown-item:hover {
-    background: var(--bg-hover);
-}
-
-.compare-form__dropdown-name {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.compare-form__dropdown-asn {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-}
-
-.compare-form__selected {
-    font-size: 0.85rem;
+    font-size: 0.8125rem;
     color: var(--accent);
-    min-height: 1.2em;
+    min-height: 1.5em;
 }
 
 .compare-form__submit {
     align-self: center;
     padding: var(--space-sm) var(--space-xl);
     background: var(--accent);
-    color: var(--bg-body);
+    color: #fff;
     border: none;
-    border-radius: var(--radius-sm);
-    font-size: 1rem;
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 0.9375rem;
     font-weight: 600;
     cursor: pointer;
     transition: opacity var(--transition-fast);
 }
 
 .compare-form__submit:hover {
-    opacity: 0.9;
-}
-
-/* ── Results header ──────────────────────────────────────────────── */
-
-.compare-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-lg);
-    margin-bottom: var(--space-md);
-    flex-wrap: wrap;
-}
-
-.compare-header__vs {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-}
-
-.compare-entity-card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-md) var(--space-lg);
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    min-width: 200px;
-}
-
-.compare-entity-card__name {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--accent);
-}
-
-.compare-entity-card__asn {
-    color: var(--text-secondary);
-    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 0.9rem;
-}
-
-/* ── Stats overview ──────────────────────────────────────────────── */
-
-.compare-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: var(--space-md);
-    margin-bottom: var(--space-xl);
-}
-
-.compare-stat-card {
-    text-align: center;
-    padding: var(--space-md) var(--space-sm);
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-}
-
-.compare-stat-card__value {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--accent);
-    line-height: 1;
-    margin-bottom: var(--space-xs);
-}
-
-.compare-stat-card__label {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* ── Result sections ─────────────────────────────────────────────── */
-
-.compare-section {
-    margin-bottom: var(--space-xl);
-}
-
-.compare-section__title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: var(--space-sm);
-    padding-bottom: var(--space-xs);
-    border-bottom: 2px solid var(--accent-muted);
-}
-
-/* ── Tables ───────────────────────────────────────────────────────── */
-
-.compare-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-}
-
-.compare-table th {
-    text-align: left;
-    padding: var(--space-xs) var(--space-sm);
-    background: var(--bg-surface);
-    border-bottom: 2px solid var(--border);
-    font-weight: 600;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    white-space: nowrap;
-}
-
-.compare-table td {
-    padding: var(--space-xs) var(--space-sm);
-    border-bottom: 1px solid var(--border-subtle);
-    vertical-align: middle;
-}
-
-.compare-table tbody tr:hover {
-    background: var(--bg-hover);
-}
-
-.compare-table a {
-    color: var(--accent);
+    opacity: 0.85;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────── */
 
-@media (max-width: 768px) {
-    .compare-header {
-        flex-direction: column;
-        gap: var(--space-sm);
-    }
-
-    .compare-entity-card {
-        min-width: unset;
-        width: 100%;
-        justify-content: center;
-    }
-
-    .compare-stats {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .compare-table {
-        display: block;
-        overflow-x: auto;
-    }
-
+@media (max-width: 640px) {
     .compare-form__row {
         flex-direction: column;
     }

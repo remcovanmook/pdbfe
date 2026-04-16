@@ -3,21 +3,25 @@
  *
  * Displays an entity overlap analysis between two PeeringDB entities.
  * The user selects two entities via search-style inputs, and the page
- * shows shared and exclusive resources in tabulated sections.
+ * shows shared and exclusive resources using <pdb-table> components.
  *
  * URL: /compare?a={tag}:{id}&b={tag}:{id}
  * If query params are missing, shows the selection form.
  */
 
-import { fetchCompare, searchWithAsn, SEARCH_ENTITIES } from '../api.js';
-import { createLoading, createError, createLink, createEntityBadge, formatSpeed } from '../render.js';
+import { fetchCompare, searchWithAsn } from '../api.js';
+import {
+    createLoading, createError, createLink, createEntityBadge,
+    createStatsBar, createEmptyState, formatSpeed
+} from '../render.js';
 import { t } from '../i18n.js';
 
 /**
  * Entity type labels for the selector dropdowns.
+ * Only types that support comparison are listed.
  * @type {Record<string, string>}
  */
-const TYPE_LABELS = { net: 'Network', ix: 'Exchange', fac: 'Facility' };
+const TYPE_LABELS = { net: 'Network', ix: 'Exchange' };
 
 /**
  * Renders the compare page into the app container.
@@ -42,6 +46,7 @@ export async function renderCompare(params) {
 /**
  * Renders the entity selection form with two search inputs and a
  * compare button. Each input has typeahead search functionality.
+ * Uses existing card/form design patterns from index.css.
  *
  * @param {HTMLElement} app - App container element.
  * @param {string} initialA - Pre-filled value for entity A.
@@ -59,6 +64,12 @@ function renderSelector(app, initialA, initialB) {
     desc.className = 'compare-page__desc';
     desc.textContent = t('Select two entities to see their shared and exclusive resources.');
     wrap.appendChild(desc);
+
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const cardBody = document.createElement('div');
+    cardBody.className = 'card__body';
 
     const form = document.createElement('form');
     form.className = 'compare-form';
@@ -80,7 +91,9 @@ function renderSelector(app, initialA, initialB) {
     btn.textContent = t('Compare');
     form.appendChild(btn);
 
-    wrap.appendChild(form);
+    cardBody.appendChild(form);
+    card.appendChild(cardBody);
+    wrap.appendChild(card);
 
     // Supported pairs hint
     const hint = document.createElement('p');
@@ -93,7 +106,8 @@ function renderSelector(app, initialA, initialB) {
 
 /**
  * Creates an entity input group with a type selector, search input,
- * and hidden ref field. The search input has basic typeahead.
+ * and hidden ref field. The search input has typeahead backed by
+ * searchWithAsn() from api.js.
  *
  * @param {string} label - Display label (e.g. "A", "B").
  * @param {string} prefix - ID prefix for the input elements.
@@ -131,15 +145,14 @@ function createEntityInput(label, prefix, initialRef) {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = `${prefix}-search`;
-    input.className = 'compare-form__search';
+    input.className = 'search-input';
     input.placeholder = t('Search by name or ASN...');
     input.autocomplete = 'off';
     searchWrapper.appendChild(input);
 
-    // Dropdown for results
+    // Dropdown for results — reuses the existing search-dropdown styling
     const dropdown = document.createElement('div');
-    dropdown.className = 'compare-form__dropdown';
-    dropdown.hidden = true;
+    dropdown.className = 'search-dropdown';
     searchWrapper.appendChild(dropdown);
 
     row.appendChild(searchWrapper);
@@ -151,12 +164,11 @@ function createEntityInput(label, prefix, initialRef) {
     refInput.id = `${prefix}-ref`;
     if (initialRef) {
         refInput.value = initialRef;
-        // Pre-fill the visible input with the ref for display
         input.value = initialRef;
     }
     group.appendChild(refInput);
 
-    // Selected entity display
+    // Selected entity display — uses entity badge
     const selectedDisplay = document.createElement('div');
     selectedDisplay.className = 'compare-form__selected';
     selectedDisplay.id = `${prefix}-selected`;
@@ -170,7 +182,7 @@ function createEntityInput(label, prefix, initialRef) {
         clearTimeout(debounceTimer);
         const q = input.value.trim();
         if (q.length < 2) {
-            dropdown.hidden = true;
+            dropdown.classList.remove('is-open');
             return;
         }
         debounceTimer = globalThis.setTimeout(async () => {
@@ -181,9 +193,11 @@ function createEntityInput(label, prefix, initialRef) {
                 renderDropdown(dropdown, results, typeSelect.value, (tag, id, name) => {
                     refInput.value = `${tag}:${id}`;
                     input.value = name;
-                    dropdown.hidden = true;
-                    selectedDisplay.textContent = `${tag}:${id} — ${name}`;
-                    // Auto-set type selector to match
+                    dropdown.classList.remove('is-open');
+                    // Show selected entity with badge
+                    selectedDisplay.replaceChildren();
+                    selectedDisplay.appendChild(createEntityBadge(tag));
+                    selectedDisplay.appendChild(document.createTextNode(` ${tag}:${id} — ${name}`));
                     if (TYPE_LABELS[tag]) typeSelect.value = tag;
                 });
             } catch { /* aborted or error */ }
@@ -192,14 +206,15 @@ function createEntityInput(label, prefix, initialRef) {
 
     // Close dropdown on blur (with delay for click)
     input.addEventListener('blur', () => {
-        globalThis.setTimeout(() => { dropdown.hidden = true; }, 200);
+        globalThis.setTimeout(() => { dropdown.classList.remove('is-open'); }, 200);
     });
 
     return group;
 }
 
 /**
- * Renders typeahead search results into a dropdown.
+ * Renders typeahead search results into a dropdown using the
+ * existing search-dropdown component structure.
  *
  * @param {HTMLElement} dropdown - Dropdown container.
  * @param {Record<string, any[]>} results - Search results grouped by type.
@@ -210,7 +225,7 @@ function renderDropdown(dropdown, results, preferredType, onSelect) {
     dropdown.replaceChildren();
 
     // Show preferred type first, then others
-    const types = [preferredType, ...Object.keys(TYPE_LABELS).filter(t => t !== preferredType)];
+    const types = [preferredType, ...Object.keys(TYPE_LABELS).filter(k => k !== preferredType)];
 
     let hasResults = false;
     for (const tag of types) {
@@ -218,40 +233,55 @@ function renderDropdown(dropdown, results, preferredType, onSelect) {
         if (!items || items.length === 0) continue;
         hasResults = true;
 
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'search-dropdown__group';
+
+        const groupLabel = document.createElement('div');
+        groupLabel.className = 'search-dropdown__label';
+        groupLabel.textContent = t(TYPE_LABELS[tag] || tag);
+        groupDiv.appendChild(groupLabel);
+
         for (const item of items.slice(0, 5)) {
             const row = document.createElement('div');
-            row.className = 'compare-form__dropdown-item';
+            row.className = 'search-dropdown__item';
             row.addEventListener('mousedown', (e) => {
-                e.preventDefault(); // Prevent blur
+                e.preventDefault();
                 onSelect(tag, item.id, item.name);
             });
 
             const badge = createEntityBadge(tag);
             row.appendChild(badge);
 
-            const name = document.createElement('span');
-            name.className = 'compare-form__dropdown-name';
-            name.textContent = item.name;
-            row.appendChild(name);
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'search-dropdown__item-name';
+            nameSpan.textContent = item.name;
+            row.appendChild(nameSpan);
 
             if (tag === 'net' && item.asn) {
-                const asn = document.createElement('span');
-                asn.className = 'compare-form__dropdown-asn';
-                asn.textContent = `AS${item.asn}`;
-                row.appendChild(asn);
+                const sub = document.createElement('span');
+                sub.className = 'search-dropdown__item-sub';
+                sub.textContent = `AS${item.asn}`;
+                row.appendChild(sub);
             }
 
-            dropdown.appendChild(row);
+            groupDiv.appendChild(row);
         }
+
+        dropdown.appendChild(groupDiv);
     }
 
-    dropdown.hidden = !hasResults;
+    if (hasResults) {
+        dropdown.classList.add('is-open');
+    } else {
+        dropdown.classList.remove('is-open');
+    }
 }
 
 // ── Results display ─────────────────────────────────────────────────────
 
 /**
- * Fetches and renders the overlap analysis results.
+ * Fetches and renders the overlap analysis results using the
+ * existing detail page layout components (stats bar, pdb-table).
  *
  * @param {HTMLElement} app - App container element.
  * @param {string} refA - Entity A reference (e.g. "net:13335").
@@ -267,12 +297,13 @@ async function renderResults(app, refA, refB) {
 
         // Header with both entities
         const header = document.createElement('div');
-        header.className = 'compare-header';
+        header.className = 'detail-header';
 
         header.appendChild(createEntityHeader(data.a));
         const vs = document.createElement('span');
-        vs.className = 'compare-header__vs';
+        vs.className = 'detail-header__subtitle';
         vs.textContent = 'vs';
+        vs.style.margin = '0 var(--space-md)';
         header.appendChild(vs);
         header.appendChild(createEntityHeader(data.b));
 
@@ -282,7 +313,8 @@ async function renderResults(app, refA, refB) {
         const back = document.createElement('a');
         back.href = '/compare';
         back.dataset.link = '';
-        back.className = 'compare-page__back';
+        back.style.display = 'inline-block';
+        back.style.marginBottom = 'var(--space-lg)';
         back.textContent = `← ${t('New comparison')}`;
         wrap.appendChild(back);
 
@@ -302,278 +334,226 @@ async function renderResults(app, refA, refB) {
 }
 
 /**
- * Creates an entity header card for the results view.
+ * Creates an entity header fragment with badge and name link.
  *
  * @param {Record<string, any>} entity - Entity header from the API.
- * @returns {HTMLDivElement} The header card element.
+ * @returns {DocumentFragment} Fragment with badge + name link.
  */
 function createEntityHeader(entity) {
-    const card = document.createElement('div');
-    card.className = 'compare-entity-card';
+    const frag = document.createDocumentFragment();
 
-    const badge = createEntityBadge(entity.tag, { header: true });
-    card.appendChild(badge);
+    frag.appendChild(createEntityBadge(entity.tag, { header: true }));
 
     const nameLink = createLink(entity.tag, entity.id, entity.name);
-    nameLink.className = 'compare-entity-card__name';
-    card.appendChild(nameLink);
+    frag.appendChild(nameLink);
 
     if (entity.asn) {
         const asn = document.createElement('span');
-        asn.className = 'compare-entity-card__asn';
+        asn.className = 'detail-header__subtitle';
         asn.textContent = `AS${entity.asn}`;
-        card.appendChild(asn);
+        frag.appendChild(asn);
     }
 
-    return card;
+    return frag;
 }
 
 /**
- * Renders net↔net comparison results: shared IXPs, shared facilities,
- * and exclusive sections.
+ * Renders net↔net comparison results using createStatsBar
+ * and <pdb-table> components.
  *
  * @param {HTMLElement} wrap - Page wrapper element.
  * @param {Record<string, any>} data - API response data.
  */
 function renderNetNetResults(wrap, data) {
-    // Summary stats
-    const stats = document.createElement('div');
-    stats.className = 'compare-stats';
-    stats.appendChild(createStatCard(t('Shared IXPs'), data.shared_ixps.length));
-    stats.appendChild(createStatCard(t('Shared Facilities'), data.shared_facilities.length));
-    stats.appendChild(createStatCard(`${t('Only')} ${data.a.name}`, data.only_a_ixps.length + data.only_a_facilities.length));
-    stats.appendChild(createStatCard(`${t('Only')} ${data.b.name}`, data.only_b_ixps.length + data.only_b_facilities.length));
-    wrap.appendChild(stats);
+    // Stats bar — reuses the existing stats-bar component
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared IXPs'), value: data.shared_ixps.length },
+        { label: t('Shared Facilities'), value: data.shared_facilities.length },
+        { label: `${t('Only')} ${data.a.name}`, value: data.only_a_ixps.length + data.only_a_facilities.length },
+        { label: `${t('Only')} ${data.b.name}`, value: data.only_b_ixps.length + data.only_b_facilities.length },
+    ]));
 
-    // Shared IXPs table
+    // Shared IXPs — <pdb-table> with speed columns
     if (data.shared_ixps.length > 0) {
-        wrap.appendChild(createSection(t('Shared IXPs'), createIxpTable(data.shared_ixps, true)));
+        wrap.appendChild(createIxpTable(t('Shared IXPs'), data.shared_ixps, true));
     }
 
-    // Shared facilities table
+    // Shared facilities
     if (data.shared_facilities.length > 0) {
-        wrap.appendChild(createSection(t('Shared Facilities'), createFacTable(data.shared_facilities)));
+        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
     }
 
     // Exclusive sections
     if (data.only_a_ixps.length > 0) {
-        wrap.appendChild(createSection(`${t('IXPs only at')} ${data.a.name}`, createIxpTable(data.only_a_ixps, false)));
+        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.a.name}`, data.only_a_ixps, false));
     }
     if (data.only_b_ixps.length > 0) {
-        wrap.appendChild(createSection(`${t('IXPs only at')} ${data.b.name}`, createIxpTable(data.only_b_ixps, false)));
+        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.b.name}`, data.only_b_ixps, false));
     }
     if (data.only_a_facilities.length > 0) {
-        wrap.appendChild(createSection(`${t('Facilities only at')} ${data.a.name}`, createFacTable(data.only_a_facilities)));
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.a.name}`, data.only_a_facilities));
     }
     if (data.only_b_facilities.length > 0) {
-        wrap.appendChild(createSection(`${t('Facilities only at')} ${data.b.name}`, createFacTable(data.only_b_facilities)));
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.b.name}`, data.only_b_facilities));
+    }
+
+    if (data.shared_ixps.length === 0 && data.shared_facilities.length === 0) {
+        wrap.appendChild(createEmptyState(t('No shared infrastructure found between these networks.')));
     }
 }
 
 /**
- * Renders ix↔ix comparison results: shared facilities, shared networks,
- * and exclusive sections.
+ * Renders ix↔ix comparison results using createStatsBar
+ * and <pdb-table> components.
  *
  * @param {HTMLElement} wrap - Page wrapper element.
  * @param {Record<string, any>} data - API response data.
  */
 function renderIxIxResults(wrap, data) {
-    const stats = document.createElement('div');
-    stats.className = 'compare-stats';
-    stats.appendChild(createStatCard(t('Shared Facilities'), data.shared_facilities.length));
-    stats.appendChild(createStatCard(t('Shared Networks'), data.shared_networks.length));
-    stats.appendChild(createStatCard(`${t('Only')} ${data.a.name}`, data.only_a_facilities.length + data.only_a_networks.length));
-    stats.appendChild(createStatCard(`${t('Only')} ${data.b.name}`, data.only_b_facilities.length + data.only_b_networks.length));
-    wrap.appendChild(stats);
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared Facilities'), value: data.shared_facilities.length },
+        { label: t('Shared Networks'), value: data.shared_networks.length },
+        { label: `${t('Only')} ${data.a.name}`, value: data.only_a_facilities.length + data.only_a_networks.length },
+        { label: `${t('Only')} ${data.b.name}`, value: data.only_b_facilities.length + data.only_b_networks.length },
+    ]));
 
     if (data.shared_facilities.length > 0) {
-        wrap.appendChild(createSection(t('Shared Facilities'), createFacTable(data.shared_facilities)));
+        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
     }
     if (data.shared_networks.length > 0) {
-        wrap.appendChild(createSection(t('Shared Networks'), createNetTable(data.shared_networks)));
+        wrap.appendChild(createNetTable(t('Shared Networks'), data.shared_networks));
     }
     if (data.only_a_facilities.length > 0) {
-        wrap.appendChild(createSection(`${t('Facilities only at')} ${data.a.name}`, createFacTable(data.only_a_facilities)));
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.a.name}`, data.only_a_facilities));
     }
     if (data.only_b_facilities.length > 0) {
-        wrap.appendChild(createSection(`${t('Facilities only at')} ${data.b.name}`, createFacTable(data.only_b_facilities)));
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.b.name}`, data.only_b_facilities));
     }
     if (data.only_a_networks.length > 0) {
-        wrap.appendChild(createSection(`${t('Networks only at')} ${data.a.name}`, createNetTable(data.only_a_networks)));
+        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.a.name}`, data.only_a_networks));
     }
     if (data.only_b_networks.length > 0) {
-        wrap.appendChild(createSection(`${t('Networks only at')} ${data.b.name}`, createNetTable(data.only_b_networks)));
+        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.b.name}`, data.only_b_networks));
+    }
+
+    if (data.shared_facilities.length === 0 && data.shared_networks.length === 0) {
+        wrap.appendChild(createEmptyState(t('No shared infrastructure found between these exchanges.')));
     }
 }
 
-// ── Table builders ──────────────────────────────────────────────────────
+// ── <pdb-table> factories ───────────────────────────────────────────────
 
 /**
- * Creates a section with a heading and content element.
+ * Creates a <pdb-table> for IXP rows.
  *
- * @param {string} title - Section heading text.
- * @param {HTMLElement} content - Content element.
- * @returns {HTMLDivElement} Section wrapper.
+ * @param {string} title - Table title.
+ * @param {any[]} rows - IXP overlap records.
+ * @param {boolean} showSpeeds - Whether to show per-entity speed/IP columns.
+ * @returns {HTMLElement} Configured <pdb-table> element.
  */
-function createSection(title, content) {
-    const section = document.createElement('div');
-    section.className = 'compare-section';
+function createIxpTable(title, rows, showSpeeds) {
+    /** @type {TableColumn[]} */
+    const columns = [
+        { key: 'ix_name', label: 'Exchange' },
+        { key: 'country', label: 'Country', maxWidth: '100px' },
+        { key: 'city',    label: 'City', maxWidth: '150px' },
+    ];
 
-    const h2 = document.createElement('h2');
-    h2.className = 'compare-section__title';
-    h2.textContent = title;
-    section.appendChild(h2);
-    section.appendChild(content);
-
-    return section;
-}
-
-/**
- * Creates a stat card with a label and numeric value.
- *
- * @param {string} label - Stat label.
- * @param {number} value - Stat value.
- * @returns {HTMLDivElement} Stat card element.
- */
-function createStatCard(label, value) {
-    const card = document.createElement('div');
-    card.className = 'compare-stat-card';
-
-    const num = document.createElement('div');
-    num.className = 'compare-stat-card__value';
-    num.textContent = String(value);
-    card.appendChild(num);
-
-    const text = document.createElement('div');
-    text.className = 'compare-stat-card__label';
-    text.textContent = label;
-    card.appendChild(text);
-
-    return card;
-}
-
-/**
- * Creates an IXP table (for shared or exclusive IXPs).
- *
- * @param {any[]} ixps - Array of IXP overlap records.
- * @param {boolean} showSpeeds - Whether to show speed columns (shared mode).
- * @returns {HTMLTableElement} The IXP table.
- */
-function createIxpTable(ixps, showSpeeds) {
-    const table = document.createElement('table');
-    table.className = 'compare-table';
-
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    for (const col of [t('Exchange'), t('Country'), t('City'),
-        ...(showSpeeds ? [t('Speed A'), t('Speed B'), t('IPv4 A'), t('IPv4 B')] : [])]) {
-        const th = document.createElement('th');
-        th.textContent = col;
-        headerRow.appendChild(th);
+    if (showSpeeds) {
+        columns.push(
+            { key: 'speed_a', label: 'Speed A', class: 'td-right', width: '90px' },
+            { key: 'speed_b', label: 'Speed B', class: 'td-right', width: '90px' },
+            { key: 'ipv4_a',  label: 'IPv4 A', class: 'td-mono', width: '140px' },
+            { key: 'ipv4_b',  label: 'IPv4 B', class: 'td-mono', width: '140px' },
+        );
     }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
 
-    const tbody = document.createElement('tbody');
-    for (const ix of ixps) {
-        const tr = document.createElement('tr');
-
-        // Exchange name (linked)
-        const nameTd = document.createElement('td');
-        nameTd.appendChild(createLink('ix', ix.ix_id, ix.ix_name));
-        tr.appendChild(nameTd);
-
-        tr.appendChild(textCell(ix.country || ''));
-        tr.appendChild(textCell(ix.city || ''));
-
-        if (showSpeeds) {
-            tr.appendChild(textCell(formatSpeed(ix.speed_a)));
-            tr.appendChild(textCell(formatSpeed(ix.speed_b)));
-            tr.appendChild(textCell(ix.ipv4_a || '—'));
-            tr.appendChild(textCell(ix.ipv4_b || '—'));
+    const table = /** @type {any} */ (document.createElement('pdb-table'));
+    table.configure({
+        tableId: `cmp-ix-${title.slice(0, 10).toLowerCase().replaceAll(' ', '')}`,
+        title,
+        filterable: rows.length > 10,
+        filterPlaceholder: t('Filter exchanges...'),
+        columns,
+        rows,
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+            switch (col.key) {
+                case 'ix_name':
+                    return createLink('ix', row.ix_id, row.ix_name || `IX ${row.ix_id}`);
+                case 'speed_a':
+                    return { node: document.createTextNode(formatSpeed(row.speed_a)), sortValue: row.speed_a || 0 };
+                case 'speed_b':
+                    return { node: document.createTextNode(formatSpeed(row.speed_b)), sortValue: row.speed_b || 0 };
+                case 'ipv4_a':
+                    return document.createTextNode(row.ipv4_a || '—');
+                case 'ipv4_b':
+                    return document.createTextNode(row.ipv4_b || '—');
+                default:
+                    return document.createTextNode(String(row[col.key] ?? '—'));
+            }
         }
-
-        tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
+    });
     return table;
 }
 
 /**
- * Creates a facility table.
+ * Creates a <pdb-table> for facility rows.
  *
- * @param {any[]} facs - Array of facility records.
- * @returns {HTMLTableElement} The facility table.
+ * @param {string} title - Table title.
+ * @param {any[]} rows - Facility records.
+ * @returns {HTMLElement} Configured <pdb-table> element.
  */
-function createFacTable(facs) {
-    const table = document.createElement('table');
-    table.className = 'compare-table';
-
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    for (const col of [t('Facility'), t('Country'), t('City')]) {
-        const th = document.createElement('th');
-        th.textContent = col;
-        headerRow.appendChild(th);
-    }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (const fac of facs) {
-        const tr = document.createElement('tr');
-        const nameTd = document.createElement('td');
-        nameTd.appendChild(createLink('fac', fac.fac_id, fac.fac_name));
-        tr.appendChild(nameTd);
-        tr.appendChild(textCell(fac.country || ''));
-        tr.appendChild(textCell(fac.city || ''));
-        tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
+function createFacTable(title, rows) {
+    const table = /** @type {any} */ (document.createElement('pdb-table'));
+    table.configure({
+        tableId: `cmp-fac-${title.slice(0, 10).toLowerCase().replaceAll(' ', '')}`,
+        title,
+        filterable: rows.length > 10,
+        filterPlaceholder: t('Filter facilities...'),
+        columns: [
+            { key: 'fac_name', label: 'Facility' },
+            { key: 'country',  label: 'Country', maxWidth: '100px' },
+            { key: 'city',     label: 'City', maxWidth: '200px' },
+        ],
+        rows,
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+            if (col.key === 'fac_name') {
+                return createLink('fac', row.fac_id, row.fac_name || `Fac ${row.fac_id}`);
+            }
+            return document.createTextNode(String(row[col.key] ?? '—'));
+        }
+    });
     return table;
 }
 
 /**
- * Creates a network table (for ix↔ix comparisons).
+ * Creates a <pdb-table> for network rows (ix↔ix comparisons).
  *
- * @param {any[]} nets - Array of network records.
- * @returns {HTMLTableElement} The network table.
+ * @param {string} title - Table title.
+ * @param {any[]} rows - Network records.
+ * @returns {HTMLElement} Configured <pdb-table> element.
  */
-function createNetTable(nets) {
-    const table = document.createElement('table');
-    table.className = 'compare-table';
-
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    for (const col of [t('Network'), t('ASN')]) {
-        const th = document.createElement('th');
-        th.textContent = col;
-        headerRow.appendChild(th);
-    }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (const net of nets) {
-        const tr = document.createElement('tr');
-        const nameTd = document.createElement('td');
-        nameTd.appendChild(createLink('net', net.net_id, net.net_name));
-        tr.appendChild(nameTd);
-        tr.appendChild(textCell(`AS${net.asn}`));
-        tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
+function createNetTable(title, rows) {
+    const table = /** @type {any} */ (document.createElement('pdb-table'));
+    table.configure({
+        tableId: `cmp-net-${title.slice(0, 10).toLowerCase().replaceAll(' ', '')}`,
+        title,
+        filterable: rows.length > 10,
+        filterPlaceholder: t('Filter networks...'),
+        columns: [
+            { key: 'net_name', label: 'Network' },
+            { key: 'asn',      label: 'ASN', width: '110px' },
+        ],
+        rows,
+        cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+            if (col.key === 'net_name') {
+                return createLink('net', row.net_id, row.net_name || `Net ${row.net_id}`);
+            }
+            if (col.key === 'asn') {
+                return document.createTextNode(`AS${row.asn}`);
+            }
+            return document.createTextNode(String(row[col.key] ?? '—'));
+        }
+    });
     return table;
-}
-
-/**
- * Creates a simple text table cell.
- *
- * @param {string} text - Cell text.
- * @returns {HTMLTableCellElement} The td element.
- */
-function textCell(text) {
-    const td = document.createElement('td');
-    td.textContent = text;
-    return td;
 }

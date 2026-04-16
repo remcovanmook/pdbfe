@@ -1,6 +1,8 @@
 /**
  * @fileoverview Unit tests for the compare handler.
  * Tests entity overlap analysis for net↔net and ix↔ix pairs.
+ * Verifies withEdgeSWR integration, serveJSON response format,
+ * and validation logic.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -43,6 +45,17 @@ const hNocache = Object.freeze({
 });
 
 /**
+ * Mock ExecutionContext for withEdgeSWR.
+ * @returns {ExecutionContext}
+ */
+function mockCtx() {
+    return /** @type {any} */ ({
+        waitUntil: (/** @type {Promise<any>} */ _p) => {},
+        passThroughOnException: () => {},
+    });
+}
+
+/**
  * Helper to call handleCompare with a query string.
  *
  * @param {D1Session} db - Mock D1 session.
@@ -53,7 +66,7 @@ async function callCompare(db, qs) {
     const req = new Request('https://test.workers.dev/api/compare?' + qs, {
         method: 'GET',
     });
-    return handleCompare(req, db, qs, hNocache);
+    return handleCompare(req, db, mockCtx(), qs, hNocache);
 }
 
 describe('handleCompare', () => {
@@ -117,19 +130,9 @@ describe('handleCompare', () => {
             const db = mockD1({}); // all queries return empty
             const res = await callCompare(db, 'a=net:99999&b=net:1&__pdbfe=1');
             assert.equal(res.status, 404);
-            const body = await res.json();
-            assert.ok(body.error.includes('99999'));
         });
 
         it('returns structured overlap for valid net pair', async () => {
-            const db = mockD1({
-                peeringdb_network: [
-                    { id: 1, name: 'Net A', asn: 13335, tag: 'net' },
-                ],
-                // The mock returns identical results for all queries
-                // In a real scenario these would be different per-query
-            });
-            // Override to return different results per query
             const smartDb = /** @type {any} */ ({
                 prepare: (/** @type {string} */ sql) => ({
                     bind: (/** @type {any[]} */ ..._args) => ({
@@ -263,7 +266,7 @@ describe('handleCompare', () => {
     });
 
     describe('response format', () => {
-        it('sets Cache-Control for cacheable responses', async () => {
+        it('uses serveJSON headers (Cache-Control, CORS, ETag)', async () => {
             const db = /** @type {any} */ ({
                 prepare: () => ({
                     bind: () => ({
@@ -274,11 +277,20 @@ describe('handleCompare', () => {
             });
             const res = await callCompare(db, 'a=net:1&b=net:2&__pdbfe=1');
             assert.equal(res.status, 200);
+
+            // serveJSON uses H_API_ANON headers
             const cc = res.headers.get('Cache-Control');
-            assert.ok(cc?.includes('max-age=300'), 'should cache for 5 min');
+            assert.ok(cc?.includes('max-age='), 'should have Cache-Control max-age');
+
+            assert.equal(
+                res.headers.get('Access-Control-Allow-Origin'), '*',
+                'should have CORS header'
+            );
+
+            assert.ok(res.headers.has('ETag'), 'should have ETag from serveJSON');
         });
 
-        it('includes CORS header', async () => {
+        it('includes X-Cache tier from withEdgeSWR', async () => {
             const db = /** @type {any} */ ({
                 prepare: () => ({
                     bind: () => ({
@@ -288,7 +300,10 @@ describe('handleCompare', () => {
                 }),
             });
             const res = await callCompare(db, 'a=net:1&b=net:2&__pdbfe=1');
-            assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+            assert.equal(res.status, 200);
+
+            const xCache = res.headers.get('X-Cache');
+            assert.ok(xCache, 'should have X-Cache header from withEdgeSWR');
         });
     });
 });

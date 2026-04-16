@@ -11,14 +11,13 @@
  * Supported entity pair combinations:
  *   net ↔ net   — shared IXPs and shared facilities
  *   ix  ↔ ix    — shared facilities and shared member networks
- *   net ↔ ix    — network's connections at the IX, all peers
- *   net ↔ fac   — other networks at the facility
- *   fac ↔ fac   — shared networks and shared IXPs
  *
  * Route: GET /api/compare?a={tag}:{id}&b={tag}:{id}&__pdbfe=1
  */
 
-import { jsonError, encodeJSON } from '../http.js';
+import { encodeJSON, serveJSON, jsonError, H_API_ANON } from '../http.js';
+import { normaliseCacheKey, DETAIL_TTL } from '../cache.js';
+import { withEdgeSWR } from '../swr.js';
 
 /**
  * Set of supported entity pair keys. The pair key is constructed by
@@ -320,19 +319,69 @@ const OVERLAP_FNS = {
 // ── Public handler ───────────────────────────────────────────────────────────
 
 /**
+ * Executes the full compare query for caching via withEdgeSWR.
+ * The heavy query + header lookups happen inside this closure so
+ * the result can be cached as a pre-encoded Uint8Array.
+ *
+ * @param {D1Session} db - D1 database session.
+ * @param {{tag: string, id: number}} refA - Parsed entity A reference.
+ * @param {{tag: string, id: number}} refB - Parsed entity B reference.
+ * @param {string} pk - Normalised pair key.
+ * @returns {Promise<Uint8Array|null>} Encoded JSON payload, or null if an entity is missing.
+ */
+async function executeCompareQuery(db, refA, refB, pk) {
+    // Fetch entity headers in parallel
+    const [headerA, headerB] = await Promise.all([
+        fetchEntityHeader(db, refA.tag, refA.id),
+        fetchEntityHeader(db, refB.tag, refB.id),
+    ]);
+
+    if (!headerA || !headerB) return null;
+
+    // Run the overlap query. For asymmetric pairs (e.g. net+ix in future),
+    // the dispatcher normalises the order so the first arg matches the
+    // first tag in the pair key.
+    const overlapFn = OVERLAP_FNS[pk];
+    let overlap;
+    if (refA.tag <= refB.tag) {
+        overlap = await overlapFn(db, refA.id, refB.id);
+    } else {
+        // Swap so the "smaller" tag is always first
+        overlap = await overlapFn(db, refB.id, refA.id);
+        // Swap only_a / only_b labels
+        /** @type {Record<string, any>} */
+        const swapped = {};
+        for (const [key, val] of Object.entries(overlap)) {
+            if (key.startsWith('only_a_')) {
+                swapped[key.replace('only_a_', 'only_b_')] = val;
+            } else if (key.startsWith('only_b_')) {
+                swapped[key.replace('only_b_', 'only_a_')] = val;
+            } else {
+                swapped[key] = val;
+            }
+        }
+        overlap = swapped;
+    }
+
+    return encodeJSON({ a: headerA, b: headerB, ...overlap });
+}
+
+/**
  * Handles compare requests: GET /api/compare?a={tag}:{id}&b={tag}:{id}&__pdbfe=1
  *
  * Validates the __pdbfe=1 flag, parses both entity references, checks the
- * pair is supported, fetches entity headers, runs the overlap query, and
- * returns structured JSON.
+ * pair is supported, then delegates to withEdgeSWR for cached query execution.
+ * Uses the "compare" cache tier and serveJSON for response building, following
+ * the same pattern as handleAsSet and handleDetail.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {D1Session} db - D1 database session (with read replication).
+ * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {string} queryString - Raw query string (without leading '?').
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Promise<Response>} JSON response with overlap data.
  */
-export async function handleCompare(request, db, queryString, hNocache) {
+export async function handleCompare(request, db, ctx, queryString, hNocache) {
     // Parse query parameters manually (no URLSearchParams allocation)
     const params = new Map();
     if (queryString) {
@@ -373,57 +422,16 @@ export async function handleCompare(request, db, queryString, hNocache) {
         );
     }
 
-    // Fetch entity headers in parallel
-    const [headerA, headerB] = await Promise.all([
-        fetchEntityHeader(db, refA.tag, refA.id),
-        fetchEntityHeader(db, refB.tag, refB.id),
-    ]);
+    const cacheKey = normaliseCacheKey('api/compare', queryString);
+    const { buf, tier, hits } = await withEdgeSWR(
+        'compare', cacheKey, ctx, DETAIL_TTL,
+        () => executeCompareQuery(db, refA, refB, pk)
+    );
 
-    if (!headerA) {
-        return jsonError(404, `${refA.tag} with id ${refA.id} not found`, hNocache);
-    }
-    if (!headerB) {
-        return jsonError(404, `${refB.tag} with id ${refB.id} not found`, hNocache);
+    if (!buf) {
+        // One or both entities not found
+        return jsonError(404, 'One or both entities not found', hNocache);
     }
 
-    // Run the overlap query. For asymmetric pairs (e.g. net+ix in future),
-    // the dispatcher normalises the order so the first arg matches the
-    // first tag in the pair key.
-    const overlapFn = OVERLAP_FNS[pk];
-    let overlap;
-    if (refA.tag <= refB.tag) {
-        overlap = await overlapFn(db, refA.id, refB.id);
-    } else {
-        // Swap so the "smaller" tag is always first
-        overlap = await overlapFn(db, refB.id, refA.id);
-        // Swap only_a / only_b labels
-        /** @type {Record<string, any>} */
-        const swapped = {};
-        for (const [key, val] of Object.entries(overlap)) {
-            if (key.startsWith('only_a_')) {
-                swapped[key.replace('only_a_', 'only_b_')] = val;
-            } else if (key.startsWith('only_b_')) {
-                swapped[key.replace('only_b_', 'only_a_')] = val;
-            } else {
-                swapped[key] = val;
-            }
-        }
-        overlap = swapped;
-    }
-
-    const result = {
-        a: headerA,
-        b: headerB,
-        ...overlap,
-    };
-
-    const buf = encodeJSON(result);
-    return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
-        status: 200,
-        headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
-            'Access-Control-Allow-Origin': '*',
-        },
-    });
+    return serveJSON(request, buf, { tier, hits }, H_API_ANON);
 }
