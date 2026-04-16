@@ -31,10 +31,10 @@ describe('openapi.json', () => {
         assert.ok(raw.default.info.version);
     });
 
-    it('has 26 paths (13 entities × 2)', async () => {
+    it('has 62 paths (13 entities × 2 + 36 sub-resources)', async () => {
         const raw = await import('../../../../extracted/openapi.json', { with: { type: 'json' } });
         const pathCount = Object.keys(raw.default.paths).length;
-        assert.equal(pathCount, 26);
+        assert.equal(pathCount, 62);
     });
 
     it('has list paths for all entities', async () => {
@@ -112,5 +112,74 @@ describe('REST cache', () => {
     it('REST_TTL is 60 minutes', async () => {
         const { REST_TTL } = await import('../../../rest/cache.js');
         assert.equal(REST_TTL, 60 * 60 * 1000);
+    });
+});
+
+// ── Sub-resource map tests ──────────────────────────────────────────────────
+
+describe('SUBRESOURCE_MAP', () => {
+    it('exports a Map with entries for all entity tags', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        assert.ok(SUBRESOURCE_MAP instanceof Map);
+        assert.ok(SUBRESOURCE_MAP.has('net'));
+        assert.ok(SUBRESOURCE_MAP.has('org'));
+        assert.ok(SUBRESOURCE_MAP.has('fac'));
+    });
+
+    it('org has reverse edges for networks, facilities, exchanges, carriers, campuses', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        const orgRels = SUBRESOURCE_MAP.get('org');
+        assert.ok(orgRels.has('networks'), 'Missing org→networks');
+        assert.ok(orgRels.has('facilities'), 'Missing org→facilities');
+        assert.ok(orgRels.has('exchanges'), 'Missing org→exchanges');
+        assert.ok(orgRels.has('carriers'), 'Missing org→carriers');
+        assert.ok(orgRels.has('campuses'), 'Missing org→campuses');
+    });
+
+    it('net has a forward FK to organization', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        const netRels = SUBRESOURCE_MAP.get('net');
+        assert.ok(netRels.has('organization'), 'Missing net→organization');
+        const orgRel = netRels.get('organization');
+        assert.equal(orgRel.direction, 'forward');
+        assert.equal(orgRel.targetTag, 'org');
+        assert.equal(orgRel.fkField, 'org_id');
+    });
+
+    it('net has reverse edges for contacts, network-facilities, network-exchange-lans', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        const netRels = SUBRESOURCE_MAP.get('net');
+        assert.ok(netRels.has('contacts'), 'Missing net→contacts (poc)');
+        assert.ok(netRels.has('network-facilities'), 'Missing net→network-facilities');
+        assert.ok(netRels.has('network-exchange-lans'), 'Missing net→network-exchange-lans');
+
+        const pocRel = netRels.get('contacts');
+        assert.equal(pocRel.direction, 'reverse');
+        assert.equal(pocRel.targetTag, 'poc');
+    });
+
+    it('reverse edge definitions have the correct FK field', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        const orgRels = SUBRESOURCE_MAP.get('org');
+        const netRel = orgRels.get('networks');
+        assert.equal(netRel.fkField, 'org_id');
+        assert.equal(netRel.direction, 'reverse');
+    });
+
+    it('fac has forward FKs to organization and campuses', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        const facRels = SUBRESOURCE_MAP.get('fac');
+        const orgRel = facRels.get('organization');
+        assert.equal(orgRel.direction, 'forward');
+        const campusRel = facRels.get('campuses');
+        assert.equal(campusRel.direction, 'forward');
+    });
+
+    it('entities with no relationships still have empty Maps', async () => {
+        const { SUBRESOURCE_MAP } = await import('../../../rest/subresource.js');
+        // Every entity should have a Map (even if empty)
+        for (const [, rels] of SUBRESOURCE_MAP) {
+            assert.ok(rels instanceof Map);
+        }
     });
 });

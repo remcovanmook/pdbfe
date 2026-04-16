@@ -749,6 +749,326 @@
         }
       }
     },
+    "/v1/org/{id}/campuses": {
+      "get": {
+        "operationId": "list_org_campuses",
+        "summary": "List Campuss for Organization",
+        "description": "Returns campus records where org_id matches {id}.",
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Organization primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of campus records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/org/{id}/facilities": {
+      "get": {
+        "operationId": "list_org_facilities",
+        "summary": "List Facilitys for Organization",
+        "description": "Returns facility records where org_id matches {id}.",
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Organization primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/org/{id}/networks": {
+      "get": {
+        "operationId": "list_org_networks",
+        "summary": "List Networks for Organization",
+        "description": "Returns network records where org_id matches {id}.",
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Organization primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/org/{id}/exchanges": {
+      "get": {
+        "operationId": "list_org_exchanges",
+        "summary": "List Exchanges for Organization",
+        "description": "Returns exchange records where org_id matches {id}.",
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Organization primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchange records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/org/{id}/carriers": {
+      "get": {
+        "operationId": "list_org_carriers",
+        "summary": "List Carriers for Organization",
+        "description": "Returns carrier records where org_id matches {id}.",
+        "tags": [
+          "Organization"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Organization primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of carrier records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/campus": {
       "get": {
         "operationId": "list_campus",
@@ -1123,6 +1443,113 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CampusDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Campus not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/campus/{id}/organization": {
+      "get": {
+        "operationId": "get_campus_organization",
+        "summary": "Get Organization for Campus",
+        "description": "Returns the organization associated with campus {id} via the org_id foreign key.",
+        "tags": [
+          "Campus"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Campus primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampusDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Campus not found or no organization associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/campus/{id}/facilities": {
+      "get": {
+        "operationId": "list_campus_facilities",
+        "summary": "List Facilitys for Campus",
+        "description": "Returns facility records where campus_id matches {id}.",
+        "tags": [
+          "Campus"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Campus primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampusListResponse"
                 }
               }
             }
@@ -2502,6 +2929,348 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/organization": {
+      "get": {
+        "operationId": "get_fac_organization",
+        "summary": "Get Organization for Facility",
+        "description": "Returns the organization associated with facility {id} via the org_id foreign key.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found or no organization associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/campuses": {
+      "get": {
+        "operationId": "get_fac_campuses",
+        "summary": "Get Campus for Facility",
+        "description": "Returns the campus associated with facility {id} via the campus_id foreign key.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated campus.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found or no campus associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/carrier-facilities": {
+      "get": {
+        "operationId": "list_fac_carrier_facilities",
+        "summary": "List Carrier Facilitys for Facility",
+        "description": "Returns carrier facility records where fac_id matches {id}.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of carrier facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/exchange-facilities": {
+      "get": {
+        "operationId": "list_fac_exchange_facilities",
+        "summary": "List Exchange Facilitys for Facility",
+        "description": "Returns exchange facility records where fac_id matches {id}.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchange facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/network-facilities": {
+      "get": {
+        "operationId": "list_fac_network_facilities",
+        "summary": "List Network Facilitys for Facility",
+        "description": "Returns network facility records where fac_id matches {id}.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/fac/{id}/network-exchange-lans": {
+      "get": {
+        "operationId": "list_fac_network_exchange_lans",
+        "summary": "List Network Exchange LANs for Facility",
+        "description": "Returns network exchange lan records where net_side_id matches {id}.",
+        "tags": [
+          "Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Facility primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network exchange lan records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityListResponse"
                 }
               }
             }
@@ -3909,6 +4678,241 @@
         }
       }
     },
+    "/v1/net/{id}/organization": {
+      "get": {
+        "operationId": "get_net_organization",
+        "summary": "Get Organization for Network",
+        "description": "Returns the organization associated with network {id} via the org_id foreign key.",
+        "tags": [
+          "Network"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network not found or no organization associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/net/{id}/contacts": {
+      "get": {
+        "operationId": "list_net_contacts",
+        "summary": "List Point of Contacts for Network",
+        "description": "Returns point of contact records where net_id matches {id}.",
+        "tags": [
+          "Network"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of point of contact records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/net/{id}/network-facilities": {
+      "get": {
+        "operationId": "list_net_network_facilities",
+        "summary": "List Network Facilitys for Network",
+        "description": "Returns network facility records where net_id matches {id}.",
+        "tags": [
+          "Network"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/net/{id}/network-exchange-lans": {
+      "get": {
+        "operationId": "list_net_network_exchange_lans",
+        "summary": "List Network Exchange LANs for Network",
+        "description": "Returns network exchange lan records where net_id matches {id}.",
+        "tags": [
+          "Network"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network exchange lan records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ix": {
       "get": {
         "operationId": "list_ix",
@@ -5129,6 +6133,177 @@
         }
       }
     },
+    "/v1/ix/{id}/organization": {
+      "get": {
+        "operationId": "get_ix_organization",
+        "summary": "Get Organization for Exchange",
+        "description": "Returns the organization associated with exchange {id} via the org_id foreign key.",
+        "tags": [
+          "Exchange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange not found or no organization associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ix/{id}/exchange-facilities": {
+      "get": {
+        "operationId": "list_ix_exchange_facilities",
+        "summary": "List Exchange Facilitys for Exchange",
+        "description": "Returns exchange facility records where ix_id matches {id}.",
+        "tags": [
+          "Exchange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchange facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ix/{id}/exchange-lans": {
+      "get": {
+        "operationId": "list_ix_exchange_lans",
+        "summary": "List Exchange LANs for Exchange",
+        "description": "Returns exchange lan records where ix_id matches {id}.",
+        "tags": [
+          "Exchange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchange lan records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/carrier": {
       "get": {
         "operationId": "list_carrier",
@@ -5520,6 +6695,113 @@
         }
       }
     },
+    "/v1/carrier/{id}/organization": {
+      "get": {
+        "operationId": "get_carrier_organization",
+        "summary": "Get Organization for Carrier",
+        "description": "Returns the organization associated with carrier {id} via the org_id foreign key.",
+        "tags": [
+          "Carrier"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Carrier primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarrierDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Carrier not found or no organization associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/carrier/{id}/carrier-facilities": {
+      "get": {
+        "operationId": "list_carrier_carrier_facilities",
+        "summary": "List Carrier Facilitys for Carrier",
+        "description": "Returns carrier facility records where carrier_id matches {id}.",
+        "tags": [
+          "Carrier"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Carrier primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of carrier facility records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarrierListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Carrier not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/carrierfac": {
       "get": {
         "operationId": "list_carrierfac",
@@ -5785,6 +7067,92 @@
         }
       }
     },
+    "/v1/carrierfac/{id}/carriers": {
+      "get": {
+        "operationId": "get_carrierfac_carriers",
+        "summary": "Get Carrier for Carrier Facility",
+        "description": "Returns the carrier associated with carrier facility {id} via the carrier_id foreign key.",
+        "tags": [
+          "Carrier Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Carrier Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated carrier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarrierFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Carrier Facility not found or no carrier associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/carrierfac/{id}/facilities": {
+      "get": {
+        "operationId": "get_carrierfac_facilities",
+        "summary": "Get Facility for Carrier Facility",
+        "description": "Returns the facility associated with carrier facility {id} via the fac_id foreign key.",
+        "tags": [
+          "Carrier Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Carrier Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated facility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarrierFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Carrier Facility not found or no facility associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ixfac": {
       "get": {
         "operationId": "list_ixfac",
@@ -6039,6 +7407,92 @@
           },
           "404": {
             "description": "Exchange Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ixfac/{id}/exchanges": {
+      "get": {
+        "operationId": "get_ixfac_exchanges",
+        "summary": "Get Exchange for Exchange Facility",
+        "description": "Returns the exchange associated with exchange facility {id} via the ix_id foreign key.",
+        "tags": [
+          "Exchange Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated exchange.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange Facility not found or no exchange associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ixfac/{id}/facilities": {
+      "get": {
+        "operationId": "get_ixfac_facilities",
+        "summary": "Get Facility for Exchange Facility",
+        "description": "Returns the facility associated with exchange facility {id} via the fac_id foreign key.",
+        "tags": [
+          "Exchange Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated facility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange Facility not found or no facility associated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6621,6 +8075,177 @@
         }
       }
     },
+    "/v1/ixlan/{id}/exchanges": {
+      "get": {
+        "operationId": "get_ixlan_exchanges",
+        "summary": "Get Exchange for Exchange LAN",
+        "description": "Returns the exchange associated with exchange lan {id} via the ix_id foreign key.",
+        "tags": [
+          "Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange LAN primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated exchange.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeLANDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange LAN not found or no exchange associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ixlan/{id}/exchange-prefixes": {
+      "get": {
+        "operationId": "list_ixlan_exchange_prefixes",
+        "summary": "List Exchange Prefixs for Exchange LAN",
+        "description": "Returns exchange prefix records where ixlan_id matches {id}.",
+        "tags": [
+          "Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange LAN primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of exchange prefix records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeLANListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange LAN not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ixlan/{id}/network-exchange-lans": {
+      "get": {
+        "operationId": "list_ixlan_network_exchange_lans",
+        "summary": "List Network Exchange LANs for Exchange LAN",
+        "description": "Returns network exchange lan records where ixlan_id matches {id}.",
+        "tags": [
+          "Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange LAN primary key."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "maximum": 250
+            },
+            "description": "Maximum number of results to return (max 250)."
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            },
+            "description": "Number of results to skip for pagination."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of network exchange lan records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeLANListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange LAN not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/ixpfx": {
       "get": {
         "operationId": "list_ixpfx",
@@ -6938,6 +8563,49 @@
           },
           "404": {
             "description": "Exchange Prefix not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ixpfx/{id}/exchange-lans": {
+      "get": {
+        "operationId": "get_ixpfx_exchange_lans",
+        "summary": "Get Exchange LAN for Exchange Prefix",
+        "description": "Returns the exchange lan associated with exchange prefix {id} via the ixlan_id foreign key.",
+        "tags": [
+          "Exchange Prefix"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Exchange Prefix primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated exchange lan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangePrefixDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exchange Prefix not found or no exchange lan associated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -7376,6 +9044,49 @@
         }
       }
     },
+    "/v1/poc/{id}/networks": {
+      "get": {
+        "operationId": "get_poc_networks",
+        "summary": "Get Network for Point of Contact",
+        "description": "Returns the network associated with point of contact {id} via the net_id foreign key.",
+        "tags": [
+          "Point of Contact"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Point of Contact primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated network.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointofContactDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Point of Contact not found or no network associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/netfac": {
       "get": {
         "operationId": "list_netfac",
@@ -7765,6 +9476,92 @@
           },
           "404": {
             "description": "Network Facility not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/netfac/{id}/networks": {
+      "get": {
+        "operationId": "get_netfac_networks",
+        "summary": "Get Network for Network Facility",
+        "description": "Returns the network associated with network facility {id} via the net_id foreign key.",
+        "tags": [
+          "Network Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated network.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network Facility not found or no network associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/netfac/{id}/facilities": {
+      "get": {
+        "operationId": "get_netfac_facilities",
+        "summary": "Get Facility for Network Facility",
+        "description": "Returns the facility associated with network facility {id} via the fac_id foreign key.",
+        "tags": [
+          "Network Facility"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network Facility primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated facility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkFacilityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network Facility not found or no facility associated.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8417,6 +10214,135 @@
           },
           "404": {
             "description": "Network Exchange LAN not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/netixlan/{id}/networks": {
+      "get": {
+        "operationId": "get_netixlan_networks",
+        "summary": "Get Network for Network Exchange LAN",
+        "description": "Returns the network associated with network exchange lan {id} via the net_id foreign key.",
+        "tags": [
+          "Network Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network Exchange LAN primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated network.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkExchangeLANDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network Exchange LAN not found or no network associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/netixlan/{id}/exchange-lans": {
+      "get": {
+        "operationId": "get_netixlan_exchange_lans",
+        "summary": "Get Exchange LAN for Network Exchange LAN",
+        "description": "Returns the exchange lan associated with network exchange lan {id} via the ixlan_id foreign key.",
+        "tags": [
+          "Network Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network Exchange LAN primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated exchange lan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkExchangeLANDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network Exchange LAN not found or no exchange lan associated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/netixlan/{id}/facilities": {
+      "get": {
+        "operationId": "get_netixlan_facilities",
+        "summary": "Get Facility for Network Exchange LAN",
+        "description": "Returns the facility associated with network exchange lan {id} via the ix_side_id foreign key.",
+        "tags": [
+          "Network Exchange LAN"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Network Exchange LAN primary key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The associated facility.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkExchangeLANDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Network Exchange LAN not found or no facility associated.",
             "content": {
               "application/json": {
                 "schema": {

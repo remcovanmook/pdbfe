@@ -26,75 +26,138 @@ type Organization {
   suite: String!
   latitude: Int!
   longitude: Int!
+  campuses(limit: Int, skip: Int): [Campus!]!
+  facilities(limit: Int, skip: Int): [Facility!]!
+  networks(limit: Int, skip: Int): [Network!]!
+  exchanges(limit: Int, skip: Int): [Exchange!]!
+  carriers(limit: Int, skip: Int): [Carrier!]!
 }
 
 input OrganizationWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   address1: String
   address1_contains: String
   address1_startswith: String
+  address1_endswith: String
   address1_in: [String]
+  address1_not: String
+  address1_notIn: [String]
+  address1_containsFold: String
   address2: String
   address2_contains: String
   address2_startswith: String
+  address2_endswith: String
   address2_in: [String]
+  address2_not: String
+  address2_notIn: [String]
+  address2_containsFold: String
   city: String
   city_contains: String
   city_startswith: String
+  city_endswith: String
   city_in: [String]
+  city_not: String
+  city_notIn: [String]
+  city_containsFold: String
   country: String
   country_contains: String
   country_startswith: String
+  country_endswith: String
   country_in: [String]
+  country_not: String
+  country_notIn: [String]
+  country_containsFold: String
   state: String
   state_contains: String
   state_startswith: String
+  state_endswith: String
   state_in: [String]
+  state_not: String
+  state_notIn: [String]
+  state_containsFold: String
   zipcode: String
   zipcode_contains: String
   zipcode_startswith: String
+  zipcode_endswith: String
   zipcode_in: [String]
+  zipcode_not: String
+  zipcode_notIn: [String]
+  zipcode_containsFold: String
   floor: String
   floor_contains: String
   floor_startswith: String
+  floor_endswith: String
   floor_in: [String]
+  floor_not: String
+  floor_notIn: [String]
+  floor_containsFold: String
   suite: String
   suite_contains: String
   suite_startswith: String
+  suite_endswith: String
   suite_in: [String]
+  suite_not: String
+  suite_notIn: [String]
+  suite_containsFold: String
   latitude: Int
   latitude_lt: Int
   latitude_gt: Int
   latitude_lte: Int
   latitude_gte: Int
   latitude_in: [Int]
+  latitude_not: Int
+  latitude_notIn: [Int]
   longitude: Int
   longitude_lt: Int
   longitude_gt: Int
   longitude_lte: Int
   longitude_gte: Int
   longitude_in: [Int]
+  longitude_not: Int
+  longitude_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type Campus {
@@ -114,37 +177,64 @@ type Campus {
   zipcode: String!
   state: String!
   logo: String
+  facilities(limit: Int, skip: Int): [Facility!]!
 }
 
 input CampusWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
+  name_long_isNil: Boolean
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
+  aka_isNil: Boolean
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   org_id: Int
   org_id_lt: Int
   org_id_gt: Int
   org_id_lte: Int
   org_id_gte: Int
   org_id_in: [Int]
+  org_id_not: Int
+  org_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type Facility {
@@ -187,147 +277,268 @@ type Facility {
   suite: String!
   latitude: Int
   longitude: Int
+  carrierFacilities(limit: Int, skip: Int): [CarrierFacility!]!
+  exchangeFacilities(limit: Int, skip: Int): [ExchangeFacility!]!
+  networkFacilities(limit: Int, skip: Int): [NetworkFacility!]!
+  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
+  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
 }
 
 input FacilityWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
   clli: String
   clli_contains: String
   clli_startswith: String
+  clli_endswith: String
   clli_in: [String]
+  clli_not: String
+  clli_notIn: [String]
+  clli_containsFold: String
   rencode: String
   rencode_contains: String
   rencode_startswith: String
+  rencode_endswith: String
   rencode_in: [String]
+  rencode_not: String
+  rencode_notIn: [String]
+  rencode_containsFold: String
   npanxx: String
   npanxx_contains: String
   npanxx_startswith: String
+  npanxx_endswith: String
   npanxx_in: [String]
+  npanxx_not: String
+  npanxx_notIn: [String]
+  npanxx_containsFold: String
   tech_email: String
   tech_email_contains: String
   tech_email_startswith: String
+  tech_email_endswith: String
   tech_email_in: [String]
+  tech_email_not: String
+  tech_email_notIn: [String]
+  tech_email_containsFold: String
   tech_phone: String
   tech_phone_contains: String
   tech_phone_startswith: String
+  tech_phone_endswith: String
   tech_phone_in: [String]
+  tech_phone_not: String
+  tech_phone_notIn: [String]
+  tech_phone_containsFold: String
   sales_email: String
   sales_email_contains: String
   sales_email_startswith: String
+  sales_email_endswith: String
   sales_email_in: [String]
+  sales_email_not: String
+  sales_email_notIn: [String]
+  sales_email_containsFold: String
   sales_phone: String
   sales_phone_contains: String
   sales_phone_startswith: String
+  sales_phone_endswith: String
   sales_phone_in: [String]
+  sales_phone_not: String
+  sales_phone_notIn: [String]
+  sales_phone_containsFold: String
   property: String
   property_contains: String
   property_startswith: String
+  property_endswith: String
   property_in: [String]
+  property_not: String
+  property_notIn: [String]
+  property_containsFold: String
+  property_isNil: Boolean
   diverse_serving_substations: Boolean
+  diverse_serving_substations_isNil: Boolean
   available_voltage_services: JSON
+  available_voltage_services_isNil: Boolean
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   region_continent: String
   region_continent_contains: String
   region_continent_startswith: String
+  region_continent_endswith: String
   region_continent_in: [String]
+  region_continent_not: String
+  region_continent_notIn: [String]
+  region_continent_containsFold: String
+  region_continent_isNil: Boolean
   status_dashboard: String
   status_dashboard_contains: String
   status_dashboard_startswith: String
+  status_dashboard_endswith: String
   status_dashboard_in: [String]
+  status_dashboard_not: String
+  status_dashboard_notIn: [String]
+  status_dashboard_containsFold: String
+  status_dashboard_isNil: Boolean
   org_id: Int
   org_id_lt: Int
   org_id_gt: Int
   org_id_lte: Int
   org_id_gte: Int
   org_id_in: [Int]
+  org_id_not: Int
+  org_id_notIn: [Int]
   campus_id: Int
   campus_id_lt: Int
   campus_id_gt: Int
   campus_id_lte: Int
   campus_id_gte: Int
   campus_id_in: [Int]
+  campus_id_not: Int
+  campus_id_notIn: [Int]
+  campus_id_isNil: Boolean
   net_count: Int
   net_count_lt: Int
   net_count_gt: Int
   net_count_lte: Int
   net_count_gte: Int
   net_count_in: [Int]
+  net_count_not: Int
+  net_count_notIn: [Int]
   ix_count: Int
   ix_count_lt: Int
   ix_count_gt: Int
   ix_count_lte: Int
   ix_count_gte: Int
   ix_count_in: [Int]
+  ix_count_not: Int
+  ix_count_notIn: [Int]
   carrier_count: Int
   carrier_count_lt: Int
   carrier_count_gt: Int
   carrier_count_lte: Int
   carrier_count_gte: Int
   carrier_count_in: [Int]
+  carrier_count_not: Int
+  carrier_count_notIn: [Int]
   address1: String
   address1_contains: String
   address1_startswith: String
+  address1_endswith: String
   address1_in: [String]
+  address1_not: String
+  address1_notIn: [String]
+  address1_containsFold: String
   address2: String
   address2_contains: String
   address2_startswith: String
+  address2_endswith: String
   address2_in: [String]
+  address2_not: String
+  address2_notIn: [String]
+  address2_containsFold: String
   city: String
   city_contains: String
   city_startswith: String
+  city_endswith: String
   city_in: [String]
+  city_not: String
+  city_notIn: [String]
+  city_containsFold: String
   country: String
   country_contains: String
   country_startswith: String
+  country_endswith: String
   country_in: [String]
+  country_not: String
+  country_notIn: [String]
+  country_containsFold: String
   state: String
   state_contains: String
   state_startswith: String
+  state_endswith: String
   state_in: [String]
+  state_not: String
+  state_notIn: [String]
+  state_containsFold: String
   zipcode: String
   zipcode_contains: String
   zipcode_startswith: String
+  zipcode_endswith: String
   zipcode_in: [String]
+  zipcode_not: String
+  zipcode_notIn: [String]
+  zipcode_containsFold: String
   floor: String
   floor_contains: String
   floor_startswith: String
+  floor_endswith: String
   floor_in: [String]
+  floor_not: String
+  floor_notIn: [String]
+  floor_containsFold: String
   suite: String
   suite_contains: String
   suite_startswith: String
+  suite_endswith: String
   suite_in: [String]
+  suite_not: String
+  suite_notIn: [String]
+  suite_containsFold: String
   latitude: Int
   latitude_lt: Int
   latitude_gt: Int
   latitude_lte: Int
   latitude_gte: Int
   latitude_in: [Int]
+  latitude_not: Int
+  latitude_notIn: [Int]
+  latitude_isNil: Boolean
   longitude: Int
   longitude_lt: Int
   longitude_gt: Int
   longitude_lte: Int
   longitude_gte: Int
   longitude_in: [Int]
+  longitude_not: Int
+  longitude_notIn: [Int]
+  longitude_isNil: Boolean
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type Network {
@@ -372,6 +583,9 @@ type Network {
   poc_updated: String!
   allow_ixp_update: Boolean!
   logo: String
+  pointsOfContact(limit: Int, skip: Int): [PointOfContact!]!
+  networkFacilities(limit: Int, skip: Int): [NetworkFacility!]!
+  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
 }
 
 input NetworkWhere {
@@ -381,54 +595,104 @@ input NetworkWhere {
   asn_lte: Int
   asn_gte: Int
   asn_in: [Int]
+  asn_not: Int
+  asn_notIn: [Int]
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
   irr_as_set: String
   irr_as_set_contains: String
   irr_as_set_startswith: String
+  irr_as_set_endswith: String
   irr_as_set_in: [String]
+  irr_as_set_not: String
+  irr_as_set_notIn: [String]
+  irr_as_set_containsFold: String
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   looking_glass: String
   looking_glass_contains: String
   looking_glass_startswith: String
+  looking_glass_endswith: String
   looking_glass_in: [String]
+  looking_glass_not: String
+  looking_glass_notIn: [String]
+  looking_glass_containsFold: String
   route_server: String
   route_server_contains: String
   route_server_startswith: String
+  route_server_endswith: String
   route_server_in: [String]
+  route_server_not: String
+  route_server_notIn: [String]
+  route_server_containsFold: String
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   notes_private: String
   notes_private_contains: String
   notes_private_startswith: String
+  notes_private_endswith: String
   notes_private_in: [String]
+  notes_private_not: String
+  notes_private_notIn: [String]
+  notes_private_containsFold: String
   info_traffic: String
   info_traffic_contains: String
   info_traffic_startswith: String
+  info_traffic_endswith: String
   info_traffic_in: [String]
+  info_traffic_not: String
+  info_traffic_notIn: [String]
+  info_traffic_containsFold: String
   info_ratio: String
   info_ratio_contains: String
   info_ratio_startswith: String
+  info_ratio_endswith: String
   info_ratio_in: [String]
+  info_ratio_not: String
+  info_ratio_notIn: [String]
+  info_ratio_containsFold: String
   info_scope: String
   info_scope_contains: String
   info_scope_startswith: String
+  info_scope_endswith: String
   info_scope_in: [String]
+  info_scope_not: String
+  info_scope_notIn: [String]
+  info_scope_containsFold: String
   info_types: JSON
   info_prefixes4: Int
   info_prefixes4_lt: Int
@@ -436,12 +700,18 @@ input NetworkWhere {
   info_prefixes4_lte: Int
   info_prefixes4_gte: Int
   info_prefixes4_in: [Int]
+  info_prefixes4_not: Int
+  info_prefixes4_notIn: [Int]
+  info_prefixes4_isNil: Boolean
   info_prefixes6: Int
   info_prefixes6_lt: Int
   info_prefixes6_gt: Int
   info_prefixes6_lte: Int
   info_prefixes6_gte: Int
   info_prefixes6_in: [Int]
+  info_prefixes6_not: Int
+  info_prefixes6_notIn: [Int]
+  info_prefixes6_isNil: Boolean
   info_unicast: Boolean
   info_multicast: Boolean
   info_ipv6: Boolean
@@ -449,69 +719,108 @@ input NetworkWhere {
   policy_url: String
   policy_url_contains: String
   policy_url_startswith: String
+  policy_url_endswith: String
   policy_url_in: [String]
+  policy_url_not: String
+  policy_url_notIn: [String]
+  policy_url_containsFold: String
   policy_general: String
   policy_general_contains: String
   policy_general_startswith: String
+  policy_general_endswith: String
   policy_general_in: [String]
+  policy_general_not: String
+  policy_general_notIn: [String]
+  policy_general_containsFold: String
   policy_locations: String
   policy_locations_contains: String
   policy_locations_startswith: String
+  policy_locations_endswith: String
   policy_locations_in: [String]
+  policy_locations_not: String
+  policy_locations_notIn: [String]
+  policy_locations_containsFold: String
   policy_ratio: Boolean
   policy_contracts: String
   policy_contracts_contains: String
   policy_contracts_startswith: String
+  policy_contracts_endswith: String
   policy_contracts_in: [String]
+  policy_contracts_not: String
+  policy_contracts_notIn: [String]
+  policy_contracts_containsFold: String
   status_dashboard: String
   status_dashboard_contains: String
   status_dashboard_startswith: String
+  status_dashboard_endswith: String
   status_dashboard_in: [String]
+  status_dashboard_not: String
+  status_dashboard_notIn: [String]
+  status_dashboard_containsFold: String
+  status_dashboard_isNil: Boolean
   rir_status: String
   rir_status_contains: String
   rir_status_startswith: String
+  rir_status_endswith: String
   rir_status_in: [String]
+  rir_status_not: String
+  rir_status_notIn: [String]
+  rir_status_containsFold: String
+  rir_status_isNil: Boolean
   rir_status_updated: String
   rir_status_updated_lt: String
   rir_status_updated_gt: String
   rir_status_updated_lte: String
   rir_status_updated_gte: String
+  rir_status_updated_not: String
+  rir_status_updated_isNil: Boolean
   org_id: Int
   org_id_lt: Int
   org_id_gt: Int
   org_id_lte: Int
   org_id_gte: Int
   org_id_in: [Int]
+  org_id_not: Int
+  org_id_notIn: [Int]
   ix_count: Int
   ix_count_lt: Int
   ix_count_gt: Int
   ix_count_lte: Int
   ix_count_gte: Int
   ix_count_in: [Int]
+  ix_count_not: Int
+  ix_count_notIn: [Int]
   fac_count: Int
   fac_count_lt: Int
   fac_count_gt: Int
   fac_count_lte: Int
   fac_count_gte: Int
   fac_count_in: [Int]
+  fac_count_not: Int
+  fac_count_notIn: [Int]
   netixlan_updated: String
   netixlan_updated_lt: String
   netixlan_updated_gt: String
   netixlan_updated_lte: String
   netixlan_updated_gte: String
+  netixlan_updated_not: String
   netfac_updated: String
   netfac_updated_lt: String
   netfac_updated_gt: String
   netfac_updated_lte: String
   netfac_updated_gte: String
+  netfac_updated_not: String
   poc_updated: String
   poc_updated_lt: String
   poc_updated_gt: String
   poc_updated_lte: String
   poc_updated_gte: String
+  poc_updated_not: String
   allow_ixp_update: Boolean
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type Exchange {
@@ -549,128 +858,224 @@ type Exchange {
   ixf_import_request: String!
   ixf_import_request_status: String!
   logo: String
+  exchangeFacilities(limit: Int, skip: Int): [ExchangeFacility!]!
+  exchangeLans(limit: Int, skip: Int): [ExchangeLan!]!
 }
 
 input ExchangeWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
   city: String
   city_contains: String
   city_startswith: String
+  city_endswith: String
   city_in: [String]
+  city_not: String
+  city_notIn: [String]
+  city_containsFold: String
   country: String
   country_contains: String
   country_startswith: String
+  country_endswith: String
   country_in: [String]
+  country_not: String
+  country_notIn: [String]
+  country_containsFold: String
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   region_continent: String
   region_continent_contains: String
   region_continent_startswith: String
+  region_continent_endswith: String
   region_continent_in: [String]
+  region_continent_not: String
+  region_continent_notIn: [String]
+  region_continent_containsFold: String
   media: String
   media_contains: String
   media_startswith: String
+  media_endswith: String
   media_in: [String]
+  media_not: String
+  media_notIn: [String]
+  media_containsFold: String
   proto_unicast: Boolean
   proto_multicast: Boolean
   proto_ipv6: Boolean
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   url_stats: String
   url_stats_contains: String
   url_stats_startswith: String
+  url_stats_endswith: String
   url_stats_in: [String]
+  url_stats_not: String
+  url_stats_notIn: [String]
+  url_stats_containsFold: String
   tech_email: String
   tech_email_contains: String
   tech_email_startswith: String
+  tech_email_endswith: String
   tech_email_in: [String]
+  tech_email_not: String
+  tech_email_notIn: [String]
+  tech_email_containsFold: String
   tech_phone: String
   tech_phone_contains: String
   tech_phone_startswith: String
+  tech_phone_endswith: String
   tech_phone_in: [String]
+  tech_phone_not: String
+  tech_phone_notIn: [String]
+  tech_phone_containsFold: String
   policy_email: String
   policy_email_contains: String
   policy_email_startswith: String
+  policy_email_endswith: String
   policy_email_in: [String]
+  policy_email_not: String
+  policy_email_notIn: [String]
+  policy_email_containsFold: String
   policy_phone: String
   policy_phone_contains: String
   policy_phone_startswith: String
+  policy_phone_endswith: String
   policy_phone_in: [String]
+  policy_phone_not: String
+  policy_phone_notIn: [String]
+  policy_phone_containsFold: String
   sales_email: String
   sales_email_contains: String
   sales_email_startswith: String
+  sales_email_endswith: String
   sales_email_in: [String]
+  sales_email_not: String
+  sales_email_notIn: [String]
+  sales_email_containsFold: String
   sales_phone: String
   sales_phone_contains: String
   sales_phone_startswith: String
+  sales_phone_endswith: String
   sales_phone_in: [String]
+  sales_phone_not: String
+  sales_phone_notIn: [String]
+  sales_phone_containsFold: String
   ixf_net_count: Int
   ixf_net_count_lt: Int
   ixf_net_count_gt: Int
   ixf_net_count_lte: Int
   ixf_net_count_gte: Int
   ixf_net_count_in: [Int]
+  ixf_net_count_not: Int
+  ixf_net_count_notIn: [Int]
   ixf_last_import: String
   ixf_last_import_lt: String
   ixf_last_import_gt: String
   ixf_last_import_lte: String
   ixf_last_import_gte: String
+  ixf_last_import_not: String
+  ixf_last_import_isNil: Boolean
   service_level: String
   service_level_contains: String
   service_level_startswith: String
+  service_level_endswith: String
   service_level_in: [String]
+  service_level_not: String
+  service_level_notIn: [String]
+  service_level_containsFold: String
   terms: String
   terms_contains: String
   terms_startswith: String
+  terms_endswith: String
   terms_in: [String]
+  terms_not: String
+  terms_notIn: [String]
+  terms_containsFold: String
   status_dashboard: String
   status_dashboard_contains: String
   status_dashboard_startswith: String
+  status_dashboard_endswith: String
   status_dashboard_in: [String]
+  status_dashboard_not: String
+  status_dashboard_notIn: [String]
+  status_dashboard_containsFold: String
+  status_dashboard_isNil: Boolean
   org_id: Int
   org_id_lt: Int
   org_id_gt: Int
   org_id_lte: Int
   org_id_gte: Int
   org_id_in: [Int]
+  org_id_not: Int
+  org_id_notIn: [Int]
   net_count: Int
   net_count_lt: Int
   net_count_gt: Int
   net_count_lte: Int
   net_count_gte: Int
   net_count_in: [Int]
+  net_count_not: Int
+  net_count_notIn: [Int]
   fac_count: Int
   fac_count_lt: Int
   fac_count_gt: Int
   fac_count_lte: Int
   fac_count_gte: Int
   fac_count_in: [Int]
+  fac_count_not: Int
+  fac_count_notIn: [Int]
   ixf_import_request: String
   ixf_import_request_lt: String
   ixf_import_request_gt: String
   ixf_import_request_lte: String
   ixf_import_request_gte: String
+  ixf_import_request_not: String
   ixf_import_request_status: String
   ixf_import_request_status_contains: String
   ixf_import_request_status_startswith: String
+  ixf_import_request_status_endswith: String
   ixf_import_request_status_in: [String]
+  ixf_import_request_status_not: String
+  ixf_import_request_status_notIn: [String]
+  ixf_import_request_status_containsFold: String
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type Carrier {
@@ -687,37 +1092,62 @@ type Carrier {
   org_name: String!
   fac_count: Int!
   logo: String
+  carrierFacilities(limit: Int, skip: Int): [CarrierFacility!]!
 }
 
 input CarrierWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   aka: String
   aka_contains: String
   aka_startswith: String
+  aka_endswith: String
   aka_in: [String]
+  aka_not: String
+  aka_notIn: [String]
+  aka_containsFold: String
   name_long: String
   name_long_contains: String
   name_long_startswith: String
+  name_long_endswith: String
   name_long_in: [String]
+  name_long_not: String
+  name_long_notIn: [String]
+  name_long_containsFold: String
   website: String
   website_contains: String
   website_startswith: String
+  website_endswith: String
   website_in: [String]
+  website_not: String
+  website_notIn: [String]
+  website_containsFold: String
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   org_id: Int
   org_id_lt: Int
   org_id_gt: Int
   org_id_lte: Int
   org_id_gte: Int
   org_id_in: [Int]
+  org_id_not: Int
+  org_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type CarrierFacility {
@@ -737,14 +1167,20 @@ input CarrierFacilityWhere {
   carrier_id_lte: Int
   carrier_id_gte: Int
   carrier_id_in: [Int]
+  carrier_id_not: Int
+  carrier_id_notIn: [Int]
   fac_id: Int
   fac_id_lt: Int
   fac_id_gt: Int
   fac_id_lte: Int
   fac_id_gte: Int
   fac_id_in: [Int]
+  fac_id_not: Int
+  fac_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type ExchangeFacility {
@@ -766,14 +1202,20 @@ input ExchangeFacilityWhere {
   ix_id_lte: Int
   ix_id_gte: Int
   ix_id_in: [Int]
+  ix_id_not: Int
+  ix_id_notIn: [Int]
   fac_id: Int
   fac_id_lt: Int
   fac_id_gt: Int
   fac_id_lte: Int
   fac_id_gte: Int
   fac_id_in: [Int]
+  fac_id_not: Int
+  fac_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type ExchangeLan {
@@ -791,29 +1233,44 @@ type ExchangeLan {
   ix_id: Int!
   ix: Exchange
   ixf_ixp_import_enabled: Boolean!
+  exchangePrefixes(limit: Int, skip: Int): [ExchangePrefix!]!
+  networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
 }
 
 input ExchangeLanWhere {
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   descr: String
   descr_contains: String
   descr_startswith: String
+  descr_endswith: String
   descr_in: [String]
+  descr_not: String
+  descr_notIn: [String]
+  descr_containsFold: String
   mtu: Int
   mtu_lt: Int
   mtu_gt: Int
   mtu_lte: Int
   mtu_gte: Int
   mtu_in: [Int]
+  mtu_not: Int
+  mtu_notIn: [Int]
   vlan: Int
   vlan_lt: Int
   vlan_gt: Int
   vlan_lte: Int
   vlan_gte: Int
   vlan_in: [Int]
+  vlan_not: Int
+  vlan_notIn: [Int]
+  vlan_isNil: Boolean
   dot1q_support: Boolean
   rs_asn: Int
   rs_asn_lt: Int
@@ -821,27 +1278,48 @@ input ExchangeLanWhere {
   rs_asn_lte: Int
   rs_asn_gte: Int
   rs_asn_in: [Int]
+  rs_asn_not: Int
+  rs_asn_notIn: [Int]
+  rs_asn_isNil: Boolean
   arp_sponge: String
   arp_sponge_contains: String
   arp_sponge_startswith: String
+  arp_sponge_endswith: String
   arp_sponge_in: [String]
+  arp_sponge_not: String
+  arp_sponge_notIn: [String]
+  arp_sponge_containsFold: String
+  arp_sponge_isNil: Boolean
   ixf_ixp_member_list_url: String
   ixf_ixp_member_list_url_contains: String
   ixf_ixp_member_list_url_startswith: String
+  ixf_ixp_member_list_url_endswith: String
   ixf_ixp_member_list_url_in: [String]
+  ixf_ixp_member_list_url_not: String
+  ixf_ixp_member_list_url_notIn: [String]
+  ixf_ixp_member_list_url_containsFold: String
+  ixf_ixp_member_list_url_isNil: Boolean
   ixf_ixp_member_list_url_visible: String
   ixf_ixp_member_list_url_visible_contains: String
   ixf_ixp_member_list_url_visible_startswith: String
+  ixf_ixp_member_list_url_visible_endswith: String
   ixf_ixp_member_list_url_visible_in: [String]
+  ixf_ixp_member_list_url_visible_not: String
+  ixf_ixp_member_list_url_visible_notIn: [String]
+  ixf_ixp_member_list_url_visible_containsFold: String
   ix_id: Int
   ix_id_lt: Int
   ix_id_gt: Int
   ix_id_lte: Int
   ix_id_gte: Int
   ix_id_in: [Int]
+  ix_id_not: Int
+  ix_id_notIn: [Int]
   ixf_ixp_import_enabled: Boolean
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type ExchangePrefix {
@@ -859,15 +1337,27 @@ input ExchangePrefixWhere {
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   protocol: String
   protocol_contains: String
   protocol_startswith: String
+  protocol_endswith: String
   protocol_in: [String]
+  protocol_not: String
+  protocol_notIn: [String]
+  protocol_containsFold: String
   prefix: String
   prefix_contains: String
   prefix_startswith: String
+  prefix_endswith: String
   prefix_in: [String]
+  prefix_not: String
+  prefix_notIn: [String]
+  prefix_containsFold: String
   in_dfz: Boolean
   ixlan_id: Int
   ixlan_id_lt: Int
@@ -875,8 +1365,12 @@ input ExchangePrefixWhere {
   ixlan_id_lte: Int
   ixlan_id_gte: Int
   ixlan_id_in: [Int]
+  ixlan_id_not: Int
+  ixlan_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type PointOfContact {
@@ -896,35 +1390,63 @@ input PointOfContactWhere {
   role: String
   role_contains: String
   role_startswith: String
+  role_endswith: String
   role_in: [String]
+  role_not: String
+  role_notIn: [String]
+  role_containsFold: String
   visible: String
   visible_contains: String
   visible_startswith: String
+  visible_endswith: String
   visible_in: [String]
+  visible_not: String
+  visible_notIn: [String]
+  visible_containsFold: String
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   phone: String
   phone_contains: String
   phone_startswith: String
+  phone_endswith: String
   phone_in: [String]
+  phone_not: String
+  phone_notIn: [String]
+  phone_containsFold: String
   email: String
   email_contains: String
   email_startswith: String
+  email_endswith: String
   email_in: [String]
+  email_not: String
+  email_notIn: [String]
+  email_containsFold: String
   url: String
   url_contains: String
   url_startswith: String
+  url_endswith: String
   url_in: [String]
+  url_not: String
+  url_notIn: [String]
+  url_containsFold: String
   net_id: Int
   net_id_lt: Int
   net_id_gt: Int
   net_id_lte: Int
   net_id_gte: Int
   net_id_in: [Int]
+  net_id_not: Int
+  net_id_notIn: [Int]
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type NetworkFacility {
@@ -953,26 +1475,44 @@ input NetworkFacilityWhere {
   net_id_lte: Int
   net_id_gte: Int
   net_id_in: [Int]
+  net_id_not: Int
+  net_id_notIn: [Int]
   fac_id: Int
   fac_id_lt: Int
   fac_id_gt: Int
   fac_id_lte: Int
   fac_id_gte: Int
   fac_id_in: [Int]
+  fac_id_not: Int
+  fac_id_notIn: [Int]
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   city: String
   city_contains: String
   city_startswith: String
+  city_endswith: String
   city_in: [String]
+  city_not: String
+  city_notIn: [String]
+  city_containsFold: String
   country: String
   country_contains: String
   country_startswith: String
+  country_endswith: String
   country_in: [String]
+  country_not: String
+  country_notIn: [String]
+  country_containsFold: String
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
 }
 
 type NetworkExchangeLan {
@@ -1005,26 +1545,44 @@ input NetworkExchangeLanWhere {
   asn_lte: Int
   asn_gte: Int
   asn_in: [Int]
+  asn_not: Int
+  asn_notIn: [Int]
   ipaddr4: String
   ipaddr4_contains: String
   ipaddr4_startswith: String
+  ipaddr4_endswith: String
   ipaddr4_in: [String]
+  ipaddr4_not: String
+  ipaddr4_notIn: [String]
+  ipaddr4_containsFold: String
+  ipaddr4_isNil: Boolean
   ipaddr6: String
   ipaddr6_contains: String
   ipaddr6_startswith: String
+  ipaddr6_endswith: String
   ipaddr6_in: [String]
+  ipaddr6_not: String
+  ipaddr6_notIn: [String]
+  ipaddr6_containsFold: String
+  ipaddr6_isNil: Boolean
   is_rs_peer: Boolean
   bfd_support: Boolean
   notes: String
   notes_contains: String
   notes_startswith: String
+  notes_endswith: String
   notes_in: [String]
+  notes_not: String
+  notes_notIn: [String]
+  notes_containsFold: String
   speed: Int
   speed_lt: Int
   speed_gt: Int
   speed_lte: Int
   speed_gte: Int
   speed_in: [Int]
+  speed_not: Int
+  speed_notIn: [Int]
   operational: Boolean
   net_id: Int
   net_id_lt: Int
@@ -1032,59 +1590,256 @@ input NetworkExchangeLanWhere {
   net_id_lte: Int
   net_id_gte: Int
   net_id_in: [Int]
+  net_id_not: Int
+  net_id_notIn: [Int]
   ixlan_id: Int
   ixlan_id_lt: Int
   ixlan_id_gt: Int
   ixlan_id_lte: Int
   ixlan_id_gte: Int
   ixlan_id_in: [Int]
+  ixlan_id_not: Int
+  ixlan_id_notIn: [Int]
   net_side_id: Int
   net_side_id_lt: Int
   net_side_id_gt: Int
   net_side_id_lte: Int
   net_side_id_gte: Int
   net_side_id_in: [Int]
+  net_side_id_not: Int
+  net_side_id_notIn: [Int]
+  net_side_id_isNil: Boolean
   ix_side_id: Int
   ix_side_id_lt: Int
   ix_side_id_gt: Int
   ix_side_id_lte: Int
   ix_side_id_gte: Int
   ix_side_id_in: [Int]
+  ix_side_id_not: Int
+  ix_side_id_notIn: [Int]
+  ix_side_id_isNil: Boolean
   name: String
   name_contains: String
   name_startswith: String
+  name_endswith: String
   name_in: [String]
+  name_not: String
+  name_notIn: [String]
+  name_containsFold: String
   id: Int
   id_in: [Int]
+  id_not: Int
+  id_notIn: [Int]
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type OrganizationEdge {
+  node: Organization!
+  cursor: String!
+}
+
+type OrganizationConnection {
+  edges: [OrganizationEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CampusEdge {
+  node: Campus!
+  cursor: String!
+}
+
+type CampusConnection {
+  edges: [CampusEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type FacilityEdge {
+  node: Facility!
+  cursor: String!
+}
+
+type FacilityConnection {
+  edges: [FacilityEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NetworkEdge {
+  node: Network!
+  cursor: String!
+}
+
+type NetworkConnection {
+  edges: [NetworkEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ExchangeEdge {
+  node: Exchange!
+  cursor: String!
+}
+
+type ExchangeConnection {
+  edges: [ExchangeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CarrierEdge {
+  node: Carrier!
+  cursor: String!
+}
+
+type CarrierConnection {
+  edges: [CarrierEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CarrierFacilityEdge {
+  node: CarrierFacility!
+  cursor: String!
+}
+
+type CarrierFacilityConnection {
+  edges: [CarrierFacilityEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ExchangeFacilityEdge {
+  node: ExchangeFacility!
+  cursor: String!
+}
+
+type ExchangeFacilityConnection {
+  edges: [ExchangeFacilityEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ExchangeLanEdge {
+  node: ExchangeLan!
+  cursor: String!
+}
+
+type ExchangeLanConnection {
+  edges: [ExchangeLanEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ExchangePrefixEdge {
+  node: ExchangePrefix!
+  cursor: String!
+}
+
+type ExchangePrefixConnection {
+  edges: [ExchangePrefixEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type PointOfContactEdge {
+  node: PointOfContact!
+  cursor: String!
+}
+
+type PointOfContactConnection {
+  edges: [PointOfContactEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NetworkFacilityEdge {
+  node: NetworkFacility!
+  cursor: String!
+}
+
+type NetworkFacilityConnection {
+  edges: [NetworkFacilityEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NetworkExchangeLanEdge {
+  node: NetworkExchangeLan!
+  cursor: String!
+}
+
+type NetworkExchangeLanConnection {
+  edges: [NetworkExchangeLanEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 type Query {
   organization(id: Int!): Organization
   organizations(where: OrganizationWhere, limit: Int, skip: Int): [Organization!]!
+  organizationsConnection(after: String, first: Int, before: String, last: Int, where: OrganizationWhere): OrganizationConnection!
   campus(id: Int!): Campus
   campuses(where: CampusWhere, limit: Int, skip: Int): [Campus!]!
+  campusesConnection(after: String, first: Int, before: String, last: Int, where: CampusWhere): CampusConnection!
   facility(id: Int!): Facility
   facilities(where: FacilityWhere, limit: Int, skip: Int): [Facility!]!
+  facilitiesConnection(after: String, first: Int, before: String, last: Int, where: FacilityWhere): FacilityConnection!
   network(id: Int!): Network
   networks(where: NetworkWhere, limit: Int, skip: Int): [Network!]!
+  networksConnection(after: String, first: Int, before: String, last: Int, where: NetworkWhere): NetworkConnection!
   exchange(id: Int!): Exchange
   exchanges(where: ExchangeWhere, limit: Int, skip: Int): [Exchange!]!
+  exchangesConnection(after: String, first: Int, before: String, last: Int, where: ExchangeWhere): ExchangeConnection!
+  internetExchange(id: Int!): Exchange
+  internetExchanges(where: ExchangeWhere, limit: Int, skip: Int): [Exchange!]!
+  internetExchangesConnection(after: String, first: Int, before: String, last: Int, where: ExchangeWhere): ExchangeConnection!
   carrier(id: Int!): Carrier
   carriers(where: CarrierWhere, limit: Int, skip: Int): [Carrier!]!
+  carriersConnection(after: String, first: Int, before: String, last: Int, where: CarrierWhere): CarrierConnection!
   carrierFacility(id: Int!): CarrierFacility
   carrierFacilities(where: CarrierFacilityWhere, limit: Int, skip: Int): [CarrierFacility!]!
+  carrierFacilitiesConnection(after: String, first: Int, before: String, last: Int, where: CarrierFacilityWhere): CarrierFacilityConnection!
   exchangeFacility(id: Int!): ExchangeFacility
   exchangeFacilities(where: ExchangeFacilityWhere, limit: Int, skip: Int): [ExchangeFacility!]!
+  exchangeFacilitiesConnection(after: String, first: Int, before: String, last: Int, where: ExchangeFacilityWhere): ExchangeFacilityConnection!
+  ixFacility(id: Int!): ExchangeFacility
+  ixFacilities(where: ExchangeFacilityWhere, limit: Int, skip: Int): [ExchangeFacility!]!
+  ixFacilitiesConnection(after: String, first: Int, before: String, last: Int, where: ExchangeFacilityWhere): ExchangeFacilityConnection!
   exchangeLan(id: Int!): ExchangeLan
   exchangeLans(where: ExchangeLanWhere, limit: Int, skip: Int): [ExchangeLan!]!
+  exchangeLansConnection(after: String, first: Int, before: String, last: Int, where: ExchangeLanWhere): ExchangeLanConnection!
+  ixLan(id: Int!): ExchangeLan
+  ixLans(where: ExchangeLanWhere, limit: Int, skip: Int): [ExchangeLan!]!
+  ixLansConnection(after: String, first: Int, before: String, last: Int, where: ExchangeLanWhere): ExchangeLanConnection!
   exchangePrefix(id: Int!): ExchangePrefix
   exchangePrefixes(where: ExchangePrefixWhere, limit: Int, skip: Int): [ExchangePrefix!]!
+  exchangePrefixesConnection(after: String, first: Int, before: String, last: Int, where: ExchangePrefixWhere): ExchangePrefixConnection!
+  ixPrefix(id: Int!): ExchangePrefix
+  ixPrefixes(where: ExchangePrefixWhere, limit: Int, skip: Int): [ExchangePrefix!]!
+  ixPrefixesConnection(after: String, first: Int, before: String, last: Int, where: ExchangePrefixWhere): ExchangePrefixConnection!
   pointOfContact(id: Int!): PointOfContact
   pointsOfContact(where: PointOfContactWhere, limit: Int, skip: Int): [PointOfContact!]!
+  pointsOfContactConnection(after: String, first: Int, before: String, last: Int, where: PointOfContactWhere): PointOfContactConnection!
+  poc(id: Int!): PointOfContact
+  pocs(where: PointOfContactWhere, limit: Int, skip: Int): [PointOfContact!]!
+  pocsConnection(after: String, first: Int, before: String, last: Int, where: PointOfContactWhere): PointOfContactConnection!
   networkFacility(id: Int!): NetworkFacility
   networkFacilities(where: NetworkFacilityWhere, limit: Int, skip: Int): [NetworkFacility!]!
+  networkFacilitiesConnection(after: String, first: Int, before: String, last: Int, where: NetworkFacilityWhere): NetworkFacilityConnection!
   networkExchangeLan(id: Int!): NetworkExchangeLan
   networkExchangeLans(where: NetworkExchangeLanWhere, limit: Int, skip: Int): [NetworkExchangeLan!]!
+  networkExchangeLansConnection(after: String, first: Int, before: String, last: Int, where: NetworkExchangeLanWhere): NetworkExchangeLanConnection!
+  networkIxLan(id: Int!): NetworkExchangeLan
+  networkIxLans(where: NetworkExchangeLanWhere, limit: Int, skip: Int): [NetworkExchangeLan!]!
+  networkIxLansConnection(after: String, first: Int, before: String, last: Int, where: NetworkExchangeLanWhere): NetworkExchangeLanConnection!
   networkByAsn(asn: Int!): Network
 }
 `;

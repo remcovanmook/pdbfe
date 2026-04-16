@@ -1,7 +1,8 @@
 /**
  * @fileoverview REST API worker entry point.
  *
- * Serves a versioned REST API at /v1/{entity} and /v1/{entity}/{id},
+ * Serves a versioned REST API at /v1/{entity}, /v1/{entity}/{id},
+ * and /v1/{entity}/{id}/{relation} for sub-resource traversal,
  * plus an OpenAPI 3.1 spec at /openapi.json and a Scalar API docs
  * UI at the root path.
  *
@@ -30,6 +31,7 @@ import { withEdgeSWR } from '../api/swr.js';
 import { EMPTY_ENVELOPE } from '../core/pipeline.js';
 import { getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
 import { serveScalarUI } from './scalar.js';
+import { handleSubResource } from './subresource.js';
 import openApiSpec from '../../extracted/openapi.json';
 
 /**
@@ -150,7 +152,7 @@ async function routeApiRequest(request, rc) {
     }
 
     const apiPath = rawPath.slice(3); // strip "v1/"
-    const { p0: entityTag, p1: idStr } = tokenizeString(apiPath, '/', 2);
+    const { p0: entityTag, p1: idStr, p2: relation } = tokenizeString(apiPath, '/', 3);
 
     if (!ENTITY_TAGS.has(entityTag)) {
         return jsonError(404, `Unknown entity: ${entityTag}`);
@@ -187,6 +189,12 @@ async function routeApiRequest(request, rc) {
         if (Number.isNaN(id) || id <= 0) {
             return jsonError(400, `Invalid ID: ${idStr}`);
         }
+
+        // Sub-resource: /v1/{entity}/{id}/{relation}
+        if (relation !== undefined) {
+            return handleSubResource(rc, entityTag, id, relation, queryString, authenticated, hResponse);
+        }
+
         return handleDetail(request, entity, id, opts, qc);
     }
 

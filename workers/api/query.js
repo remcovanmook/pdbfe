@@ -22,7 +22,7 @@ import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getFilt
  * (no suffix). Used by parseQueryFilters() to recognise operator suffixes.
  * @type {Set<string>}
  */
-export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in']);
+export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in', 'not', 'notin', 'endswith', 'isnil']);
 
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
@@ -66,7 +66,27 @@ const OPS = {
             clause: `"${col}" IN (${placeholders})`,
             params: parts
         };
-    }
+    },
+    not: (col, value) => ({
+        clause: `"${col}" != ? COLLATE NOCASE`,
+        params: [value]
+    }),
+    notin: (col, value) => {
+        const parts = value.split(","); // ap-ok: SQL NOT IN clause construction
+        const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
+        return {
+            clause: `"${col}" NOT IN (${placeholders})`,
+            params: parts
+        };
+    },
+    endswith: (col, value) => ({
+        clause: `"${col}" LIKE '%' || ? COLLATE NOCASE`,
+        params: [value]
+    }),
+    isnil: (col, value) => ({
+        clause: value === 'true' || value === '1' ? `"${col}" IS NULL` : `"${col}" IS NOT NULL`,
+        params: []
+    }),
 };
 
 /**
@@ -84,6 +104,8 @@ const OPS_SQL = {
     gte: (col, ph) => `${col} >= ${ph}`,
     contains: (col, ph) => `${col} LIKE '%' || ${ph} || '%' COLLATE NOCASE`,
     startswith: (col, ph) => `${col} LIKE ${ph} || '%' COLLATE NOCASE`,
+    not: (col, ph) => `${col} != ${ph} COLLATE NOCASE`,
+    endswith: (col, ph) => `${col} LIKE '%' || ${ph} COLLATE NOCASE`,
 };
 
 /**
@@ -378,12 +400,13 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         // Qualify the column with the table alias for JOIN queries.
         const sqlCol = pfx ? `${pfx}"${f.field}"` : f.field;
 
-        // For 'in' operator, coerce each comma-separated value
-        if (f.op === "in") {
+        // For 'in' and 'notin' operators, coerce each comma-separated value
+        if (f.op === "in" || f.op === "notin") {
+            const negated = f.op === "notin";
             if (pfx) {
                 const parts = f.value.split(","); // ap-ok: SQL IN clause
                 const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
-                clauses.push(`${sqlCol} IN (${placeholders})`);
+                clauses.push(`${sqlCol} ${negated ? 'NOT IN' : 'IN'} (${placeholders})`);
                 params.push(...parts.map(v => coerceValue(/** @type {string} */(v), fieldType))); // ap-ok: SQL bind params
             } else {
                 const result = opFn(f.field, f.value);
@@ -391,6 +414,11 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
                 clauses.push(result.clause);
                 params.push(...result.params);
             }
+        } else if (f.op === "isnil") {
+            // isnil produces no bind params — clause only
+            const isNull = f.value === 'true' || f.value === '1';
+            const col = pfx ? sqlCol : `"${f.field}"`;
+            clauses.push(isNull ? `${col} IS NULL` : `${col} IS NOT NULL`);
         } else {
             const coerced = coerceValue(f.value, fieldType);
             if (pfx) {

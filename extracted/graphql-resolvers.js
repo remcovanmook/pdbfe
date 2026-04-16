@@ -18,7 +18,12 @@ const OP_MAP = {
     '_gte': 'gte',
     '_contains': 'contains',
     '_startswith': 'startswith',
+    '_endswith': 'endswith',
     '_in': 'in',
+    '_not': 'not',
+    '_notIn': 'notin',
+    '_containsFold': 'contains',
+    '_isNil': 'isnil',
 };
 
 /**
@@ -43,12 +48,29 @@ function whereToFilters(where) {
                 break;
             }
         }
-        const strVal = op === 'in' && Array.isArray(value)
+        const strVal = (op === 'in' || op === 'notin') && Array.isArray(value)
             ? value.join(',')
             : String(value);
         filters.push({ field, op, value: strVal });
     }
     return filters;
+}
+
+/**
+ * Encodes a row ID as a Relay-style opaque cursor.
+ * @param {number} id - Row primary key.
+ * @returns {string} Base64-encoded cursor.
+ */
+function encodeCursor(id) { return btoa('id:' + id); }
+
+/**
+ * Decodes a Relay cursor back to a row ID.
+ * @param {string} cursor - Base64-encoded cursor.
+ * @returns {number} Decoded row ID.
+ */
+function decodeCursor(cursor) {
+    const decoded = atob(cursor);
+    return Number.parseInt(decoded.slice(3), 10);
 }
 
 /**
@@ -111,59 +133,189 @@ function fkResolver(fkField, targetTag) {
     };
 }
 
+/**
+ * Creates a reverse-edge resolver that loads child entities by parent ID.
+ *
+ * @param {string} fkField - The FK field on the child entity (e.g. "org_id").
+ * @param {string} childTag - Child entity tag (e.g. "net").
+  @returns {Function} GraphQL resolver function.
+ */
+function reverseEdgeResolver(fkField, childTag) {
+    return async (parent, args, ctx) => {
+        const entity = ENTITIES[childTag];
+        const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];
+        const opts = {
+            depth: 0,
+            limit: Math.min(args.limit ?? 250, 250),
+            skip: args.skip ?? 0,
+            since: 0,
+            sort: '',
+        };
+        const { sql, params } = buildRowQuery(entity, filters, opts);
+        const result = await ctx.db.prepare(sql).bind(...params).all();
+        return result.results || [];
+    };
+}
+
+/**
+ * Creates a Relay connection resolver for the given entity tag.
+ * Supports forward pagination (after + first) and backward (before + last).
+ *
+ * @param {string} tag - Entity tag (e.g. "net").
+  @returns {Function} GraphQL resolver function.
+ */
+function connectionResolver(tag) {
+    return async (_parent, args, ctx) => {
+        const entity = ENTITIES[tag];
+        const filters = whereToFilters(args.where);
+
+        // Count query
+        const countFilters = [...filters, { field: 'status', op: 'eq', value: 'ok' }];
+        const countOpts = { depth: 0, limit: -1, skip: 0, since: 0, sort: '' };
+        const { sql: countSql, params: countParams } = buildRowQuery(entity, countFilters, countOpts);
+        const countSqlWrapped = `SELECT COUNT(*) as cnt FROM (${countSql})`;
+        const countResult = await ctx.db.prepare(countSqlWrapped).bind(...countParams).first();
+        const totalCount = countResult?.cnt ?? 0;
+
+        // Pagination
+        const first = Math.min(args.first ?? 20, 250);
+        if (args.after) {
+            const afterId = decodeCursor(args.after);
+            filters.push({ field: 'id', op: 'gt', value: String(afterId) });
+        }
+        if (args.before) {
+            const beforeId = decodeCursor(args.before);
+            filters.push({ field: 'id', op: 'lt', value: String(beforeId) });
+        }
+
+        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort: 'id' };
+        const { sql, params } = buildRowQuery(entity, filters, opts);
+        const result = await ctx.db.prepare(sql).bind(...params).all();
+        const rows = result.results || [];
+        const hasNextPage = rows.length > first;
+        const nodes = hasNextPage ? rows.slice(0, first) : rows;
+
+        const edges = nodes.map(node => ({
+            node,
+            cursor: encodeCursor(node.id),
+        }));
+
+        return {
+            edges,
+            pageInfo: {
+                hasNextPage,
+                hasPreviousPage: !!args.after,
+                startCursor: edges.length > 0 ? edges[0].cursor : null,
+                endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+            },
+            totalCount,
+        };
+    };
+}
+
 /** @type {Record<string, any>} */
 export const resolvers = {
     Query: {
         organization: detailResolver('org'),
         organizations: listResolver('org'),
+        organizationsConnection: connectionResolver('org'),
         campus: detailResolver('campus'),
         campuses: listResolver('campus'),
+        campusesConnection: connectionResolver('campus'),
         facility: detailResolver('fac'),
         facilities: listResolver('fac'),
+        facilitiesConnection: connectionResolver('fac'),
         network: detailResolver('net'),
         networks: listResolver('net'),
+        networksConnection: connectionResolver('net'),
         exchange: detailResolver('ix'),
         exchanges: listResolver('ix'),
+        exchangesConnection: connectionResolver('ix'),
+        internetExchange: detailResolver('ix'),
+        internetExchanges: listResolver('ix'),
+        internetExchangesConnection: connectionResolver('ix'),
         carrier: detailResolver('carrier'),
         carriers: listResolver('carrier'),
+        carriersConnection: connectionResolver('carrier'),
         carrierFacility: detailResolver('carrierfac'),
         carrierFacilities: listResolver('carrierfac'),
+        carrierFacilitiesConnection: connectionResolver('carrierfac'),
         exchangeFacility: detailResolver('ixfac'),
         exchangeFacilities: listResolver('ixfac'),
+        exchangeFacilitiesConnection: connectionResolver('ixfac'),
+        ixFacility: detailResolver('ixfac'),
+        ixFacilities: listResolver('ixfac'),
+        ixFacilitiesConnection: connectionResolver('ixfac'),
         exchangeLan: detailResolver('ixlan'),
         exchangeLans: listResolver('ixlan'),
+        exchangeLansConnection: connectionResolver('ixlan'),
+        ixLan: detailResolver('ixlan'),
+        ixLans: listResolver('ixlan'),
+        ixLansConnection: connectionResolver('ixlan'),
         exchangePrefix: detailResolver('ixpfx'),
         exchangePrefixes: listResolver('ixpfx'),
+        exchangePrefixesConnection: connectionResolver('ixpfx'),
+        ixPrefix: detailResolver('ixpfx'),
+        ixPrefixes: listResolver('ixpfx'),
+        ixPrefixesConnection: connectionResolver('ixpfx'),
         pointOfContact: detailResolver('poc'),
         pointsOfContact: listResolver('poc'),
+        pointsOfContactConnection: connectionResolver('poc'),
+        poc: detailResolver('poc'),
+        pocs: listResolver('poc'),
+        pocsConnection: connectionResolver('poc'),
         networkFacility: detailResolver('netfac'),
         networkFacilities: listResolver('netfac'),
+        networkFacilitiesConnection: connectionResolver('netfac'),
         networkExchangeLan: detailResolver('netixlan'),
         networkExchangeLans: listResolver('netixlan'),
+        networkExchangeLansConnection: connectionResolver('netixlan'),
+        networkIxLan: detailResolver('netixlan'),
+        networkIxLans: listResolver('netixlan'),
+        networkIxLansConnection: connectionResolver('netixlan'),
         networkByAsn: async (_parent, args, ctx) => {
             const entity = ENTITIES['net'];
             const filters = [{ field: 'asn', op: 'eq', value: String(args.asn) }];
             const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };
-            const { sql, params } = buildRowQuery(entity, filters, opts);
-            const result = await ctx.db.prepare(sql).bind(...params).all();
+        const { sql, params } = buildRowQuery(entity, filters, opts);
+        const result = await ctx.db.prepare(sql).bind(...params).all();
             return (result.results || [])[0] || null;
         },
     },
+    Organization: {
+        campuses: reverseEdgeResolver('org_id', 'campus'),
+        facilities: reverseEdgeResolver('org_id', 'fac'),
+        networks: reverseEdgeResolver('org_id', 'net'),
+        exchanges: reverseEdgeResolver('org_id', 'ix'),
+        carriers: reverseEdgeResolver('org_id', 'carrier'),
+    },
     Campus: {
         org: fkResolver('org_id', 'org'),
+        facilities: reverseEdgeResolver('campus_id', 'fac'),
     },
     Facility: {
         org: fkResolver('org_id', 'org'),
         campus: fkResolver('campus_id', 'campus'),
+        carrierFacilities: reverseEdgeResolver('fac_id', 'carrierfac'),
+        exchangeFacilities: reverseEdgeResolver('fac_id', 'ixfac'),
+        networkFacilities: reverseEdgeResolver('fac_id', 'netfac'),
+        networkExchangeLans: reverseEdgeResolver('net_side_id', 'netixlan'),
+        networkExchangeLans: reverseEdgeResolver('ix_side_id', 'netixlan'),
     },
     Network: {
         org: fkResolver('org_id', 'org'),
+        pointsOfContact: reverseEdgeResolver('net_id', 'poc'),
+        networkFacilities: reverseEdgeResolver('net_id', 'netfac'),
+        networkExchangeLans: reverseEdgeResolver('net_id', 'netixlan'),
     },
     Exchange: {
         org: fkResolver('org_id', 'org'),
+        exchangeFacilities: reverseEdgeResolver('ix_id', 'ixfac'),
+        exchangeLans: reverseEdgeResolver('ix_id', 'ixlan'),
     },
     Carrier: {
         org: fkResolver('org_id', 'org'),
+        carrierFacilities: reverseEdgeResolver('carrier_id', 'carrierfac'),
     },
     CarrierFacility: {
         carrier: fkResolver('carrier_id', 'carrier'),
@@ -175,6 +327,8 @@ export const resolvers = {
     },
     ExchangeLan: {
         ix: fkResolver('ix_id', 'ix'),
+        exchangePrefixes: reverseEdgeResolver('ixlan_id', 'ixpfx'),
+        networkExchangeLans: reverseEdgeResolver('ixlan_id', 'netixlan'),
     },
     ExchangePrefix: {
         ixlan: fkResolver('ixlan_id', 'ixlan'),

@@ -58,6 +58,23 @@ FILTER_OPS = {
     "datetime": ["", "__lt", "__gt", "__lte", "__gte"],
 }
 
+# Maps entity tags to descriptive sub-resource URL slugs.
+TAG_TO_SUBRESOURCE = {
+    "org": "organization",
+    "campus": "campuses",
+    "fac": "facilities",
+    "net": "networks",
+    "ix": "exchanges",
+    "carrier": "carriers",
+    "carrierfac": "carrier-facilities",
+    "ixfac": "exchange-facilities",
+    "ixlan": "exchange-lans",
+    "ixpfx": "exchange-prefixes",
+    "poc": "contacts",
+    "netfac": "network-facilities",
+    "netixlan": "network-exchange-lans",
+}
+
 
 def load_entities():
     """Load the entities dict from entities.json."""
@@ -318,6 +335,114 @@ def build_spec(entities, schema_version):
                 },
             },
         }
+
+        # ── Sub-resource endpoints ───────────────────────────────────────
+        # Forward FKs: /v1/{tag}/{id}/{relation} → parent entity
+        for field in entity["fields"]:
+            fk_target = field.get("foreignKey")
+            if not fk_target or fk_target not in TAG_TO_LABEL:
+                continue
+
+            fk_label = TAG_TO_LABEL[fk_target]
+            rel_name = TAG_TO_SUBRESOURCE.get(fk_target, fk_target)
+            sub_path = f"/v1/{tag}/{{id}}/{rel_name}"
+
+            fk_schema_name = f"{fk_target.capitalize()}DetailEnvelope"
+            if fk_schema_name not in schemas:
+                fk_schema_name = f"{fk_target}DetailEnvelope"
+
+            paths[sub_path] = {
+                "get": {
+                    "operationId": f"get_{tag}_{rel_name.replace('-', '_')}",
+                    "summary": f"Get {fk_label} for {label}",
+                    "description": f"Returns the {fk_label.lower()} associated with {label.lower()} {{id}} via the {field['name']} foreign key.",
+                    "tags": [label],
+                    "parameters": [
+                        {
+                            "name": "id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "integer"},
+                            "description": f"{label} primary key.",
+                        },
+                    ],
+                    "responses": {
+                        "200": {
+                            "description": f"The associated {fk_label.lower()}.",
+                            "content": {
+                                MEDIA_JSON: {
+                                    "schema": {"$ref": f"#/components/schemas/{detail_envelope_name}"},
+                                },
+                            },
+                        },
+                        "404": {
+                            "description": f"{label} not found or no {fk_label.lower()} associated.",
+                            "content": {
+                                MEDIA_JSON: {
+                                    "schema": {"$ref": "#/components/schemas/Error"},
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+
+        # Reverse edges: /v1/{tag}/{id}/{children} → child entities
+        for child_tag, child_entity in entities.items():
+            for child_field in child_entity["fields"]:
+                fk_target = child_field.get("foreignKey")
+                if fk_target != tag:
+                    continue
+
+                child_label = TAG_TO_LABEL.get(child_tag, child_tag)
+                rel_name = TAG_TO_SUBRESOURCE.get(child_tag, child_tag)
+                sub_path = f"/v1/{tag}/{{id}}/{rel_name}"
+
+                # Avoid duplicate paths (e.g. fac←netixlan via net_side_id and ix_side_id)
+                if sub_path in paths:
+                    continue
+
+                child_schema_name = f"{child_tag.capitalize()}Envelope"
+                if child_schema_name not in schemas:
+                    child_schema_name = f"{child_tag}Envelope"
+
+                paths[sub_path] = {
+                    "get": {
+                        "operationId": f"list_{tag}_{rel_name.replace('-', '_')}",
+                        "summary": f"List {child_label}s for {label}",
+                        "description": f"Returns {child_label.lower()} records where {child_field['name']} matches {{id}}.",
+                        "tags": [label],
+                        "parameters": [
+                            {
+                                "name": "id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "integer"},
+                                "description": f"{label} primary key.",
+                            },
+                            common_params[0],  # limit
+                            common_params[1],  # skip
+                        ],
+                        "responses": {
+                            "200": {
+                                "description": f"List of {child_label.lower()} records.",
+                                "content": {
+                                    MEDIA_JSON: {
+                                        "schema": {"$ref": f"#/components/schemas/{envelope_name}"},
+                                    },
+                                },
+                            },
+                            "404": {
+                                "description": f"{label} not found.",
+                                "content": {
+                                    MEDIA_JSON: {
+                                        "schema": {"$ref": "#/components/schemas/Error"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                }
 
     # Error schema
     schemas["Error"] = {
