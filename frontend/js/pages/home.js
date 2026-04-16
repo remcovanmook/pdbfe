@@ -206,7 +206,7 @@ async function loadRecentUpdates() {
         const grid = document.createElement('div');
         grid.className = 'recent-updates';
 
-        types.forEach((typ, i) => {
+        for (const [i, typ] of types.entries()) {
             const col = document.createElement('div');
             col.className = 'recent-updates__column';
 
@@ -242,7 +242,7 @@ async function loadRecentUpdates() {
             }
 
             grid.appendChild(col);
-        });
+        }
 
         container.replaceChildren(grid);
     } catch {
@@ -285,7 +285,7 @@ async function loadGlobalStats() {
         const ul = document.createElement('ul');
         ul.className = 'global-stats__list';
 
-        types.forEach((typ, i) => {
+        for (const [i, typ] of types.entries()) {
             const li = document.createElement('li');
             li.className = 'global-stats__item';
 
@@ -296,7 +296,7 @@ async function loadGlobalStats() {
 
             li.appendChild(document.createTextNode(' ' + t(typ.label)));
             ul.appendChild(li);
-        });
+        }
 
         wrapper.appendChild(ul);
         container.replaceChildren(wrapper);

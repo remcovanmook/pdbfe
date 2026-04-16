@@ -276,7 +276,7 @@ export async function searchAll(query, signal) {
 
     /** @type {Record<string, any[]>} */
     const grouped = {};
-    SEARCH_ENTITIES.forEach((e, i) => { grouped[e.key] = results[i]; });
+    for (const [i, e] of SEARCH_ENTITIES.entries()) { grouped[e.key] = results[i]; }
     return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
 }
 

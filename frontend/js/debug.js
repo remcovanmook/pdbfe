@@ -25,7 +25,7 @@ import { formatDate } from './render.js';
 import { t } from './i18n.js';
 
 /** Staleness threshold for sync data — 1 hour in milliseconds. */
-const STALE_THRESHOLD_MS = 3600_000;
+const STALE_THRESHOLD_MS = 3_600_000;
 
 /**
  * Normalizes a SQLite datetime string to ISO 8601 with UTC timezone.
@@ -37,7 +37,7 @@ const STALE_THRESHOLD_MS = 3600_000;
  * @returns {string} ISO 8601 string, e.g. "2026-04-08T09:45:47Z"
  */
 function toUTCISO(sqliteDatetime) {
-    return sqliteDatetime.replace(' ', 'T') + 'Z';
+    return sqliteDatetime.replaceAll(' ', 'T') + 'Z';
 }
 
 /**
@@ -446,9 +446,9 @@ function buildTelemetryTable(headers, headerClasses, rows) {
 
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
-    headers.forEach((label, i) => {
+    for (const [i, label] of headers.entries()) {
         headRow.appendChild(_th(label, headerClasses[i]));
-    });
+    }
     thead.appendChild(headRow);
     table.appendChild(thead);
 

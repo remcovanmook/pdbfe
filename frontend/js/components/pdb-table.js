@@ -391,8 +391,8 @@ class PdbTable extends HTMLElement {
         if (!cfg || !this._thead) return;
 
         const headerRow = document.createElement('tr');
-        cfg.columns.forEach((col, idx) => {
-            if (this._hiddenCols.has(col.key)) return;
+        for (const [idx, col] of cfg.columns.entries()) {
+            if (this._hiddenCols.has(col.key)) continue;
             const th = document.createElement('th');
             th.setAttribute('scope', 'col');
             th.textContent = t(col.label);
@@ -406,7 +406,7 @@ class PdbTable extends HTMLElement {
             }
             th.addEventListener('click', () => this._onHeaderClick(idx));
             headerRow.appendChild(th);
-        });
+        }
         this._thead.replaceChildren(headerRow);
     }
 
