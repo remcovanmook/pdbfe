@@ -84,7 +84,7 @@ describe("cachedQuery", () => {
         });
 
         assert.equal(called, true);
-        assert.ok(result.buf !== null);
+        assert.notStrictEqual(result.buf, null);
         assert.equal(result.buf.byteLength, payload.byteLength);
         assert.equal(result.tier, 'MISS');
     });
@@ -101,7 +101,7 @@ describe("cachedQuery", () => {
         });
 
         const entry = cache.get("test/l1write");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.buf.byteLength, payload.byteLength);
     });
 
@@ -119,7 +119,7 @@ describe("cachedQuery", () => {
 
         // EMPTY_ENVELOPE should be in L1
         const entry = cache.get("test/negative");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.buf, EMPTY_ENVELOPE);
     });
 
@@ -151,7 +151,7 @@ describe("cachedQuery", () => {
         );
 
         assert.equal(results.length, 4);
-        results.forEach(r => assert.ok(r.buf !== null));
+        for (const r of results) assert.notStrictEqual(r.buf, null);
     });
 
     it("should not call queryFn when L1 is populated by prior cachedQuery", async () => {
@@ -170,7 +170,7 @@ describe("cachedQuery", () => {
         // However, cachedQuery doesn't check L1 itself (the handler does that).
         // This test verifies the L1 entry exists for the handler to find.
         const entry = cache.get("test/l1hit");
-        assert.ok(entry !== null);
+        assert.notStrictEqual(entry, null);
         assert.equal(entry.buf.byteLength, payload.byteLength);
     });
 
@@ -194,7 +194,7 @@ describe("cachedQuery", () => {
 
         assert.equal(callCount, 1, "queryFn should be called exactly once");
         results.forEach(r => {
-            assert.ok(r.buf !== null);
+            assert.notStrictEqual(r.buf, null);
             assert.equal(r.buf.byteLength, payload.byteLength);
             assert.equal(r.tier, 'MISS');
         });

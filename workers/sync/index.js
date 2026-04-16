@@ -49,7 +49,8 @@ const LOGO_ENTITIES = new Set(['org', 'net', 'ix', 'fac', 'carrier', 'campus']);
  */
 export function buildUpsert(table, columns, row, notNullStrings) {
     const placeholders = columns.map(() => '?').join(',');
-    const sql = `INSERT OR REPLACE INTO "${table}" (${columns.map(c => `"${c}"`).join(',')}) VALUES (${placeholders})`;
+    const quotedCols = columns.map(c => `"${c}"`).join(',');
+    const sql = `INSERT OR REPLACE INTO "${table}" (${quotedCols}) VALUES (${placeholders})`;
 
     const params = columns.map(col => {
         const v = row[col];

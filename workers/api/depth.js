@@ -14,7 +14,8 @@
  * to avoid N+1 patterns.
  */
 
-import { ENTITIES, getColumns, getJsonColumns, getBoolColumns } from './entities.js';
+import { ENTITIES, getColumns } from './entities.js';
+import { parseJsonFields } from './handlers/shared.js';
 
 /**
  * Reverse lookup: maps a D1 table name to the EntityMeta tag.
@@ -26,6 +27,60 @@ import { ENTITIES, getColumns, getJsonColumns, getBoolColumns } from './entities
 const TABLE_TO_TAG = new Map();
 for (const [tag, meta] of Object.entries(ENTITIES)) {
     TABLE_TO_TAG.set(meta.table, tag);
+}
+
+/**
+ * Resolves the anonymous-visibility filter for a child entity.
+ * Returns null when the caller is authenticated or the entity
+ * has no restriction.
+ *
+ * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {EntityMeta|null} childEntity - Child entity metadata (may be null for unknown tables).
+ * @returns {{field: string, value: string}|null} Filter clause or null.
+ */
+function resolveAnonFilter(authenticated, childEntity) {
+    if (!authenticated && childEntity?._restricted && childEntity?._anonFilter) {
+        return childEntity._anonFilter;
+    }
+    return null;
+}
+
+/**
+ * Builds a Map from row.id → row for fast parent lookup, and
+ * returns the list of parent IDs.
+ *
+ * @param {Record<string, any>[]} rows - Parent rows.
+ * @returns {{ rowMap: Map<number, Record<string, any>>, parentIds: number[] }}
+ */
+function buildRowMap(rows) {
+    /** @type {Map<number, Record<string, any>>} */
+    const rowMap = new Map();
+    /** @type {number[]} */
+    const parentIds = [];
+    for (const row of rows) {
+        rowMap.set(row.id, row);
+        parentIds.push(row.id);
+    }
+    return { rowMap, parentIds };
+}
+
+/**
+ * Appends an optional anonymous-visibility clause and ORDER BY to a
+ * SQL string. Returns the final SQL and updated bind params.
+ *
+ * @param {string} sql - Base SQL (must already contain WHERE).
+ * @param {any[]} params - Bind parameters (mutated in-place if anonFilter applies).
+ * @param {{field: string, value: string}|null} anonFilter - Visibility filter or null.
+ * @param {string} [prefix=''] - Table alias prefix for column references (e.g. 't.').
+ * @returns {string} Final SQL with filter and ORDER BY appended.
+ */
+function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
+    if (anonFilter) {
+        sql += ` AND ${prefix}"${anonFilter.field}" = ?`;
+        params.push(anonFilter.value);
+    }
+    sql += ` ORDER BY ${prefix}"id" ASC`;
+    return sql;
 }
 
 
@@ -88,14 +143,8 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
  * @returns {Promise<void>}
  */
 async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
-    const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
+    const { rowMap, parentIds } = buildRowMap(rows);
     if (parentIds.length === 0) return;
-
-    /** @type {Map<number, Record<string, any>>} */
-    const rowMap = new Map();
-    for (const row of rows) {
-        rowMap.set(row.id, row);
-    }
 
     const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
         for (const row of rows) {
@@ -104,21 +153,16 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
 
         const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
 
-        // For restricted child entities, add visibility filter for anonymous callers
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
-        const anonFilter = (!authenticated && childEntity?._restricted && childEntity?._anonFilter) ? childEntity._anonFilter : null;
+        const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
         let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted'`;
         /** @type {any[]} */
         const params = [...parentIds]; // ap-ok: SQL bind params
 
-        if (anonFilter) {
-            sql += ` AND "${anonFilter.field}" = ?`;
-            params.push(anonFilter.value);
-        }
+        sql = appendFilterAndOrder(sql, params, anonFilter);
 
-        sql += ` ORDER BY "id" ASC`;
         const result = await db.prepare(sql).bind(...params).all();
 
         if (result.results) {
@@ -144,7 +188,7 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
  * the parent (e.g. netfac_set entries exclude net_id).
  *
  * JSON-stored TEXT columns (social_media, info_types, etc.) are parsed
- * back to native arrays/objects.
+ * back to native arrays/objects via parseJsonFields.
  *
  * For restricted child entities (e.g. poc), anonymous callers only
  * see records matching the entity's anonFilter.
@@ -157,14 +201,8 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
  * @returns {Promise<void>}
  */
 async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
-    const parentIds = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
+    const { rowMap, parentIds } = buildRowMap(rows);
     if (parentIds.length === 0) return;
-
-    /** @type {Map<number, Record<string, any>>} */
-    const rowMap = new Map();
-    for (const row of rows) {
-        rowMap.set(row.id, row);
-    }
 
     const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
         // Initialise empty arrays
@@ -177,24 +215,15 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
 
-        // Check if this child entity needs visibility filtering for anonymous callers
-        const anonFilter = (!authenticated && childEntity?._restricted && childEntity?._anonFilter) ? childEntity._anonFilter : null;
+        const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
         // Build column list, excluding the FK back to the parent
         /** @type {string[]} */
         let childColumns;
-        /** @type {Set<string>} */
-        let childJsonCols;
-        /** @type {Set<string>} */
-        let childBoolCols;
         if (childEntity) {
             childColumns = getColumns(childEntity, pdbfe).filter(c => c !== rel.fk); // ap-ok: SQL construction
-            childJsonCols = getJsonColumns(childEntity);
-            childBoolCols = getBoolColumns(childEntity);
         } else {
             childColumns = [];
-            childJsonCols = new Set();
-            childBoolCols = new Set();
         }
 
         const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
@@ -229,12 +258,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
                 ` WHERE t."${rel.fk}" IN (${placeholders})` +
                 ` AND t."status" != 'deleted'`;
 
-            if (anonFilter) {
-                sql += ` AND t."${anonFilter.field}" = ?`;
-                params.push(anonFilter.value);
-            }
-
-            sql += ` ORDER BY t."id" ASC`;
+            sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
         } else if (childColumns.length > 0) {
             // Standard path: no JOINs
             const colExpr = childColumns.map(c => `"${c}"`).join(", "); // ap-ok: SQL construction
@@ -242,24 +266,14 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
                 ` WHERE "${rel.fk}" IN (${placeholders})` +
                 ` AND "status" != 'deleted'`;
 
-            if (anonFilter) {
-                sql += ` AND "${anonFilter.field}" = ?`;
-                params.push(anonFilter.value);
-            }
-
-            sql += ` ORDER BY "id" ASC`;
+            sql = appendFilterAndOrder(sql, params, anonFilter);
         } else {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" IN (${placeholders})` +
                 ` AND "status" != 'deleted'`;
 
-            if (anonFilter) {
-                sql += ` AND "${anonFilter.field}" = ?`;
-                params.push(anonFilter.value);
-            }
-
-            sql += ` ORDER BY "id" ASC`;
+            sql = appendFilterAndOrder(sql, params, anonFilter);
         }
 
         const result = await db.prepare(sql).bind(...params).all();
@@ -272,16 +286,9 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
                 // Strip the FK column from the child object
                 delete child[rel.fk];
 
-                // Parse JSON-stored TEXT columns
-                for (const col of childJsonCols) {
-                    if (typeof child[col] === "string" && child[col]) {
-                        try { child[col] = JSON.parse(child[col]); } catch { /* keep as string */ }
-                    }
-                }
-
-                // Coerce boolean columns from SQLite's 0/1 to JS booleans
-                for (const col of childBoolCols) {
-                    if (col in child) child[col] = !!child[col];
+                // Parse JSON, coerce booleans, nullify empty strings
+                if (childEntity) {
+                    parseJsonFields(childEntity, child);
                 }
 
                 parentRow[rel.field].push(child);
@@ -326,8 +333,6 @@ async function expandParentOrg(db, entity, rows, pdbfe) {
     // Batch-fetch all referenced orgs in a single query
     const ids = [...orgIds]; // ap-ok: cold path behind cachedQuery
     const orgColumns = getColumns(orgEntity, pdbfe);
-    const orgJsonCols = getJsonColumns(orgEntity);
-    const orgBoolCols = getBoolColumns(orgEntity);
 
     const colExpr = orgColumns.map(c => `"${c}"`).join(', '); // ap-ok: SQL construction
     const placeholders = ids.map(() => '?').join(', '); // ap-ok: SQL construction
@@ -339,16 +344,7 @@ async function expandParentOrg(db, entity, rows, pdbfe) {
     const orgMap = new Map();
     if (result.results) {
         for (const org of result.results) {
-            // Parse JSON-stored TEXT columns
-            for (const col of orgJsonCols) {
-                if (typeof org[col] === 'string' && org[col]) {
-                    try { org[col] = JSON.parse(org[col]); } catch { /* keep as string */ }
-                }
-            }
-            // Coerce boolean columns from SQLite's 0/1
-            for (const col of orgBoolCols) {
-                if (col in org) org[col] = !!org[col];
-            }
+            parseJsonFields(orgEntity, org);
             orgMap.set(/** @type {number} */ (org.id), org);
         }
     }

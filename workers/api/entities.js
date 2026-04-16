@@ -138,8 +138,8 @@ export function validateFields(entity, requested) {
     const valid = getFieldNames(entity);
     /** @type {string[]} */
     const result = [];
-    for (let i = 0; i < requested.length; i++) {
-        if (valid.has(requested[i])) result.push(requested[i]);
+    for (const field of requested) {
+        if (valid.has(field)) result.push(field);
     }
     return result;
 }
@@ -226,8 +226,7 @@ export function validateQuery(entity, filters, sort) {
 export function resolveImplicitFilters(entity, filters) {
     const fieldNames = getFieldNames(entity);
 
-    for (let i = 0; i < filters.length; i++) {
-        const f = filters[i];
+    for (const f of filters) {
         if (f.entity) continue;          // already explicit cross-entity
         if (fieldNames.has(f.field)) continue; // field exists on this entity
 

@@ -5,7 +5,7 @@
  * helper used in the depth>0 cold path.
  */
 
-import { ENTITIES, getJsonColumns, getBoolColumns, getNullableColumns } from '../entities.js';
+import { getJsonColumns, getBoolColumns, getNullableColumns } from '../entities.js';
 import { jsonError } from '../http.js';
 
 /**

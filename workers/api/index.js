@@ -215,9 +215,11 @@ async function handleRequest(request, env, ctx) {
     const opts = { depth, limit, skip, since, sort, fields, pdbfe };
 
     // ── Handler dispatch ─────────────────────────────────────────────
+    /** @type {HandlerContext} */
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated };
     const response = id > 0
-        ? await handleDetail(request, db, ctx, entityTag, id, filters, opts, cachePath, queryString, authenticated)
-        : await handleList(request, db, ctx, entityTag, filters, opts, cachePath, queryString, authenticated);
+        ? await handleDetail(hc, id)
+        : await handleList(hc);
 
     // Batch header mutations into a single Response constructor to avoid
     // instantiating intermediate garbage Response objects on the hot path.

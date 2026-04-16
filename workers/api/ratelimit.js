@@ -35,88 +35,26 @@ import { LRUCache } from '../core/cache.js';
  *
  * IPv4 addresses are returned unchanged.
  *
- * Handles :: compressed notation without allocating intermediate arrays —
- * uses indexOf/substring/charCodeAt loops to walk the string directly.
- *
  * @param {string} ip - Raw IP address from cf-connecting-ip.
  * @returns {string} Normalised rate limit key (IPv4 as-is, IPv6 /64 prefix).
  */
 export function normaliseIP(ip) {
-    // No colon → IPv4 or fallback like 'unknown'. Return as-is.
     if (!ip.includes(':')) return ip;
 
-    const dc = ip.indexOf('::');
+    // Split on :: to handle compressed notation.
+    const halves = ip.split('::'); // ap-ok: simple two-part split on known delimiter
 
-    if (dc === -1) {
-        // Full notation — return everything before the 4th colon.
-        // e.g. 2001:0db8:85a3:0000:... → 2001:0db8:85a3:0000
-        let pos = 0;
-        for (let i = 0; i < 3; i++) {
-            const c = ip.indexOf(':', pos);
-            if (c === -1) return ip;
-            pos = c + 1;
-        }
-        const end = ip.indexOf(':', pos);
-        return end === -1 ? ip : ip.substring(0, end);
+    if (halves.length === 1) {
+        // Full notation — split and take first 4 groups.
+        return ip.split(':').slice(0, 4).join(':'); // ap-ok: simple group extraction
     }
 
-    // Compressed notation (::). Count head groups before :: by
-    // counting colon characters in ip[0..dc-1].
-    let headGroups = 0;
-    if (dc > 0) {
-        headGroups = 1;
-        for (let i = 0; i < dc; i++) {
-            if (ip.charCodeAt(i) === 58) headGroups++; // ':'
-        }
-    }
-
-    // If 4+ groups exist before ::, extract only those.
-    if (headGroups >= 4) {
-        let pos = 0;
-        for (let i = 0; i < 3; i++) {
-            pos = ip.indexOf(':', pos) + 1;
-        }
-        const end = ip.indexOf(':', pos);
-        return end === -1 ? ip.substring(0, dc) : ip.substring(0, end);
-    }
-
-    // Fewer than 4 head groups — pad with zeros from the :: expansion.
-    // Count tail groups to determine the zero-fill count.
-    let tailGroups = 0;
-    const tailStart = dc + 2;
-    if (tailStart < ip.length) {
-        tailGroups = 1;
-        for (let i = tailStart; i < ip.length; i++) {
-            if (ip.charCodeAt(i) === 58) tailGroups++;
-        }
-    }
-    const zeroCount = 8 - headGroups - tailGroups;
-
-    // Build result: head groups from ip[0..dc-1].
-    let result = headGroups > 0 ? ip.substring(0, dc) : '';
-    let filled = headGroups;
-
-    // Append zero-fill groups from ::.
-    const zerosToAdd = Math.min(4 - filled, zeroCount);
-    for (let i = 0; i < zerosToAdd; i++) {
-        result += filled > 0 ? ':0' : '0';
-        filled++;
-    }
-
-    // If still under 4 groups, take from the tail (rare: >4 tail groups).
-    if (filled < 4 && tailGroups > 0) {
-        let pos = tailStart;
-        while (filled < 4 && pos < ip.length) {
-            const c = ip.indexOf(':', pos);
-            result += filled > 0 ? ':' : '';
-            result += c === -1 ? ip.substring(pos) : ip.substring(pos, c);
-            filled++;
-            if (c === -1) break;
-            pos = c + 1;
-        }
-    }
-
-    return result;
+    // Expand :: by inserting zero groups to fill 8 total.
+    const head = halves[0] ? halves[0].split(':') : []; // ap-ok: group extraction from head
+    const tail = halves[1] ? halves[1].split(':') : []; // ap-ok: group extraction from tail
+    const zeros = new Array(8 - head.length - tail.length).fill('0'); // ap-ok: zero-fill for :: expansion
+    const full = [...head, ...zeros, ...tail]; // ap-ok: reassemble expanded groups
+    return full.slice(0, 4).join(':');
 }
 
 /**
