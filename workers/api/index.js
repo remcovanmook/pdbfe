@@ -265,9 +265,14 @@ const SERVICE_DISCOVERY = JSON.stringify({
     name: 'PDBFE',
     endpoints: {
         api: 'https://api.pdbfe.dev/api/',
+        graphql: 'https://api.pdbfe.dev/graphql',
+        rest: 'https://api.pdbfe.dev/v1/',
+        openapi: 'https://api.pdbfe.dev/openapi.json',
+        ui: 'https://pdbfe.dev/',
+    },
+    aliases: {
         graphql: 'https://graphql.pdbfe.dev/',
         rest: 'https://rest.pdbfe.dev/',
-        ui: 'https://pdbfe.dev/',
     },
 }) + '\n';
 

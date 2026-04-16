@@ -131,7 +131,8 @@ async function handleRequest(request, env, ctx) {
     if (adminResponse) return adminResponse;
 
     // Browser navigation → branded GraphiQL page
-    if (rawPath === '' && isBrowserGet(request)) {
+    // Matches both root (graphql.pdbfe.dev/) and path-based route (api.pdbfe.dev/graphql)
+    if ((rawPath === '' || rawPath === 'graphql') && isBrowserGet(request)) {
         return new Response(GRAPHIQL_HTML, { status: 200, headers: H_GRAPHIQL });
     }
 

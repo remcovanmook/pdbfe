@@ -11,7 +11,9 @@ rules = [
 ]
 
 routes = [
-  { pattern = "rest.<your-domain>/*", zone_name = "<your-domain>" }
+  { pattern = "rest.<your-domain>/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/v1/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/openapi.json", zone_name = "<your-domain>" }
 ]
 
 [[d1_databases]]

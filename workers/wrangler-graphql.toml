@@ -8,7 +8,8 @@ rules = [
 ]
 
 routes = [
-  { pattern = "graphql.pdbfe.dev/*", zone_name = "pdbfe.dev" }
+  { pattern = "graphql.pdbfe.dev/*", zone_name = "pdbfe.dev" },
+  { pattern = "api.pdbfe.dev/graphql", zone_name = "pdbfe.dev" }
 ]
 
 [[d1_databases]]

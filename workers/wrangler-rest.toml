@@ -10,7 +10,9 @@ rules = [
 ]
 
 routes = [
-  { pattern = "rest.pdbfe.dev/*", zone_name = "pdbfe.dev" }
+  { pattern = "rest.pdbfe.dev/*", zone_name = "pdbfe.dev" },
+  { pattern = "api.pdbfe.dev/v1/*", zone_name = "pdbfe.dev" },
+  { pattern = "api.pdbfe.dev/openapi.json", zone_name = "pdbfe.dev" }
 ]
 
 [[d1_databases]]

@@ -9,7 +9,8 @@ rules = [
 ]
 
 routes = [
-  { pattern = "graphql.<your-domain>/*", zone_name = "<your-domain>" }
+  { pattern = "graphql.<your-domain>/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/graphql", zone_name = "<your-domain>" }
 ]
 
 [[d1_databases]]
