@@ -2,8 +2,9 @@
  * @fileoverview Compare page renderer.
  *
  * Displays an entity overlap analysis between two PeeringDB entities.
- * The user selects two entities via search-style inputs, and the page
- * shows shared and exclusive resources using <pdb-table> components.
+ * The user selects two entities via side-by-side search inputs (each
+ * prefixed with an entity badge), and the page shows shared and
+ * exclusive resources using <pdb-table> components.
  *
  * URL: /compare?a={tag}:{id}&b={tag}:{id}
  * If query params are missing, shows the selection form.
@@ -18,15 +19,12 @@ import { t } from '../i18n.js';
 
 /**
  * Entity type labels for the selector dropdowns.
- * Only types that support comparison are listed.
  * @type {Record<string, string>}
  */
 const TYPE_LABELS = { net: 'Network', ix: 'Exchange' };
 
 /**
  * Renders the compare page into the app container.
- * If a and b query params are present, fetches and displays overlap.
- * Otherwise shows the entity selection form.
  *
  * @param {Record<string, string>} params - Route params including query params.
  */
@@ -44,9 +42,9 @@ export async function renderCompare(params) {
 // ── Selection form ──────────────────────────────────────────────────────
 
 /**
- * Renders the entity selection form with two search inputs and a
- * compare button. Each input has typeahead search functionality.
- * Uses existing card/form design patterns from index.css.
+ * Renders the entity selection form with two side-by-side search inputs.
+ * Uses card, detail-header, entity-badge, and search-input classes from
+ * the existing design system — no custom heading or input styles.
  *
  * @param {HTMLElement} app - App container element.
  * @param {string} initialA - Pre-filled value for entity A.
@@ -54,17 +52,25 @@ export async function renderCompare(params) {
  */
 function renderSelector(app, initialA, initialB) {
     const wrap = document.createElement('div');
-    wrap.className = 'compare-page';
+    wrap.className = 'main-content';
 
-    const heading = document.createElement('h1');
-    heading.textContent = t('Compare Entities');
-    wrap.appendChild(heading);
+    // Page header — reuses detail-header pattern
+    const header = document.createElement('div');
+    header.className = 'detail-header';
 
-    const desc = document.createElement('p');
-    desc.className = 'compare-page__desc';
-    desc.textContent = t('Select two entities to see their shared and exclusive resources.');
-    wrap.appendChild(desc);
+    const title = document.createElement('span');
+    title.className = 'detail-header__title';
+    title.textContent = t('Compare Entities');
+    header.appendChild(title);
 
+    const subtitle = document.createElement('span');
+    subtitle.className = 'detail-header__subtitle';
+    subtitle.textContent = t('Select two entities to see their shared and exclusive resources.');
+    header.appendChild(subtitle);
+
+    wrap.appendChild(header);
+
+    // Card containing the selection form
     const card = document.createElement('div');
     card.className = 'card';
 
@@ -72,7 +78,6 @@ function renderSelector(app, initialA, initialB) {
     cardBody.className = 'card__body';
 
     const form = document.createElement('form');
-    form.className = 'compare-form';
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         const a = /** @type {HTMLInputElement} */ (form.querySelector('#compare-a-ref')).value;
@@ -82,22 +87,33 @@ function renderSelector(app, initialA, initialB) {
         }
     });
 
-    form.appendChild(createEntityInput('A', 'compare-a', initialA));
-    form.appendChild(createEntityInput('B', 'compare-b', initialB));
+    // Side-by-side grid
+    const grid = document.createElement('div');
+    grid.className = 'compare-grid';
+    grid.appendChild(createEntityInput('A', 'compare-a', initialA));
+    grid.appendChild(createEntityInput('B', 'compare-b', initialB));
+    form.appendChild(grid);
+
+    // Submit button — centered below grid
+    const actions = document.createElement('div');
+    actions.className = 'compare-actions';
 
     const btn = document.createElement('button');
     btn.type = 'submit';
-    btn.className = 'compare-form__submit';
+    btn.className = 'compare-submit';
     btn.textContent = t('Compare');
-    form.appendChild(btn);
+    actions.appendChild(btn);
+    form.appendChild(actions);
 
     cardBody.appendChild(form);
     card.appendChild(cardBody);
     wrap.appendChild(card);
 
-    // Supported pairs hint
+    // Supported pairs hint — uses card__title style for muted small text
     const hint = document.createElement('p');
-    hint.className = 'compare-page__hint';
+    hint.className = 'detail-header__subtitle';
+    hint.style.textAlign = 'center';
+    hint.style.marginTop = 'var(--space-md)';
     hint.textContent = t('Supported: Network ↔ Network, Exchange ↔ Exchange');
     wrap.appendChild(hint);
 
@@ -105,9 +121,9 @@ function renderSelector(app, initialA, initialB) {
 }
 
 /**
- * Creates an entity input group with a type selector, search input,
- * and hidden ref field. The search input has typeahead backed by
- * searchWithAsn() from api.js.
+ * Creates an entity input group with an entity badge, search input,
+ * typeahead dropdown, and hidden ref field. Each group is one column
+ * in the side-by-side grid.
  *
  * @param {string} label - Display label (e.g. "A", "B").
  * @param {string} prefix - ID prefix for the input elements.
@@ -116,20 +132,24 @@ function renderSelector(app, initialA, initialB) {
  */
 function createEntityInput(label, prefix, initialRef) {
     const group = document.createElement('div');
-    group.className = 'compare-form__group';
 
-    const lbl = document.createElement('label');
-    lbl.className = 'compare-form__label';
+    // Section label — reuses card__title style
+    const lbl = document.createElement('div');
+    lbl.className = 'card__title';
+    lbl.style.marginBottom = 'var(--space-sm)';
     lbl.textContent = `${t('Entity')} ${label}`;
     group.appendChild(lbl);
 
+    // Badge + type selector + search input row
     const row = document.createElement('div');
-    row.className = 'compare-form__row';
+    row.className = 'compare-input-row';
 
-    // Type selector
+    // Type selector (as a badge-styled select)
     const typeSelect = document.createElement('select');
     typeSelect.id = `${prefix}-type`;
-    typeSelect.className = 'compare-form__type';
+    typeSelect.className = 'search-input';
+    typeSelect.style.width = '130px';
+    typeSelect.style.flex = 'none';
     for (const [tag, name] of Object.entries(TYPE_LABELS)) {
         const opt = document.createElement('option');
         opt.value = tag;
@@ -138,9 +158,9 @@ function createEntityInput(label, prefix, initialRef) {
     }
     row.appendChild(typeSelect);
 
-    // Search input with typeahead
-    const searchWrapper = document.createElement('div');
-    searchWrapper.className = 'compare-form__search-wrapper';
+    // Search input with typeahead — reuses search-input class
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'compare-search-wrap';
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -148,17 +168,17 @@ function createEntityInput(label, prefix, initialRef) {
     input.className = 'search-input';
     input.placeholder = t('Search by name or ASN...');
     input.autocomplete = 'off';
-    searchWrapper.appendChild(input);
+    searchWrap.appendChild(input);
 
-    // Dropdown for results — reuses the existing search-dropdown styling
+    // Dropdown — reuses search-dropdown from index.css
     const dropdown = document.createElement('div');
     dropdown.className = 'search-dropdown';
-    searchWrapper.appendChild(dropdown);
+    searchWrap.appendChild(dropdown);
 
-    row.appendChild(searchWrapper);
+    row.appendChild(searchWrap);
     group.appendChild(row);
 
-    // Hidden field to store the selected entity ref
+    // Hidden field to store the resolved entity ref
     const refInput = document.createElement('input');
     refInput.type = 'hidden';
     refInput.id = `${prefix}-ref`;
@@ -168,11 +188,11 @@ function createEntityInput(label, prefix, initialRef) {
     }
     group.appendChild(refInput);
 
-    // Selected entity display — uses entity badge
-    const selectedDisplay = document.createElement('div');
-    selectedDisplay.className = 'compare-form__selected';
-    selectedDisplay.id = `${prefix}-selected`;
-    group.appendChild(selectedDisplay);
+    // Selection confirmation — shows badge + entity name
+    const selected = document.createElement('div');
+    selected.className = 'compare-selected';
+    selected.id = `${prefix}-selected`;
+    group.appendChild(selected);
 
     // Wire up typeahead
     let debounceTimer = 0;
@@ -194,17 +214,16 @@ function createEntityInput(label, prefix, initialRef) {
                     refInput.value = `${tag}:${id}`;
                     input.value = name;
                     dropdown.classList.remove('is-open');
-                    // Show selected entity with badge
-                    selectedDisplay.replaceChildren();
-                    selectedDisplay.appendChild(createEntityBadge(tag));
-                    selectedDisplay.appendChild(document.createTextNode(` ${tag}:${id} — ${name}`));
+                    // Show badge + name in selection confirmation
+                    selected.replaceChildren();
+                    selected.appendChild(createEntityBadge(tag));
+                    selected.appendChild(document.createTextNode(` ${name}`));
                     if (TYPE_LABELS[tag]) typeSelect.value = tag;
                 });
-            } catch { /* aborted or error */ }
+            } catch { /* aborted or network error */ }
         }, 250);
     });
 
-    // Close dropdown on blur (with delay for click)
     input.addEventListener('blur', () => {
         globalThis.setTimeout(() => { dropdown.classList.remove('is-open'); }, 200);
     });
@@ -214,7 +233,7 @@ function createEntityInput(label, prefix, initialRef) {
 
 /**
  * Renders typeahead search results into a dropdown using the
- * existing search-dropdown component structure.
+ * existing search-dropdown structure from index.css.
  *
  * @param {HTMLElement} dropdown - Dropdown container.
  * @param {Record<string, any[]>} results - Search results grouped by type.
@@ -224,7 +243,6 @@ function createEntityInput(label, prefix, initialRef) {
 function renderDropdown(dropdown, results, preferredType, onSelect) {
     dropdown.replaceChildren();
 
-    // Show preferred type first, then others
     const types = [preferredType, ...Object.keys(TYPE_LABELS).filter(k => k !== preferredType)];
 
     let hasResults = false;
@@ -249,11 +267,9 @@ function renderDropdown(dropdown, results, preferredType, onSelect) {
                 onSelect(tag, item.id, item.name);
             });
 
-            const badge = createEntityBadge(tag);
-            row.appendChild(badge);
+            row.appendChild(createEntityBadge(tag));
 
             const nameSpan = document.createElement('span');
-            nameSpan.className = 'search-dropdown__item-name';
             nameSpan.textContent = item.name;
             row.appendChild(nameSpan);
 
@@ -280,8 +296,8 @@ function renderDropdown(dropdown, results, preferredType, onSelect) {
 // ── Results display ─────────────────────────────────────────────────────
 
 /**
- * Fetches and renders the overlap analysis results using the
- * existing detail page layout components (stats bar, pdb-table).
+ * Fetches and renders the overlap analysis results. Uses the existing
+ * detail-header, stats-bar, and <pdb-table> components.
  *
  * @param {HTMLElement} app - App container element.
  * @param {string} refA - Entity A reference (e.g. "net:13335").
@@ -293,34 +309,49 @@ async function renderResults(app, refA, refB) {
     try {
         const data = await fetchCompare(refA, refB);
         const wrap = document.createElement('div');
-        wrap.className = 'compare-page';
+        wrap.className = 'main-content';
 
-        // Header with both entities
+        // Header: badge + name for each entity, with "vs" between them
         const header = document.createElement('div');
         header.className = 'detail-header';
 
-        header.appendChild(createEntityHeader(data.a));
+        header.appendChild(createEntityBadge(data.a.tag, { header: true }));
+        header.appendChild(createLink(data.a.tag, data.a.id, data.a.name));
+
+        if (data.a.asn) {
+            const asnA = document.createElement('span');
+            asnA.className = 'detail-header__subtitle';
+            asnA.textContent = `AS${data.a.asn}`;
+            header.appendChild(asnA);
+        }
+
         const vs = document.createElement('span');
         vs.className = 'detail-header__subtitle';
         vs.textContent = 'vs';
-        vs.style.margin = '0 var(--space-md)';
         header.appendChild(vs);
-        header.appendChild(createEntityHeader(data.b));
+
+        header.appendChild(createEntityBadge(data.b.tag, { header: true }));
+        header.appendChild(createLink(data.b.tag, data.b.id, data.b.name));
+
+        if (data.b.asn) {
+            const asnB = document.createElement('span');
+            asnB.className = 'detail-header__subtitle';
+            asnB.textContent = `AS${data.b.asn}`;
+            header.appendChild(asnB);
+        }
+
+        // "New comparison" link in header
+        const newLink = document.createElement('a');
+        newLink.href = '/compare';
+        newLink.dataset.link = '';
+        newLink.className = 'detail-header__share';
+        newLink.textContent = t('New comparison');
+        header.appendChild(newLink);
 
         wrap.appendChild(header);
 
-        // Back link
-        const back = document.createElement('a');
-        back.href = '/compare';
-        back.dataset.link = '';
-        back.style.display = 'inline-block';
-        back.style.marginBottom = 'var(--space-lg)';
-        back.textContent = `← ${t('New comparison')}`;
-        wrap.appendChild(back);
-
         // Render sections based on the pair type
         const pairType = `${data.a.tag}+${data.b.tag}`;
-
         if (pairType === 'net+net') {
             renderNetNetResults(wrap, data);
         } else if (pairType === 'ix+ix') {
@@ -334,38 +365,12 @@ async function renderResults(app, refA, refB) {
 }
 
 /**
- * Creates an entity header fragment with badge and name link.
- *
- * @param {Record<string, any>} entity - Entity header from the API.
- * @returns {DocumentFragment} Fragment with badge + name link.
- */
-function createEntityHeader(entity) {
-    const frag = document.createDocumentFragment();
-
-    frag.appendChild(createEntityBadge(entity.tag, { header: true }));
-
-    const nameLink = createLink(entity.tag, entity.id, entity.name);
-    frag.appendChild(nameLink);
-
-    if (entity.asn) {
-        const asn = document.createElement('span');
-        asn.className = 'detail-header__subtitle';
-        asn.textContent = `AS${entity.asn}`;
-        frag.appendChild(asn);
-    }
-
-    return frag;
-}
-
-/**
- * Renders net↔net comparison results using createStatsBar
- * and <pdb-table> components.
+ * Renders net↔net comparison results.
  *
  * @param {HTMLElement} wrap - Page wrapper element.
  * @param {Record<string, any>} data - API response data.
  */
 function renderNetNetResults(wrap, data) {
-    // Stats bar — reuses the existing stats-bar component
     wrap.appendChild(createStatsBar([
         { label: t('Shared IXPs'), value: data.shared_ixps.length },
         { label: t('Shared Facilities'), value: data.shared_facilities.length },
@@ -373,17 +378,12 @@ function renderNetNetResults(wrap, data) {
         { label: `${t('Only')} ${data.b.name}`, value: data.only_b_ixps.length + data.only_b_facilities.length },
     ]));
 
-    // Shared IXPs — <pdb-table> with speed columns
     if (data.shared_ixps.length > 0) {
         wrap.appendChild(createIxpTable(t('Shared IXPs'), data.shared_ixps, true));
     }
-
-    // Shared facilities
     if (data.shared_facilities.length > 0) {
         wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
     }
-
-    // Exclusive sections
     if (data.only_a_ixps.length > 0) {
         wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.a.name}`, data.only_a_ixps, false));
     }
@@ -403,8 +403,7 @@ function renderNetNetResults(wrap, data) {
 }
 
 /**
- * Renders ix↔ix comparison results using createStatsBar
- * and <pdb-table> components.
+ * Renders ix↔ix comparison results.
  *
  * @param {HTMLElement} wrap - Page wrapper element.
  * @param {Record<string, any>} data - API response data.

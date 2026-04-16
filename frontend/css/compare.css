@@ -1,118 +1,71 @@
 /* ── Compare page — layout-only additions ────────────────────────
-   Tables, cards, stats bars, badges, dropdowns are all handled by
-   the existing design system in index.css. This file covers only
-   the compare-specific form layout and page structure.
+   All visual components (cards, tables, stats bars, badges, search
+   dropdowns, headings) use existing classes from index.css.
+   This file only adds the side-by-side selection grid.
    ───────────────────────────────────────────────────────────────── */
 
-.compare-page {
-    max-width: var(--content-max);
-    margin: 0 auto;
-    padding: var(--space-lg) var(--space-md);
-    display: flex;
-    flex-direction: column;
+/* Side-by-side entity selector grid */
+.compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: var(--space-lg);
 }
 
-.compare-page h1 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    margin: 0;
-}
-
-.compare-page__desc {
-    color: var(--text-secondary);
-    margin: 0;
-}
-
-.compare-page__hint {
-    color: var(--text-muted);
-    font-size: 0.8125rem;
-    text-align: center;
-}
-
-/* ── Selection form ──────────────────────────────────────────────── */
-
-.compare-form {
+/* Submit sits below the grid, centered */
+.compare-actions {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
+    justify-content: center;
+    padding-top: var(--space-md);
 }
 
-.compare-form__group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-}
-
-.compare-form__label {
-    font-weight: 600;
-    font-size: 0.8125rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-}
-
-.compare-form__row {
+/* Entity select row: badge + search input */
+.compare-input-row {
     display: flex;
     gap: var(--space-sm);
+    align-items: start;
 }
 
-.compare-form__type {
-    width: 130px;
-    height: 36px;
-    padding: 0 var(--space-sm);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--bg-input);
-    color: var(--text-primary);
-    font-family: inherit;
-    font-size: 0.875rem;
+.compare-input-row .search-input {
+    flex: 1;
 }
 
-.compare-form__search-wrapper {
+/* Wrap the search input so the dropdown can position against it */
+.compare-search-wrap {
     flex: 1;
     position: relative;
 }
 
-/* Reuses .search-input from index.css for the input itself.
-   The dropdown reuses .search-dropdown + .is-open toggle. */
-
-.compare-form__selected {
+/* Selection confirmation under each input */
+.compare-selected {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
     font-size: 0.8125rem;
-    color: var(--accent);
     min-height: 1.5em;
+    margin-top: var(--space-xs);
+    color: var(--text-secondary);
 }
 
-.compare-form__submit {
-    align-self: center;
+/* Submit button — accent-filled, matches design language */
+.compare-submit {
     padding: var(--space-sm) var(--space-xl);
     background: var(--accent);
     color: #fff;
     border: none;
     border-radius: var(--radius-md);
     font-family: inherit;
-    font-size: 0.9375rem;
+    font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
     transition: opacity var(--transition-fast);
 }
 
-.compare-form__submit:hover {
+.compare-submit:hover {
     opacity: 0.85;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────── */
-
 @media (max-width: 640px) {
-    .compare-form__row {
-        flex-direction: column;
-    }
-
-    .compare-form__type {
-        width: 100%;
+    .compare-grid {
+        grid-template-columns: 1fr;
     }
 }
