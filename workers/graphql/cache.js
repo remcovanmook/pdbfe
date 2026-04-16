@@ -25,10 +25,12 @@ export const GQL_NEGATIVE_TTL = 30_000;
 
 /**
  * Single LRU cache instance for all GraphQL operations.
- * 512 slots, 8 MB byte budget.
+ * 1024 slots, 32 MB byte budget. GraphQL responses tend to be larger
+ * than individual API entity responses because a single query can span
+ * multiple entity types with FK resolution.
  * @type {LocalCache}
  */
-const gqlCache = LRUCache(512, 8 * 1024 * 1024, GQL_TTL);
+const gqlCache = LRUCache(1024, 32 * 1024 * 1024, GQL_TTL);
 
 /**
  * Returns the GraphQL cache instance.
