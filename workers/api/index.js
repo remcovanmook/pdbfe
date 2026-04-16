@@ -111,6 +111,11 @@ async function handleRequest(request, env, ctx) {
             return handleStatus(request, db, ctx);
         }
 
+        // Root path: service discovery or redirect to UI
+        if (rawPath === '') {
+            return handleServiceDiscovery(request);
+        }
+
         return jsonError(404, "Not found");
     }
 
@@ -249,6 +254,45 @@ async function handleRequest(request, env, ctx) {
     }
 
     return response;
+}
+
+/**
+ * Pre-built service discovery JSON payload.
+ * Returned at the API root for clients requesting JSON.
+ * @type {string}
+ */
+const SERVICE_DISCOVERY = JSON.stringify({
+    name: 'PDBFE',
+    endpoints: {
+        api: 'https://api.pdbfe.dev/api/',
+        graphql: 'https://graphql.pdbfe.dev/',
+        rest: 'https://rest.pdbfe.dev/',
+        ui: 'https://pdbfe.dev/',
+    },
+}) + '\n';
+
+/** Pre-built headers for the service discovery response. */
+const H_DISCOVERY = Object.freeze({
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+    'Access-Control-Allow-Origin': '*',
+});
+
+/**
+ * Handles root path requests with content negotiation.
+ * API clients (Accept: application/json) receive the service discovery
+ * endpoint map. Browser requests (Accept: text/html) are redirected
+ * to the UI.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @returns {Response} Service discovery JSON or redirect.
+ */
+function handleServiceDiscovery(request) {
+    const accept = request.headers.get('Accept') || '';
+    if (accept.includes('text/html') && !accept.includes('application/json')) {
+        return Response.redirect('https://pdbfe.dev/', 302);
+    }
+    return new Response(SERVICE_DISCOVERY, { status: 200, headers: H_DISCOVERY });
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");

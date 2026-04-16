@@ -5,19 +5,19 @@ compatibility_date = "2026-03-18"
 workers_dev = true
 
 routes = [
-  { pattern = "graphql.example.dev/*", zone_name = "example.dev" }
+  { pattern = "graphql.<your-domain>/*", zone_name = "<your-domain>" }
 ]
 
 [[d1_databases]]
 binding = "PDB"
 database_name = "peeringdb"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "<your-d1-database-id>"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "<your-sessions-kv-namespace-id>"
 
 [[d1_databases]]
 binding = "USERDB"
 database_name = "pdbfe-users"
-database_id = "YOUR_USERDB_DATABASE_ID"
+database_id = "<your-users-d1-database-id>"

@@ -78,6 +78,20 @@ jobs:
             -e "s|<your-domain>|${API_DOMAIN}|g" \
             workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
 
+          sed \
+            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
+            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
+            workers/wrangler-graphql.toml.example > workers/wrangler-graphql.toml
+
+          sed \
+            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
+            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
+            workers/wrangler-rest.toml.example > workers/wrangler-rest.toml
+
           # Frontend config (also gitignored) — all origins derive from API_DOMAIN
           sed \
             -e "s|<your-domain>|${API_DOMAIN}|g" \

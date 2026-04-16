@@ -14,10 +14,12 @@
 # Deploy order:
 #   1. Validate generated artifacts
 #   2. Apply D1 migrations (if --apply-migrations)
-#   3. Deploy pdbfe-sync  (if changed or --force)
-#   4. Deploy pdbfe-api   (if changed or --force)
-#   5. Deploy pdbfe-auth  (if changed or --force)
-#   6. Deploy frontend    (if --remote)
+#   3. Deploy pdbfe-sync     (if changed or --force)
+#   4. Deploy pdbfe-api      (if changed or --force)
+#   5. Deploy pdbfe-auth     (if changed or --force)
+#   6. Deploy pdbfe-graphql  (if changed or --force)
+#   7. Deploy pdbfe-rest     (if changed or --force)
+#   8. Deploy frontend       (if --remote)
 #
 
 set -euo pipefail
@@ -76,6 +78,8 @@ fi
 
 # Check generated artifacts are fresh
 "$PYTHON" "$SCRIPT_DIR/parse_django_models.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/gen_graphql_schema.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/gen_openapi_spec.py" 2>&1
 pass "Pipeline up to date"
 
 
@@ -144,6 +148,8 @@ declare -a WORKERS=(
     "wrangler-sync.toml:sync"
     "wrangler.toml:api"
     "wrangler-auth.toml:auth"
+    "wrangler-graphql.toml:graphql"
+    "wrangler-rest.toml:rest"
 )
 
 for WORKER_DEF in "${WORKERS[@]}"; do
