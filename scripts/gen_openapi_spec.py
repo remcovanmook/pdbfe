@@ -33,6 +33,9 @@ TYPE_MAP = {
 # Media type constant used across response definitions.
 MEDIA_JSON = "application/json"
 
+# Reusable $ref for the Error schema in OpenAPI response definitions.
+ERROR_REF = {"$ref": "#/components/schemas/Error"}
+
 # ── Naming helpers ───────────────────────────────────────────────────────────
 # Read from entities.json's naming property (set by parse_django_models.py).
 
@@ -266,7 +269,7 @@ def build_spec(entities, schema_version):
                         "description": "Invalid filter parameter.",
                         "content": {
                             MEDIA_JSON: {
-                                "schema": {"$ref": "#/components/schemas/Error"},
+                                "schema": ERROR_REF,
                             },
                         },
                     },
@@ -306,7 +309,7 @@ def build_spec(entities, schema_version):
                         "description": f"{label} not found.",
                         "content": {
                             MEDIA_JSON: {
-                                "schema": {"$ref": "#/components/schemas/Error"},
+                                "schema": ERROR_REF,
                             },
                         },
                     },
@@ -325,10 +328,6 @@ def build_spec(entities, schema_version):
             fk_label = _label(fk_entity)
             rel_name = _subresource(fk_entity)
             sub_path = f"/v1/{tag}/{{id}}/{rel_name}"
-
-            fk_schema_name = f"{fk_target.capitalize()}DetailEnvelope"
-            if fk_schema_name not in schemas:
-                fk_schema_name = f"{fk_target}DetailEnvelope"
 
             paths[sub_path] = {
                 "get": {
@@ -358,7 +357,7 @@ def build_spec(entities, schema_version):
                             "description": f"{label} not found or no {fk_label.lower()} associated.",
                             "content": {
                                 MEDIA_JSON: {
-                                    "schema": {"$ref": "#/components/schemas/Error"},
+                                    "schema": ERROR_REF,
                                 },
                             },
                         },
@@ -380,10 +379,6 @@ def build_spec(entities, schema_version):
                 # Avoid duplicate paths (e.g. fac←netixlan via net_side_id and ix_side_id)
                 if sub_path in paths:
                     continue
-
-                child_schema_name = f"{child_tag.capitalize()}Envelope"
-                if child_schema_name not in schemas:
-                    child_schema_name = f"{child_tag}Envelope"
 
                 paths[sub_path] = {
                     "get": {
@@ -415,7 +410,7 @@ def build_spec(entities, schema_version):
                                 "description": f"{label} not found.",
                                 "content": {
                                     MEDIA_JSON: {
-                                        "schema": {"$ref": "#/components/schemas/Error"},
+                                        "schema": ERROR_REF,
                                     },
                                 },
                             },
