@@ -23,6 +23,7 @@ const OP_MAP = {
     '_not': 'not',
     '_notIn': 'notin',
     '_containsFold': 'contains',
+    '_equalFold': 'equalfold',
     '_isNil': 'isnil',
 };
 
@@ -188,7 +189,8 @@ function connectionResolver(tag) {
             filters.push({ field: 'id', op: 'lt', value: String(beforeId) });
         }
 
-        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort: 'id' };
+        const sort = args.orderBy || 'id';
+        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort };
         const { sql, params } = buildRowQuery(entity, filters, opts);
         const result = await ctx.db.prepare(sql).bind(...params).all();
         const rows = result.results || [];
@@ -280,6 +282,14 @@ export const resolvers = {
         const { sql, params } = buildRowQuery(entity, filters, opts);
         const result = await ctx.db.prepare(sql).bind(...params).all();
             return (result.results || [])[0] || null;
+        },
+        syncStatus: async (_parent, _args, ctx) => {
+            const result = await ctx.db.prepare(
+                'SELECT entity, last_sync AS lastSync, row_count AS rowCount, '
+                + 'updated_at AS updatedAt, last_modified_at AS lastModifiedAt '
+                + 'FROM _sync_meta ORDER BY entity'
+            ).all();
+            return result.results || [];
         },
     },
     Organization: {

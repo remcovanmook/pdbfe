@@ -76,7 +76,7 @@ def _aliases(entity):
 # operators alongside the PeeringDB-compatible set.
 FILTER_OPS = {
     "string":   ["", "_contains", "_startswith", "_endswith", "_in",
-                 "_not", "_notIn", "_containsFold"],
+                 "_not", "_notIn", "_containsFold", "_equalFold"],
     "number":   ["", "_lt", "_gt", "_lte", "_gte", "_in",
                  "_not", "_notIn"],
     "boolean":  [""],
@@ -257,6 +257,7 @@ def generate_query_type(entities):
         lines.append(
             f"  {plural}Connection("
             f"after: String, first: Int, before: String, last: Int, "
+            f"orderBy: String, "
             f"where: {type_name}Where"
             f"): {type_name}Connection!"
         )
@@ -273,12 +274,16 @@ def generate_query_type(entities):
                 lines.append(
                     f"  {alias_p}Connection("
                     f"after: String, first: Int, before: String, last: Int, "
+                    f"orderBy: String, "
                     f"where: {type_name}Where"
                     f"): {type_name}Connection!"
                 )
 
     # Convenience query for ASN lookup
     lines.append("  networkByAsn(asn: Int!): Network")
+
+    # Sync status query
+    lines.append("  syncStatus: [SyncStatus!]!")
 
     lines.append("}")
     return "\n".join(lines)
@@ -304,6 +309,17 @@ def generate_sdl(entities, reverse_map):
         parts.append("")
 
     parts.append(generate_connection_types(entities))
+
+    # SyncStatus type
+    parts.append("type SyncStatus {")
+    parts.append("  entity: String!")
+    parts.append("  lastSync: Int!")
+    parts.append("  rowCount: Int!")
+    parts.append("  updatedAt: String!")
+    parts.append("  lastModifiedAt: Int!")
+    parts.append("}")
+    parts.append("")
+
     parts.append(generate_query_type(entities))
 
     return "\n".join(parts)
@@ -352,6 +368,7 @@ def generate_resolvers_js(entities, reverse_map):
         ("'_not'", "'not'"),
         ("'_notIn'", "'notin'"),
         ("'_containsFold'", "'contains'"),  # COLLATE NOCASE already on contains
+        ("'_equalFold'", "'equalfold'"),
         ("'_isNil'", "'isnil'"),
     ]
     for suffix, op in op_entries:
@@ -536,7 +553,8 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append("            filters.push({ field: 'id', op: 'lt', value: String(beforeId) });")
     lines.append('        }')
     lines.append('')
-    lines.append("        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort: 'id' };")
+    lines.append("        const sort = args.orderBy || 'id';")
+    lines.append("        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort };")
     lines.append(BUILD_ROW)
     lines.append(EXEC_QUERY)
     lines.append('        const rows = result.results || [];')
@@ -594,6 +612,14 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append(BUILD_ROW)
     lines.append(EXEC_QUERY)
     lines.append("            return (result.results || [])[0] || null;")
+    lines.append("        },")
+    lines.append("        syncStatus: async (_parent, _args, ctx) => {")
+    lines.append("            const result = await ctx.db.prepare(")
+    lines.append("                'SELECT entity, last_sync AS lastSync, row_count AS rowCount, '")
+    lines.append("                + 'updated_at AS updatedAt, last_modified_at AS lastModifiedAt '")
+    lines.append("                + 'FROM _sync_meta ORDER BY entity'")
+    lines.append("            ).all();")
+    lines.append("            return result.results || [];")
     lines.append("        },")
     lines.append('    },')
 

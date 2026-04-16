@@ -22,7 +22,7 @@ import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getFilt
  * (no suffix). Used by parseQueryFilters() to recognise operator suffixes.
  * @type {Set<string>}
  */
-export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in', 'not', 'notin', 'endswith', 'isnil']);
+export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in', 'not', 'notin', 'endswith', 'isnil', 'equalfold']);
 
 /**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
@@ -87,6 +87,10 @@ const OPS = {
         clause: value === 'true' || value === '1' ? `"${col}" IS NULL` : `"${col}" IS NOT NULL`,
         params: []
     }),
+    equalfold: (col, value) => ({
+        clause: `"${col}" = ? COLLATE NOCASE`,
+        params: [value]
+    }),
 };
 
 /**
@@ -106,6 +110,7 @@ const OPS_SQL = {
     startswith: (col, ph) => `${col} LIKE ${ph} || '%' COLLATE NOCASE`,
     not: (col, ph) => `${col} != ${ph} COLLATE NOCASE`,
     endswith: (col, ph) => `${col} LIKE '%' || ${ph} COLLATE NOCASE`,
+    equalfold: (col, ph) => `${col} = ${ph} COLLATE NOCASE`,
 };
 
 /**
