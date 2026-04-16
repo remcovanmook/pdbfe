@@ -263,7 +263,7 @@ export function createFieldGroup(title, fields) {
     clone.querySelector('.info-group__title').textContent = t(title);
 
     for (const field of populated) {
-        clone.appendChild(/** @type {Node} */ (field));
+        clone.appendChild(/** @type {Node} */(field));
     }
 
     return clone;
@@ -416,7 +416,7 @@ export function createDetailLayout(opts) {
     shareBtn.addEventListener('click', async () => {
         const url = new URL(globalThis.location.href);
         // Clear existing table state params
-        for (const key of [...url.searchParams.keys()]) {
+        for (const key of url.searchParams.keys()) {
             if (key.includes('.')) url.searchParams.delete(key);
         }
         // Collect state from all pdb-table elements

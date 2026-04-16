@@ -57,16 +57,16 @@ def main():
         "User-Agent": "pdbfe-backfill/1.0",
     })
 
-    print(f"Fetching all POC records from upstream...", file=sys.stderr)
+    print("Fetching all POC records from upstream...", file=sys.stderr)
     with urllib.request.urlopen(req, timeout=120) as resp:
         data = json.loads(resp.read())
 
     rows = data.get("data", [])
-    print(f"Fetched {len(rows)} POC records", file=sys.stderr)
+    print("Fetched %d POC records" % len(rows), file=sys.stderr)
 
     # Filter to only non-Public records (Public ones already exist)
     missing = [r for r in rows if r.get("visible") != "Public"]
-    print(f"Non-Public records to backfill: {len(missing)}", file=sys.stderr)
+    print("Non-Public records to backfill: %d" % len(missing), file=sys.stderr)
 
     # Generate SQL
     col_list = ", ".join(f'"{c}"' for c in COLUMNS)

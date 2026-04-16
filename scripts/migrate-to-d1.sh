@@ -55,7 +55,7 @@ else
 fi
 
 if [[ ! -f "$WRANGLER_CONFIG" ]]; then
-    echo "ERROR: Wrangler config not found at $WRANGLER_CONFIG"
+    echo "ERROR: Wrangler config not found at $WRANGLER_CONFIG" >&2
     exit 1
 fi
 
@@ -105,7 +105,7 @@ for ENTITY_DEF in "${ENTITIES[@]}"; do
     JSON_FILE="$DB_DIR/${TAG}.json"
 
     if [[ ! -f "$JSON_FILE" ]]; then
-        echo "ERROR: $JSON_FILE not found. Run with --fetch or download manually."
+        echo "ERROR: $JSON_FILE not found. Run with --fetch or download manually." >&2
         exit 1
     fi
 
@@ -137,7 +137,7 @@ done
 
 TOTAL=$(echo "$VIOLATIONS" | awk -F'|' '{s+=$2} END {print s}')
 if [[ "$TOTAL" -gt 0 ]]; then
-    echo "ERROR: $TOTAL FK violations remain after cleanup. Aborting D1 import."
+    echo "ERROR: $TOTAL FK violations remain after cleanup. Aborting D1 import." >&2
     exit 1
 fi
 echo "    Clean (0 violations)."
