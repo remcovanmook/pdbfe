@@ -59,20 +59,20 @@ describe('openapi.json', () => {
     it('list endpoints have common query parameters', async () => {
         const raw = await import('../../../../extracted/openapi.json', { with: { type: 'json' } });
         const netParams = raw.default.paths['/v1/net'].get.parameters;
-        const paramNames = netParams.map(p => p.name);
-        assert.ok(paramNames.includes('limit'));
-        assert.ok(paramNames.includes('skip'));
-        assert.ok(paramNames.includes('depth'));
-        assert.ok(paramNames.includes('sort'));
+        const paramNames = new Set(netParams.map(p => p.name));
+        assert.ok(paramNames.has('limit'));
+        assert.ok(paramNames.has('skip'));
+        assert.ok(paramNames.has('depth'));
+        assert.ok(paramNames.has('sort'));
     });
 
     it('list endpoints have entity-specific filter parameters', async () => {
         const raw = await import('../../../../extracted/openapi.json', { with: { type: 'json' } });
         const netParams = raw.default.paths['/v1/net'].get.parameters;
-        const paramNames = netParams.map(p => p.name);
-        assert.ok(paramNames.includes('asn'));
-        assert.ok(paramNames.includes('asn__gt'));
-        assert.ok(paramNames.includes('name__contains'));
+        const paramNames = new Set(netParams.map(p => p.name));
+        assert.ok(paramNames.has('asn'));
+        assert.ok(paramNames.has('asn__gt'));
+        assert.ok(paramNames.has('name__contains'));
     });
 
     it('has Error schema in components', async () => {
