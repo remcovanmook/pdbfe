@@ -15,12 +15,12 @@ const graphqlHtml = readFileSync(resolve(REPO_ROOT, 'frontend/api/graphql.html')
 const restHtml = readFileSync(resolve(REPO_ROOT, 'frontend/api/rest.html'), 'utf-8');
 
 describe('frontend/api/graphql.html', () => {
-    it('links to the frontend CSS', () => {
-        assert.ok(graphqlHtml.includes('/css/index.css'));
+    it('inlines the frontend CSS variables', () => {
+        assert.ok(graphqlHtml.includes('--accent: #2563eb;'));
     });
 
-    it('links to the Inter font', () => {
-        assert.ok(graphqlHtml.includes('/third_party/inter/inter.css'));
+    it('inlines the header structure', () => {
+        assert.ok(graphqlHtml.includes('.site-header {'));
     });
 
     it('uses the site-header class', () => {
@@ -49,12 +49,12 @@ describe('frontend/api/graphql.html', () => {
 });
 
 describe('frontend/api/rest.html', () => {
-    it('links to the frontend CSS', () => {
-        assert.ok(restHtml.includes('/css/index.css'));
+    it('inlines the frontend CSS variables', () => {
+        assert.ok(restHtml.includes('--accent: #2563eb;'));
     });
 
-    it('links to the Inter font', () => {
-        assert.ok(restHtml.includes('/third_party/inter/inter.css'));
+    it('inlines the header structure', () => {
+        assert.ok(restHtml.includes('.site-header {'));
     });
 
     it('uses the site-header class', () => {
