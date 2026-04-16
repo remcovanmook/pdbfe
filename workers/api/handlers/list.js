@@ -195,5 +195,5 @@ function buildSortedQS(filters, opts) {
     if (opts.skip > 0) parts.push(`skip=${opts.skip}`);
     if (opts.since > 0) parts.push(`since=${opts.since}`);
     if (opts.sort) parts.push(`sort=${encodeURIComponent(opts.sort)}`);
-    return parts.sort((a, b) => a.localeCompare(b)).join("&");
+    return parts.toSorted((a, b) => a.localeCompare(b)).join("&");
 }
