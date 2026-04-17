@@ -78,9 +78,13 @@ export async function renderHome(_params) {
     cmpLink.href = '/compare';
     cmpLink.dataset.link = '';
     cmpLink.textContent = 'infrastructure comparison';
-    desc2.append(advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about. All data is subject to the PeeringDB ');
-    desc2.append(_extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
+    desc2.append(advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about.');
     hero.appendChild(desc2);
+
+    const desc2b = document.createElement('p');
+    desc2b.className = 'home-hero__desc';
+    desc2b.append('All data is subject to the PeeringDB ', _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
+    hero.appendChild(desc2b);
 
     const desc3 = document.createElement('p');
     desc3.className = 'home-hero__desc';
