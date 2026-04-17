@@ -239,7 +239,10 @@ async function loadRecentUpdates() {
 
             const title = document.createElement('div');
             title.className = 'recent-updates__title';
-            title.textContent = t(typ.label);
+            title.appendChild(createEntityBadge(typ.type));
+            const titleText = document.createElement('span');
+            titleText.textContent = t(typ.label);
+            title.appendChild(titleText);
             col.appendChild(title);
 
             const items = results[i].slice(0, 5);

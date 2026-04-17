@@ -1070,6 +1070,9 @@ body[data-page="home"] .site-logo {
 }
 
 .recent-updates__title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -1079,6 +1082,12 @@ body[data-page="home"] .site-logo {
     border-bottom: 2px solid var(--border);
     margin-bottom: var(--space-sm);
 }
+
+/* Colour the column border to match its entity type */
+.recent-updates__title:has([data-type="ix"])      { border-color: var(--type-ix); }
+.recent-updates__title:has([data-type="net"])     { border-color: var(--type-net); }
+.recent-updates__title:has([data-type="fac"])     { border-color: var(--type-fac); }
+.recent-updates__title:has([data-type="carrier"]) { border-color: var(--type-carrier); }
 
 .recent-updates__item {
     display: flex;
