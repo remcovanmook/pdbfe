@@ -1079,6 +1079,8 @@ body[data-page="home"] .site-logo {
 .recent-updates__column {
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    max-width: 300px;
 }
 
 .recent-updates__title {
@@ -1103,19 +1105,16 @@ body[data-page="home"] .site-logo {
 
 .recent-updates__item {
     display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
+    flex-direction: column;
+    gap: 2px;
     padding: var(--space-xs) 0;
     font-size: 0.8125rem;
     border-bottom: 1px solid var(--border-subtle);
 }
 
 .recent-updates__item a {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .recent-updates__item:last-child {
@@ -1125,9 +1124,6 @@ body[data-page="home"] .site-logo {
 .recent-updates__time {
     font-size: 0.6875rem;
     color: var(--text-muted);
-    white-space: nowrap;
-    margin-left: auto;
-    flex-shrink: 0;
 }
 
 /* ── Global System Statistics ──────────────────────────────────── */
