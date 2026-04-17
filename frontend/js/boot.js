@@ -17,6 +17,7 @@ import { renderCampus } from './pages/campus.js';
 import { renderAbout } from './pages/about.js';
 import { renderAsn } from './pages/asn.js';
 import { renderAccount } from './pages/account.js';
+import { renderCompare } from './pages/compare.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
@@ -30,6 +31,7 @@ import { getTimezonePreference, setTimezone } from './timezone.js';
 import './components/pdb-table.js';
 import './components/pdb-field-group.js';
 import './components/pdb-stats-bar.js';
+import './components/pdb-map.js';
 
 // Register routes
 addRoute('/', renderHome);
@@ -43,6 +45,7 @@ addRoute('/campus/:id', renderCampus);
 addRoute('/asn/:asn', renderAsn);
 addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
+addRoute('/compare', renderCompare);
 
 // Expose navigate for the homepage search box
 globalThis.__router = { navigate };

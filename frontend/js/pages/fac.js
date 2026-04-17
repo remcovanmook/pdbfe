@@ -52,6 +52,14 @@ export async function renderFac(params) {
             entityId: fac.id,
             sidebar: buildSidebar(fac),
             main: buildTables(fac),
+            locations: (fac.latitude && fac.longitude) || (fac.address1 && fac.city) ? {
+                fac: [{ 
+                    lat: fac.latitude, 
+                    lon: fac.longitude, 
+                    address: [fac.address1, fac.city, fac.country].filter(Boolean).join(', '),
+                    name: fac.name 
+                }]
+            } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load facility: ${err.message}`));

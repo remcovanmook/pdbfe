@@ -41,6 +41,13 @@ graph BT
     AUTH_W["auth/<br/>account, oauth"] --> CORE
     SYNC["sync/<br/>delta sync worker"] --> CORE
     SYNC --> API_ENT["api/entities.js"]
+    REST["rest/<br/>openapi, scalar, v1 handlers"] --> CORE
+    REST --> API_ENT
+    REST --> API_Q["api/query.js<br/>api/utils.js<br/>api/depth.js"]
+    REST --> API_SWR["api/swr.js<br/>api/pipeline.js"]
+    GQL["graphql/<br/>yoga, resolvers, cache"] --> CORE
+    GQL --> API_ENT
+    GQL --> API_Q
 ```
 
 `core/` has zero imports from `api/`, `auth/`, or `sync/`.
@@ -87,12 +94,32 @@ Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (ev
 - **`index.js`**: Exports `{ scheduled, fetch }` handlers. Cron reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>&depth=0` per entity, UPSERTs active rows via `INSERT OR REPLACE`, deletes rows with `status='deleted'`. Batches in groups of 50 to stay within D1 limits. HTTP endpoints for manual control (`GET /sync/status`, `POST /sync/trigger`).
 - **`entities.js`**: Re-exports entity definitions from `api/entities.js` (no duplication).
 
-## 4. Tests (`workers/tests/`)
+## 4. GraphQL Domain (`workers/graphql/`)
+Provides a complete GraphQL API surfacing the PeeringDB dataset.
+
+- **`index.js`**: Entry point mounting `graphql-yoga`. Compiles schema dynamically from generated types/resolvers. Handles isolate-level rate-limiting and route configurations.
+- **`cache.js`**: Replaces the generic object LRU cache in `core` with a heavily scoped SHA-256 string-hash query processor.
+- **`l2.js`**: Edge-optimized PoP cache extensions explicitly caching deep GraphQL resolve results.
+
+## 5. REST Domain (`workers/rest/`)
+Provides a versioned OpenAPI-compliant REST API implementing dynamic sub-resource traversal.
+
+- **`index.js`**: Versioned router implementing standard REST interfaces (`/v1/{entity}`). Dynamically loads pre-calculated OpenAPI specification responses from module loading to serve fast schema references.
+- **`cache.js`**: Implements specialized cache structures. 
+- **`scalar.js`**: Binds Scalar's visual HTML schema UI wrapper to handle UI documentation cleanly.
+- **`subresource.js`**: Resolves dynamic traversal paths using derived schema associations (e.g., executing `/v1/net/1/facilities` bounds the facility database implicitly). 
+
+## 6. Code Generation Pipeline & Tooling
+The GraphQL schemas and REST API specifications are not manually written. They are generated via our pipeline using upstream sources of truth (see [`docs/pipeline.md`](../docs/pipeline.md)).
+
+## 7. Tests (`workers/tests/`)
 
 Unit tests are organised into subdirectories mirroring the source layout:
 
-- **`tests/unit/core/`**: `auth.test.js` (API key, session, resolveAuth), `cache.test.js` (LRU), `utils.test.js` (tokenizeString, parseURL)
-- **`tests/unit/api/`**: `query.test.js`, `depth.test.js`, `pipeline.test.js`, `swr.test.js`, `ratelimit.test.js`, `headers.test.js`, `status.test.js`, `sync_state.test.js`, `sync.test.js`, `visibility.test.js`
+- **`tests/unit/core/`**: `auth.test.js` (API key, session, resolveAuth), `cache.test.js` (LRU), `utils.test.js` (tokenizeString, parseURL), `branding.test.js` (UI layout presence checks)
+- **`tests/unit/api/`**: `query.test.js`, `depth.test.js`, `pipeline.test.js`, `swr.test.js`, `ratelimit.test.js`, `headers.test.js`, `status.test.js`, `sync_state.test.js`, `sync.test.js`, `visibility.test.js`, `compare.test.js`
+- **`tests/unit/graphql/`**: `graphql.test.js`
+- **`tests/unit/rest/`**: `rest.test.js`
 - **`tests/unit/auth/`**: `account.test.js` (API key CRUD)
 - **`tests/unit/antipatterns.test.js`**: Cross-cutting check for banned patterns in source files
 - **`tests/test_api.js`**: Integration — full router with mock D1, admin endpoints, CORS, 501s, scanner blocking

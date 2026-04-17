@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <title>GraphQL — PDBFE</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Interactive GraphQL explorer for the PeeringDB dataset." />
+  <link rel="stylesheet" href="/third_party/inter/inter.css">
+  <style>
+      --bg-surface: #ffffff;
+      --text-primary: #111827;
+      --text-secondary: #4b5563;
+      --text-muted: #9ca3af;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --header-height: 56px;
+      --space-sm: 0.5rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --transition-fast: 0.15s ease;
+    }
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .site-header {
+      position: sticky; top: 0; z-index: 100;
+      min-height: var(--header-height);
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 var(--space-lg);
+    }
+    .site-header__inner {
+      display: flex; align-items: center; gap: var(--space-md);
+      width: 100%; margin: 0 auto;
+    }
+    .site-logo {
+      font-size: 1.125rem; font-weight: 700; color: var(--text-primary);
+      text-decoration: none; letter-spacing: -0.02em;
+    }
+    .site-logo span { color: var(--accent); }
+    .site-header__nav {
+      display: flex; align-items: center; gap: var(--space-sm);
+      margin-left: auto;
+    }
+    .header-external-link {
+      font-size: 0.75rem; color: var(--text-muted); text-decoration: none;
+      transition: color var(--transition-fast);
+    }
+    .header-external-link:hover { color: var(--text-secondary); }
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/graphiql@3.9.0/graphiql.min.css" integrity="sha384-QMux00XgRtwRLSYIY3kw2rj1ovk5AuuliAchk+HSQbqdbGFnz9GYuqIlOqxhwCE2" crossorigin="anonymous" />
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+</head>
+
+<body style="margin:0; height:100vh; display:flex; flex-direction:column">
+
+  <header class="site-header" role="banner">
+    <div class="site-header__inner">
+      <a href="https://pdbfe.dev/" class="site-logo">PDB<span>FE</span></a>
+      <span style="color:var(--text-muted);font-weight:300">|</span>
+      <span
+        style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);letter-spacing:0.03em;text-transform:uppercase">GraphQL</span>
+      <nav class="site-header__nav" aria-label="API navigation">
+        <a href="https://graphql.pdbfe.dev/" class="header-external-link">GraphQL</a>
+        <a href="https://rest.pdbfe.dev/" class="header-external-link">REST Docs</a>
+        <a href="https://pdbfe.dev/about" class="header-external-link">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <div id="graphiql" style="flex:1"></div>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/graphiql@3.9.0/graphiql.min.js" integrity="sha384-8NGfVj4CVlqHajlZj+bPJT4thxPMHMJYn7DWK2CvtopLd02E7qsPHazniBYvVjOO" crossorigin="anonymous"></script>
+  <script>
+    const fetcher = GraphiQL.createFetcher({ url: globalThis.location.origin + globalThis.location.pathname });
+    const root = ReactDOM.createRoot(document.getElementById('graphiql'));
+    root.render(React.createElement(GraphiQL, { fetcher: fetcher }));
+  </script>
+
+</body>
+
+</html>

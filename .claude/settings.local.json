@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(ls /Users/remco/src/pdbfe/.sonar* /Users/remco/src/pdbfe/sonar*)",
+      "Bash(ls /Users/remco/src/pdbfe/scripts/*.py)"
+    ]
+  }
+}

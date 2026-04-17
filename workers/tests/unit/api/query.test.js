@@ -126,7 +126,7 @@ describe("buildRowQuery", () => {
     it("should apply IN filter with multiple values", () => {
         const filters = [{ field: "id", op: "in", value: "1,5,10" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"id" IN (?, ?, ?)'));
+        assert.ok(result.sql.includes('"id" IN (SELECT value FROM json_each(?))'));
     });
 
     it("should ignore unknown fields", () => {
@@ -262,7 +262,7 @@ describe("buildRowQuery with joinColumns", () => {
     it("should qualify IN filter with table alias", () => {
         const filters = [{ field: "asn", op: "in", value: "13335,8075" }];
         const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('t."asn" IN (?, ?)'));
+        assert.ok(result.sql.includes('t."asn" IN (SELECT value FROM json_each(?))'));
     });
 });
 
@@ -436,8 +436,8 @@ describe("cross-entity filters", () => {
         const netixlan = ENTITIES.netixlan;
         const filters = [{ field: "asn", op: "in", value: "13335,15169", entity: "net" }];
         const result = buildRowQuery(netixlan, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (?, ?))'));
-        assert.deepEqual(result.params.filter(p => typeof p === 'number' && p > 100), [13335, 15169]);
+        assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (SELECT value FROM json_each(?)))'));
+        assert.deepEqual(result.params.filter(p => typeof p === 'string' && p.includes('13335')), ['[13335,15169]']);
     });
 
     it("should combine cross-entity filter with regular filter", () => {
@@ -606,5 +606,71 @@ describe("parseQueryFilters duplicate params", () => {
         assert.equal(result.filters.length, 1);
         assert.equal(result.filters[0].value, "NL");
         assert.equal(result.filters[0].entity, "fac");
+    });
+});
+
+// ── New filter operators (not, notin, endswith, isnil) ──────────────────────
+
+describe("buildRowQuery new filter operators", () => {
+    it("should apply NOT filter", () => {
+        const filters = [{ field: "name", op: "not", value: "test" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"name" != ? COLLATE NOCASE'));
+        assert.ok(result.params.includes("test"));
+    });
+
+    it("should apply NOT IN filter", () => {
+        const filters = [{ field: "asn", op: "notin", value: "13335,2906" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"asn" NOT IN (SELECT value FROM json_each(?))'));
+    });
+
+    it("should apply endswith filter", () => {
+        const filters = [{ field: "name", op: "endswith", value: "Inc." }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes("LIKE '%' || ? COLLATE NOCASE"));
+        assert.ok(result.params.includes("Inc."));
+    });
+
+    it("should apply isnil=true as IS NULL", () => {
+        const filters = [{ field: "name", op: "isnil", value: "true" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"name" IS NULL'));
+    });
+
+    it("should apply isnil=false as IS NOT NULL", () => {
+        const filters = [{ field: "name", op: "isnil", value: "false" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"name" IS NOT NULL'));
+    });
+
+    it("should apply isnil=1 as IS NULL", () => {
+        const filters = [{ field: "name", op: "isnil", value: "1" }];
+        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"name" IS NULL'));
+    });
+});
+
+describe("parseQueryFilters new operators", () => {
+    it("should parse __not suffix", () => {
+        const result = parseQueryFilters("name__not=test");
+        assert.equal(result.filters[0].op, "not");
+        assert.equal(result.filters[0].value, "test");
+    });
+
+    it("should parse __notin suffix", () => {
+        const result = parseQueryFilters("asn__notin=13335,2906");
+        assert.equal(result.filters[0].op, "notin");
+    });
+
+    it("should parse __endswith suffix", () => {
+        const result = parseQueryFilters("name__endswith=Inc.");
+        assert.equal(result.filters[0].op, "endswith");
+    });
+
+    it("should parse __isnil suffix", () => {
+        const result = parseQueryFilters("name__isnil=true");
+        assert.equal(result.filters[0].op, "isnil");
+        assert.equal(result.filters[0].value, "true");
     });
 });

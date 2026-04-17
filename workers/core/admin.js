@@ -89,7 +89,17 @@ function isValidSecret(env, provided) {
     const enc = new TextEncoder();
     const a = enc.encode(provided);
     const b = enc.encode(env.ADMIN_SECRET);
-    return crypto.subtle.timingSafeEqual(a, b);
+    
+    if (crypto.subtle && typeof crypto.subtle.timingSafeEqual === 'function') {
+        return crypto.subtle.timingSafeEqual(a, b);
+    }
+    
+    // Fallback constant-time comparison for Node.js test environment
+    let result = 0;
+    for (let i = 0; i < a.length; i++) {
+        result |= a[i] ^ b[i];
+    }
+    return result === 0;
 }
 
 /**
@@ -234,7 +244,7 @@ export function wrapHandler(handler, serviceName) {
             } catch (err) {
                 console.error(err.stack || err);
                 response = new Response(
-                    JSON.stringify({ error: "Internal Server Error" }) + "\n",
+                    JSON.stringify({ error: "Internal Server Error", stack: err.stack }) + "\n",
                     {
                         status: 500,
                         headers: {

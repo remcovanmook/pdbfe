@@ -41,6 +41,16 @@ Supported query parameters include `depth`, `limit`, `skip`, `since`, and the st
 
 Endpoints available: `net`, `org`, `fac`, `ix`, `ixlan`, `ixpfx`, `netixlan`, `netfac`, `poc`, `carrier`, `carrierfac`, `ixfac`, `campus`, `as_set`.
 
+## API Interfaces
+
+This mirror offers three API interfaces:
+
+- **PeeringDB-compatible API** — Drop-in replacement for the upstream PeeringDB API at `/api/`. Supports the same query parameters, filter operators, and response format.
+- **GraphQL** — Interactive GraphQL endpoint at [graphql.pdbfe.dev](https://graphql.pdbfe.dev). Includes a built-in GraphiQL IDE for exploring the schema.
+- **REST API** — Versioned REST API at [rest.pdbfe.dev](https://rest.pdbfe.dev) with [interactive documentation](https://rest.pdbfe.dev/) powered by Scalar.
+
+All three interfaces serve the same underlying dataset and support the same authentication methods (session cookies and API keys).
+
 ## Acceptable Use
 
 All data served by this mirror originates from PeeringDB and is subject to the PeeringDB [Acceptable Use Policy](https://www.peeringdb.com/aup) and [Privacy Policy](https://docs.peeringdb.com/gov/misc/2017-04-02-PeeringDB_Privacy_Policy.pdf).

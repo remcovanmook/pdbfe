@@ -29,6 +29,7 @@ export async function renderNet(params) {
 
     try {
         const net = await fetchEntity('net', id, 2);
+
         if (!net) {
             app.replaceChildren(createError(`Network ${id} not found`));
             return;
@@ -40,6 +41,13 @@ export async function renderNet(params) {
             `${net.info_type || 'Network'} — ${net.policy_general || 'Peering policy not listed'}`
         );
 
+        const locationData = (net.netfac_set || []).filter((/** @type {any} */ f) => (typeof f.latitude === 'number' && typeof f.longitude === 'number') || (f.address1 && f.city)).map((/** @type {any} */ f) => ({
+            lat: f.latitude, 
+            lon: f.longitude, 
+            address: [f.address1, f.city, f.country].filter(Boolean).join(', '),
+            name: f.name || `Facility ${f.fac_id}`
+        }));
+
         app.replaceChildren(createDetailLayout({
             title: net.name,
             subtitle: `AS${net.asn}`,
@@ -49,6 +57,7 @@ export async function renderNet(params) {
             entityId: net.id,
             sidebar: buildSidebar(net),
             main: buildTables(net),
+            locations: locationData.length > 0 ? { fac: locationData } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load network: ${err.message}`));

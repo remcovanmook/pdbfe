@@ -14,10 +14,12 @@
 # Deploy order:
 #   1. Validate generated artifacts
 #   2. Apply D1 migrations (if --apply-migrations)
-#   3. Deploy pdbfe-sync  (if changed or --force)
-#   4. Deploy pdbfe-api   (if changed or --force)
-#   5. Deploy pdbfe-auth  (if changed or --force)
-#   6. Deploy frontend    (if --remote)
+#   3. Deploy pdbfe-sync     (if changed or --force)
+#   4. Deploy pdbfe-api      (if changed or --force)
+#   5. Deploy pdbfe-auth     (if changed or --force)
+#   6. Deploy pdbfe-graphql  (if changed or --force)
+#   7. Deploy pdbfe-rest     (if changed or --force)
+#   8. Deploy frontend       (if --remote)
 #
 
 set -euo pipefail
@@ -76,7 +78,27 @@ fi
 
 # Check generated artifacts are fresh
 "$PYTHON" "$SCRIPT_DIR/parse_django_models.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/gen_graphql_schema.py" 2>&1
+"$PYTHON" "$SCRIPT_DIR/gen_openapi_spec.py" 2>&1
 pass "Pipeline up to date"
+# Run integration tests
+"$SCRIPT_DIR/test.sh" 2>&1 || fail "Python scripts tests failed"
+
+# Run downstream frontend and worker validation against newly generated artifacts
+if [[ -d "$REPO_ROOT/workers/node_modules" ]]; then
+    echo "  Validating workers..."
+    (cd "$REPO_ROOT/workers" && npm run typecheck && npm test && npm run test:integration) > /dev/null 2>&1 || fail "Worker validation or integration tests failed"
+else
+    warn "Skipping worker local validation: no node_modules found. Run 'npm install' in workers/"
+fi
+
+if [[ -d "$REPO_ROOT/frontend/node_modules" ]] || [[ -d "$REPO_ROOT/workers/node_modules" ]]; then
+    # Frontend logic typecheck (can pull from worker node_modules depending on setup)
+    echo "  Validating frontend..."
+    (cd "$REPO_ROOT/frontend" && npm run typecheck && npm test) > /dev/null 2>&1 || fail "Frontend validation failed"
+fi
+
+pass "All validation and integration tests passed"
 
 
 
@@ -144,6 +166,8 @@ declare -a WORKERS=(
     "wrangler-sync.toml:sync"
     "wrangler.toml:api"
     "wrangler-auth.toml:auth"
+    "wrangler-graphql.toml:graphql"
+    "wrangler-rest.toml:rest"
 )
 
 for WORKER_DEF in "${WORKERS[@]}"; do

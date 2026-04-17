@@ -265,18 +265,23 @@ export async function fetchList(type, filters = {}, signal = undefined) {
  *
  * @param {string} query - Search term (matched via name__contains).
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
+ * @param {string[]} [types] - Optional subset of entity type keys to search.
+ *     When provided, only these types are queried. Defaults to all SEARCH_ENTITIES.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
-export async function searchAll(query, signal) {
+export async function searchAll(query, signal, types) {
     const params = { name__contains: query, limit: 20 };
+    const entities = types
+        ? SEARCH_ENTITIES.filter(e => types.includes(e.key))
+        : SEARCH_ENTITIES;
 
     const results = await Promise.all(
-        SEARCH_ENTITIES.map(e => fetchList(e.key, params, signal).catch(/** @returns {any[]} */() => []))
+        entities.map(e => fetchList(e.key, params, signal).catch(/** @returns {any[]} */() => []))
     );
 
     /** @type {Record<string, any[]>} */
     const grouped = {};
-    for (const [i, e] of SEARCH_ENTITIES.entries()) { grouped[e.key] = results[i]; }
+    for (const [i, e] of entities.entries()) { grouped[e.key] = results[i]; }
     return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
 }
 
@@ -318,6 +323,20 @@ export async function fetchCount(type) {
 }
 
 /**
+ * Fetches entity overlap analysis between two entities.
+ * Both entities are specified as "{tag}:{id}" strings.
+ *
+ * The __pdbfe=1 flag is already appended by buildURL.
+ *
+ * @param {string} a - First entity reference (e.g. "net:13335").
+ * @param {string} b - Second entity reference (e.g. "net:15169").
+ * @returns {Promise<any>} Overlap analysis result.
+ */
+export async function fetchCompare(a, b) {
+    return cachedFetch('/api/compare', { a, b });
+}
+
+/**
  * Fetches the database sync status from the /status endpoint.
  * Returns an object with the most recent sync timestamp and
  * per-entity sync metadata.
@@ -354,18 +373,22 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  *
  * @param {string} query - Search term.
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
+ * @param {string[]} [types] - Optional subset of entity type keys to search.
+ *     When provided, only these types are queried and ASN injection only
+ *     applies if 'net' is included in the filter.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
  */
-export async function searchWithAsn(query, signal) {
+export async function searchWithAsn(query, signal, types) {
+    const includeNet = !types || types.includes('net');
     const asnMatch = ASN_PATTERN.exec(query.trim());
-    const asnNum = asnMatch ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
+    const asnNum = (includeNet && asnMatch) ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
-        searchAll(query, signal),
+        searchAll(query, signal, types),
         Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 
-    if (asnNet) {
+    if (asnNet && results.net) {
         const existingIds = new Set(results.net.map(/** @param {any} n */ (n) => n.id));
         if (existingIds.has(asnNet.id)) {
             results.net = [

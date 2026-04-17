@@ -36,6 +36,13 @@ export async function renderOrg(params) {
         document.title = `${org.name} — PDBFE`;
         setOGTags(org.name, `Organization — PDBFE`);
 
+        const locationData = org.fac_set?.filter((/** @type {any} */ f) => (typeof f.latitude === 'number' && typeof f.longitude === 'number') || (f.address1 && f.city)).map((/** @type {any} */ f) => ({
+            lat: f.latitude, 
+            lon: f.longitude, 
+            address: [f.address1, f.city, f.country].filter(Boolean).join(', '),
+            name: f.name || `Facility ${f.id}`
+        })) || [];
+
         app.replaceChildren(createDetailLayout({
             title: org.name,
             logoUrl: org.logo || null,
@@ -44,6 +51,7 @@ export async function renderOrg(params) {
             entityId: org.id,
             sidebar: buildSidebar(org),
             main: buildTables(org),
+            locations: locationData.length > 0 ? { fac: locationData } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load organization: ${err.message}`));

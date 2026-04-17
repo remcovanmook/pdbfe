@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pyyaml
-          npm ci --prefix workers
+          npm ci --prefix workers --ignore-scripts
 
       - name: Run schema pipeline
         id: pipeline

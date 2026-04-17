@@ -1,0 +1,29 @@
+# Template for pdbfe-graphql worker. Copy to wrangler-graphql.toml and fill in IDs.
+name = "pdbfe-graphql"
+main = "graphql/index.js"
+compatibility_date = "2026-03-18"
+workers_dev = true
+
+rules = [
+  { type = "Text", globs = ["**/*.html", "**/*.css"], fallthrough = true },
+  { type = "Data", globs = ["**/*.woff2"], fallthrough = true }
+]
+
+routes = [
+  { pattern = "graphql.<your-domain>/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/graphql", zone_name = "<your-domain>" }
+]
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "<your-d1-database-id>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<your-sessions-kv-namespace-id>"
+
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "<your-users-d1-database-id>"

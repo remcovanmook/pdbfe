@@ -148,11 +148,7 @@ export function validateFields(entity, requested) {
 const VALID_OPS = new Set(['eq', 'lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in']);
 
 /**
- * Maximum number of values allowed in an __in filter list.
- * D1/SQLite has a compiled-in limit of 999 bind parameters
- * (SQLITE_MAX_VARIABLE_NUMBER). We cap at 500 to leave headroom
- * for other bind parameters in the same query (pagination, since,
- * status, cross-entity subqueries).
+ * Maximum number of values permitted in an 'in' or 'notin' filter (e.g. id__in=1,2,3)
  * @type {number}
  */
 export const MAX_IN_VALUES = 500;

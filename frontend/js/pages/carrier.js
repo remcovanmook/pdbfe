@@ -27,12 +27,20 @@ export async function renderCarrier(params) {
 
     try {
         const carrier = await fetchEntity('carrier', id, 2);
+
         if (!carrier) {
             app.replaceChildren(createError(`Carrier ${id} not found`));
             return;
         }
 
         document.title = `${carrier.name} — PDBFE`;
+
+        const locationData = (carrier.carrierfac_set || []).filter((/** @type {any} */ f) => (typeof f.latitude === 'number' && typeof f.longitude === 'number') || (f.address1 && f.city)).map((/** @type {any} */ f) => ({
+            lat: f.latitude, 
+            lon: f.longitude, 
+            address: [f.address1, f.city, f.country].filter(Boolean).join(', '),
+            name: f.name || `Facility ${f.fac_id}`
+        }));
 
         app.replaceChildren(createDetailLayout({
             title: carrier.name,
@@ -42,6 +50,7 @@ export async function renderCarrier(params) {
             entityId: carrier.id,
             sidebar: buildSidebar(carrier),
             main: buildTables(carrier),
+            locations: locationData.length > 0 ? { fac: locationData } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load carrier: ${err.message}`));

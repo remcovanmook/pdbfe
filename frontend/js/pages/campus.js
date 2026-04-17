@@ -34,6 +34,13 @@ export async function renderCampus(params) {
 
         document.title = `${campus.name} — PDBFE`;
 
+        const locationData = campus.fac_set?.filter((/** @type {any} */ f) => (typeof f.latitude === 'number' && typeof f.longitude === 'number') || (f.address1 && f.city)).map((/** @type {any} */ f) => ({
+            lat: f.latitude, 
+            lon: f.longitude, 
+            address: [f.address1, f.city, f.country].filter(Boolean).join(', '),
+            name: f.name || `Facility ${f.id}`
+        })) || [];
+
         app.replaceChildren(createDetailLayout({
             title: campus.name,
             logoUrl: campus.logo || campus.org?.logo || null,
@@ -42,6 +49,7 @@ export async function renderCampus(params) {
             entityId: campus.id,
             sidebar: buildSidebar(campus),
             main: buildTables(campus),
+            locations: locationData.length > 0 ? { fac: locationData } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load campus: ${err.message}`));

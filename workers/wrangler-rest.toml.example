@@ -1,0 +1,31 @@
+# Template for pdbfe-rest worker. Copy to wrangler-rest.toml and fill in IDs.
+name = "pdbfe-rest"
+main = "rest/index.js"
+compatibility_date = "2026-03-18"
+workers_dev = true
+
+# Static asset imports (HTML/CSS as text, JSON/WOFF2 as data)
+rules = [
+  { type = "Text", globs = ["**/*.html", "**/*.css"], fallthrough = true },
+  { type = "Data", globs = ["extracted/*.json", "**/*.woff2"], fallthrough = true }
+]
+
+routes = [
+  { pattern = "rest.<your-domain>/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/v1/*", zone_name = "<your-domain>" },
+  { pattern = "api.<your-domain>/openapi.json", zone_name = "<your-domain>" }
+]
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "<your-d1-database-id>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<your-sessions-kv-namespace-id>"
+
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "<your-users-d1-database-id>"

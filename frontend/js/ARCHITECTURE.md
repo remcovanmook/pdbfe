@@ -46,7 +46,17 @@ boot.js
     ├── search.js   → Search results using createLink
     ├── about.js    → Fetches /content/about.md, renders via renderMarkdown
     ├── account.js  → Profile, preferences, favorites, API key management
-    └── asn.js      → ASN → network redirect
+    ├── asn.js      → ASN → network redirect
+    └── compare.js  → Side-by-side entity property comparison view
+
+## API Documentation Pages
+
+In addition to the SPA, the frontend provides two statically-shipped HTML documents designed explicitly to host interactive API tools decoupled from the SPA lifecycle.
+
+- **`api/graphql.html`**: Bundles the GraphiQL explorer (React ecosystem) into a single page.
+- **`api/rest.html`**: Bundles the Scalar API client (Vue.js ecosystem) into a single page. 
+
+These are served unmodified directly from the `graphql.pdbfe.dev` and `rest.pdbfe.dev` root edge routes. They inline CSS properties and rely on edge-cached fonts through Google's CDN to ensure layout rendering operates unimpeded despite overlapping Cloudflare Access restrictions.
 ```
 
 ## Data Flow
@@ -116,3 +126,32 @@ URL protocol validation, and `target`/`rel` enforcement on links.
 
 All other modules use DOM nodes exclusively. `escapeHTML()` is retained
 only in `i18n.js` for interpolation value escaping.
+
+## Anti-Patterns & Common Pitfalls
+
+As the codebase matures, please strictly avoid the following identified anti-patterns:
+
+1. **Raw `fetch()` calls to the API**
+   - **Bad**: `fetch('/api/net/1')` or `fetch(API_ORIGIN + '/api/...')` 
+   - **Good**: `import { fetchEntity } from '../api.js'; fetchEntity('net', 1);`
+   - **Why**: Raw fetches completely bypass the centralized configuration inside `api.js`. This breaks cross-origin Cloudflare Pages routing, strips D1 API synchronization state, ignores SWR (Stale-While-Revalidate) local caching (causing extreme network thrashing), and drops edge diagnostic telemetry. *Exception*: Static asset payloads (Markdown, CSS, `i18n` Locales) appropriately use direct `fetch()`.
+
+2. **Hardcoded HTML Cache Busters**
+   - **Bad**: Editing foundational layout code in `index.css` without updating the loader.
+   - **Good**: Bumping the CSS cache signature `<link rel="stylesheet" href="/css/index.css?v={N}">` inside `frontend/index.html`.
+   - **Why**: Cloudflare Pages heavily caches edge assets. If the CSS relies on a hardcoded signature but structural layout classes randomly change, clients will download the new `JS` components but drop layout rules entirely resulting in floating, unstyled UI anomalies.
+
+3. **Mixing Box Models in Flex Row Alignment**
+   - **Bad**: Allowing `<button>` and `<a>` siblings inside a `.detail-header` flex-container without neutralizing box-models.
+   - **Good**: Adding `display: inline-flex; align-items: center; justify-content: center;` to a shared utility CSS class.
+   - **Why**: Anchors and natively styled HTML buttons possess fundamentally different intrinsic heights and centerline layouts. Combining them blindly results in "awkwardly hanging" vertical or horizontal misalignments.
+
+4. **Manual DOM Node Initialization Over Reusable Components**
+   - **Bad**: Building massive nested interface hierarchies organically using 20+ sequential lines of `document.createElement()` assignments scattered throughout page logic.
+   - **Good**: Encapsulating complex recurring UI forms into dedicated Web Components (`frontend/js/components/`) and formally declaring reusable templates directly aligned with their lifecycle.
+   - **Why**: Hardcoding massive DOM structural trees mechanically inside procedural JS heavily tightly couples layout with logic. Migrating complex UI abstractions into native Custom Elements rigorously segregates structure from state, significantly streamlines testing, and yields fully reusable semantic tags.
+
+5. **Dynamic External Resource Loads**
+   - **Bad**: Hot-injecting an untracked `<script>` tag or an unvetted `<link>` from a random public CDN organically inside a module component.
+   - **Good**: Formally establishing the package physically within `/third_party/` entirely under our repository footprint, embedding it strictly into the `<head>` of `index.html`.
+   - **Why**: The PeeringDB frontend adheres to incredibly strict dependency minimalism and privacy boundaries. Unmanaged external loads bypass audit trails, ignore Subresource Integrity guards, inflate dynamic execution risks, and will instantly break the application if the upstream network proxy suddenly degrades.

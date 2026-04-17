@@ -103,6 +103,8 @@ Use conventional commit prefixes:
 | Change | Also update |
 |--------|-------------|
 | New API field | Run `parse_django_models.py --force`, review generated migration |
+| New GraphQL field | Run `gen_graphql_schema.py`, review generated SDL |
+| New REST sub-resource | Run `gen_openapi_spec.py`, review generated openapi.json |
 | New UI string | `frontend/locales/strings.json`, all locale files |
 | New HTML interpolation | Wrap in `escapeHTML()` or annotate `/* safe */` |
 | New worker module | `workers/tsconfig.json` include paths |

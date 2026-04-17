@@ -37,12 +37,10 @@ export async function renderIx(params) {
         }
 
         // Fetch peers and LAN prefixes in parallel.
-        // ixpfx is a child of ixlan (not ix), so depth=2 on ix doesn't
-        // include them — we need a separate query using the ixlan_id.
         const ixlanId = ix.ixlan_set?.[0]?.id;
         const [peers, prefixes] = await Promise.all([
             fetchIxPeers(id),
-            ixlanId ? fetchList('ixpfx', { ixlan_id: ixlanId }) : Promise.resolve([]),
+            ixlanId ? fetchList('ixpfx', { ixlan_id: ixlanId }) : Promise.resolve([])
         ]);
 
         // Attach prefixes so the sidebar renderer picks them up
@@ -77,6 +75,13 @@ export async function renderIx(params) {
 
         const subtitle = location;
 
+        const locationData = (ix.ixfac_set || []).filter((/** @type {any} */ f) => (typeof f.latitude === 'number' && typeof f.longitude === 'number') || (f.address1 && f.city)).map((/** @type {any} */ f) => ({
+            lat: f.latitude, 
+            lon: f.longitude, 
+            address: [f.address1, f.city, f.country].filter(Boolean).join(', '),
+            name: f.name || `Facility ${f.fac_id}`
+        }));
+
         app.replaceChildren(createDetailLayout({
             title: ix.name,
             subtitle,
@@ -87,6 +92,7 @@ export async function renderIx(params) {
             statsBar,
             sidebar: buildSidebar(ix),
             main: buildTables(ix, peers),
+            locations: locationData.length > 0 ? { fac: locationData } : undefined
         }));
     } catch (err) {
         app.replaceChildren(createError(`Failed to load exchange: ${err.message}`));

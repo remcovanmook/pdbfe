@@ -425,6 +425,15 @@ interface EntityMeta {
     table: string;
     /** API endpoint tag (e.g. "net"). */
     tag: string;
+    /** Entity naming metadata from the codegen pipeline. */
+    naming?: {
+        type?: string;
+        singular?: string;
+        plural?: string;
+        subresource?: string;
+        label?: string;
+        aliases?: { singular?: string; plural?: string };
+    };
     /** Field definitions — the single source of truth for columns, types, and filterability. */
     fields: FieldDef[];
     /** Relationship definitions for depth expansion. */

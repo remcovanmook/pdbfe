@@ -56,6 +56,8 @@ cd workers
 cp wrangler.toml.example wrangler.toml
 cp wrangler-sync.toml.example wrangler-sync.toml
 cp wrangler-auth.toml.example wrangler-auth.toml
+cp wrangler-graphql.toml.example wrangler-graphql.toml
+cp wrangler-rest.toml.example wrangler-rest.toml
 ```
 
 Edit each file and replace the placeholders:
@@ -112,7 +114,22 @@ Download entity JSON from the PeeringDB API and populate D1:
 
 This downloads all 13 entity types from the PeeringDB API, converts them to INSERT statements, and loads them into D1 in batches. The `--fetch` flag downloads fresh JSON; without it, the script expects pre-existing JSON files in `database/`.
 
-After the initial load, the sync worker handles incremental updates every 15 minutes via the `since` parameter.
+#### POC Backfill (Critical)
+
+The public JSON dumps at `public.peeringdb.com` **only contain points of contact (POCs) with `visible=Public`**. To maintain functional parity for authenticated users, you must manually backfill `visible=Users` and `visible=Private` records directly from the authenticated API:
+
+```bash
+# Ensure PEERINGDB_API_KEY is in your environment
+source .env
+
+# Generate POC backfill script via upstream API
+python3 scripts/backfill_poc.py > /tmp/poc_backfill.sql
+
+# Apply manually to D1
+wrangler d1 execute peeringdb --remote --yes --file /tmp/poc_backfill.sql
+```
+
+After the initial load and POC backfill, the sync worker handles incremental updates every 15 minutes via the `since` parameter automatically.
 
 ### Users database schema
 
@@ -128,13 +145,19 @@ npx wrangler d1 execute pdbfe-users --file=database/users/0002_preference_option
 
 ## 7. Worker Deployment
 
-Deploy all three workers:
+Deploy all five workers:
 
 ```bash
 cd workers
 
-# API worker
+# API worker (PeeringDB Legacy mirror)
 npx wrangler deploy --config wrangler.toml
+
+# GraphQL worker
+npx wrangler deploy --config wrangler-graphql.toml
+
+# REST API worker
+npx wrangler deploy --config wrangler-rest.toml
 
 # Sync worker (cron-triggered)
 npx wrangler deploy --config wrangler-sync.toml
@@ -193,6 +216,18 @@ curl https://pdbfe-sync.<your-subdomain>.workers.dev/sync/status
 
 Shows last sync timestamp and row counts per entity.
 
+### GraphQL API
+
+```bash
+curl -X POST -H 'Content-Type: application/json' -d '{"query":"{ __schema { types { name } } }"}' https://graphql.pdbfe.<your-subdomain>.workers.dev/
+```
+
+### REST API
+
+```bash
+curl https://rest.pdbfe.<your-subdomain>.workers.dev/openapi.json
+```
+
 ### Frontend
 
 Visit `https://<your-pages-project>.pages.dev` — you should see the PeeringDB mirror SPA.
@@ -201,12 +236,12 @@ Visit `https://<your-pages-project>.pages.dev` — you should see the PeeringDB 
 
 | Credential | Where it lives | Used by |
 |---|---|---|
-| `PEERINGDB_API_KEY` | `.env` (local), wrangler secret (prod) | Sync worker, auth worker (WAF bypass) |
+| `PEERINGDB_API_KEY` | `.env` (local), wrangler secret (prod) | Sync worker, auth worker (WAF bypass), POC backfill |
 | `CLOUDFLARE_API_TOKEN` | `.env` (local only) | Wrangler CLI for deployments |
 | `OAUTH_CLIENT_ID` | wrangler secret | Auth worker |
 | `OAUTH_CLIENT_SECRET` | wrangler secret | Auth worker |
 | `AUTH_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
 | `API_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
-| D1 database ID (peeringdb) | `wrangler.toml`, `wrangler-sync.toml` | API + sync workers |
-| D1 database ID (pdbfe-users) | `wrangler.toml`, `wrangler-auth.toml` | API + auth workers |
-| KV namespace ID (SESSIONS) | `wrangler.toml`, `wrangler-auth.toml` | API + auth workers |
+| D1 database ID (peeringdb) | `wrangler.toml`, `wrangler-sync.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | API, GraphQL, REST, + sync workers |
+| D1 database ID (pdbfe-users) | `wrangler.toml`, `wrangler-auth.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | All serving workers (API + Auth + GQL + REST) |
+| KV namespace ID (SESSIONS) | `wrangler.toml`, `wrangler-auth.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | All serving workers (API + Auth + GQL + REST) |

@@ -8,7 +8,7 @@ import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
-import { handleList, handleDetail, handleAsSet, handleNotImplemented } from './handlers/index.js';
+import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
@@ -111,6 +111,11 @@ async function handleRequest(request, env, ctx) {
             return handleStatus(request, db, ctx);
         }
 
+        // Root path: service discovery or redirect to UI
+        if (rawPath === '') {
+            return handleServiceDiscovery(request);
+        }
+
         return jsonError(404, "Not found");
     }
 
@@ -147,6 +152,12 @@ async function handleRequest(request, env, ctx) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
         return handleAsSet(request, db, ctx, asn, authenticated);
+    }
+
+    // Entity overlap analysis — PDBFE extension endpoint.
+    // Dispatched before the entity tag check since "compare" is not an entity tag.
+    if (entityTag === "compare") {
+        return handleCompare(request, db, ctx, queryString, authenticated, hNocache);
     }
 
     // ── Shared entity request pipeline ───────────────────────────────
@@ -243,6 +254,50 @@ async function handleRequest(request, env, ctx) {
     }
 
     return response;
+}
+
+/**
+ * Pre-built service discovery JSON payload.
+ * Returned at the API root for clients requesting JSON.
+ * @type {string}
+ */
+const SERVICE_DISCOVERY = JSON.stringify({
+    name: 'PDBFE',
+    endpoints: {
+        api: 'https://api.pdbfe.dev/api/',
+        graphql: 'https://api.pdbfe.dev/graphql',
+        rest: 'https://api.pdbfe.dev/v1/',
+        openapi: 'https://api.pdbfe.dev/openapi.json',
+        ui: 'https://pdbfe.dev/',
+    },
+    aliases: {
+        graphql: 'https://graphql.pdbfe.dev/',
+        rest: 'https://rest.pdbfe.dev/',
+    },
+}) + '\n';
+
+/** Pre-built headers for the service discovery response. */
+const H_DISCOVERY = Object.freeze({
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+    'Access-Control-Allow-Origin': '*',
+});
+
+/**
+ * Handles root path requests with content negotiation.
+ * API clients (Accept: application/json) receive the service discovery
+ * endpoint map. Browser requests (Accept: text/html) are redirected
+ * to the UI.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @returns {Response} Service discovery JSON or redirect.
+ */
+function handleServiceDiscovery(request) {
+    const accept = request.headers.get('Accept') || '';
+    if (accept.includes('text/html') && !accept.includes('application/json')) {
+        return Response.redirect('https://pdbfe.dev/', 302);
+    }
+    return new Response(SERVICE_DISCOVERY, { status: 200, headers: H_DISCOVERY });
 }
 
 export default wrapHandler(handleRequest, "pdbfe-api");
