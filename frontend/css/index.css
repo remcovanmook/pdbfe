@@ -1091,11 +1091,19 @@ body[data-page="home"] .site-logo {
 
 .recent-updates__item {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: baseline;
+    gap: var(--space-sm);
     padding: var(--space-xs) 0;
     font-size: 0.8125rem;
     border-bottom: 1px solid var(--border-subtle);
+}
+
+.recent-updates__item a {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .recent-updates__item:last-child {
@@ -1106,6 +1114,8 @@ body[data-page="home"] .site-logo {
     font-size: 0.6875rem;
     color: var(--text-muted);
     white-space: nowrap;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 /* ── Global System Statistics ──────────────────────────────────── */
