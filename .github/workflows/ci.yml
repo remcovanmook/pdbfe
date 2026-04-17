@@ -42,6 +42,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Integration tests
+        run: npm run test:integration
+
       - name: Upstream conformance
         run: npm run test:upstream
 
@@ -155,7 +158,13 @@ jobs:
         working-directory: workers
 
       - name: Regenerate schema artifacts
-        run: python scripts/parse_django_models.py --force
+        run: |
+          python scripts/parse_django_models.py --force
+          python scripts/gen_graphql_schema.py
+          python scripts/gen_openapi_spec.py
+
+      - name: Run Python script tests
+        run: bash scripts/test.sh
 
       - name: Check for drift
         run: |

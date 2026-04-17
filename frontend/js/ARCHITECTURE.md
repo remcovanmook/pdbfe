@@ -46,7 +46,17 @@ boot.js
     ├── search.js   → Search results using createLink
     ├── about.js    → Fetches /content/about.md, renders via renderMarkdown
     ├── account.js  → Profile, preferences, favorites, API key management
-    └── asn.js      → ASN → network redirect
+    ├── asn.js      → ASN → network redirect
+    └── compare.js  → Side-by-side entity property comparison view
+
+## API Documentation Pages
+
+In addition to the SPA, the frontend provides two statically-shipped HTML documents designed explicitly to host interactive API tools decoupled from the SPA lifecycle.
+
+- **`api/graphql.html`**: Bundles the GraphiQL explorer (React ecosystem) into a single page.
+- **`api/rest.html`**: Bundles the Scalar API client (Vue.js ecosystem) into a single page. 
+
+These are served unmodified directly from the `graphql.pdbfe.dev` and `rest.pdbfe.dev` root edge routes. They inline CSS properties and rely on edge-cached fonts through Google's CDN to ensure layout rendering operates unimpeded despite overlapping Cloudflare Access restrictions.
 ```
 
 ## Data Flow

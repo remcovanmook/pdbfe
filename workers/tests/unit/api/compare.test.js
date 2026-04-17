@@ -103,17 +103,7 @@ describe('handleCompare', () => {
             assert.equal(res.status, 400);
         });
 
-        it('rejects unsupported entity pair', async () => {
-            // net+fac is not yet in SUPPORTED_PAIRS
-            const db2 = mockD1({
-                peeringdb_network: [{ id: 1, name: 'Test Net', asn: 1 }],
-                peeringdb_facility: [{ id: 1, name: 'Test Fac' }],
-            });
-            const res = await callCompare(db2, 'a=net:1&b=fac:1&__pdbfe=1');
-            assert.equal(res.status, 400);
-            const body = await res.json();
-            assert.ok(body.error.includes('Unsupported'));
-        });
+
 
         it('rejects negative IDs', async () => {
             const res = await callCompare(db, 'a=net:-1&b=net:2&__pdbfe=1');

@@ -439,6 +439,18 @@ export function createDetailLayout(opts) {
     });
     header.appendChild(shareBtn);
 
+    // Compare button — navigates to /compare with entity A preset
+    if (opts.entityType && ['net', 'ix', 'fac'].includes(opts.entityType)) {
+        const compareBtn = document.createElement('a');
+        compareBtn.className = 'detail-header__share';
+        compareBtn.textContent = '↔ Compare';
+        compareBtn.title = t('Compare with another entity');
+        compareBtn.setAttribute('aria-label', t('Compare page'));
+        compareBtn.href = `/compare?a=${opts.entityType}:${opts.entityId}`;
+        compareBtn.dataset.link = '';
+        header.appendChild(compareBtn);
+    }
+
     layout.appendChild(header);
 
     // Stats bar (full-width row)

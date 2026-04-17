@@ -27,6 +27,15 @@ import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
 import GRAPHIQL_HTML from '../../frontend/api/graphql.html';
+import INTER_CSS from '../../frontend/third_party/inter/inter.css';
+import INTER_LATIN from '../../frontend/third_party/inter/inter-latin.woff2';
+import INTER_LATIN_EXT from '../../frontend/third_party/inter/inter-latin-ext.woff2';
+
+const STATIC_ASSETS = Object.freeze({
+    'third_party/inter/inter.css': { buf: INTER_CSS, type: 'text/css; charset=utf-8' },
+    'third_party/inter/inter-latin.woff2': { buf: INTER_LATIN, type: 'font/woff2' },
+    'third_party/inter/inter-latin-ext.woff2': { buf: INTER_LATIN_EXT, type: 'font/woff2' },
+});
 
 /**
  * Rate limiter instance for GraphQL requests.
@@ -130,6 +139,19 @@ async function handleRequest(request, env, ctx) {
         flush: () => { purgeGqlCache(); purgeRateLimit(); },
     });
     if (adminResponse) return adminResponse;
+
+    // Static assets (CSS/Font bundles for standalone UI)
+    if (STATIC_ASSETS[rawPath]) {
+        const asset = STATIC_ASSETS[rawPath];
+        return new Response(asset.buf, {
+            status: 200,
+            headers: {
+                'Content-Type': asset.type,
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
+    }
 
     // Browser navigation → branded GraphiQL page
     // Matches both root (graphql.pdbfe.dev/) and path-based route (api.pdbfe.dev/graphql)

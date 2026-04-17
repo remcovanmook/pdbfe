@@ -66,9 +66,18 @@ def load_entities():
 
 def openapi_type(field):
     """
-    Convert an entities.json field to an OpenAPI schema object.
+    Convert a system-agnostic `entities.json` field definition into an OpenAPI 3.1 JSON schema.
 
-    Handles nullable fields by wrapping the type in a oneOf with null.
+    OpenAPI strictness requires explicit nullability typing. If a field is native (e.g. `number`), 
+    it maps to integer. If it inherits `nullable: true` from the Django models AST, this function 
+    wraps the resulting OpenApi schema inside a `oneOf: [type, null]` constraint to ensure validators
+    do not reject empty payloads upstream.
+    
+    Args:
+        field (dict): A dictionary representing a single field's properties.
+        
+    Returns:
+        dict: A valid OpenAPI property schema.
     """
     base = TYPE_MAP.get(field["type"], {"type": "string"}).copy()
     if field.get("nullable"):
@@ -80,10 +89,18 @@ def openapi_type(field):
 
 def build_entity_schema(entity):
     """
-    Build an OpenAPI schema object for a single entity.
+    Construct the baseline OpenAPI `schema` definition for a single entity structure.
 
-    Each field from entities.json becomes a property. The id and status
-    fields are always included.
+    Translates all dynamic fields extracted from `entities.json` into OpenAPI `properties`.
+    Automatically enforces system-wide absolute requirements like `id` and `status` which 
+    exist implicitly inside the upstream `BaseModel` classes, ensuring they are present 
+    on every resource definition regardless of the field composition.
+    
+    Args:
+        entity (dict): The entity framework object.
+        
+    Returns:
+        dict: The OpenAPI Schema object representing the resource, specifying properties and required fields.
     """
     props = {
         "id": {"type": "integer", "description": "Primary key"},
@@ -107,10 +124,18 @@ def build_entity_schema(entity):
 
 def build_filter_params(entity):
     """
-    Build OpenAPI parameter objects for entity filter operators.
+    Generate comprehensive OpenAPI `parameter` definitions for entity filtering operators.
 
-    Only queryable fields get filter parameters. The available operators
-    depend on the field type.
+    Filters are dynamically provisioned based on field type. For any field explicitly marked
+    `queryable: true`, this extrapolates the permissible PeeringDB filter suffixes (e.g., 
+    `__in`, `__contains`, `__gte`) and constructs individual query parameters. This directly
+    reflects the URL query structure the API Worker parses inside list endpoints.
+    
+    Args:
+        entity (dict): The target entity.
+        
+    Returns:
+        list[dict]: Array of OpenAPI parameter objects injected into path definitions.
     """
     params = []
     for field in entity["fields"]:
@@ -199,10 +224,20 @@ def build_common_params():
 
 def build_spec(entities, schema_version):
     """
-    Build the complete OpenAPI 3.1 specification.
+    Orchestrate the assembly of the complete OpenAPI 3.1 JSON Specification blob.
 
-    Generates list and detail endpoints for each entity, with filter
-    parameters, response schemas, and shared query parameters.
+    Aggregates all components into a compliant OpenAPI monolith:
+    1. Base schemas (Entities).
+    2. Response Envelopes (`ListResponse`, `DetailResponse` wrapped with `meta/data` arrays).
+    3. URL Path structures (`/v1/{entity}`, `/v1/{entity}/{id}`).
+    4. HTTP methods binded to parameters and defined schema envelopes.
+    
+    Args:
+        entities (dict): The core registry of mapped objects.
+        schema_version (str): Upstream version injected into API `.info`.
+        
+    Returns:
+        dict: The final dictionary mapping directly to `openapi.json`.
     """
     schemas = {}
     paths = {}

@@ -18,6 +18,10 @@ pdbfe/
 │   │   ├── depth.js               # Depth 0/1/2 expansion
 │   │   ├── cache.js               # Per-entity LRU cache config (3 tiers)
 │   │   └── l2cache.js             # Per-PoP L2 cache (Cache API)
+│   ├── graphql/                   # GraphQL worker — GraphQL Yoga API
+│   │   └── index.js               # Resolvers and schema loading
+│   ├── rest/                      # REST API worker — Versioned standard API
+│   │   └── index.js               # OpenAPI serving and versioned routing
 │   ├── sync/                      # Sync worker — cron-triggered delta sync
 │   │   └── index.js               # Delta sync via `since` parameter
 │   ├── auth/                      # Auth worker — PeeringDB OAuth + API keys
@@ -33,6 +37,9 @@ pdbfe/
 │   └── tests/                     # Test suites (see Testing below)
 ├── frontend/                      # Single-page application (Cloudflare Pages)
 │   ├── index.html                 # SPA shell
+│   ├── api/                       # Standalone API landing pages
+│   │   ├── graphql.html           # GraphiQL UI
+│   │   └── rest.html              # Scalar API reference UI
 │   ├── css/index.css              # Styles
 │   ├── js/                        # Application modules
 │   │   ├── pages/                 # Route-specific page renderers
@@ -43,14 +50,20 @@ pdbfe/
 │   └── third_party/inter/         # Vendored Inter font (with LICENSE)
 ├── scripts/                       # Build and ops tooling
 │   ├── migrate-to-d1.sh           # Cold start: fetch PeeringDB JSON → populate D1
+│   ├── backfill_poc.py            # POC backfill generator
 │   ├── json_to_sql.py             # JSON → INSERT statement converter
-│   ├── parse_django_models.py     # Upstream schema parser → entity definitions
+│   ├── parse_django_models.py     # Upstream schema parser → entities.json
+│   ├── gen_graphql_schema.py      # Schema parser → GraphQL typedefs/resolvers
+│   ├── gen_openapi_spec.py        # Schema parser → OpenAPI 3.1 definitions
 │   ├── deploy.sh                  # Pre-flight checks + deploy all workers
 │   └── lib/                       # Static input files for scripts
 ├── extracted/                     # Generated pipeline output (do not edit)
 │   ├── schema.sql                 # D1 schema definition
 │   ├── entities.json              # Merged entity schema
-│   └── entities-worker.js         # Precompiled worker entity registry
+│   ├── entities-worker.js         # Precompiled worker entity registry
+│   ├── graphql-typedefs.js        # GraphQL SDL types
+│   ├── graphql-resolvers.js       # GraphQL resolver map
+│   └── openapi.json               # Full REST OpenAPI 3.1 spec
 ├── database/                      # D1 data and migrations
 │   └── migrations/                # Schema migrations
 ├── docs/                          # Documentation index
@@ -78,6 +91,8 @@ cd workers
 cp wrangler.toml.example wrangler.toml
 cp wrangler-sync.toml.example wrangler-sync.toml
 cp wrangler-auth.toml.example wrangler-auth.toml
+cp wrangler-graphql.toml.example wrangler-graphql.toml
+cp wrangler-rest.toml.example wrangler-rest.toml
 
 # Frontend configs (replace hostnames)
 cd ../frontend
@@ -97,6 +112,12 @@ See [docs/deployment.md](docs/deployment.md) for the full setup walkthrough.
 # Run API worker locally
 cd workers
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev
+
+# Run GraphQL worker locally
+XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev --config wrangler-graphql.toml --port 8786
+
+# Run REST API worker locally
+XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev --config wrangler-rest.toml --port 8787
 
 # Run auth worker locally (separate terminal)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev --config wrangler-auth.toml --port 8788
@@ -152,6 +173,14 @@ cd frontend && npm test
 
 ## API Usage
 
+pdbfe supports three different data retrieval paradigms: a PeeringDB-compatible `/api/` mirror, a GraphQL API, and a versioned OpenAPI-compliant REST API.
+
+Interactive documentation exists per-endpoint:
+- **GraphQL Interactive Hub**: [graphql.pdbfe.dev](https://graphql.pdbfe.dev)
+- **REST OpenAPI Definition**: [rest.pdbfe.dev](https://rest.pdbfe.dev)
+
+### PeeringDB Legacy API
+
 ```bash
 # List networks
 curl $API_URL/api/net?limit=5
@@ -173,6 +202,27 @@ curl $API_URL/api/as_set/13335
 
 # Pagination
 curl "$API_URL/api/net?limit=20&skip=40"
+```
+
+### GraphQL API
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"query":"{ networks(asn: 13335) { name asn organization { name website } facilities { name } } }"}' \
+  https://graphql.pdbfe.dev/
+```
+
+### Versioned REST (/v1)
+
+```bash
+# Get details for a network
+curl https://rest.pdbfe.dev/v1/networks/1
+
+# Navigate to a sub-resource directly
+curl https://rest.pdbfe.dev/v1/networks/1/facilities
+
+# Fetch OpenAPI JSON definition
+curl https://rest.pdbfe.dev/openapi.json
 ```
 
 ### Filter operators
@@ -212,9 +262,12 @@ See [docs/index.md](docs/index.md) for the full documentation index.
 Key documents:
 - [Deployment Guide](docs/deployment.md) — Setup and deployment walkthrough
 - [Worker Architecture](workers/index.md) — Per-file codebase breakdown
+- [Schema & Entity Pipeline](docs/pipeline.md) — Schema ingestion and code generation
 - [Developer Onboarding](workers/ONBOARDING.md) — V8 isolate lifecycle, cache architecture
 - [Anti-Patterns](workers/ANTI_PATTERNS.md) — Forbidden patterns with do/don't examples
 - [API Worker](workers/api/api.md) — Request flow, caching, query builder
+- [GraphQL Worker](workers/graphql/graphql.md) — GraphQL resolver layout and edge caching
+- [REST Worker](workers/rest/rest.md) — Routing, spec handling, and sub-resource API design
 - [Auth Architecture](workers/auth/auth.md) — OAuth, sessions, API key management
 - [Django/D1 Gotchas](docs/django-gotchas.md) — Behavioral divergences from upstream
 

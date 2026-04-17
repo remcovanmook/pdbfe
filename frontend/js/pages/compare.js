@@ -23,13 +23,13 @@ import { t } from '../i18n.js';
  * Entity types that support comparison — used to filter typeahead results.
  * @type {string[]}
  */
-const COMPARE_TYPES = ['net', 'ix'];
+const COMPARE_TYPES = ['net', 'ix', 'fac'];
 
 /**
  * Display labels keyed by entity tag.
  * @type {Record<string, string>}
  */
-const TYPE_LABELS = { net: 'Network', ix: 'Exchange' };
+const TYPE_LABELS = { net: 'Network', ix: 'Exchange', fac: 'Facility' };
 
 /**
  * Renders the compare page into the app container.
@@ -343,11 +343,19 @@ async function renderResults(app, refA, refB) {
 
         wrap.appendChild(header);
 
-        const pairType = `${data.a.tag}+${data.b.tag}`;
-        if (pairType === 'net+net') {
+        const pairKey = data.a.tag < data.b.tag ? `${data.a.tag}+${data.b.tag}` : `${data.b.tag}+${data.a.tag}`;
+        if (pairKey === 'net+net') {
             renderNetNetResults(wrap, data);
-        } else if (pairType === 'ix+ix') {
+        } else if (pairKey === 'ix+ix') {
             renderIxIxResults(wrap, data);
+        } else if (pairKey === 'fac+fac') {
+            renderFacFacResults(wrap, data);
+        } else if (pairKey === 'ix+net') {
+            renderNetIxResults(wrap, data);
+        } else if (pairKey === 'fac+net') {
+            renderFacNetResults(wrap, data);
+        } else if (pairKey === 'fac+ix') {
+            renderFacIxResults(wrap, data);
         }
 
         app.replaceChildren(wrap);
@@ -429,6 +437,141 @@ function renderIxIxResults(wrap, data) {
 
     if (data.shared_facilities.length === 0 && data.shared_networks.length === 0) {
         wrap.appendChild(createEmptyState(t('No shared infrastructure found between these exchanges.')));
+    }
+}
+
+/**
+ * Renders fac↔fac comparison results.
+ *
+ * @param {HTMLElement} wrap - Page wrapper element.
+ * @param {Record<string, any>} data - API response data.
+ */
+function renderFacFacResults(wrap, data) {
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared Networks'), value: data.shared_networks.length },
+        { label: t('Shared IXPs'), value: data.shared_ixps.length },
+        { label: `${t('Only')} ${data.a.name}`, value: data.only_a_networks.length + data.only_a_ixps.length },
+        { label: `${t('Only')} ${data.b.name}`, value: data.only_b_networks.length + data.only_b_ixps.length },
+    ]));
+
+    if (data.shared_networks.length > 0) {
+        wrap.appendChild(createNetTable(t('Shared Networks'), data.shared_networks));
+    }
+    if (data.shared_ixps.length > 0) {
+        wrap.appendChild(createIxpTable(t('Shared IXPs'), data.shared_ixps, false));
+    }
+    if (data.only_a_networks.length > 0) {
+        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.a.name}`, data.only_a_networks));
+    }
+    if (data.only_b_networks.length > 0) {
+        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.b.name}`, data.only_b_networks));
+    }
+    if (data.only_a_ixps.length > 0) {
+        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.a.name}`, data.only_a_ixps, false));
+    }
+    if (data.only_b_ixps.length > 0) {
+        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.b.name}`, data.only_b_ixps, false));
+    }
+
+    if (data.shared_networks.length === 0 && data.shared_ixps.length === 0) {
+        wrap.appendChild(createEmptyState(t('No shared topology found between these facilities.')));
+    }
+}
+
+/**
+ * Renders net↔ix comparison results.
+ *
+ * @param {HTMLElement} wrap - Page wrapper element.
+ * @param {Record<string, any>} data - API response data.
+ */
+function renderNetIxResults(wrap, data) {
+    const isNetA = data.a.tag === 'net';
+    const net = isNetA ? data.a : data.b;
+    const ix = isNetA ? data.b : data.a;
+    const netFacs = isNetA ? data.only_a_facilities : data.only_b_facilities;
+    const ixFacs = isNetA ? data.only_b_facilities : data.only_a_facilities;
+
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared Facilities'), value: data.shared_facilities.length },
+        { label: `${t('Only')} ${net.name}`, value: netFacs.length },
+        { label: `${t('Only')} ${ix.name}`, value: ixFacs.length },
+    ]));
+
+    if (data.membership && data.membership.length > 0) {
+        const membershipTable = createIxpTable(t('Direct Membership Details'), data.membership.map((/** @type {any} */ m) => ({ ...m, ix_id: ix.id, ix_name: ix.name, speed_a: m.speed, ipv4_a: m.ipaddr4, ipv6_a: m.ipaddr6 })), true);
+        wrap.appendChild(membershipTable);
+    } else {
+        wrap.appendChild(createEmptyState(t('{net} is NOT currently peering at {ix}.', { net: net.name, ix: ix.name })));
+    }
+
+    if (data.shared_facilities.length > 0) {
+        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
+    }
+    if (netFacs.length > 0) {
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${net.name}`, netFacs));
+    }
+    if (ixFacs.length > 0) {
+        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${ix.name}`, ixFacs));
+    }
+}
+
+/**
+ * Renders fac↔net comparison results.
+ *
+ * @param {HTMLElement} wrap - Page wrapper element.
+ * @param {Record<string, any>} data - API response data.
+ */
+function renderFacNetResults(wrap, data) {
+    const isFacA = data.a.tag === 'fac';
+    const fac = isFacA ? data.a : data.b;
+    const net = isFacA ? data.b : data.a;
+    const facIxps = isFacA ? data.only_a_ixps : data.only_b_ixps;
+    const netIxps = isFacA ? data.only_b_ixps : data.only_a_ixps;
+
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared IXPs'), value: data.shared_ixps.length },
+        { label: `${t('Only')} ${fac.name}`, value: facIxps.length },
+        { label: `${t('Only')} ${net.name}`, value: netIxps.length },
+    ]));
+
+    if (data.shared_ixps.length > 0) {
+        wrap.appendChild(createIxpTable(t('IXPs in facility {fac} that {net} peers at').replace('{fac}', fac.name).replace('{net}', net.name), data.shared_ixps, true));
+    }
+    if (facIxps.length > 0) {
+        wrap.appendChild(createIxpTable(`${t('IXPs at')} ${fac.name} ${t('missing from')} ${net.name}`, facIxps, false));
+    }
+    if (netIxps.length > 0) {
+        wrap.appendChild(createIxpTable(`${t('IXPs')} ${net.name} ${t('peers at that are NOT at')} ${fac.name}`, netIxps, true));
+    }
+}
+
+/**
+ * Renders fac↔ix comparison results.
+ *
+ * @param {HTMLElement} wrap - Page wrapper element.
+ * @param {Record<string, any>} data - API response data.
+ */
+function renderFacIxResults(wrap, data) {
+    const isFacA = data.a.tag === 'fac';
+    const fac = isFacA ? data.a : data.b;
+    const ix = isFacA ? data.b : data.a;
+    const facNets = isFacA ? data.only_a_networks : data.only_b_networks;
+    const ixNets = isFacA ? data.only_b_networks : data.only_a_networks;
+
+    wrap.appendChild(createStatsBar([
+        { label: t('Shared Networks'), value: data.shared_networks.length },
+        { label: `${t('Only')} ${fac.name}`, value: facNets.length },
+        { label: `${t('Only')} ${ix.name}`, value: ixNets.length },
+    ]));
+
+    if (data.shared_networks.length > 0) {
+        wrap.appendChild(createNetTable(t('Networks in facility {fac} peering at {ix}').replace('{fac}', fac.name).replace('{ix}', ix.name), data.shared_networks));
+    }
+    if (facNets.length > 0) {
+        wrap.appendChild(createNetTable(`${t('Networks at')} ${fac.name} ${t('missing from')} ${ix.name}`, facNets));
+    }
+    if (ixNets.length > 0) {
+        wrap.appendChild(createNetTable(`${t('Networks at')} ${ix.name} ${t('NOT at')} ${fac.name}`, ixNets));
     }
 }
 

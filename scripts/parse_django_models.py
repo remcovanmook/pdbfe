@@ -409,9 +409,19 @@ def _parse_fields_from_class(class_node):
 
 def parse_abstract_models(source):
     """
-    Parse abstract.py and extract base model definitions.
+    Parse `abstract.py` via Python AST framework to extract foundational base model classes.
 
-    Returns a dict mapping base class name → {tag, table, address, fields}.
+    Since the upstream Django models utilize heavy class inheritance (e.g. `HandleableBase`),
+    this function intercepts the raw python source byte stream and isolates all abstract
+    bases before they are compiled. It hunts for `Meta` and `HandleRef` inner classes to
+    assign preliminary metadata (table names, tags) which the concrete models will later inherit.
+    
+    Args:
+        source (str): Raw string representation of `abstract.py` contents.
+        
+    Returns:
+        dict: A mapping of abstract class names to their parsed object dictionary 
+              (containing `tag`, `table`, `address` boolean, and base `fields` array).
     """
     tree = ast.parse(source)
     models = {}
@@ -437,12 +447,22 @@ def parse_abstract_models(source):
 
 def parse_concrete_models(source, abstract_models):
     """
-    Parse concrete.py and merge with abstract model definitions.
+    Parse `concrete.py` via AST and resolve deep inheritance from Abstract models.
 
-    Concrete models inherit from Base classes and add ForeignKey fields.
-    Some override Meta.db_table.
-
-    Returns the final model dict keyed by API tag.
+    This acts as the second phase of the AST pipeline. It reads concrete network
+    entities (e.g. `Network`, `InternetExchange`) and fuses their specific fields,
+    overridden tables, and Foreign Key constraints with the fields inherited from
+    their abstract parents (produced by `parse_abstract_models()`).
+    
+    By completing this merge, we construct a fully self-contained monolithic 
+    entity definition that will be converted strictly to `entities.json`.
+    
+    Args:
+        source (str): Raw string representation of `concrete.py`.
+        abstract_models (dict): The output of `parse_abstract_models`.
+        
+    Returns:
+        dict: A fully realized dictionary of independent entity definitions keyed by their `tag`.
     """
     tree = ast.parse(source)
     entities = {}

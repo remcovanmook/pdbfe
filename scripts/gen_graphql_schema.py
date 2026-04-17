@@ -104,8 +104,18 @@ def gql_type(field_type):
 
 def build_reverse_map(entities):
     """
-    Build a mapping of parent_tag → [(child_tag, fk_field)] from FK
-    declarations in entities.json. Used for reverse edge generation.
+    Build a mapping of parent entities to their child entities based on Foreign Key (FK) declarations.
+    
+    This function iterates through all fields in `entities.json`. When it encounters a field
+    with a `foreignKey` attribute, it records that the current entity is a child of the
+    target entity. This mapping is critical for generating GraphQL reverse edges (e.g.,
+    allowing a `Network` query to resolve its associated `Facilities`).
+    
+    Args:
+        entities (dict): The dictionary of all loaded entities.
+        
+    Returns:
+        collections.defaultdict: A mapping of `parent_tag` → `[(child_tag, fk_field_name)]`.
     """
     reverse = defaultdict(list)
     for tag, entity in entities.items():
@@ -120,11 +130,26 @@ def build_reverse_map(entities):
 
 def generate_type(tag, entity, reverse_map, entities):
     """
-    Generate a GraphQL type definition for a single entity.
+    Generate the formal GraphQL Type Definition String (SDL) for a single entity.
 
-    Each field from entities.json becomes a GraphQL field. Foreign key
-    fields get an additional resolved field pointing to the related type.
-    Reverse edges add list fields for child entities.
+    Algorithmic Flow:
+    1. Base Structure: Asserts foundational fields like `id` and `status`.
+    2. Field Mapping: Loops through all `entities.json` fields, mapping native JSON types 
+       into strict GraphQL scalar equivalents using `gql_type()`. Handles nullability annotations.
+    3. Forward Edges (FK Lookups): When an FK field is detected, dynamically injects a resolver 
+       object field to query the parent entity natively (e.g. `org_id` yielding an `org` type).
+    4. Reverse Edges (Child Connections): Inspects `reverse_map` to see if any entities 
+       point to this entity, and provisions list queries (e.g. `facilities(limit, skip)`) 
+       to allow nested hierarchical querying. Prevent collisions by appending suffix if needed.
+       
+    Args:
+        tag (str): The entity tag (e.g., 'net').
+        entity (dict): The entity schema definition.
+        reverse_map (dict): The map of parent -> child relationships.
+        entities (dict): The full dictionary of schemas for lookup validation.
+        
+    Returns:
+        str: A valid, multi-line GraphQL type definition block.
     """
     type_name = _type_name(entity)
     lines = [f"type {type_name} {{"]
@@ -163,10 +188,24 @@ def generate_type(tag, entity, reverse_map, entities):
 
 def generate_where_input(entity):
     """
-    Generate a WhereInput type for filtering list queries.
+    Generate the `WhereInput` GraphQL input type to empower complex filter querying.
 
-    Only queryable fields get filter predicates. Includes negation,
-    suffix, fold, and nil operators alongside the standard set.
+    Provides a highly expressive querying DSL. For every field marked `queryable: true`, 
+    this calculates the permissible operator suffixes based on the field's data type.
+    
+    Features built into generated filters:
+    - Comparison: `_lt`, `_gt`, `_lte`, `_gte`
+    - Inclusion: `_in`, `_notIn`
+    - Partial text matching: `_contains`, `_startswith`, `_endswith`
+    - Insensitive matching: `_containsFold`, `_equalFold`
+    - Negation: `_not`
+    - Null checking (implicit): `_isNil` (only appended for fields inherently nullable).
+    
+    Args:
+        entity (dict): The entity payload dict containing its field maps.
+        
+    Returns:
+        str: A valid GraphQL `input` type block utilized as resolver arguments.
     """
     type_name = _type_name(entity)
     lines = [f"input {type_name}Where {{"]
@@ -202,8 +241,19 @@ def generate_where_input(entity):
 
 def generate_connection_types(entities):
     """
-    Generate Relay-style pagination types: PageInfo and per-entity
-    Connection/Edge types.
+    Generate Relay-compliant pagination types: `PageInfo`, Connections, and Edges.
+
+    To support high-performance structured pagination across the API without
+    depending strictly on integer offsets, this provisions standard cursor wrappers.
+    Generates the core `PageInfo` block once, then iterates through every entity
+    to generate its explicit `Edge` structure (node + cursor) and `Connection`
+    structure (edges + pageInfo + totalCount).
+    
+    Args:
+        entities (dict): The full entity schema.
+        
+    Returns:
+        str: A multi-line string containing all pagination type extensions.
     """
     parts = []
 
@@ -239,9 +289,23 @@ def generate_connection_types(entities):
 
 def generate_query_type(entities):
     """
-    Generate the root Query type with per-entity singular, list, and
-    connection queries. Includes aliases for PDB+ naming compatibility
-    and the networkByAsn convenience query.
+    Generate the root `Query` mechanism spanning all known system entities.
+    
+    Iterates over the global entity framework to expose three core resolver variants
+    per entity:
+    - Singular Fetch: Get by ID (`network(id: Int!): Network`)
+    - Offset/Limit List: Filterable flat fetch (`networks(...): [Network!]!`)
+    - Cursor Connection List: Relay fetch with edges/pages (`networksConnection(...): NetworkConnection!`)
+    
+    Also intelligently binds `aliases` derived from PeeringDB Plus configuration 
+    (e.g., exposing `internetExchange` alongside `ix`) and injects hardcoded
+    top-tier conveniences like `networkByAsn`.
+    
+    Args:
+        entities (dict): Global namespace object of registered schemas.
+        
+    Returns:
+        str: The monolithic GraphQL `type Query { ... }` block declaration.
     """
     lines = ["type Query {"]
 
@@ -295,10 +359,21 @@ def generate_query_type(entities):
 
 def generate_sdl(entities, reverse_map):
     """
-    Generate the complete GraphQL SDL schema string.
+    Generate the complete GraphQL Schema Definition Language (SDL) string.
 
-    Includes a JSON scalar, all entity types with reverse edges,
-    WhereInput types, Connection/Edge types, and the root Query type.
+    This function coordinates the complete top-to-bottom compilation of the schema:
+    1. Base scalars (`JSON`).
+    2. Shared pagination architecture (`PageInfo`).
+    3. Iterating over all entities to spawn their Input types, native object Types,
+       and their connections.
+    4. Capping it off with the monolithic `Query` block.
+    
+    Args:
+        entities (dict): The full entity repository.
+        reverse_map (dict): The computed parent -> child linkage map.
+        
+    Returns:
+        str: The full raw SDL text, ready to be exported to `graphql-typedefs.js`.
     """
     parts = []
 
@@ -333,258 +408,29 @@ def generate_sdl(entities, reverse_map):
 
 def generate_resolvers_js(entities, reverse_map):
     """
-    Generate the resolver map as a JS module.
+    Generates the JavaScript execution Map (`graphql-resolvers.js`) binding GraphQL
+    Schema endpoints to physical database extraction queries.
 
-    Includes list, detail, FK, reverse edge, and connection resolvers.
+    Instead of appending raw JS strings via Python, this heavily relies on the
+    `graphql_resolvers.template.js` template to inject constant utilities. It then
+    loops over the system entities rendering specific resolution rules for each:
+    - Root Queries (`singular`, `plural`, `connection` patterns).
+    - Aliases mapped explicitly alongside root queries.
+    - Field Resolvers mapping Object-level FK and Reverse Edges (e.g. `Network.org`
+      fetching from `org_id`).
+    
+    Args:
+        entities (dict): The core entity definitions mappings.
+        reverse_map (dict): The reverse edge linkages.
+        
+    Returns:
+        str: A syntactically valid JavaScript module exporting `export const resolvers = {...}`.
     """
     lines = []
-    lines.append('/**')
-    lines.append(' * @fileoverview Auto-generated GraphQL resolvers.')
-    lines.append(' * Generated by scripts/gen_graphql_schema.py. Do not edit.')
-    lines.append(' */')
-    lines.append('')
-    lines.append("import { ENTITIES } from '../workers/api/entities.js';")
-    lines.append("import { buildRowQuery } from '../workers/api/query.js';")
-    lines.append('')
-
-    # Shared code fragments
-    RESOLVER_RETURN_DOC = ' * @returns {Function} GraphQL resolver function.'
-    BUILD_ROW = '        const { sql, params } = buildRowQuery(entity, filters, opts);'
-    EXEC_QUERY = '        const result = await ctx.db.prepare(sql).bind(...params).all();'
-    CLOSE_FN = '    };'
-
-    # Common resolver generator string literals
-    RES_PARAM_TAG = ' * @param {string} tag - Entity tag (e.g. "net").'
-    RES_ASYNC_FN = '    return async (_parent, args, ctx) => {'
-    RES_GET_ENT = '        const entity = ENTITIES[tag];'
-    RES_OBJ_CLOSE = '        };'
-
-    # ── OP_MAP for whereToFilters ────────────────────────────────────────
-    lines.append('/**')
-    lines.append(' * Maps a GraphQL operator suffix to the PeeringDB filter operator.')
-    lines.append(' * @type {Record<string, string>}')
-    lines.append(' */')
-    lines.append('const OP_MAP = {')
-    op_entries = [
-        ("''", "'eq'"),
-        ("'_lt'", "'lt'"),
-        ("'_gt'", "'gt'"),
-        ("'_lte'", "'lte'"),
-        ("'_gte'", "'gte'"),
-        ("'_contains'", "'contains'"),
-        ("'_startswith'", "'startswith'"),
-        ("'_endswith'", "'endswith'"),
-        ("'_in'", "'in'"),
-        ("'_not'", "'not'"),
-        ("'_notIn'", "'notin'"),
-        ("'_containsFold'", "'contains'"),  # COLLATE NOCASE already on contains
-        ("'_equalFold'", "'equalfold'"),
-        ("'_isNil'", "'isnil'"),
-    ]
-    for suffix, op in op_entries:
-        lines.append(f"    {suffix}: {op},")
-    lines.append('};')
-    lines.append('')
-
-    # ── whereToFilters ───────────────────────────────────────────────────
-    lines.append('/**')
-    lines.append(' * Converts GraphQL where-args into an array of ParsedFilter objects')
-    lines.append(' * compatible with the existing query builder.')
-    lines.append(' *')
-    lines.append(' * @param {Record<string, any>} where - GraphQL where input.')
-    lines.append(' * @returns {ParsedFilter[]} Parsed filter array.')
-    lines.append(' */')
-    lines.append('function whereToFilters(where) {')
-    lines.append('    if (!where) return [];')
-    lines.append('    /** @type {ParsedFilter[]} */')
-    lines.append('    const filters = [];')
-    lines.append("    for (const [key, value] of Object.entries(where)) {")
-    lines.append('        if (value === undefined || value === null) continue;')
-    lines.append('        let field = key;')
-    lines.append("        let op = 'eq';")
-    lines.append('        for (const [suffix, mappedOp] of Object.entries(OP_MAP)) {')
-    lines.append("            if (suffix && key.endsWith(suffix)) {")
-    lines.append('                field = key.slice(0, -suffix.length);')
-    lines.append('                op = mappedOp;')
-    lines.append('                break;')
-    lines.append('            }')
-    lines.append('        }')
-    lines.append("        const strVal = (op === 'in' || op === 'notin') && Array.isArray(value)")
-    lines.append("            ? value.join(',')")
-    lines.append("            : String(value);")
-    lines.append('        filters.push({ field, op, value: strVal });')
-    lines.append('    }')
-    lines.append('    return filters;')
-    lines.append('}')
-    lines.append('')
-
-    # ── Cursor helpers ───────────────────────────────────────────────────
-    lines.append('/**')
-    lines.append(' * Encodes a row ID as a Relay-style opaque cursor.')
-    lines.append(' * @param {number} id - Row primary key.')
-    lines.append(' * @returns {string} Base64-encoded cursor.')
-    lines.append(' */')
-    lines.append("function encodeCursor(id) { return btoa('id:' + id); }")
-    lines.append('')
-    lines.append('/**')
-    lines.append(' * Decodes a Relay cursor back to a row ID.')
-    lines.append(' * @param {string} cursor - Base64-encoded cursor.')
-    lines.append(' * @returns {number} Decoded row ID.')
-    lines.append(' */')
-    lines.append("function decodeCursor(cursor) {")
-    lines.append("    const decoded = atob(cursor);")
-    lines.append("    return Number.parseInt(decoded.slice(3), 10);")
-    lines.append("}")
-    lines.append('')
-
-    # ── Resolver factories ───────────────────────────────────────────────
-    lines.append('/**')
-    lines.append(' * Creates a list resolver for the given entity tag.')
-    lines.append(' *')
-    lines.append(RES_PARAM_TAG)
-    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
-    lines.append(' */')
-    lines.append('function listResolver(tag) {')
-    lines.append(RES_ASYNC_FN)
-    lines.append(RES_GET_ENT)
-    lines.append('        const filters = whereToFilters(args.where);')
-    lines.append('        const opts = {')
-    lines.append('            depth: 0,')
-    lines.append('            limit: Math.min(args.limit ?? 20, 250),')
-    lines.append('            skip: args.skip ?? 0,')
-    lines.append('            since: 0,')
-    lines.append("            sort: '',")
-    lines.append(RES_OBJ_CLOSE)
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
-    lines.append('        return result.results || [];')
-    lines.append(CLOSE_FN)
-    lines.append('}')
-    lines.append('')
-
-    lines.append('/**')
-    lines.append(' * Creates a detail resolver for the given entity tag.')
-    lines.append(' *')
-    lines.append(RES_PARAM_TAG)
-    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
-    lines.append(' */')
-    lines.append('function detailResolver(tag) {')
-    lines.append(RES_ASYNC_FN)
-    lines.append(RES_GET_ENT)
-    lines.append("        const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];")
-    lines.append("        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };")
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
-    lines.append('        return (result.results || [])[0] || null;')
-    lines.append(CLOSE_FN)
-    lines.append('}')
-    lines.append('')
-
-    # FK resolver factory
-    lines.append('/**')
-    lines.append(' * Creates a foreign-key resolver that loads a related entity by ID.')
-    lines.append(' *')
-    lines.append(' * @param {string} fkField - The FK field name on the parent (e.g. "org_id").')
-    lines.append(' * @param {string} targetTag - Target entity tag (e.g. "org").')
-    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
-    lines.append(' */')
-    lines.append('function fkResolver(fkField, targetTag) {')
-    lines.append('    return async (parent, _args, ctx) => {')
-    lines.append('        const id = parent[fkField];')
-    lines.append('        if (!id) return null;')
-    lines.append('        const entity = ENTITIES[targetTag];')
-    lines.append("        const filters = [{ field: 'id', op: 'eq', value: String(id) }];")
-    lines.append("        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };")
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
-    lines.append('        return (result.results || [])[0] || null;')
-    lines.append(CLOSE_FN)
-    lines.append('}')
-    lines.append('')
-
-    # Reverse edge resolver factory
-    lines.append('/**')
-    lines.append(' * Creates a reverse-edge resolver that loads child entities by parent ID.')
-    lines.append(' *')
-    lines.append(' * @param {string} fkField - The FK field on the child entity (e.g. "org_id").')
-    lines.append(' * @param {string} childTag - Child entity tag (e.g. "net").')
-    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
-    lines.append(' */')
-    lines.append('function reverseEdgeResolver(fkField, childTag) {')
-    lines.append('    return async (parent, args, ctx) => {')
-    lines.append('        const entity = ENTITIES[childTag];')
-    lines.append("        const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];")
-    lines.append('        const opts = {')
-    lines.append('            depth: 0,')
-    lines.append('            limit: Math.min(args.limit ?? 250, 250),')
-    lines.append('            skip: args.skip ?? 0,')
-    lines.append('            since: 0,')
-    lines.append("            sort: '',")
-    lines.append(RES_OBJ_CLOSE)
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
-    lines.append('        return result.results || [];')
-    lines.append(CLOSE_FN)
-    lines.append('}')
-    lines.append('')
-
-    # Connection resolver factory
-    lines.append('/**')
-    lines.append(' * Creates a Relay connection resolver for the given entity tag.')
-    lines.append(' * Supports forward pagination (after + first) and backward (before + last).')
-    lines.append(' *')
-    lines.append(RES_PARAM_TAG)
-    lines.append(f' {RESOLVER_RETURN_DOC[2:]}')
-    lines.append(' */')
-    lines.append('function connectionResolver(tag) {')
-    lines.append(RES_ASYNC_FN)
-    lines.append(RES_GET_ENT)
-    lines.append('        const filters = whereToFilters(args.where);')
-    lines.append('')
-    lines.append('        // Count query')
-    lines.append("        const countFilters = [...filters, { field: 'status', op: 'eq', value: 'ok' }];")
-    lines.append("        const countOpts = { depth: 0, limit: -1, skip: 0, since: 0, sort: '' };")
-    lines.append('        const { sql: countSql, params: countParams } = buildRowQuery(entity, countFilters, countOpts);')
-    lines.append("        const countSqlWrapped = `SELECT COUNT(*) as cnt FROM (${countSql})`;")
-    lines.append('        const countResult = await ctx.db.prepare(countSqlWrapped).bind(...countParams).first();')
-    lines.append('        const totalCount = countResult?.cnt ?? 0;')
-    lines.append('')
-    lines.append('        // Pagination')
-    lines.append('        const first = Math.min(args.first ?? 20, 250);')
-    lines.append('        if (args.after) {')
-    lines.append('            const afterId = decodeCursor(args.after);')
-    lines.append("            filters.push({ field: 'id', op: 'gt', value: String(afterId) });")
-    lines.append('        }')
-    lines.append('        if (args.before) {')
-    lines.append('            const beforeId = decodeCursor(args.before);')
-    lines.append("            filters.push({ field: 'id', op: 'lt', value: String(beforeId) });")
-    lines.append('        }')
-    lines.append('')
-    lines.append("        const sort = args.orderBy || 'id';")
-    lines.append("        const opts = { depth: 0, limit: first + 1, skip: 0, since: 0, sort };")
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
-    lines.append('        const rows = result.results || [];')
-    lines.append('        const hasNextPage = rows.length > first;')
-    lines.append('        const nodes = hasNextPage ? rows.slice(0, first) : rows;')
-    lines.append('')
-    lines.append('        const edges = nodes.map(node => ({')
-    lines.append('            node,')
-    lines.append('            cursor: encodeCursor(node.id),')
-    lines.append('        }));')
-    lines.append('')
-    lines.append('        return {')
-    lines.append('            edges,')
-    lines.append('            pageInfo: {')
-    lines.append('                hasNextPage,')
-    lines.append('                hasPreviousPage: !!args.after,')
-    lines.append('                startCursor: edges.length > 0 ? edges[0].cursor : null,')
-    lines.append('                endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,')
-    lines.append('            },')
-    lines.append('            totalCount,')
-    lines.append(RES_OBJ_CLOSE)
-    lines.append(CLOSE_FN)
-    lines.append('}')
+    template_path = REPO_ROOT / "scripts" / "lib" / "graphql_resolvers.template.js"
+    with open(template_path, "r", encoding="utf-8") as f:
+        lines.extend(f.read().splitlines())
+    lines.append("")
     lines.append('')
 
     # ── Build the resolvers object ───────────────────────────────────────
@@ -616,8 +462,8 @@ def generate_resolvers_js(entities, reverse_map):
     lines.append("            const entity = ENTITIES['net'];")
     lines.append("            const filters = [{ field: 'asn', op: 'eq', value: String(args.asn) }];")
     lines.append("            const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };")
-    lines.append(BUILD_ROW)
-    lines.append(EXEC_QUERY)
+    lines.append("            const { sql, params } = buildRowQuery(entity, filters, opts);")
+    lines.append("            const result = await ctx.db.prepare(sql).bind(...params).all();")
     lines.append("            return (result.results || [])[0] || null;")
     lines.append("        },")
     lines.append("        syncStatus: async (_parent, _args, ctx) => {")

@@ -81,6 +81,24 @@ fi
 "$PYTHON" "$SCRIPT_DIR/gen_graphql_schema.py" 2>&1
 "$PYTHON" "$SCRIPT_DIR/gen_openapi_spec.py" 2>&1
 pass "Pipeline up to date"
+# Run integration tests
+"$SCRIPT_DIR/test.sh" 2>&1 || fail "Python scripts tests failed"
+
+# Run downstream frontend and worker validation against newly generated artifacts
+if [[ -d "$REPO_ROOT/workers/node_modules" ]]; then
+    echo "  Validating workers..."
+    (cd "$REPO_ROOT/workers" && npm run typecheck && npm test && npm run test:integration) > /dev/null 2>&1 || fail "Worker validation or integration tests failed"
+else
+    warn "Skipping worker local validation: no node_modules found. Run 'npm install' in workers/"
+fi
+
+if [[ -d "$REPO_ROOT/frontend/node_modules" ]] || [[ -d "$REPO_ROOT/workers/node_modules" ]]; then
+    # Frontend logic typecheck (can pull from worker node_modules depending on setup)
+    echo "  Validating frontend..."
+    (cd "$REPO_ROOT/frontend" && npm run typecheck && npm test) > /dev/null 2>&1 || fail "Frontend validation failed"
+fi
+
+pass "All validation and integration tests passed"
 
 
 

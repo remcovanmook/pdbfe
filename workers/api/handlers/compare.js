@@ -27,7 +27,10 @@ import { withEdgeSWR } from '../swr.js';
 const SUPPORTED_PAIRS = new Set([
     'net+net',
     'ix+ix',
-    // Future: 'fac+fac', 'ix+net', 'fac+net'
+    'fac+fac',
+    'ix+net',
+    'fac+net',
+    'fac+ix'
 ]);
 
 /**
@@ -308,6 +311,259 @@ async function overlapIxIx(db, idA, idB) {
     };
 }
 
+// ── Cross-entity overlap query implementations ───────────────────────────────
+
+/**
+ * Computes overlap between an IXP and a Network (keys always sorted: ix+net).
+ * Focuses on shared facilities and verifies direct IXP membership.
+ *
+ * @param {D1Session} db - D1 database session.
+ * @param {number} ixId - IX ID A.
+ * @param {number} netId - Network ID B.
+ * @returns {Promise<Record<string, any>>} Overlap result sections.
+ */
+async function overlapIxNet(db, ixId, netId) {
+    // Shared Facilities: IX is there AND Net is there
+    const sharedFacs = await db.prepare(`
+        SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
+               f.latitude, f.longitude
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_network_facility b ON a.fac_id = b.fac_id
+        JOIN peeringdb_facility f ON a.fac_id = f.id
+        WHERE a.ix_id = ? AND b.net_id = ?
+          AND a.status = 'ok' AND b.status = 'ok'
+          AND f.status = 'ok'
+        ORDER BY f.name COLLATE NOCASE
+    `).bind(ixId, netId).all();
+
+    // Only-A (IX) facilities
+    const onlyAIxFacs = await db.prepare(`
+        SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_facility f ON a.fac_id = f.id
+        WHERE a.ix_id = ? AND a.status = 'ok' AND f.status = 'ok'
+          AND f.id NOT IN (
+            SELECT b.fac_id FROM peeringdb_network_facility b
+            WHERE b.net_id = ? AND b.status = 'ok'
+          )
+        ORDER BY f.name COLLATE NOCASE
+    `).bind(ixId, netId).all();
+
+    // Only-B (Net) facilities
+    const onlyBNetFacs = await db.prepare(`
+        SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
+        FROM peeringdb_network_facility b
+        JOIN peeringdb_facility f ON b.fac_id = f.id
+        WHERE b.net_id = ? AND b.status = 'ok' AND f.status = 'ok'
+          AND f.id NOT IN (
+            SELECT a.fac_id FROM peeringdb_ix_facility a
+            WHERE a.ix_id = ? AND a.status = 'ok'
+          )
+        ORDER BY f.name COLLATE NOCASE
+    `).bind(netId, ixId).all();
+
+    // Membership: Is the network peering at the IX?
+    const membership = await db.prepare(`
+        SELECT ixlan.id as ixlan_id, ixlan.ix_id, a.speed, a.ipaddr4, a.ipaddr6, a.is_rs_peer
+        FROM peeringdb_network_ixlan a
+        JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
+        WHERE a.net_id = ? AND ixlan.ix_id = ?
+          AND a.status = 'ok' AND ixlan.status = 'ok'
+    `).bind(netId, ixId).all();
+
+    return {
+        shared_facilities: sharedFacs.results || [],
+        only_a_facilities: onlyAIxFacs.results || [],
+        only_b_facilities: onlyBNetFacs.results || [],
+        membership: membership.results || []
+    };
+}
+
+/**
+ * Computes overlap between a Facility and a Network (fac+net).
+ * Returns shared IXPs (IXPs the Network peers at which reside in the Facility).
+ *
+ * @param {D1Session} db - D1 database session.
+ * @param {number} facId - Facility ID A.
+ * @param {number} netId - Network ID B.
+ * @returns {Promise<Record<string, any>>} Overlap result sections.
+ */
+async function overlapFacNet(db, facId, netId) {
+    const sharedIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city,
+               n.speed AS speed_b, n.ipaddr4 AS ipv4_b, n.ipaddr6 AS ipv6_b, n.is_rs_peer AS rs_b
+        FROM peeringdb_ix_facility ixfac
+        JOIN peeringdb_ix ix ON ixfac.ix_id = ix.id
+        JOIN peeringdb_ixlan ixlan ON ixlan.ix_id = ix.id
+        JOIN peeringdb_network_ixlan n ON n.ixlan_id = ixlan.id
+        WHERE ixfac.fac_id = ? AND n.net_id = ?
+          AND ixfac.status = 'ok' AND ix.status = 'ok' AND ixlan.status = 'ok' AND n.status = 'ok'
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(facId, netId).all();
+
+    const onlyAFacIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_ix ix ON a.ix_id = ix.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+          AND ix.id NOT IN (
+            SELECT ixlan2.ix_id FROM peeringdb_network_ixlan b
+            JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
+            WHERE b.net_id = ? AND b.status = 'ok'
+          )
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(facId, netId).all();
+
+    const onlyBNetIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city,
+               b.speed AS speed_b, b.ipaddr4 AS ipv4_b, b.ipaddr6 AS ipv6_b, b.is_rs_peer AS rs_b
+        FROM peeringdb_network_ixlan b
+        JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
+        JOIN peeringdb_ix ix ON ixlan.ix_id = ix.id
+        WHERE b.net_id = ? AND b.status = 'ok' AND ix.status = 'ok' AND ixlan.status = 'ok'
+          AND ix.id NOT IN (
+            SELECT a.ix_id FROM peeringdb_ix_facility a
+            WHERE a.fac_id = ? AND a.status = 'ok'
+          )
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(netId, facId).all();
+
+    return {
+        shared_ixps: sharedIxps.results || [],
+        only_a_ixps: onlyAFacIxps.results || [],
+        only_b_ixps: onlyBNetIxps.results || []
+    };
+}
+
+/**
+ * Computes overlap between a Facility and an IX (fac+ix).
+ * Returns shared Networks (Networks in the facility that peer at the IX).
+ *
+ * @param {D1Session} db - D1 database session.
+ * @param {number} facId - Facility ID A.
+ * @param {number} ixId - IX ID B.
+ * @returns {Promise<Record<string, any>>} Overlap result sections.
+ */
+async function overlapFacIx(db, facId, ixId) {
+    const sharedNets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_facility a
+        JOIN peeringdb_network n ON a.net_id = n.id
+        JOIN peeringdb_network_ixlan b ON b.net_id = n.id
+        JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
+        WHERE a.fac_id = ? AND ixlan.ix_id = ?
+          AND a.status = 'ok' AND n.status = 'ok' AND b.status = 'ok' AND ixlan.status = 'ok'
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(facId, ixId).all();
+
+    const onlyAFacNets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_facility a
+        JOIN peeringdb_network n ON a.net_id = n.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
+          AND n.id NOT IN (
+            SELECT b.net_id FROM peeringdb_network_ixlan b
+            JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
+            WHERE ixlan.ix_id = ? AND b.status = 'ok'
+          )
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(facId, ixId).all();
+
+    const onlyBIxNets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_ixlan b
+        JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
+        JOIN peeringdb_network n ON b.net_id = n.id
+        WHERE ixlan.ix_id = ? AND b.status = 'ok' AND ixlan.status = 'ok' AND n.status = 'ok'
+          AND n.id NOT IN (
+            SELECT a.net_id FROM peeringdb_network_facility a
+            WHERE a.fac_id = ? AND a.status = 'ok'
+          )
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(ixId, facId).all();
+
+    return {
+        shared_networks: sharedNets.results || [],
+        only_a_networks: onlyAFacNets.results || [],
+        only_b_networks: onlyBIxNets.results || []
+    };
+}
+
+/**
+ * Computes overlap between two facilities (fac+fac).
+ *
+ * @param {D1Session} db - D1 database session.
+ * @param {number} idA - Facility ID A.
+ * @param {number} idB - Facility ID B.
+ * @returns {Promise<Record<string, any>>} Overlap result sections.
+ */
+async function overlapFacFac(db, idA, idB) {
+    const sharedNets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_facility a
+        JOIN peeringdb_network_facility b ON a.net_id = b.net_id
+        JOIN peeringdb_network n ON a.net_id = n.id
+        WHERE a.fac_id = ? AND b.fac_id = ?
+          AND a.status = 'ok' AND b.status = 'ok' AND n.status = 'ok'
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(idA, idB).all();
+
+    const sharedIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_ix_facility b ON a.ix_id = b.ix_id
+        JOIN peeringdb_ix ix ON a.ix_id = ix.id
+        WHERE a.fac_id = ? AND b.fac_id = ?
+          AND a.status = 'ok' AND b.status = 'ok' AND ix.status = 'ok'
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(idA, idB).all();
+
+    const onlyANets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_facility a
+        JOIN peeringdb_network n ON a.net_id = n.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
+          AND n.id NOT IN (SELECT net_id FROM peeringdb_network_facility WHERE fac_id = ? AND status='ok')
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(idA, idB).all();
+
+    const onlyBNets = await db.prepare(`
+        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
+        FROM peeringdb_network_facility a
+        JOIN peeringdb_network n ON a.net_id = n.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
+          AND n.id NOT IN (SELECT net_id FROM peeringdb_network_facility WHERE fac_id = ? AND status='ok')
+        ORDER BY n.name COLLATE NOCASE
+    `).bind(idB, idA).all();
+
+    const onlyAIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_ix ix ON a.ix_id = ix.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+          AND ix.id NOT IN (SELECT ix_id FROM peeringdb_ix_facility WHERE fac_id = ? AND status='ok')
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(idA, idB).all();
+
+    const onlyBIxps = await db.prepare(`
+        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
+        FROM peeringdb_ix_facility a
+        JOIN peeringdb_ix ix ON a.ix_id = ix.id
+        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+          AND ix.id NOT IN (SELECT ix_id FROM peeringdb_ix_facility WHERE fac_id = ? AND status='ok')
+        ORDER BY ix.name COLLATE NOCASE
+    `).bind(idB, idA).all();
+
+    return {
+        shared_networks: sharedNets.results || [],
+        shared_ixps: sharedIxps.results || [],
+        only_a_networks: onlyANets.results || [],
+        only_b_networks: onlyBNets.results || [],
+        only_a_ixps: onlyAIxps.results || [],
+        only_b_ixps: onlyBIxps.results || []
+    };
+}
+
 /**
  * Dispatcher mapping pair keys to their overlap implementations.
  * @type {Record<string, (db: D1Session, idA: number, idB: number) => Promise<Record<string, any>>>}
@@ -315,6 +571,10 @@ async function overlapIxIx(db, idA, idB) {
 const OVERLAP_FNS = {
     'net+net': overlapNetNet,
     'ix+ix': overlapIxIx,
+    'fac+fac': overlapFacFac,
+    'ix+net': overlapIxNet,
+    'fac+net': overlapFacNet,
+    'fac+ix': overlapFacIx,
 };
 
 // ── Public handler ───────────────────────────────────────────────────────────

@@ -34,6 +34,15 @@ import { getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
 import { serveScalarUI } from './scalar.js';
 import { handleSubResource } from './subresource.js';
 import openApiSpec from '../../extracted/openapi.json';
+import INTER_CSS from '../../frontend/third_party/inter/inter.css';
+import INTER_LATIN from '../../frontend/third_party/inter/inter-latin.woff2';
+import INTER_LATIN_EXT from '../../frontend/third_party/inter/inter-latin-ext.woff2';
+
+const STATIC_ASSETS = Object.freeze({
+    'third_party/inter/inter.css': { buf: INTER_CSS, type: 'text/css; charset=utf-8' },
+    'third_party/inter/inter-latin.woff2': { buf: INTER_LATIN, type: 'font/woff2' },
+    'third_party/inter/inter-latin-ext.woff2': { buf: INTER_LATIN_EXT, type: 'font/woff2' },
+});
 
 /**
  * Pre-encoded OpenAPI spec served at /openapi.json.
@@ -78,6 +87,17 @@ function serveStaticAsset(rawPath) {
             /** @type {BodyInit} */(/** @type {unknown} */ (SPEC_BYTES)),
             { status: 200, headers: H_SPEC }
         );
+    }
+    if (STATIC_ASSETS[rawPath]) {
+        const asset = STATIC_ASSETS[rawPath];
+        return new Response(asset.buf, {
+            status: 200,
+            headers: {
+                'Content-Type': asset.type,
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
     }
     return null;
 }
