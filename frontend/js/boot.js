@@ -212,7 +212,9 @@ if (syncResult.status === 'fulfilled') {
                 { label: t('Networks'),    count: entities.net?.row_count || 0 },
                 { label: t('Exchanges'),   count: entities.ix?.row_count || 0 },
                 { label: t('Facilities'),  count: entities.fac?.row_count || 0 },
+                { label: t('Campuses'),    count: entities.campus?.row_count || 0 },
                 { label: t('Carriers'),    count: entities.carrier?.row_count || 0 },
+                { label: t('Organizations'), count: entities.org?.row_count || 0 },
                 { label: t('Connections to IXPs'), count: entities.netixlan?.row_count || 0 },
                 { label: t('Connections to Facilities'), count: entities.netfac?.row_count || 0 },
             ];
