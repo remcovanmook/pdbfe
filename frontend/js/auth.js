@@ -656,37 +656,14 @@ function renderAuthUI() {
         const userLink = document.createElement('a');
         userLink.href = '/account';
         userLink.dataset.link = '';
-        userLink.className = 'auth-user-link';
+        userLink.className = 'header-nav-link';
         userLink.title = t('Account');
-
-        // Person icon (SVG)
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        icon.setAttribute('viewBox', '0 0 24 24');
-        icon.setAttribute('fill', 'none');
-        icon.setAttribute('stroke', 'currentColor');
-        icon.setAttribute('stroke-width', '2');
-        icon.setAttribute('stroke-linecap', 'round');
-        icon.setAttribute('stroke-linejoin', 'round');
-        icon.setAttribute('aria-hidden', 'true');
-        icon.classList.add('auth-user-icon');
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', '12');
-        circle.setAttribute('cy', '8');
-        circle.setAttribute('r', '4');
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', 'M4 21v-1a6 6 0 0 1 12 0v1');
-        icon.appendChild(circle);
-        icon.appendChild(path);
-        userLink.appendChild(icon);
-
-        const nameText = document.createElement('span');
-        nameText.textContent = _cachedUser.given_name || _cachedUser.name;
-        userLink.appendChild(nameText);
+        userLink.textContent = '👤 ' + (_cachedUser.given_name || _cachedUser.name);
 
         const logoutLink = document.createElement('a');
         logoutLink.href = '#';
-        logoutLink.className = 'auth-link';
-        logoutLink.textContent = t('Sign out');
+        logoutLink.className = 'header-nav-link';
+        logoutLink.textContent = '⏻ ' + t('Sign out');
         logoutLink.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
@@ -696,8 +673,8 @@ function renderAuthUI() {
     } else {
         const loginLink = document.createElement('a');
         loginLink.href = `${AUTH_ORIGIN}/auth/login`;
-        loginLink.className = 'auth-link';
-        loginLink.textContent = t('Sign in with PeeringDB');
+        loginLink.className = 'header-nav-link';
+        loginLink.textContent = '🔑 ' + t('Sign in');
 
         container.replaceChildren(loginLink);
     }
