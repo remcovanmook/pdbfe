@@ -190,7 +190,7 @@ const TABS = [
         hasCountry: false,
     },
     {
-        key: 'asn_connectivity', label: 'ASN Connectivity', badge: 'net',
+        key: 'asn_connectivity', label: 'ASN Connectivity', badge: 'asn',
         textFields: [],
         boolFields: [],
         hasCountry: false,
@@ -373,12 +373,7 @@ function buildTabBar(activeKey) {
         btn.dataset.tab = tab.key;
 
         // Entity badge for visual reinforcement
-        if (tab.badge !== 'net' || tab.key !== 'asn_connectivity') {
-            btn.appendChild(createEntityBadge(tab.badge));
-        } else {
-            // ASN Connectivity uses net badge but with distinct look
-            btn.appendChild(createEntityBadge('net'));
-        }
+        btn.appendChild(createEntityBadge(tab.badge));
 
         const label = document.createElement('span');
         label.textContent = t(tab.label);
@@ -482,7 +477,7 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
 
     const searchBtn = document.createElement('button');
     searchBtn.type = 'button';
-    searchBtn.className = 'adv-search__btn adv-search__btn--primary';
+    searchBtn.className = 'btn btn--primary';
     searchBtn.textContent = t('Search');
     searchBtn.addEventListener('click', () => {
         executeSearch(tabKey, fieldGetters, resultsWrap);
@@ -491,7 +486,7 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
 
     const resetBtn = document.createElement('button');
     resetBtn.type = 'button';
-    resetBtn.className = 'adv-search__btn adv-search__btn--secondary';
+    resetBtn.className = 'btn btn--secondary';
     resetBtn.textContent = t('Reset');
     resetBtn.addEventListener('click', () => {
         form.querySelectorAll('input[type="text"]').forEach(/** @param {any} inp */ (inp) => { inp.value = ''; });
@@ -523,10 +518,10 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
  */
 function createTextField(field, label, placeholder, initialValue) {
     const wrapper = document.createElement('div');
-    wrapper.className = 'adv-search__field';
+    wrapper.className = 'form-field';
 
     const lbl = document.createElement('label');
-    lbl.className = 'adv-search__label';
+    lbl.className = 'form-label';
     lbl.textContent = t(label);
     lbl.setAttribute('for', `adv-${field}`);
     wrapper.appendChild(lbl);
@@ -534,7 +529,7 @@ function createTextField(field, label, placeholder, initialValue) {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = `adv-${field}`;
-    input.className = 'adv-search__input';
+    input.className = 'form-input';
     input.placeholder = placeholder || '';
     if (initialValue) input.value = initialValue;
     wrapper.appendChild(input);
@@ -553,10 +548,10 @@ function createTextField(field, label, placeholder, initialValue) {
  */
 function createChipField(field, label, options, initialCsv) {
     const wrapper = document.createElement('div');
-    wrapper.className = 'adv-search__field adv-search__field--chip';
+    wrapper.className = 'form-field';
 
     const lbl = document.createElement('label');
-    lbl.className = 'adv-search__label';
+    lbl.className = 'form-label';
     lbl.textContent = t(label);
     wrapper.appendChild(lbl);
 
@@ -580,17 +575,17 @@ function createChipField(field, label, options, initialCsv) {
  */
 function createBoolField(field, label, initialValue) {
     const wrapper = document.createElement('div');
-    wrapper.className = 'adv-search__field';
+    wrapper.className = 'form-field';
 
     const lbl = document.createElement('label');
-    lbl.className = 'adv-search__label';
+    lbl.className = 'form-label';
     lbl.textContent = t(label);
     lbl.setAttribute('for', `adv-${field}`);
     wrapper.appendChild(lbl);
 
     const select = document.createElement('select');
     select.id = `adv-${field}`;
-    select.className = 'adv-search__select';
+    select.className = 'form-select';
 
     const optAny = document.createElement('option');
     optAny.value = '';
@@ -633,7 +628,7 @@ function renderAsnConnectivityForm(formWrap, resultsWrap) {
     form.appendChild(desc);
 
     const textarea = document.createElement('textarea');
-    textarea.className = 'adv-search__textarea';
+    textarea.className = 'form-textarea';
     textarea.placeholder = t('e.g. 13335, 20940, 15169');
     textarea.rows = 6;
     form.appendChild(textarea);
@@ -643,7 +638,7 @@ function renderAsnConnectivityForm(formWrap, resultsWrap) {
 
     const searchBtn = document.createElement('button');
     searchBtn.type = 'button';
-    searchBtn.className = 'adv-search__btn adv-search__btn--primary';
+    searchBtn.className = 'btn btn--primary';
     searchBtn.textContent = t('Verify ASNs');
     searchBtn.addEventListener('click', async () => {
         const raw = textarea.value.trim();
@@ -696,7 +691,7 @@ function renderAsnResults(wrap, results) {
 
     if (found.length > 0) {
         const table = document.createElement('table');
-        table.className = 'adv-search__result-table';
+        table.className = 'data-table';
 
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
@@ -833,7 +828,7 @@ function renderResults(entityType, results, wrap) {
     }
 
     const table = document.createElement('table');
-    table.className = 'adv-search__result-table';
+    table.className = 'data-table';
 
     // Header
     const thead = document.createElement('thead');
@@ -870,7 +865,7 @@ function renderResults(entityType, results, wrap) {
 
     const csvBtn = document.createElement('button');
     csvBtn.type = 'button';
-    csvBtn.className = 'adv-search__btn adv-search__btn--secondary';
+    csvBtn.className = 'btn btn--secondary';
     csvBtn.textContent = t('Export CSV');
     csvBtn.addEventListener('click', () => {
         exportCsv(entityType, columns, results);

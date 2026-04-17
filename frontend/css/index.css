@@ -84,6 +84,7 @@
     --type-org:     hsl(270 55% 60%);   /* purple — orgs         */
     --type-campus:  hsl(330 60% 55%);   /* pink — campuses       */
     --type-carrier: hsl(95 55% 48%);    /* green — carriers      */
+    --type-asn:     hsl(45 90% 55%);    /* gold — ASN lookups    */
 
     /* Spacing */
     --space-xs: 0.25rem;
@@ -147,6 +148,7 @@
     --type-org:     hsl(270 55% 48%);
     --type-campus:  hsl(330 60% 45%);
     --type-carrier: hsl(95 55% 36%);
+    --type-asn:     hsl(45 85% 42%);
 
     /* Shadows (softer for light BG) */
     --shadow-sm: 0 1px 2px hsl(220 10% 50% / 0.12);
@@ -2040,6 +2042,7 @@ pdb-map .pdb-map-instance {
 .entity-badge[data-type="org"]     { --badge-color: var(--type-org); }
 .entity-badge[data-type="campus"]  { --badge-color: var(--type-campus); }
 .entity-badge[data-type="carrier"] { --badge-color: var(--type-carrier); }
+.entity-badge[data-type="asn"]     { --badge-color: var(--type-asn); }
 
 .favorites-grid__name {
     flex: 1;
@@ -2054,6 +2057,83 @@ pdb-map .pdb-map-instance {
     color: var(--text-muted);
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+/* ── Form primitives ───────────────────────────────────────────── */
+/* Shared input, select, textarea, label, button styles.           */
+/* Used by advanced search, compare, and any future form.          */
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.form-label {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color var(--transition-fast);
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.form-textarea {
+    resize: vertical;
+}
+
+.btn {
+    padding: var(--space-xs) var(--space-lg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-fast),
+                color var(--transition-fast),
+                border-color var(--transition-fast);
+}
+
+.btn--primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.btn--primary:hover {
+    opacity: 0.9;
+}
+
+.btn--secondary {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.btn--secondary:hover {
+    background: var(--bg-hover);
 }
 
 /* ── Rate-limit modal ───────────────────────────────────────────── */
@@ -2111,6 +2191,8 @@ pdb-map .pdb-map-instance {
 }
 
 /* ── Advanced Search ───────────────────────────────────────────────── */
+/* Layout-only styles — inputs, buttons, and tables reuse shared      */
+/* .form-*, .btn, and .data-table primitives from the design system.  */
 
 .adv-search {
     max-width: 1200px;
@@ -2118,7 +2200,7 @@ pdb-map .pdb-map-instance {
     padding: var(--space-lg) var(--space-md);
 }
 
-/* Tab bar — horizontal scroll on mobile, badge + label per tab */
+/* Tab bar */
 .adv-search__tabs {
     display: flex;
     gap: var(--space-xs);
@@ -2143,7 +2225,9 @@ pdb-map .pdb-map-instance {
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    transition: color var(--transition-fast),
+                background var(--transition-fast),
+                border-color var(--transition-fast);
 }
 
 .adv-search__tab:hover {
@@ -2156,7 +2240,6 @@ pdb-map .pdb-map-instance {
     background: var(--bg-surface);
     border-color: var(--border);
     font-weight: 600;
-    /* Overlap the bottom border of the tab bar */
     margin-bottom: -2px;
     padding-bottom: calc(var(--space-xs) + 2px);
     border-bottom: 2px solid var(--bg-surface);
@@ -2168,54 +2251,13 @@ pdb-map .pdb-map-instance {
 }
 
 /* Form grid — two columns on desktop, single on mobile */
-.adv-search__form {
-    margin-bottom: var(--space-lg);
-}
+.adv-search__form  { margin-bottom: var(--space-lg); }
 
 .adv-search__grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--space-md) var(--space-xl);
     margin-bottom: var(--space-lg);
-}
-
-.adv-search__field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-}
-
-.adv-search__field--chip {
-    grid-column: span 1;
-}
-
-.adv-search__label {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    letter-spacing: 0.02em;
-}
-
-.adv-search__input,
-.adv-search__select {
-    padding: var(--space-xs) var(--space-sm);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    font-family: inherit;
-    transition: border-color 0.15s;
-}
-
-.adv-search__input:focus,
-.adv-search__select:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.adv-search__input::placeholder {
-    color: var(--text-muted);
 }
 
 /* Description text (ASN Connectivity) */
@@ -2225,109 +2267,20 @@ pdb-map .pdb-map-instance {
     line-height: 1.5;
 }
 
-.adv-search__textarea {
-    width: 100%;
-    padding: var(--space-sm);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    font-family: 'Inter', system-ui, sans-serif;
-    resize: vertical;
-    margin-bottom: var(--space-md);
-}
-
-.adv-search__textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-/* Action buttons */
+/* Action row */
 .adv-search__actions {
     display: flex;
     gap: var(--space-sm);
     justify-content: flex-end;
 }
 
-.adv-search__btn {
-    padding: var(--space-xs) var(--space-lg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.adv-search__btn--primary {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-}
-
-.adv-search__btn--primary:hover {
-    opacity: 0.9;
-}
-
-.adv-search__btn--secondary {
-    background: var(--bg-surface);
-    color: var(--text-primary);
-}
-
-.adv-search__btn--secondary:hover {
-    background: var(--bg-hover);
-}
-
 /* Results */
-.adv-search__results {
-    margin-top: var(--space-lg);
-}
+.adv-search__results { margin-top: var(--space-lg); }
 
 .adv-search__summary {
     font-size: 0.875rem;
     color: var(--text-secondary);
     margin-bottom: var(--space-md);
-}
-
-.adv-search__result-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-}
-
-.adv-search__result-table thead {
-    background: var(--bg-surface);
-    border-bottom: 2px solid var(--border);
-}
-
-.adv-search__result-table th {
-    text-align: left;
-    padding: var(--space-xs) var(--space-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    font-size: 0.6875rem;
-    letter-spacing: 0.05em;
-}
-
-.adv-search__result-table td {
-    padding: var(--space-xs) var(--space-sm);
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-}
-
-.adv-search__result-table tbody tr:hover {
-    background: var(--bg-hover);
-}
-
-.adv-search__result-table a {
-    color: var(--accent);
-    text-decoration: none;
-}
-
-.adv-search__result-table a:hover {
-    text-decoration: underline;
 }
 
 .adv-search__export {
@@ -2352,6 +2305,8 @@ pdb-map .pdb-map-instance {
 }
 
 /* ── Chip Select Component ─────────────────────────────────────────── */
+/* Standalone reusable component — used wherever multi-select is       */
+/* needed. Themed via CSS vars, no component-scoped overrides.         */
 
 .chip-select {
     position: relative;
@@ -2365,9 +2320,9 @@ pdb-map .pdb-map-instance {
     min-height: 2.25rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    background: var(--bg-primary);
+    background: var(--bg-input);
     cursor: text;
-    transition: border-color 0.15s;
+    transition: border-color var(--transition-fast);
     align-items: center;
 }
 
@@ -2495,7 +2450,7 @@ pdb-map .pdb-map-instance {
     .adv-search__actions {
         position: sticky;
         bottom: 0;
-        background: var(--bg-primary);
+        background: var(--bg-body);
         padding: var(--space-sm) 0;
         border-top: 1px solid var(--border);
     }
