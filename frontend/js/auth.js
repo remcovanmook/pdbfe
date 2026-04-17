@@ -652,15 +652,36 @@ function renderAuthUI() {
     if (!container) return;
 
     if (_cachedUser) {
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'auth-user';
-        nameSpan.textContent = _cachedUser.given_name || _cachedUser.name;
+        // Clickable username with person icon → links to /account
+        const userLink = document.createElement('a');
+        userLink.href = '/account';
+        userLink.dataset.link = '';
+        userLink.className = 'auth-user-link';
+        userLink.title = t('Account');
 
-        const accountLink = document.createElement('a');
-        accountLink.href = '/account';
-        accountLink.className = 'auth-link';
-        accountLink.dataset.link = '';
-        accountLink.textContent = t('Account');
+        // Person icon (SVG)
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('stroke-width', '2');
+        icon.setAttribute('stroke-linecap', 'round');
+        icon.setAttribute('stroke-linejoin', 'round');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.classList.add('auth-user-icon');
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', '12');
+        circle.setAttribute('cy', '8');
+        circle.setAttribute('r', '4');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M4 21v-1a6 6 0 0 1 12 0v1');
+        icon.appendChild(circle);
+        icon.appendChild(path);
+        userLink.appendChild(icon);
+
+        const nameText = document.createElement('span');
+        nameText.textContent = _cachedUser.given_name || _cachedUser.name;
+        userLink.appendChild(nameText);
 
         const logoutLink = document.createElement('a');
         logoutLink.href = '#';
@@ -671,7 +692,7 @@ function renderAuthUI() {
             logout();
         });
 
-        container.replaceChildren(nameSpan, accountLink, logoutLink);
+        container.replaceChildren(userLink, logoutLink);
     } else {
         const loginLink = document.createElement('a');
         loginLink.href = `${AUTH_ORIGIN}/auth/login`;
