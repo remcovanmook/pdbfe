@@ -294,15 +294,32 @@ body[data-page="home"] .site-logo {
 }
 
 .header-nav-link {
-    font-size: 0.8125rem;
-    font-weight: 500;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--text-secondary);
     text-decoration: none;
-    transition: color var(--transition-fast);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: color var(--transition-fast),
+                background var(--transition-fast),
+                border-color var(--transition-fast);
 }
 
 .header-nav-link:hover {
     color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--accent-muted);
+}
+
+/* Separator between nav links and auth/external area */
+.auth-container::before {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 1.25em;
+    background: var(--border);
+    margin-right: var(--space-xs);
 }
 
 /* ── API Key modal ─────────────────────────────────────────────── */
