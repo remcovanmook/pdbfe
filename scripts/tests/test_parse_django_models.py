@@ -80,9 +80,7 @@ class Network(BaseModel):
         # Actually parse_concrete_models in pdbfe maps them to specific tags. Let's check if 'network' is in it, or if it uses 'net'
         # The concrete models return a dict mapping tag -> entity object.
         
-        # Let's inspect the tags returned
-        tags = set(concrete_entities.keys())
-        
+
         # Usually Network maps to net. If not, we just iterate or find it.
         entity = concrete_entities.get("net") or concrete_entities.get("network")
         
