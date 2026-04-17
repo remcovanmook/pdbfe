@@ -11,7 +11,7 @@
  *   - Authenticated: 600 req/min (~10 req/s sustained)
  */
 
-import { createRateLimiter, normaliseIP } from '../core/ratelimit.js';
+import { createRateLimiter } from '../core/ratelimit.js';
 
 const rl = createRateLimiter({
     slots: 4000,
@@ -26,4 +26,4 @@ export const getRateLimitStats = rl.getStats;
 export const purgeRateLimit = rl.purge;
 
 // Re-export normaliseIP for the test suite
-export { normaliseIP };
+export { normaliseIP } from '../core/ratelimit.js';

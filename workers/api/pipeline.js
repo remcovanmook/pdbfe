@@ -10,12 +10,12 @@
  * are now pre-filled if not explicitly provided.
  */
 
-import { cachedQuery as _cachedQuery, EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
+import { cachedQuery as _cachedQuery } from '../core/pipeline.js';
+export { EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
 import { getEntityVersion } from './sync_state.js';
 import { NEGATIVE_TTL } from './cache.js';
 
 // Re-export CacheTier typedef and sentinels
-export { EMPTY_ENVELOPE, isNegative };
 
 /** @typedef {import('../core/pipeline.js').CacheTier} CacheTier */
 /** @typedef {import('../core/pipeline.js').CachedResult} CachedResult */
