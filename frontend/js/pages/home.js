@@ -53,23 +53,40 @@ export async function renderHome(_params) {
     const desc1 = document.createElement('p');
     desc1.className = 'home-hero__desc';
     desc1.append(
-        'This is a read-only mirror of the ',
+        'A read-only mirror of the ',
         _extLink('https://www.peeringdb.com', 'PeeringDB'),
-        ' database. The data is synchronised periodically and served from edge locations for low-latency lookups. All data is subject to the PeeringDB ',
-        _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'),
-        '.'
+        ' database, synchronised periodically and served from Cloudflare\'s edge network for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or use the ',
+        _extLink('https://www.peeringdb.com/apidocs/', 'API-compatible'),
+        ' endpoints to integrate with your existing tooling.'
     );
     hero.appendChild(desc1);
 
     const desc2 = document.createElement('p');
     desc2.className = 'home-hero__desc';
-    desc2.append('Learn more ');
+    desc2.append(
+        'Features include ',
+    );
+    const advLink = document.createElement('a');
+    advLink.href = '/advanced_search';
+    advLink.dataset.link = '';
+    advLink.textContent = 'advanced search';
+    const cmpLink = document.createElement('a');
+    cmpLink.href = '/compare';
+    cmpLink.dataset.link = '';
+    cmpLink.textContent = 'infrastructure comparison';
+    desc2.append(advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about. All data is subject to the PeeringDB ');
+    desc2.append(_extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
+    hero.appendChild(desc2);
+
+    const desc3 = document.createElement('p');
+    desc3.className = 'home-hero__desc';
+    desc3.append('Learn more ');
     const aboutLink = document.createElement('a');
     aboutLink.href = '/about';
     aboutLink.dataset.link = '';
     aboutLink.textContent = 'about this mirror';
-    desc2.append(aboutLink, '.');
-    hero.appendChild(desc2);
+    desc3.append(aboutLink, '.');
+    hero.appendChild(desc3);
 
     homeTop.appendChild(hero);
 
