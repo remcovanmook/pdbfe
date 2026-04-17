@@ -164,19 +164,6 @@ export async function renderHome(_params) {
     }
     rightCol.appendChild(favsSection);
 
-    // Compare widget
-    const compareSection = document.createElement('div');
-    compareSection.className = 'home-compare';
-    compareSection.style.marginTop = 'var(--space-lg)';
-    const compareHeading = document.createElement('a');
-    compareHeading.href = '/compare';
-    compareHeading.dataset.link = '';
-    compareHeading.className = 'home-recent__heading home-recent__heading--link';
-    compareHeading.textContent = '↔ ' + t('Compare Infrastructure');
-    compareSection.appendChild(compareHeading);
-
-    rightCol.appendChild(compareSection);
-
     homeTop.appendChild(rightCol);
     frag.appendChild(homeTop);
 
