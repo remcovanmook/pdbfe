@@ -18,6 +18,7 @@ import { renderAbout } from './pages/about.js';
 import { renderAsn } from './pages/asn.js';
 import { renderAccount } from './pages/account.js';
 import { renderCompare } from './pages/compare.js';
+import { renderAdvancedSearch } from './pages/advanced-search.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
@@ -46,6 +47,7 @@ addRoute('/asn/:asn', renderAsn);
 addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 addRoute('/compare', renderCompare);
+addRoute('/advanced_search', renderAdvancedSearch);
 
 // Expose navigate for the homepage search box
 globalThis.__router = { navigate };
