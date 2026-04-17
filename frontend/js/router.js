@@ -71,7 +71,8 @@ export function initRouter(appContainer) {
 
         e.preventDefault();
         const href = link.getAttribute('href');
-        if (href && href !== globalThis.location.pathname) {
+        const currentFull = globalThis.location.pathname + globalThis.location.search;
+        if (href && href !== currentFull) {
             navigate(href);
         }
     });

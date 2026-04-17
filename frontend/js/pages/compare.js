@@ -32,6 +32,57 @@ const COMPARE_TYPES = ['net', 'ix', 'fac'];
 const TYPE_LABELS = { net: 'Network', ix: 'Exchange', fac: 'Facility' };
 
 /**
+ * Maps a compare table title keyword to the entity type tag
+ * used for the section badge icon.
+ * @type {Record<string, string>}
+ */
+const SECTION_BADGE_MAP = {
+    'IXP':      'ix',
+    'Exchange': 'ix',
+    'Facilit':  'fac',
+    'Network':  'net',
+    'Member':   'ix',
+};
+
+/**
+ * Wraps a pdb-table element inside a .compare-section container
+ * with a prominent section header that includes an entity-type
+ * badge for quick visual identification.
+ *
+ * @param {string} title - Section title text.
+ * @param {HTMLElement} tableEl - The <pdb-table> element to wrap.
+ * @returns {HTMLElement} The .compare-section wrapper.
+ */
+function wrapSection(title, tableEl) {
+    const section = document.createElement('div');
+    section.className = 'compare-section';
+
+    const header = document.createElement('div');
+    header.className = 'compare-section__header';
+
+    // Determine the badge type from the title by matching keywords
+    let badgeTag = '';
+    for (const [keyword, tag] of Object.entries(SECTION_BADGE_MAP)) {
+        if (title.includes(keyword)) {
+            badgeTag = tag;
+            break;
+        }
+    }
+    if (badgeTag) {
+        header.appendChild(createEntityBadge(badgeTag));
+    }
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'compare-section__title';
+    titleSpan.textContent = title;
+    header.appendChild(titleSpan);
+
+    section.appendChild(header);
+    section.appendChild(tableEl);
+    return section;
+}
+
+/**
  * Renders the compare page into the app container.
  *
  * @param {Record<string, string>} params - Route params including query params.
@@ -398,22 +449,26 @@ function renderNetNetResults(wrap, data) {
     ]));
 
     if (data.shared_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(t('Shared IXPs'), data.shared_ixps, true));
+        wrap.appendChild(wrapSection(t('Shared IXPs'), createIxpTable(t('Shared IXPs'), data.shared_ixps, true)));
     }
     if (data.shared_facilities.length > 0) {
-        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
+        wrap.appendChild(wrapSection(t('Shared Facilities'), createFacTable(t('Shared Facilities'), data.shared_facilities)));
     }
     if (data.only_a_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.a.name}`, data.only_a_ixps, false));
+        const title = `${t('IXPs only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, data.only_a_ixps, false)));
     }
     if (data.only_b_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.b.name}`, data.only_b_ixps, false));
+        const title = `${t('IXPs only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, data.only_b_ixps, false)));
     }
     if (data.only_a_facilities.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.a.name}`, data.only_a_facilities));
+        const title = `${t('Facilities only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, data.only_a_facilities)));
     }
     if (data.only_b_facilities.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.b.name}`, data.only_b_facilities));
+        const title = `${t('Facilities only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, data.only_b_facilities)));
     }
 
     if (data.shared_ixps.length === 0 && data.shared_facilities.length === 0) {
@@ -436,22 +491,26 @@ function renderIxIxResults(wrap, data) {
     ]));
 
     if (data.shared_facilities.length > 0) {
-        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
+        wrap.appendChild(wrapSection(t('Shared Facilities'), createFacTable(t('Shared Facilities'), data.shared_facilities)));
     }
     if (data.shared_networks.length > 0) {
-        wrap.appendChild(createNetTable(t('Shared Networks'), data.shared_networks));
+        wrap.appendChild(wrapSection(t('Shared Networks'), createNetTable(t('Shared Networks'), data.shared_networks)));
     }
     if (data.only_a_facilities.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.a.name}`, data.only_a_facilities));
+        const title = `${t('Facilities only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, data.only_a_facilities)));
     }
     if (data.only_b_facilities.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${data.b.name}`, data.only_b_facilities));
+        const title = `${t('Facilities only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, data.only_b_facilities)));
     }
     if (data.only_a_networks.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.a.name}`, data.only_a_networks));
+        const title = `${t('Networks only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, data.only_a_networks)));
     }
     if (data.only_b_networks.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.b.name}`, data.only_b_networks));
+        const title = `${t('Networks only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, data.only_b_networks)));
     }
 
     if (data.shared_facilities.length === 0 && data.shared_networks.length === 0) {
@@ -474,22 +533,26 @@ function renderFacFacResults(wrap, data) {
     ]));
 
     if (data.shared_networks.length > 0) {
-        wrap.appendChild(createNetTable(t('Shared Networks'), data.shared_networks));
+        wrap.appendChild(wrapSection(t('Shared Networks'), createNetTable(t('Shared Networks'), data.shared_networks)));
     }
     if (data.shared_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(t('Shared IXPs'), data.shared_ixps, false));
+        wrap.appendChild(wrapSection(t('Shared IXPs'), createIxpTable(t('Shared IXPs'), data.shared_ixps, false)));
     }
     if (data.only_a_networks.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.a.name}`, data.only_a_networks));
+        const title = `${t('Networks only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, data.only_a_networks)));
     }
     if (data.only_b_networks.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks only at')} ${data.b.name}`, data.only_b_networks));
+        const title = `${t('Networks only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, data.only_b_networks)));
     }
     if (data.only_a_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.a.name}`, data.only_a_ixps, false));
+        const title = `${t('IXPs only at')} ${data.a.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, data.only_a_ixps, false)));
     }
     if (data.only_b_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs only at')} ${data.b.name}`, data.only_b_ixps, false));
+        const title = `${t('IXPs only at')} ${data.b.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, data.only_b_ixps, false)));
     }
 
     if (data.shared_networks.length === 0 && data.shared_ixps.length === 0) {
@@ -517,20 +580,23 @@ function renderNetIxResults(wrap, data) {
     ]));
 
     if (data.membership && data.membership.length > 0) {
-        const membershipTable = createIxpTable(t('Direct Membership Details'), data.membership.map((/** @type {any} */ m) => ({ ...m, ix_id: ix.id, ix_name: ix.name, speed_a: m.speed, ipv4_a: m.ipaddr4, ipv6_a: m.ipaddr6 })), true);
-        wrap.appendChild(membershipTable);
+        const memberTitle = t('Direct Membership Details');
+        const membershipTable = createIxpTable(memberTitle, data.membership.map((/** @type {any} */ m) => ({ ...m, ix_id: ix.id, ix_name: ix.name, speed_a: m.speed, ipv4_a: m.ipaddr4, ipv6_a: m.ipaddr6 })), true);
+        wrap.appendChild(wrapSection(memberTitle, membershipTable));
     } else {
         wrap.appendChild(createEmptyState(t('{net} is NOT currently peering at {ix}.', { net: net.name, ix: ix.name })));
     }
 
     if (data.shared_facilities.length > 0) {
-        wrap.appendChild(createFacTable(t('Shared Facilities'), data.shared_facilities));
+        wrap.appendChild(wrapSection(t('Shared Facilities'), createFacTable(t('Shared Facilities'), data.shared_facilities)));
     }
     if (netFacs.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${net.name}`, netFacs));
+        const title = `${t('Facilities only at')} ${net.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, netFacs)));
     }
     if (ixFacs.length > 0) {
-        wrap.appendChild(createFacTable(`${t('Facilities only at')} ${ix.name}`, ixFacs));
+        const title = `${t('Facilities only at')} ${ix.name}`;
+        wrap.appendChild(wrapSection(title, createFacTable(title, ixFacs)));
     }
 }
 
@@ -554,13 +620,16 @@ function renderFacNetResults(wrap, data) {
     ]));
 
     if (data.shared_ixps.length > 0) {
-        wrap.appendChild(createIxpTable(t('IXPs in facility {fac} that {net} peers at').replace('{fac}', fac.name).replace('{net}', net.name), data.shared_ixps, true));
+        const title = t('IXPs in facility {fac} that {net} peers at').replace('{fac}', fac.name).replace('{net}', net.name);
+        wrap.appendChild(wrapSection(title, createIxpTable(title, data.shared_ixps, true)));
     }
     if (facIxps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs at')} ${fac.name} ${t('missing from')} ${net.name}`, facIxps, false));
+        const title = `${t('IXPs at')} ${fac.name} ${t('missing from')} ${net.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, facIxps, false)));
     }
     if (netIxps.length > 0) {
-        wrap.appendChild(createIxpTable(`${t('IXPs')} ${net.name} ${t('peers at that are NOT at')} ${fac.name}`, netIxps, true));
+        const title = `${t('IXPs')} ${net.name} ${t('peers at that are NOT at')} ${fac.name}`;
+        wrap.appendChild(wrapSection(title, createIxpTable(title, netIxps, true)));
     }
 }
 
@@ -584,13 +653,16 @@ function renderFacIxResults(wrap, data) {
     ]));
 
     if (data.shared_networks.length > 0) {
-        wrap.appendChild(createNetTable(t('Networks in facility {fac} peering at {ix}').replace('{fac}', fac.name).replace('{ix}', ix.name), data.shared_networks));
+        const title = t('Networks in facility {fac} peering at {ix}').replace('{fac}', fac.name).replace('{ix}', ix.name);
+        wrap.appendChild(wrapSection(title, createNetTable(title, data.shared_networks)));
     }
     if (facNets.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks at')} ${fac.name} ${t('missing from')} ${ix.name}`, facNets));
+        const title = `${t('Networks at')} ${fac.name} ${t('missing from')} ${ix.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, facNets)));
     }
     if (ixNets.length > 0) {
-        wrap.appendChild(createNetTable(`${t('Networks at')} ${ix.name} ${t('NOT at')} ${fac.name}`, ixNets));
+        const title = `${t('Networks at')} ${ix.name} ${t('NOT at')} ${fac.name}`;
+        wrap.appendChild(wrapSection(title, createNetTable(title, ixNets)));
     }
 }
 

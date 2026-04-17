@@ -1948,6 +1948,54 @@ body[data-page="home"] .site-logo {
     opacity: 0.85;
 }
 
+/* ── Compare results layout ────────────────────────────────────── */
+/* Vertical space between successive result tables so they don't
+   collide. Section headers get a prominent treatment with a top
+   border and larger font so readers can orient at a glance.       */
+
+.compare-section {
+    margin-top: var(--space-xl);
+}
+
+.compare-section__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding-bottom: var(--space-sm);
+    margin-bottom: var(--space-md);
+    border-bottom: 2px solid var(--border);
+}
+
+.compare-section__title {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+/* ── Map tile theming ──────────────────────────────────────────── */
+/* Dark mode: invert + hue-rotate the OSM raster tile layer so
+   the map blends with the dark UI chrome. The hue rotation
+   undoes the colour shift introduced by the inversion.           */
+
+:root:not([data-theme="light"]) .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) saturate(0.6) brightness(0.85);
+}
+
+/* Prevent the inversion from applying to marker icons and popups
+   rendered inside the map — they already use themed CSS vars.    */
+:root:not([data-theme="light"]) .leaflet-marker-pane,
+:root:not([data-theme="light"]) .leaflet-popup-pane,
+:root:not([data-theme="light"]) .leaflet-tooltip-pane {
+    filter: none;
+}
+
+/* Map container: give it a themed background so the empty areas
+   behind tiles (e.g. during load) match the page.                */
+pdb-map .pdb-map-instance {
+    background: var(--bg-surface);
+}
+
 /* ── Entity-type badge ─────────────────────────────────────────── */
 /* Colour is set via --badge-color which maps to --type-<entity>.  */
 
