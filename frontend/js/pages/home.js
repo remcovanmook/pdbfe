@@ -93,19 +93,18 @@ export async function renderHome(_params) {
     searchDiv.appendChild(searchWrapper);
     rightCol.appendChild(searchDiv);
 
-    // Favorites section — shows for any user with favorites
-    // (anonymous: localStorage, authenticated: D1)
+    // Favorites section — always visible; links to /favorites management page
     const favorites = getFavorites();
-    if (favorites.length > 0) {
-        const favsSection = document.createElement('div');
-        favsSection.className = 'home-favorites';
-        const favsHeading = document.createElement('a');
-        favsHeading.href = '/favorites';
-        favsHeading.dataset.link = '';
-        favsHeading.className = 'home-recent__heading home-recent__heading--link';
-        favsHeading.textContent = '★ ' + t('Your Favorites');
-        favsSection.appendChild(favsHeading);
+    const favsSection = document.createElement('div');
+    favsSection.className = 'home-favorites';
+    const favsHeading = document.createElement('a');
+    favsHeading.href = '/favorites';
+    favsHeading.dataset.link = '';
+    favsHeading.className = 'home-recent__heading home-recent__heading--link';
+    favsHeading.textContent = '★ ' + t('Your Favorites');
+    favsSection.appendChild(favsHeading);
 
+    if (favorites.length > 0) {
         const favsGrid = document.createElement('div');
         favsGrid.className = 'favorites-grid';
         favsGrid.id = 'home-favorites-grid';
@@ -131,8 +130,14 @@ export async function renderHome(_params) {
         }
 
         favsSection.appendChild(favsGrid);
-        rightCol.appendChild(favsSection);
+    } else {
+        const hint = document.createElement('p');
+        hint.className = 'home-hero__desc';
+        hint.style.fontSize = '0.8125rem';
+        hint.textContent = t('Use the ★ on any entity page to add favorites.');
+        favsSection.appendChild(hint);
     }
+    rightCol.appendChild(favsSection);
 
     // Compare widget
     const compareSection = document.createElement('div');
