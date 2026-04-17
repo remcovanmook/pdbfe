@@ -78,7 +78,7 @@
     --status-error:   hsl(0 70% 55%);
 
     /* Entity-type accent colours */
-    --type-net:     hsl(200 80% 55%);   /* blue — networks       */
+    --type-net:     var(--accent);          /* blue — networks (same as accent) */
     --type-ix:      hsl(160 65% 45%);   /* teal — exchanges      */
     --type-fac:     hsl(35 85% 55%);    /* amber — facilities    */
     --type-org:     hsl(270 55% 60%);   /* purple — orgs         */
@@ -142,7 +142,7 @@
     --status-error:   hsl(0 70% 48%);
 
     /* Entity-type accent colours (darkened for contrast) */
-    --type-net:     hsl(200 80% 40%);
+    --type-net:     var(--accent);
     --type-ix:      hsl(160 65% 35%);
     --type-fac:     hsl(35 85% 42%);
     --type-org:     hsl(270 55% 48%);
