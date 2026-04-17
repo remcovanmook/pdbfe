@@ -99,9 +99,11 @@ export async function renderHome(_params) {
     if (favorites.length > 0) {
         const favsSection = document.createElement('div');
         favsSection.className = 'home-favorites';
-        const favsHeading = document.createElement('h2');
-        favsHeading.className = 'home-recent__heading';
-        favsHeading.textContent = t('Your Favorites');
+        const favsHeading = document.createElement('a');
+        favsHeading.href = '/favorites';
+        favsHeading.dataset.link = '';
+        favsHeading.className = 'home-recent__heading home-recent__heading--link';
+        favsHeading.textContent = '★ ' + t('Your Favorites');
         favsSection.appendChild(favsHeading);
 
         const favsGrid = document.createElement('div');

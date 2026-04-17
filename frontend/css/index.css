@@ -2500,6 +2500,91 @@ pdb-map .pdb-map-instance {
     }
 }
 
+/* ── Favorites management page ─────────────────────────────────── */
+
+.favorites-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-md);
+}
+
+.favorites-page__subtitle {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+}
+
+.favorites-page__count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: var(--space-md);
+}
+
+.favorites-manage {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.favorites-manage__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-sm);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    transition: background var(--transition-fast),
+                box-shadow var(--transition-fast);
+    cursor: grab;
+}
+
+.favorites-manage__item:hover {
+    background: var(--bg-hover);
+}
+
+.favorites-manage__item--dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.favorites-manage__handle {
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.favorites-manage__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.favorites-manage__delete {
+    flex-shrink: 0;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1.125rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color var(--transition-fast),
+                background var(--transition-fast);
+}
+
+.favorites-manage__delete:hover {
+    color: var(--status-error);
+    background: var(--error-bg);
+}
+
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }

@@ -19,6 +19,7 @@ import { renderAsn } from './pages/asn.js';
 import { renderAccount } from './pages/account.js';
 import { renderCompare } from './pages/compare.js';
 import { renderAdvancedSearch } from './pages/advanced-search.js';
+import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
@@ -48,6 +49,7 @@ addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 addRoute('/compare', renderCompare);
 addRoute('/advanced_search', renderAdvancedSearch);
+addRoute('/favorites', renderFavorites);
 
 // Expose navigate for the homepage search box
 globalThis.__router = { navigate };

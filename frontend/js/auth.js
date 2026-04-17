@@ -429,6 +429,37 @@ export async function removeFavorite(entityType, entityId) {
 }
 
 /**
+ * Reorders the in-memory favorites list to match the given key order.
+ * Each key is a "{entity_type}:{entity_id}" string.
+ * For anonymous users, the new order is persisted to localStorage.
+ * For authenticated users, order is local-only (server doesn't track order).
+ *
+ * @param {string[]} orderedKeys - Array of "type:id" strings in the desired order.
+ */
+export function reorderFavorites(orderedKeys) {
+    /** @type {Map<string, typeof _favoritesList[0]>} */
+    const byKey = new Map();
+    for (const f of _favoritesList) {
+        byKey.set(`${f.entity_type}:${f.entity_id}`, f);
+    }
+
+    /** @type {typeof _favoritesList} */
+    const reordered = [];
+    for (const key of orderedKeys) {
+        const entry = byKey.get(key);
+        if (entry) reordered.push(entry);
+    }
+    // Append any entries not in orderedKeys (defensive)
+    for (const f of _favoritesList) {
+        const key = `${f.entity_type}:${f.entity_id}`;
+        if (!orderedKeys.includes(key)) reordered.push(f);
+    }
+
+    _favoritesList = reordered;
+    if (!_cachedSid) _writeLocalFavorites();
+}
+
+/**
  * Logs the user out by clearing the local session and redirecting
  * to the auth worker's logout endpoint (which deletes the KV entry).
  * Server-side favorites remain in D1 for the next login.
