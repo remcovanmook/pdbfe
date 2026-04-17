@@ -124,10 +124,24 @@ function renderSelector(app, initialA, initialB) {
 
     const subtitle = document.createElement('span');
     subtitle.className = 'detail-header__subtitle';
-    subtitle.textContent = t('Select two entities to see their shared and exclusive resources.');
+    subtitle.textContent = t('Analyze overlapping infrastructure between two entities.');
     header.appendChild(subtitle);
 
     wrap.appendChild(header);
+
+    // Explanatory text
+    const intro = document.createElement('div');
+    intro.className = 'compare-intro';
+
+    const p1 = document.createElement('p');
+    p1.textContent = t('Select two Networks, Exchanges, or Facilities below to see where their infrastructure overlaps. The comparison shows shared and exclusive resources: which IXPs both networks peer at, which facilities they both occupy, or which members two exchanges have in common.');
+    intro.appendChild(p1);
+
+    const p2 = document.createElement('p');
+    p2.textContent = t('Results are split into three sections: resources shared by both entities, resources exclusive to entity A, and resources exclusive to entity B. Use this to evaluate redundancy, identify potential peering opportunities, or plan infrastructure expansion.');
+    intro.appendChild(p2);
+
+    wrap.appendChild(intro);
 
     // Card containing the selection form
     const card = document.createElement('div');
@@ -167,14 +181,6 @@ function renderSelector(app, initialA, initialB) {
     cardBody.appendChild(form);
     card.appendChild(cardBody);
     wrap.appendChild(card);
-
-    // Supported pairs hint
-    const hint = document.createElement('p');
-    hint.className = 'detail-header__subtitle';
-    hint.style.textAlign = 'center';
-    hint.style.marginTop = 'var(--space-md)';
-    hint.textContent = t('Supported: Networks, Exchanges, and Facilities');
-    wrap.appendChild(hint);
 
     app.replaceChildren(wrap);
 }

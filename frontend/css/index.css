@@ -1963,6 +1963,18 @@ body[data-page="home"] .site-logo {
    wrapper positioning. All visual components (cards, tables, stats
    bars, badges, search dropdowns) use classes defined above.       */
 
+.compare-intro {
+    max-width: 720px;
+    margin: 0 auto var(--space-lg);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.compare-intro p + p {
+    margin-top: var(--space-sm);
+}
+
 .compare-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

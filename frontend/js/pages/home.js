@@ -150,12 +150,6 @@ export async function renderHome(_params) {
     compareHeading.textContent = '↔ ' + t('Compare Infrastructure');
     compareSection.appendChild(compareHeading);
 
-    const compareDesc = document.createElement('p');
-    compareDesc.className = 'home-hero__desc';
-    compareDesc.style.fontSize = 'var(--font-size-sm)';
-    compareDesc.textContent = t('Analyze redundant topology and intersections between Networks, Exchanges, and Facilities.');
-    compareSection.appendChild(compareDesc);
-
     rightCol.appendChild(compareSection);
 
     homeTop.appendChild(rightCol);
