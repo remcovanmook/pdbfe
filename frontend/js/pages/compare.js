@@ -122,16 +122,16 @@ function renderSelector(app, initialA, initialB) {
     title.textContent = t('Compare Entities');
     header.appendChild(title);
 
-    const subtitle = document.createElement('span');
-    subtitle.className = 'detail-header__subtitle';
-    subtitle.textContent = t('Analyze overlapping infrastructure between two entities.');
-    header.appendChild(subtitle);
-
     wrap.appendChild(header);
 
     // Explanatory text
     const intro = document.createElement('div');
     intro.className = 'compare-intro';
+
+    const lead = document.createElement('p');
+    lead.className = 'compare-intro__lead';
+    lead.textContent = t('Analyze overlapping infrastructure between two entities.');
+    intro.appendChild(lead);
 
     const p1 = document.createElement('p');
     p1.textContent = t('Select two Networks, Exchanges, or Facilities below to see where their infrastructure overlaps. The comparison shows shared and exclusive resources: which IXPs both networks peer at, which facilities they both occupy, or which members two exchanges have in common.');

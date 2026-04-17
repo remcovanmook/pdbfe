@@ -1975,6 +1975,13 @@ body[data-page="home"] .site-logo {
     margin-top: var(--space-sm);
 }
 
+.compare-intro__lead {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
+}
+
 .compare-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
