@@ -136,26 +136,18 @@ export async function renderHome(_params) {
     const compareSection = document.createElement('div');
     compareSection.className = 'home-compare';
     compareSection.style.marginTop = 'var(--space-lg)';
-    const compareHeading = document.createElement('h2');
-    compareHeading.className = 'home-recent__heading';
-    compareHeading.textContent = t('Compare Infrastructure');
+    const compareHeading = document.createElement('a');
+    compareHeading.href = '/compare';
+    compareHeading.dataset.link = '';
+    compareHeading.className = 'home-recent__heading home-recent__heading--link';
+    compareHeading.textContent = '↔ ' + t('Compare Infrastructure');
     compareSection.appendChild(compareHeading);
 
     const compareDesc = document.createElement('p');
     compareDesc.className = 'home-hero__desc';
     compareDesc.style.fontSize = 'var(--font-size-sm)';
-    compareDesc.style.marginBottom = 'var(--space-md)';
     compareDesc.textContent = t('Analyze redundant topology and intersections between Networks, Exchanges, and Facilities.');
     compareSection.appendChild(compareDesc);
-
-    const compareBtn = document.createElement('a');
-    compareBtn.href = '/compare';
-    compareBtn.dataset.link = '';
-    compareBtn.className = 'compare-submit'; 
-    compareBtn.style.display = 'inline-block';
-    compareBtn.style.textDecoration = 'none';
-    compareBtn.textContent = '↔ ' + t('Start Comparison');
-    compareSection.appendChild(compareBtn);
 
     rightCol.appendChild(compareSection);
 

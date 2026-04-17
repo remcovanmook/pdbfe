@@ -1027,6 +1027,18 @@ body[data-page="home"] .site-logo {
     color: var(--text-primary);
 }
 
+.home-recent__heading--link {
+    display: inline-block;
+    color: var(--accent);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.home-recent__heading--link:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
 /* ── Homepage search ───────────────────────────────────────────── */
 
 .home-search {
