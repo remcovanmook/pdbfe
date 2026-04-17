@@ -333,7 +333,7 @@ export async function fetchCount(type) {
  * @returns {Promise<any>} Overlap analysis result.
  */
 export async function fetchCompare(a, b) {
-    return cachedFetch('/api/compare', { a, b });
+    return cachedFetch('/api/compare', { a, b, __pdbfe: 1 });
 }
 
 /**
