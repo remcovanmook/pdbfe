@@ -88,7 +88,14 @@ export const ENTITY_SCHEMA = {
           "name": "longitude",
           "type": "number"
         }
-      ]
+      ],
+      "naming": {
+        "type": "Organization",
+        "singular": "organization",
+        "plural": "organizations",
+        "subresource": "organization",
+        "label": "Organization"
+      }
     },
     "campus": {
       "tag": "campus",
@@ -160,7 +167,14 @@ export const ENTITY_SCHEMA = {
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Campus",
+        "singular": "campus",
+        "plural": "campuses",
+        "subresource": "campuses",
+        "label": "Campus"
+      }
     },
     "fac": {
       "tag": "fac",
@@ -323,7 +337,14 @@ export const ENTITY_SCHEMA = {
           "type": "number",
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Facility",
+        "singular": "facility",
+        "plural": "facilities",
+        "subresource": "facilities",
+        "label": "Facility"
+      }
     },
     "net": {
       "tag": "net",
@@ -494,7 +515,14 @@ export const ENTITY_SCHEMA = {
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Network",
+        "singular": "network",
+        "plural": "networks",
+        "subresource": "networks",
+        "label": "Network"
+      }
     },
     "ix": {
       "tag": "ix",
@@ -633,7 +661,18 @@ export const ENTITY_SCHEMA = {
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Exchange",
+        "singular": "exchange",
+        "plural": "exchanges",
+        "subresource": "exchanges",
+        "label": "Exchange",
+        "aliases": {
+          "singular": "internetExchange",
+          "plural": "internetExchanges"
+        }
+      }
     },
     "carrier": {
       "tag": "carrier",
@@ -688,7 +727,14 @@ export const ENTITY_SCHEMA = {
           "queryable": false,
           "nullable": true
         }
-      ]
+      ],
+      "naming": {
+        "type": "Carrier",
+        "singular": "carrier",
+        "plural": "carriers",
+        "subresource": "carriers",
+        "label": "Carrier"
+      }
     },
     "carrierfac": {
       "tag": "carrierfac",
@@ -712,7 +758,14 @@ export const ENTITY_SCHEMA = {
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "CarrierFacility",
+        "singular": "carrierFacility",
+        "plural": "carrierFacilities",
+        "subresource": "carrier-facilities",
+        "label": "Carrier Facility"
+      }
     },
     "ixfac": {
       "tag": "ixfac",
@@ -746,7 +799,18 @@ export const ENTITY_SCHEMA = {
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangeFacility",
+        "singular": "exchangeFacility",
+        "plural": "exchangeFacilities",
+        "subresource": "exchange-facilities",
+        "label": "Exchange Facility",
+        "aliases": {
+          "singular": "ixFacility",
+          "plural": "ixFacilities"
+        }
+      }
     },
     "ixlan": {
       "tag": "ixlan",
@@ -804,7 +868,18 @@ export const ENTITY_SCHEMA = {
           "name": "ixf_ixp_import_enabled",
           "type": "boolean"
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangeLan",
+        "singular": "exchangeLan",
+        "plural": "exchangeLans",
+        "subresource": "exchange-lans",
+        "label": "Exchange LAN",
+        "aliases": {
+          "singular": "ixLan",
+          "plural": "ixLans"
+        }
+      }
     },
     "ixpfx": {
       "tag": "ixpfx",
@@ -834,7 +909,18 @@ export const ENTITY_SCHEMA = {
           "type": "number",
           "foreignKey": "ixlan"
         }
-      ]
+      ],
+      "naming": {
+        "type": "ExchangePrefix",
+        "singular": "exchangePrefix",
+        "plural": "exchangePrefixes",
+        "subresource": "exchange-prefixes",
+        "label": "Exchange Prefix",
+        "aliases": {
+          "singular": "ixPrefix",
+          "plural": "ixPrefixes"
+        }
+      }
     },
     "poc": {
       "tag": "poc",
@@ -876,6 +962,17 @@ export const ENTITY_SCHEMA = {
       "anonFilter": {
         "field": "visible",
         "value": "Public"
+      },
+      "naming": {
+        "type": "PointOfContact",
+        "singular": "pointOfContact",
+        "plural": "pointsOfContact",
+        "subresource": "contacts",
+        "label": "Point of Contact",
+        "aliases": {
+          "singular": "poc",
+          "plural": "pocs"
+        }
       }
     },
     "netfac": {
@@ -924,7 +1021,14 @@ export const ENTITY_SCHEMA = {
           "type": "string",
           "queryable": false
         }
-      ]
+      ],
+      "naming": {
+        "type": "NetworkFacility",
+        "singular": "networkFacility",
+        "plural": "networkFacilities",
+        "subresource": "network-facilities",
+        "label": "Network Facility"
+      }
     },
     "netixlan": {
       "tag": "netixlan",
@@ -998,7 +1102,18 @@ export const ENTITY_SCHEMA = {
           "name": "name",
           "type": "string"
         }
-      ]
+      ],
+      "naming": {
+        "type": "NetworkExchangeLan",
+        "singular": "networkExchangeLan",
+        "plural": "networkExchangeLans",
+        "subresource": "network-exchange-lans",
+        "label": "Network Exchange LAN",
+        "aliases": {
+          "singular": "networkIxLan",
+          "plural": "networkIxLans"
+        }
+      }
     }
   }
 };

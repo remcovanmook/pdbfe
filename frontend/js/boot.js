@@ -31,6 +31,7 @@ import { getTimezonePreference, setTimezone } from './timezone.js';
 import './components/pdb-table.js';
 import './components/pdb-field-group.js';
 import './components/pdb-stats-bar.js';
+import './components/pdb-map.js';
 
 // Register routes
 addRoute('/', renderHome);

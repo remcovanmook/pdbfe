@@ -61,22 +61,21 @@ const OPS = {
     }),
     in: (col, value) => {
         const parts = value.split(","); // ap-ok: SQL IN clause construction
-        const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
         return {
-            clause: `"${col}" IN (${placeholders})`,
-            params: parts
+            clause: `"${col}" IN (SELECT value FROM json_each(?))`,
+            params: [JSON.stringify(parts)] // Satisfy TS typing; fully processed by buildWherePagination
         };
     },
+
     not: (col, value) => ({
         clause: `"${col}" != ? COLLATE NOCASE`,
         params: [value]
     }),
     notin: (col, value) => {
         const parts = value.split(","); // ap-ok: SQL NOT IN clause construction
-        const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
         return {
-            clause: `"${col}" NOT IN (${placeholders})`,
-            params: parts
+            clause: `"${col}" NOT IN (SELECT value FROM json_each(?))`,
+            params: [JSON.stringify(parts)] // Satisfy TS typing
         };
     },
     endswith: (col, value) => ({
@@ -384,10 +383,9 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             // Build the inner WHERE clause using the standard OPS functions
             // (they operate on unaliased column names, which is what we want)
             if (f.op === 'in') {
-                const parts = f.value.split(','); // ap-ok: SQL IN clause
-                const placeholders = parts.map(() => '?').join(', '); // ap-ok: SQL placeholders
-                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (${placeholders}))`);
-                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)))); // ap-ok: SQL bind params
+                const parts = f.value.split(',').map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))); // ap-ok: SQL IN clause construction
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (SELECT value FROM json_each(?)))`);
+                params.push(JSON.stringify(parts)); // ap-ok: SQL bind params
             } else {
                 const inner = opFn(f.field, f.value);
                 clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause})`);
@@ -408,16 +406,16 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         // For 'in' and 'notin' operators, coerce each comma-separated value
         if (f.op === "in" || f.op === "notin") {
             const negated = f.op === "notin";
+            const parts = f.value.split(",").map(v => coerceValue(/** @type {string} */(v), fieldType)); // ap-ok: SQL IN clause construction
+            const jsonStr = JSON.stringify(parts);
+            
             if (pfx) {
-                const parts = f.value.split(","); // ap-ok: SQL IN clause
-                const placeholders = parts.map(() => "?").join(", "); // ap-ok: SQL placeholders
-                clauses.push(`${sqlCol} ${negated ? 'NOT IN' : 'IN'} (${placeholders})`);
-                params.push(...parts.map(v => coerceValue(/** @type {string} */(v), fieldType))); // ap-ok: SQL bind params
+                clauses.push(`${sqlCol} ${negated ? 'NOT IN' : 'IN'} (SELECT value FROM json_each(?))`);
+                params.push(jsonStr);
             } else {
                 const result = opFn(f.field, f.value);
-                result.params = result.params.map(v => coerceValue(/** @type {string} */(v), fieldType)); // ap-ok: SQL bind params
                 clauses.push(result.clause);
-                params.push(...result.params);
+                params.push(jsonStr);
             }
         } else if (f.op === "isnil") {
             // isnil produces no bind params — clause only

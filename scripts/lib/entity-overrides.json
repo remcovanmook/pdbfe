@@ -11,7 +11,8 @@
   },
   "netfac": {
     "fieldOverrides": {
-      "net_id": { "resolve": { "name": "net_name", "asn": "net_asn" } }
+      "net_id": { "resolve": { "name": "net_name", "asn": "net_asn" } },
+      "fac_id": { "resolve": { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }
     }
   },
   "netixlan": {
@@ -22,7 +23,13 @@
   },
   "ixfac": {
     "fieldOverrides": {
-      "ix_id": { "resolve": { "name": "ix_name" } }
+      "ix_id": { "resolve": { "name": "ix_name" } },
+      "fac_id": { "resolve": { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }
+    }
+  },
+  "carrierfac": {
+    "fieldOverrides": {
+      "fac_id": { "resolve": { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }
     }
   }
 }

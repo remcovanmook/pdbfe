@@ -375,6 +375,7 @@ export function createTextNode(text) {
  * @param {HTMLElement} [opts.statsBar] - Optional stats bar element.
  * @param {HTMLElement|DocumentFragment} opts.sidebar - Sidebar content.
  * @param {HTMLElement|DocumentFragment} opts.main - Main content area.
+ * @param {Record<string, Array<{lat: number, lon: number, address?: string, name?: string}>>} [opts.locations] - Location markers for map rendering.
  * @returns {HTMLDivElement} The assembled detail-layout element.
  */
 export function createDetailLayout(opts) {
@@ -407,10 +408,25 @@ export function createDetailLayout(opts) {
         header.appendChild(sub);
     }
 
+    const actionsWrap = document.createElement('div');
+    actionsWrap.className = 'detail-header__actions';
+    
+    // Compare button — navigates to /compare with entity A preset
+    if (opts.entityType && ['net', 'ix', 'fac'].includes(opts.entityType)) {
+        const compareBtn = document.createElement('a');
+        compareBtn.className = 'detail-header__btn';
+        compareBtn.textContent = '↔ ' + t('Compare');
+        compareBtn.title = t('Compare with another entity');
+        compareBtn.setAttribute('aria-label', t('Compare page'));
+        compareBtn.href = `/compare?a=${opts.entityType}:${opts.entityId}`;
+        compareBtn.dataset.link = '';
+        actionsWrap.appendChild(compareBtn);
+    }
+
     // Share button — copies URL with current table sort/filter state
     const shareBtn = document.createElement('button');
-    shareBtn.className = 'detail-header__share';
-    shareBtn.textContent = '🔗';
+    shareBtn.className = 'detail-header__btn';
+    shareBtn.textContent = '🔗 ' + t('Share');
     shareBtn.title = t('Copy shareable link with current table state');
     shareBtn.setAttribute('aria-label', t('Share page'));
     shareBtn.addEventListener('click', async () => {
@@ -434,22 +450,12 @@ export function createDetailLayout(opts) {
             }
         }
         await navigator.clipboard.writeText(url.href);
-        shareBtn.textContent = '✓ Copied!';
-        setTimeout(() => { shareBtn.textContent = '🔗'; }, 2000);
+        shareBtn.textContent = '✓ ' + t('Copied!');
+        setTimeout(() => { shareBtn.textContent = '🔗 ' + t('Share'); }, 2000);
     });
-    header.appendChild(shareBtn);
+    actionsWrap.appendChild(shareBtn);
 
-    // Compare button — navigates to /compare with entity A preset
-    if (opts.entityType && ['net', 'ix', 'fac'].includes(opts.entityType)) {
-        const compareBtn = document.createElement('a');
-        compareBtn.className = 'detail-header__share';
-        compareBtn.textContent = '↔ Compare';
-        compareBtn.title = t('Compare with another entity');
-        compareBtn.setAttribute('aria-label', t('Compare page'));
-        compareBtn.href = `/compare?a=${opts.entityType}:${opts.entityId}`;
-        compareBtn.dataset.link = '';
-        header.appendChild(compareBtn);
-    }
+    header.appendChild(actionsWrap);
 
     layout.appendChild(header);
 
@@ -492,6 +498,33 @@ export function createDetailLayout(opts) {
     }
 
     sidebarWrap.appendChild(opts.sidebar);
+
+    if (opts.locations) {
+        const mapGroup = document.createElement('div');
+        mapGroup.className = 'info-group';
+        mapGroup.style.marginTop = 'var(--space-md)';
+        
+        const mapTitle = document.createElement('div');
+        mapTitle.className = 'info-group__title';
+        mapTitle.textContent = t('Map');
+        mapGroup.appendChild(mapTitle);
+
+        const pdbMap = document.createElement('pdb-map');
+        pdbMap.style.display = 'block';
+        pdbMap.style.height = '300px';
+        pdbMap.style.width = '100%';
+        mapGroup.appendChild(pdbMap);
+
+        sidebarWrap.appendChild(mapGroup);
+
+        // Defer location setting until component mounts
+        globalThis.requestAnimationFrame(() => {
+            if (typeof /** @type {any} */ (pdbMap).setLocations === 'function') {
+                /** @type {any} */ (pdbMap).setLocations(opts.locations);
+            }
+        });
+    }
+
     layout.appendChild(sidebarWrap);
 
     // Main

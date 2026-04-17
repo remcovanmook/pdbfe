@@ -224,7 +224,7 @@ const _entity_net = {
     joinColumns: [{ table: "peeringdb_organization", localFk: "org_id", columns: { "name": "org_name" } }],
     relationships: [
         { field: "poc_set", table: "peeringdb_network_contact", fk: "net_id" },
-        { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id" },
+        { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" }
     ],
     _columns: ["id", "asn", "name", "aka", "name_long", "irr_as_set", "website", "social_media", "looking_glass", "route_server", "notes", "notes_private", "info_traffic", "info_ratio", "info_scope", "info_types", "info_prefixes4", "info_prefixes6", "info_unicast", "info_multicast", "info_ipv6", "info_never_via_route_servers", "policy_url", "policy_general", "policy_locations", "policy_ratio", "policy_contracts", "status_dashboard", "rir_status", "rir_status_updated", "org_id", "info_type", "ix_count", "fac_count", "netixlan_updated", "netfac_updated", "poc_updated", "allow_ixp_update", "logo", "created", "updated", "status", "__logo_migrated"],
@@ -282,7 +282,7 @@ const _entity_ix = {
     ],
     joinColumns: [{ table: "peeringdb_organization", localFk: "org_id", columns: { "name": "org_name" } }],
     relationships: [
-        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id" },
+        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" }
     ],
     _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated"],
@@ -319,7 +319,7 @@ const _entity_carrier = {
     ],
     joinColumns: undefined,
     relationships: [
-        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "carrier_id" }
+        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "carrier_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] }
     ],
     _columns: ["id", "name", "aka", "name_long", "website", "social_media", "notes", "org_id", "org_name", "fac_count", "logo", "created", "updated", "status", "__logo_migrated"],
     _jsonColumns: new Set(["social_media"]),
@@ -339,13 +339,13 @@ const _entity_carrierfac = {
     fields: [
         { name: "id", type: "number" },
         { name: "carrier_id", type: "number", foreignKey: "carrier" },
-        { name: "fac_id", type: "number", foreignKey: "fac" },
+        { name: "fac_id", type: "number", foreignKey: "fac", resolve: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } },
         { name: "name", type: "string", queryable: false },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
     ],
-    joinColumns: undefined,
+    joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }],
     relationships: [],
     _columns: ["id", "carrier_id", "fac_id", "name", "created", "updated", "status"],
     _jsonColumns: new Set([]),
@@ -365,7 +365,7 @@ const _entity_ixfac = {
     fields: [
         { name: "id", type: "number" },
         { name: "ix_id", type: "number", foreignKey: "ix", resolve: { "name": "ix_name" } },
-        { name: "fac_id", type: "number", foreignKey: "fac" },
+        { name: "fac_id", type: "number", foreignKey: "fac", resolve: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } },
         { name: "name", type: "string", queryable: false },
         { name: "city", type: "string", queryable: false },
         { name: "country", type: "string", queryable: false },
@@ -373,7 +373,7 @@ const _entity_ixfac = {
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
     ],
-    joinColumns: [{ table: "peeringdb_ix", localFk: "ix_id", columns: { "name": "ix_name" } }],
+    joinColumns: [{ table: "peeringdb_ix", localFk: "ix_id", columns: { "name": "ix_name" } }, { table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }],
     relationships: [],
     _columns: ["id", "ix_id", "fac_id", "name", "city", "country", "created", "updated", "status"],
     _jsonColumns: new Set([]),
@@ -491,7 +491,7 @@ const _entity_netfac = {
         { name: "avail_ethernet", type: "boolean" },
         { name: "avail_atm", type: "boolean" },
         { name: "net_id", type: "number", foreignKey: "net", resolve: { "name": "net_name", "asn": "net_asn" } },
-        { name: "fac_id", type: "number", foreignKey: "fac" },
+        { name: "fac_id", type: "number", foreignKey: "fac", resolve: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } },
         { name: "name", type: "string" },
         { name: "city", type: "string" },
         { name: "country", type: "string" },
@@ -500,7 +500,7 @@ const _entity_netfac = {
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
     ],
-    joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name", "asn": "net_asn" } }],
+    joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name", "asn": "net_asn" } }, { table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }],
     relationships: [],
     _columns: ["id", "avail_sonet", "avail_ethernet", "avail_atm", "net_id", "fac_id", "name", "city", "country", "local_asn", "created", "updated", "status"],
     _jsonColumns: new Set([]),

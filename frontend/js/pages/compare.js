@@ -12,7 +12,7 @@
  * URL: /compare?a={tag}:{id}&b={tag}:{id}
  */
 
-import { fetchCompare, searchWithAsn } from '../api.js';
+import { fetchCompare, searchWithAsn, fetchEntity } from '../api.js';
 import {
     createLoading, createError, createLink, createEntityBadge,
     createStatsBar, createEmptyState, formatSpeed
@@ -122,7 +122,7 @@ function renderSelector(app, initialA, initialB) {
     hint.className = 'detail-header__subtitle';
     hint.style.textAlign = 'center';
     hint.style.marginTop = 'var(--space-md)';
-    hint.textContent = t('Supported: Network ↔ Network, Exchange ↔ Exchange');
+    hint.textContent = t('Supported: Networks, Exchanges, and Facilities');
     wrap.appendChild(hint);
 
     app.replaceChildren(wrap);
@@ -174,7 +174,26 @@ function createEntityInput(label, prefix, initialRef) {
     refInput.id = `${prefix}-ref`;
     if (initialRef) {
         refInput.value = initialRef;
+        const [tag, id] = initialRef.split(':');
         input.value = initialRef;
+        input.disabled = true;
+
+        fetchEntity(tag, id)
+            .then(entity => {
+                if (entity) {
+                    const name = entity.name || initialRef;
+                    input.value = name;
+                    selected.replaceChildren();
+                    selected.appendChild(createEntityBadge(tag));
+                    const desc = document.createElement('span');
+                    desc.textContent = ` ${name}`;
+                    selected.appendChild(desc);
+                }
+            })
+            .catch(() => { /* ignore fetch errors on bootstrap */ })
+            .finally(() => {
+                input.disabled = false;
+            });
     }
     group.appendChild(refInput);
 

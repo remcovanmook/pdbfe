@@ -126,7 +126,7 @@ describe("buildRowQuery", () => {
     it("should apply IN filter with multiple values", () => {
         const filters = [{ field: "id", op: "in", value: "1,5,10" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"id" IN (?, ?, ?)'));
+        assert.ok(result.sql.includes('"id" IN (SELECT value FROM json_each(?))'));
     });
 
     it("should ignore unknown fields", () => {
@@ -262,7 +262,7 @@ describe("buildRowQuery with joinColumns", () => {
     it("should qualify IN filter with table alias", () => {
         const filters = [{ field: "asn", op: "in", value: "13335,8075" }];
         const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('t."asn" IN (?, ?)'));
+        assert.ok(result.sql.includes('t."asn" IN (SELECT value FROM json_each(?))'));
     });
 });
 
@@ -436,8 +436,8 @@ describe("cross-entity filters", () => {
         const netixlan = ENTITIES.netixlan;
         const filters = [{ field: "asn", op: "in", value: "13335,15169", entity: "net" }];
         const result = buildRowQuery(netixlan, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (?, ?))'));
-        assert.deepEqual(result.params.filter(p => typeof p === 'number' && p > 100), [13335, 15169]);
+        assert.ok(result.sql.includes('"net_id" IN (SELECT "id" FROM "peeringdb_network" WHERE "asn" IN (SELECT value FROM json_each(?)))'));
+        assert.deepEqual(result.params.filter(p => typeof p === 'string' && p.includes('13335')), ['[13335,15169]']);
     });
 
     it("should combine cross-entity filter with regular filter", () => {
@@ -622,7 +622,7 @@ describe("buildRowQuery new filter operators", () => {
     it("should apply NOT IN filter", () => {
         const filters = [{ field: "asn", op: "notin", value: "13335,2906" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"asn" NOT IN (?, ?)'));
+        assert.ok(result.sql.includes('"asn" NOT IN (SELECT value FROM json_each(?))'));
     });
 
     it("should apply endswith filter", () => {
