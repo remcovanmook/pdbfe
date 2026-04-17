@@ -203,6 +203,24 @@ if (syncResult.status === 'fulfilled') {
         timeSpan.textContent = prefix + timeText;
         el.replaceChildren(textNode, timeSpan);
         el.title = `${tooltip}\n${isoDate}`;
+
+        // ── Stats ticker — compact entity counts from the same /status data
+        const ticker = document.getElementById('stats-ticker');
+        if (ticker) {
+            /** @type {{label: string, count: number}[]} */
+            const stats = [
+                { label: t('Networks'),    count: entities.net?.row_count || 0 },
+                { label: t('Exchanges'),   count: entities.ix?.row_count || 0 },
+                { label: t('Facilities'),  count: entities.fac?.row_count || 0 },
+                { label: t('Carriers'),    count: entities.carrier?.row_count || 0 },
+                { label: t('Connections to IXPs'), count: entities.netixlan?.row_count || 0 },
+                { label: t('Connections to Facilities'), count: entities.netfac?.row_count || 0 },
+            ];
+            const parts = stats.map(s =>
+                `<span class="stats-ticker__item"><strong>${s.count.toLocaleString()}</strong> ${s.label}</span>`
+            );
+            ticker.innerHTML = parts.join('<span class="stats-ticker__sep">·</span>');
+        }
     }
 }
 

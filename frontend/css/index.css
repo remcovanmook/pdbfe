@@ -256,6 +256,35 @@ body[data-page="home"] .site-logo {
     white-space: nowrap;
 }
 
+/* ── Stats ticker — compact entity counts below header ───────── */
+
+.stats-ticker {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 0.25rem var(--space-md);
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow-x: auto;
+}
+
+.stats-ticker:empty {
+    display: none;
+}
+
+.stats-ticker__item strong {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.stats-ticker__sep {
+    color: var(--border);
+}
+
 .auth-container {
     display: flex;
     align-items: center;
@@ -1103,49 +1132,6 @@ body[data-page="home"] .site-logo {
     color: var(--text-muted);
 }
 
-/* ── Global System Statistics ──────────────────────────────────── */
-
-.global-stats {
-    margin-top: var(--space-xl);
-    padding: var(--space-lg);
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-}
-
-.global-stats__heading {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-muted);
-    margin-bottom: var(--space-md);
-}
-
-.global-stats__list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-sm) var(--space-lg);
-}
-
-.global-stats__item {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-}
-
-.global-stats__count {
-    font-weight: 700;
-    color: var(--text-primary);
-    min-width: 4.5em;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
 
 /* ── Search results page ───────────────────────────────────────── */
 
@@ -1449,10 +1435,6 @@ body[data-page="home"] .site-logo {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .global-stats__list {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
     .stats-bar {
         flex-wrap: wrap;
     }
@@ -1552,10 +1534,6 @@ body[data-page="home"] .site-logo {
 
 @media (max-width: 480px) {
     .recent-updates {
-        grid-template-columns: 1fr;
-    }
-
-    .global-stats__list {
         grid-template-columns: 1fr;
     }
 
