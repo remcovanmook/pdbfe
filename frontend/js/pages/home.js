@@ -8,7 +8,7 @@
  * built with createElement/textContent, not innerHTML.
  */
 
-import { fetchList, fetchCount, fetchEntity } from '../api.js';
+import { fetchList, fetchEntity } from '../api.js';
 import { createLink, createLoading, formatDate, createEntityBadge } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
@@ -181,10 +181,7 @@ export async function renderHome(_params) {
     recentDiv.appendChild(recentBody);
     frag.appendChild(recentDiv);
 
-    // Stats container
-    const statsDiv = document.createElement('div');
-    statsDiv.id = 'global-stats';
-    frag.appendChild(statsDiv);
+
 
     _app.replaceChildren(frag);
 
@@ -195,7 +192,6 @@ export async function renderHome(_params) {
     // Fetch recent updates, stats, and favorites live data in parallel
     const tasks = [
         loadRecentUpdates(),
-        loadGlobalStats(),
     ];
     if (favorites.length > 0) {
         tasks.push(loadFavoritesLiveData(favorites));
@@ -288,57 +284,7 @@ async function loadRecentUpdates() {
     }
 }
 
-/**
- * Fetches global entity counts for all database-backed types and
- * renders them as a statistics list.
- */
-async function loadGlobalStats() {
-    const container = document.getElementById('global-stats');
-    if (!container) return;
 
-    /** @type {Record<string, string>} */
-    const statLabels = {
-        netixlan: 'Connections to Exchanges',
-        netfac: 'Connections to Facilities',
-    };
-    const types = ['ix', 'net', 'fac', 'campus', 'carrier', 'netixlan', 'netfac', 'org']
-        .map(tag => ({ type: tag, label: statLabels[tag] || getLabel(tag) }));
-
-    try {
-        const counts = await Promise.all(
-            types.map(typ => fetchCount(typ.type).catch(() => 0))
-        );
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'global-stats';
-
-        const heading = document.createElement('h3');
-        heading.className = 'global-stats__heading';
-        heading.textContent = t('Global System Statistics');
-        wrapper.appendChild(heading);
-
-        const ul = document.createElement('ul');
-        ul.className = 'global-stats__list';
-
-        for (const [i, typ] of types.entries()) {
-            const li = document.createElement('li');
-            li.className = 'global-stats__item';
-
-            const countSpan = document.createElement('span');
-            countSpan.className = 'global-stats__count';
-            countSpan.textContent = counts[i].toLocaleString();
-            li.appendChild(countSpan);
-
-            li.appendChild(document.createTextNode(' ' + t(typ.label)));
-            ul.appendChild(li);
-        }
-
-        wrapper.appendChild(ul);
-        container.replaceChildren(wrapper);
-    } catch {
-        // Stats are non-critical — fail silently
-    }
-}
 
 /**
  * Fetches live entity data for each favorite and updates the grid.
