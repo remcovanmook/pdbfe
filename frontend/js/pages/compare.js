@@ -89,7 +89,7 @@ function wrapSection(title, tableEl) {
  */
 export async function renderCompare(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
-    document.title = `${t('Compare')} — PDBFE`;
+    document.title = `${t('Compare Infrastructure')} — PDBFE`;
 
     if (params.a && params.b) {
         await renderResults(app, params.a, params.b);
@@ -119,7 +119,7 @@ function renderSelector(app, initialA, initialB) {
 
     const title = document.createElement('span');
     title.className = 'detail-header__title';
-    title.textContent = t('Compare Entities');
+    title.textContent = t('Compare Infrastructure');
     header.appendChild(title);
 
     wrap.appendChild(header);
