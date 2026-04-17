@@ -55,9 +55,9 @@ export async function renderHome(_params) {
     desc1.append(
         'A read-only mirror of the ',
         _extLink('https://www.peeringdb.com', 'PeeringDB'),
-        ' database, synchronised periodically and served from Cloudflare\'s edge network for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or use the ',
-        _extLink('https://www.peeringdb.com/apidocs/', 'API-compatible'),
-        ' endpoints to integrate with your existing tooling.'
+        ' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the ',
+        _extLink('https://www.peeringdb.com/apidocs/', 'PeeringDB-compatible'),
+        ' REST API, a GraphQL endpoint, and an OpenAPI-documented REST API.'
     );
     hero.appendChild(desc1);
 
