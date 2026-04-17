@@ -28,11 +28,15 @@ const OP_MAP = {
 };
 
 /**
- * Converts GraphQL where-args into an array of ParsedFilter objects
- * compatible with the existing query builder.
+ * Interprets a GraphQL 'WhereInput' object and compiles it into a standard `ParsedFilter` array.
  *
- * @param {Record<string, any>} where - GraphQL where input.
- * @returns {ParsedFilter[]} Parsed filter array.
+ * This acts as the translation layer between GraphQL's nested object filter syntax 
+ * (e.g. `{ asn_gt: 100 }`) and the PeeringDB API worker's native query builder. It 
+ * splits operator suffixes from field names and automatically standardizes array injections 
+ * (like `in` or `notin` lists) into comma-separated strings suitable for SQL binding.
+ *
+ * @param {Record<string, any>} where - GraphQL where input derived from query parameters.
+ * @returns {ParsedFilter[]} A compiled array of structural filters mapped to standard equality checks.
  */
 function whereToFilters(where) {
     if (!where) return [];
@@ -75,10 +79,14 @@ function decodeCursor(cursor) {
 }
 
 /**
- * Creates a list resolver for the given entity tag.
+ * Generates a GraphQL collection resolver (`list`) bound to a specific entity natively.
  *
- * @param {string} tag - Entity tag (e.g. "net").
- * @returns {Function} GraphQL resolver function.
+ * This injects the `ENTITIES` registry map inside the resolver closure. When executed,
+ * it bridges GraphQL arguments (limit, skip, filters) seamlessly into `buildRowQuery`. 
+ * It automatically hardcaps unconstrained requests at 250 rows to protect the D1 database.
+ *
+ * @param {string} tag - The unique system identifier for the entity (e.g. "net", "org").
+ * @returns {Function} An asynchronous GraphQL resolver closure executing the SQL builder.
  */
 function listResolver(tag) {
     return async (_parent, args, ctx) => {
@@ -159,11 +167,16 @@ function reverseEdgeResolver(fkField, childTag) {
 }
 
 /**
- * Creates a Relay connection resolver for the given entity tag.
- * Supports forward pagination (after + first) and backward (before + last).
+ * Constructs a Relay-compliant Connection resolver executing bi-directional pagination.
  *
- * @param {string} tag - Entity tag (e.g. "net").
- * @returns {Function} GraphQL resolver function.
+ * Unlike the standard offset resolver, this calculates total bounds and provides opaque
+ * cursors. It leverages two discrete database executions:
+ * 1. A localized `COUNT` subquery to provide the mandatory `totalCount` field.
+ * 2. An execution boundary query evaluating the Base64 parsed `after`/`before` cursors 
+ *    relative to the requested `first`/`last` boundaries to slice page edges.
+ *
+ * @param {string} tag - The unique target entity identifier.
+ * @returns {Function} A GraphQL resolver returning a strict `Connection` root object.
  */
 function connectionResolver(tag) {
     return async (_parent, args, ctx) => {
