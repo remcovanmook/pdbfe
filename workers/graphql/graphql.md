@@ -50,6 +50,19 @@ Unlike traditional GraphQL implementations where schemas are authored by hand, t
 
 The codebase aims for drop-in compatibility with older downstream client expectations like PeeringDB Plus, generating backward compatible aliases (e.g., querying `internetExchanges` which maps natively to the `ix` table). These overrides are defined via the `naming` meta block inside `ENTITY_NAMING` in `parse_django_models.py`.
 
+## Restricted Entities
+
+Entities marked `_restricted: true` in the entity registry (currently only `poc`) have access controls enforced at the resolver level, matching upstream PeeringDB behaviour:
+
+| Resolver | Anonymous Behaviour |
+|----------|-------------------|
+| `listResolver` (e.g. `pocs`) | Returns `[]` unless `where: { visible: "Public" }` is provided. Filter value is forced to `"Public"` to prevent spoofing. |
+| `detailResolver` (e.g. `poc(id: N)`) | Returns `null`. Single-row lookups cannot be filtered by visibility. |
+| `reverseEdgeResolver` (e.g. `Network.pointsOfContact`) | Injects `visible=Public` filter automatically, matching the API worker's depth-expansion behaviour. |
+| `connectionResolver` (e.g. `pocsConnection`) | Returns empty connection unless `where: { visible: "Public" }` is provided. |
+
+Authenticated callers receive all visibility levels without restriction.
+
 ## Caching Strategy
 
 ### SHA-256 Query Hashing

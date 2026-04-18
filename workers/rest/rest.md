@@ -63,6 +63,22 @@ This avoids duplication across API surfaces and guarantees performance parity.
 
 These lookups use the same SWR caching pipeline and support `limit` and `skip` pagination.
 
+## Restricted Entities
+
+Entities marked `_restricted: true` in the entity registry (currently only `poc`) have access controls matching upstream PeeringDB:
+
+| Path | Anonymous Behaviour |
+|------|-------------------|
+| `GET /v1/poc` | Returns `{"data":[],"meta":{}}` (empty) |
+| `GET /v1/poc?visible=Public` | Returns public contacts |
+| `GET /v1/poc/{id}` | Returns 404 |
+| `GET /v1/network/1/contacts` (reverse edge) | Injects `visible=Public` filter, returns only public contacts |
+| `GET /v1/poc/1/network` (forward FK) | Returns empty (can't filter by visibility on single-record lookup) |
+
+For direct access, the router checks for an explicit `visible=Public` filter in the query string. If present, the filter value is forced to `"Public"` to prevent spoofing. For sub-resource reverse edges, the `anonFilter` is injected automatically. Forward FK lookups on restricted entities are blocked entirely.
+
+Authenticated callers receive all visibility levels without restriction.
+
 ## Specification and Visual Documentation
 
 ### OpenAPI Specification
