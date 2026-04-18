@@ -11,7 +11,6 @@ import {
     purgeRestCache,
     getRestCache,
     withRestSWR,
-    REST_TTL,
 } from '../../../rest/cache.js';
 
 // ── Mock ExecutionContext ────────────────────────────────────────────────────

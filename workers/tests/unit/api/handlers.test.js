@@ -16,7 +16,7 @@ import { handleList } from '../../../api/handlers/list.js';
 import { handleDetail } from '../../../api/handlers/detail.js';
 import { handleAsSet } from '../../../api/handlers/as_set.js';
 import { handleNotImplemented } from '../../../api/handlers/shared.js';
-import { getEntityCache, purgeAllCaches } from '../../../api/cache.js';
+import { purgeAllCaches } from '../../../api/cache.js';
 
 // ── Shared test utilities ────────────────────────────────────────────────────
 

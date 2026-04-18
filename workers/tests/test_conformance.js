@@ -136,7 +136,7 @@ async function fetchBoth(path, t) {
     if (t) {
         // Extract server-side metrics from mirror response headers
         const timer = mirror.headers.get('X-Timer') || '';
-        const veMatch = timer.match(/VE(\d+)/);
+        const veMatch = /VE(\d+)/.exec(timer);
         const ve = veMatch ? veMatch[1] + 'ms' : '–';
         const cache = mirror.headers.get('X-Cache') || '–';
         const hits = mirror.headers.get('X-Cache-Hits') || '0';

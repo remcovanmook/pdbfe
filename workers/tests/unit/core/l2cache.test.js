@@ -7,7 +7,7 @@
  * graceful degradation path.
  */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { initL2, getL2, putL2 } from '../../../core/l2cache.js';
 

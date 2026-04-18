@@ -12,8 +12,6 @@ import {
     getGqlCacheStats,
     purgeGqlCache,
     getGqlCache,
-    GQL_TTL,
-    GQL_EMPTY_SENTINEL,
     withGqlSWR,
 } from '../../../graphql/cache.js';
 
