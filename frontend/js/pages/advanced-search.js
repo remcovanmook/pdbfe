@@ -94,17 +94,7 @@ const ENUMS = {
         },
     ],
     ix: [
-        {
-            field: 'region_continent', label: 'Continental Region', options: [
-                { value: 'North America', label: 'North America' },
-                { value: 'Asia Pacific', label: 'Asia Pacific' },
-                { value: 'Europe', label: 'Europe' },
-                { value: 'South America', label: 'South America' },
-                { value: 'Africa', label: 'Africa' },
-                { value: 'Australia', label: 'Australia' },
-                { value: 'Middle East', label: 'Middle East' },
-            ]
-        },
+        { field: 'region_continent', label: 'Continental Region', options: null },
         {
             field: 'service_level', label: 'Service Level', options: [
                 { value: 'Not Disclosed', label: 'Not Disclosed' },
@@ -124,17 +114,7 @@ const ENUMS = {
         },
     ],
     fac: [
-        {
-            field: 'region_continent', label: 'Continental Region', options: [
-                { value: 'North America', label: 'North America' },
-                { value: 'Asia Pacific', label: 'Asia Pacific' },
-                { value: 'Europe', label: 'Europe' },
-                { value: 'South America', label: 'South America' },
-                { value: 'Africa', label: 'Africa' },
-                { value: 'Australia', label: 'Australia' },
-                { value: 'Middle East', label: 'Middle East' },
-            ]
-        },
+        { field: 'region_continent', label: 'Continental Region', options: null },
         {
             field: 'property', label: 'Property', options: [
                 { value: 'Owner', label: 'Owner' },
@@ -240,7 +220,10 @@ const TABS = [
 /** Country chip-select options, derived from ISO-3166 list. */
 const COUNTRY_OPTIONS = COUNTRIES.map(c => ({ value: c.code, label: `${c.name} (${c.code})` }));
 
-/** Region chip-select options, shared across ix/fac. */
+/**
+ * Region chip-select options, shared across ix/fac.
+ * ENUMS entries with `options: null` for region_continent resolve to this.
+ */
 const REGION_OPTIONS = [
     { value: 'North America', label: 'North America' },
     { value: 'Asia Pacific', label: 'Asia Pacific' },
@@ -440,27 +423,22 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
         fieldGetters.set(tf.field, getValue);
     }
 
-    // Country chip-select
+
+
+    // Enum chip-selects (region_continent entries with null options resolve to REGION_OPTIONS)
+    const enums = ENUMS[tabKey] || [];
+    for (const enumDef of enums) {
+        const options = enumDef.options || REGION_OPTIONS;
+        const { el, chipSelect } = createChipField(enumDef.field, t(enumDef.label), options, params[`${enumDef.field}__in`]);
+        grid.appendChild(el);
+        fieldGetters.set(`${enumDef.field}__in`, () => chipSelect.getValues());
+    }
+
+    // Country chip-select (separate from enums — uses typeahead-style search)
     if (tabDef.hasCountry) {
         const { el, chipSelect } = createChipField('country', t('Country'), COUNTRY_OPTIONS, params.country__in);
         grid.appendChild(el);
         fieldGetters.set('country__in', () => chipSelect.getValues());
-    }
-
-    // Region chip-select (for ix and fac)
-    if (ENUMS[tabKey]?.some(e => e.field === 'region_continent')) {
-        const { el, chipSelect } = createChipField('region_continent', t('Continental Region'), REGION_OPTIONS, params.region_continent__in);
-        grid.appendChild(el);
-        fieldGetters.set('region_continent__in', () => chipSelect.getValues());
-    }
-
-    // Enum chip-selects
-    const enums = ENUMS[tabKey] || [];
-    for (const enumDef of enums) {
-        if (enumDef.field === 'region_continent') continue; // Already handled above
-        const { el, chipSelect } = createChipField(enumDef.field, t(enumDef.label), enumDef.options, params[`${enumDef.field}__in`]);
-        grid.appendChild(el);
-        fieldGetters.set(`${enumDef.field}__in`, () => chipSelect.getValues());
     }
 
     // Boolean tri-state fields
@@ -509,6 +487,25 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
 // ── Field builders ──────────────────────────────────────────────────────
 
 /**
+ * Creates the shared wrapper + label structure for form fields.
+ *
+ * @param {string} field - API field name (used for label `for` attribute).
+ * @param {string} label - Display label.
+ * @param {boolean} [linkFor] - Whether to set the label's `for` attribute.
+ * @returns {HTMLElement} The wrapper element with a label already appended.
+ */
+function createFieldWrapper(field, label, linkFor = true) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'form-field';
+    const lbl = document.createElement('label');
+    lbl.className = 'form-label';
+    lbl.textContent = t(label);
+    if (linkFor) lbl.setAttribute('for', `adv-${field}`);
+    wrapper.appendChild(lbl);
+    return wrapper;
+}
+
+/**
  * Creates a labelled text input field.
  *
  * @param {string} field - API field name.
@@ -518,15 +515,7 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
  * @returns {{el: HTMLElement, getValue: () => string}} Field element and value getter.
  */
 function createTextField(field, label, placeholder, initialValue) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'form-field';
-
-    const lbl = document.createElement('label');
-    lbl.className = 'form-label';
-    lbl.textContent = t(label);
-    lbl.setAttribute('for', `adv-${field}`);
-    wrapper.appendChild(lbl);
-
+    const wrapper = createFieldWrapper(field, label);
     const input = document.createElement('input');
     input.type = 'text';
     input.id = `adv-${field}`;
@@ -534,7 +523,6 @@ function createTextField(field, label, placeholder, initialValue) {
     input.placeholder = placeholder || '';
     if (initialValue) input.value = initialValue;
     wrapper.appendChild(input);
-
     return { el: wrapper, getValue: () => input.value.trim() };
 }
 
@@ -548,20 +536,10 @@ function createTextField(field, label, placeholder, initialValue) {
  * @returns {{el: HTMLElement, chipSelect: ChipSelect}} Field element and component.
  */
 function createChipField(field, label, options, initialCsv) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'form-field';
-
-    const lbl = document.createElement('label');
-    lbl.className = 'form-label';
-    lbl.textContent = t(label);
-    wrapper.appendChild(lbl);
-
+    const wrapper = createFieldWrapper(field, label, false);
     const initial = initialCsv ? initialCsv.split(',').filter(Boolean) : [];
     const chipSelect = new ChipSelect({ options, initial, placeholder: t('Select...') });
-
-    // Store instance reference on DOM element for reset
     /** @type {any} */ (chipSelect.el)._chipSelectInstance = chipSelect;
-
     wrapper.appendChild(chipSelect.el);
     return { el: wrapper, chipSelect };
 }
@@ -575,15 +553,7 @@ function createChipField(field, label, options, initialCsv) {
  * @returns {{el: HTMLElement, getValue: () => string}} Field element and value getter.
  */
 function createBoolField(field, label, initialValue) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'form-field';
-
-    const lbl = document.createElement('label');
-    lbl.className = 'form-label';
-    lbl.textContent = t(label);
-    lbl.setAttribute('for', `adv-${field}`);
-    wrapper.appendChild(lbl);
-
+    const wrapper = createFieldWrapper(field, label);
     const select = document.createElement('select');
     select.id = `adv-${field}`;
     select.className = 'form-select';
@@ -691,44 +661,15 @@ function renderAsnResults(wrap, results) {
     wrap.replaceChildren(summary);
 
     if (found.length > 0) {
-        const table = document.createElement('table');
-        table.className = 'data-table';
-
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        for (const col of ['ASN', 'Name', 'Network Type', 'Policy', 'IXPs', 'Facilities']) {
-            const th = document.createElement('th');
-            th.textContent = t(col);
-            headerRow.appendChild(th);
-        }
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        const tbody = document.createElement('tbody');
-        for (const r of found) {
-            const tr = document.createElement('tr');
-            const cells = [
-                `AS${r.net.asn}`,
-                null, // Name with link — handled separately
-                r.net.info_type || '—',
-                r.net.policy_general || '—',
-                String(r.net.ix_count ?? 0),
-                String(r.net.fac_count ?? 0),
-            ];
-
-            for (let i = 0; i < cells.length; i++) {
-                const td = document.createElement('td');
-                if (i === 1) {
-                    td.appendChild(createLink('net', r.net.id, r.net.name));
-                } else {
-                    td.textContent = cells[i] || '';
-                }
-                tr.appendChild(td);
-            }
-            tbody.appendChild(tr);
-        }
-        table.appendChild(tbody);
-        wrap.appendChild(table);
+        const columns = [
+            { label: 'ASN', render: (/** @type {any} */ r) => `AS${r.net.asn}` },
+            { label: 'Name', render: (/** @type {any} */ r) => createLink('net', r.net.id, r.net.name) },
+            { label: 'Network Type', render: (/** @type {any} */ r) => r.net.info_type || '—' },
+            { label: 'Policy', render: (/** @type {any} */ r) => r.net.policy_general || '—' },
+            { label: 'IXPs', render: (/** @type {any} */ r) => String(r.net.ix_count ?? 0) },
+            { label: 'Facilities', render: (/** @type {any} */ r) => String(r.net.fac_count ?? 0) },
+        ];
+        wrap.appendChild(buildTable(columns, found));
     }
 
     if (missing.length > 0) {
@@ -804,6 +745,54 @@ async function executeSearch(entityType, fieldGetters, resultsWrap) {
     }
 }
 
+// ── Table builder ───────────────────────────────────────────────────────
+
+/**
+ * Builds a `<table>` element from column definitions and row data.
+ * Each column has a label (used for the header) and a render function
+ * that returns either a string (set as textContent) or a DOM node
+ * (appended as a child).
+ *
+ * Shared by renderResults and renderAsnResults to avoid duplicated
+ * thead/tbody construction boilerplate.
+ *
+ * @param {{label: string, render: (item: any) => string|Node}[]} columns
+ * @param {any[]} rows
+ * @returns {HTMLTableElement}
+ */
+function buildTable(columns, rows) {
+    const table = document.createElement('table');
+    table.className = 'data-table';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (const col of columns) {
+        const th = document.createElement('th');
+        th.textContent = t(col.label);
+        headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const item of rows) {
+        const tr = document.createElement('tr');
+        for (const col of columns) {
+            const td = document.createElement('td');
+            const val = col.render(item);
+            if (val instanceof Node) {
+                td.appendChild(val);
+            } else {
+                td.textContent = val;
+            }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+}
+
 // ── Results rendering ───────────────────────────────────────────────────
 
 /**
@@ -819,7 +808,7 @@ function renderResults(entityType, results, wrap) {
         return;
     }
 
-    const columns = RESULT_COLUMNS[entityType] || [{ field: 'name', label: 'Name', link: true }];
+    const colDefs = RESULT_COLUMNS[entityType] || [{ field: 'name', label: 'Name', link: true }];
 
     const summary = document.createElement('p');
     summary.className = 'adv-search__summary';
@@ -828,37 +817,18 @@ function renderResults(entityType, results, wrap) {
         summary.textContent += ` (${t('limit reached — refine your search')})`;
     }
 
-    const table = document.createElement('table');
-    table.className = 'data-table';
-
-    // Header
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    for (const col of columns) {
-        const th = document.createElement('th');
-        th.textContent = t(col.label);
-        headerRow.appendChild(th);
-    }
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    // Body
-    const tbody = document.createElement('tbody');
-    for (const item of results) {
-        const tr = document.createElement('tr');
-        for (const col of columns) {
-            const td = document.createElement('td');
-            if (col.link && col.field === 'name') {
-                td.appendChild(createLink(entityType, item.id, item.name || '—'));
-            } else {
+    // Convert RESULT_COLUMNS format to buildTable column format
+    const columns = colDefs.map(col => ({
+        label: col.label,
+        render: col.link && col.field === 'name'
+            ? (/** @type {any} */ item) => createLink(entityType, item.id, item.name || '—')
+            : (/** @type {any} */ item) => {
                 const val = item[col.field];
-                td.textContent = val !== null && val !== undefined && val !== '' ? String(val) : '—';
-            }
-            tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
+                return val !== null && val !== undefined && val !== '' ? String(val) : '—';
+            },
+    }));
+
+    const table = buildTable(columns, results);
 
     // CSV export
     const exportWrap = document.createElement('div');
@@ -869,7 +839,7 @@ function renderResults(entityType, results, wrap) {
     csvBtn.className = 'btn btn--secondary';
     csvBtn.textContent = t('Export CSV');
     csvBtn.addEventListener('click', () => {
-        exportCsv(entityType, columns, results);
+        exportCsv(entityType, colDefs, results);
     });
     exportWrap.appendChild(csvBtn);
 
