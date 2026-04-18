@@ -69,7 +69,6 @@ const NO_D1_FILES = [
     'core/http.js',
     'core/utils.js',
     'api/cache.js',
-    'api/l2cache.js',
     'graphql/cache.js',
     'graphql/handlers/static.js',
     'rest/cache.js',
