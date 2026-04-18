@@ -9,7 +9,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    normaliseCacheKey,
     getCacheStats,
     purgeAllCaches,
     getEntityCache,
@@ -18,6 +17,7 @@ import {
     COUNT_TTL,
     NEGATIVE_TTL,
 } from '../../../api/cache.js';
+import { normaliseCacheKey } from '../../../core/cache.js';
 
 // ── normaliseCacheKey ────────────────────────────────────────────────────────
 

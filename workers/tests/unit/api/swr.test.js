@@ -8,10 +8,9 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { withEdgeSWR } from '../../../api/swr.js';
+import { withEdgeSWR, getEntityCache, NEGATIVE_TTL } from '../../../api/cache.js';
+import { EMPTY_ENVELOPE } from '../../../core/pipeline.js';
 import { LRUCache } from '../../../core/cache.js';
-import { getEntityCache, NEGATIVE_TTL } from '../../../api/cache.js';
-import { EMPTY_ENVELOPE } from '../../../api/pipeline.js';
 
 /**
  * Creates a minimal mock ExecutionContext that captures waitUntil calls.
@@ -77,7 +76,7 @@ describe('withEdgeSWR', () => {
         assert.notStrictEqual(result.buf, null);
 
         // Should have fired a background refresh via ctx.waitUntil
-        assert.equal(waitUntilCalls.length, 1, 'should fire exactly one background refresh');
+        assert.ok(waitUntilCalls.length >= 1, 'should fire background refresh (+ L2 write-back)');
 
         // Wait for background refresh to complete
         await waitUntilCalls[0];
@@ -224,7 +223,7 @@ describe('withEdgeSWR', () => {
         );
 
         assert.equal(result.tier, 'L1');
-        assert.equal(waitUntilCalls.length, 1, 'should fire SWR with custom staleMs');
+        assert.ok(waitUntilCalls.length >= 1, 'should fire SWR with custom staleMs');
 
         await waitUntilCalls[0];
 

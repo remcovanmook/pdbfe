@@ -132,18 +132,24 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
 
     const def = rels.get(relation);
     if (!def) {
-        const available = [...rels.keys()].join(', ');
+        const available = [...rels.keys()].join(', '); // ap-ok: error path only, not per-request
         return jsonError(404, `Unknown relation '${relation}' on ${sourceTag}. Available: ${available}`);
     }
 
     const targetEntity = ENTITIES[def.targetTag];
 
-    // Restricted entities (poc) are empty for anonymous callers
-    if (!authenticated && targetEntity._restricted) {
-        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
-    }
-
     const { filters, limit, skip } = parseQueryFilters(queryString);
+
+    // Restricted entities (poc): for anonymous callers, inject the
+    // anonFilter (visible=Public) on reverse edges and block forward
+    // FK lookups (single-record, can't filter by visibility).
+    if (!authenticated && targetEntity._restricted) {
+        const af = targetEntity._anonFilter;
+        if (def.direction === 'forward' || !af) {
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
+        }
+        filters.push({ field: af.field, op: 'eq', value: af.value });
+    }
 
     if (def.direction === 'forward') {
         return handleForwardFK(rc.db, sourceTag, sourceId, def, hResponse);
@@ -187,7 +193,7 @@ async function handleForwardFK(db, sourceTag, sourceId, def, hResponse) {
     const tgtResult = await db.prepare(tgtSql).bind(...tgtParams).all();
 
     const data = tgtResult.results || [];
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse });
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
 }
 
 /**
@@ -206,7 +212,7 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
     const targetEntity = ENTITIES[def.targetTag];
     const filters = [
         { field: def.fkField, op: 'eq', value: String(parentId) },
-        ...extraFilters,
+        ...extraFilters, // ap-ok: sub-resource cold path, filter merge
     ];
     const opts = {
         depth: 0,
@@ -220,5 +226,5 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
     const result = await db.prepare(sql).bind(...params).all();
     const data = result.results || [];
 
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse });
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
 }

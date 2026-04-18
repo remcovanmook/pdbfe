@@ -429,6 +429,37 @@ export async function removeFavorite(entityType, entityId) {
 }
 
 /**
+ * Reorders the in-memory favorites list to match the given key order.
+ * Each key is a "{entity_type}:{entity_id}" string.
+ * For anonymous users, the new order is persisted to localStorage.
+ * For authenticated users, order is local-only (server doesn't track order).
+ *
+ * @param {string[]} orderedKeys - Array of "type:id" strings in the desired order.
+ */
+export function reorderFavorites(orderedKeys) {
+    /** @type {Map<string, typeof _favoritesList[0]>} */
+    const byKey = new Map();
+    for (const f of _favoritesList) {
+        byKey.set(`${f.entity_type}:${f.entity_id}`, f);
+    }
+
+    /** @type {typeof _favoritesList} */
+    const reordered = [];
+    for (const key of orderedKeys) {
+        const entry = byKey.get(key);
+        if (entry) reordered.push(entry);
+    }
+    // Append any entries not in orderedKeys (defensive)
+    for (const f of _favoritesList) {
+        const key = `${f.entity_type}:${f.entity_id}`;
+        if (!orderedKeys.includes(key)) reordered.push(f);
+    }
+
+    _favoritesList = reordered;
+    if (!_cachedSid) _writeLocalFavorites();
+}
+
+/**
  * Logs the user out by clearing the local session and redirecting
  * to the auth worker's logout endpoint (which deletes the KV entry).
  * Server-side favorites remain in D1 for the next login.
@@ -621,31 +652,29 @@ function renderAuthUI() {
     if (!container) return;
 
     if (_cachedUser) {
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'auth-user';
-        nameSpan.textContent = _cachedUser.given_name || _cachedUser.name;
-
-        const accountLink = document.createElement('a');
-        accountLink.href = '/account';
-        accountLink.className = 'auth-link';
-        accountLink.dataset.link = '';
-        accountLink.textContent = t('Account');
+        // Clickable username with person icon → links to /account
+        const userLink = document.createElement('a');
+        userLink.href = '/account';
+        userLink.dataset.link = '';
+        userLink.className = 'header-nav-link';
+        userLink.title = t('Account');
+        userLink.textContent = '👤 ' + (_cachedUser.given_name || _cachedUser.name);
 
         const logoutLink = document.createElement('a');
         logoutLink.href = '#';
-        logoutLink.className = 'auth-link';
-        logoutLink.textContent = t('Sign out');
+        logoutLink.className = 'header-nav-link';
+        logoutLink.textContent = '⏻ ' + t('Sign out');
         logoutLink.addEventListener('click', (e) => {
             e.preventDefault();
             logout();
         });
 
-        container.replaceChildren(nameSpan, accountLink, logoutLink);
+        container.replaceChildren(userLink, logoutLink);
     } else {
         const loginLink = document.createElement('a');
         loginLink.href = `${AUTH_ORIGIN}/auth/login`;
-        loginLink.className = 'auth-link';
-        loginLink.textContent = t('Sign in with PeeringDB');
+        loginLink.className = 'header-nav-link';
+        loginLink.textContent = '🔑 ' + t('Sign in');
 
         container.replaceChildren(loginLink);
     }

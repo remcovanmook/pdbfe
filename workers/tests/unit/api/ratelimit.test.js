@@ -6,7 +6,18 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit } from '../../../api/ratelimit.js';
+import { createRateLimiter, normaliseIP } from '../../../core/ratelimit.js';
+
+/**
+ * Create a rate limiter instance with API worker thresholds.
+ */
+const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
+    slots: 4000,
+    maxBytes: 1024 * 1024,
+    windowMs: 60_000,
+    limitAnon: 60,
+    limitAuth: 600,
+});
 
 /**
  * Reset rate limiter state between tests to prevent cross-contamination.

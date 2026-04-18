@@ -18,6 +18,8 @@ import { renderAbout } from './pages/about.js';
 import { renderAsn } from './pages/asn.js';
 import { renderAccount } from './pages/account.js';
 import { renderCompare } from './pages/compare.js';
+import { renderAdvancedSearch } from './pages/advanced-search.js';
+import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
@@ -46,6 +48,8 @@ addRoute('/asn/:asn', renderAsn);
 addRoute('/account', renderAccount);
 addRoute('/about', renderAbout);
 addRoute('/compare', renderCompare);
+addRoute('/advanced_search', renderAdvancedSearch);
+addRoute('/favorites', renderFavorites);
 
 // Expose navigate for the homepage search box
 globalThis.__router = { navigate };
@@ -199,6 +203,39 @@ if (syncResult.status === 'fulfilled') {
         timeSpan.textContent = prefix + timeText;
         el.replaceChildren(textNode, timeSpan);
         el.title = `${tooltip}\n${isoDate}`;
+
+        // ── Stats ticker — compact entity counts from the same /status data
+        const ticker = document.getElementById('stats-ticker');
+        if (ticker) {
+            /** @type {{label: string, count: number}[]} */
+            const stats = [
+                { label: t('Networks'),    count: entities.net?.row_count || 0 },
+                { label: t('Exchanges'),   count: entities.ix?.row_count || 0 },
+                { label: t('Facilities'),  count: entities.fac?.row_count || 0 },
+                { label: t('Campuses'),    count: entities.campus?.row_count || 0 },
+                { label: t('Carriers'),    count: entities.carrier?.row_count || 0 },
+                { label: t('Organizations'), count: entities.org?.row_count || 0 },
+                { label: t('Connections to IXPs'), count: entities.netixlan?.row_count || 0 },
+                { label: t('Connections to Facilities'), count: entities.netfac?.row_count || 0 },
+            ];
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < stats.length; i++) {
+                if (i > 0) {
+                    const sep = document.createElement('span');
+                    sep.className = 'stats-ticker__sep';
+                    sep.textContent = '·';
+                    fragment.appendChild(sep);
+                }
+                const item = document.createElement('span');
+                item.className = 'stats-ticker__item';
+                const strong = document.createElement('strong');
+                strong.textContent = stats[i].count.toLocaleString();
+                item.appendChild(strong);
+                item.appendChild(document.createTextNode(' ' + stats[i].label));
+                fragment.appendChild(item);
+            }
+            ticker.replaceChildren(fragment);
+        }
     }
 }
 

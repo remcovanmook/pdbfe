@@ -6,9 +6,9 @@
  * from the extracted entity definitions.
  *
  * Architecture:
- *   - graphql-yoga handles the HTTP layer (POST parsing)
- *   - Browser landing page: frontend/api/graphql.html (imported at bundle time)
- *   - Resolvers use the shared query builder from workers/api/query.js
+ *   - handlers/query.js   — POST caching via SWR + yoga execution
+ *   - handlers/static.js  — GraphiQL landing page + font assets
+ *   - cache.js            — LRU cache, cache key generation, SWR wrapper
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
  *   - L2 cache via core/l2cache.js with SHA-256 hashed keys
@@ -16,9 +16,6 @@
  * Route: graphql.pdbfe.dev/*
  */
 
-import { createSchema, createYoga } from 'graphql-yoga';
-import { typeDefs } from '../../extracted/graphql-typedefs.js';
-import { resolvers } from '../../extracted/graphql-resolvers.js';
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
@@ -26,16 +23,8 @@ import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
-import GRAPHIQL_HTML from '../../frontend/api/graphql.html';
-import INTER_CSS from '../../frontend/third_party/inter/inter.css';
-import INTER_LATIN from '../../frontend/third_party/inter/inter-latin.woff2';
-import INTER_LATIN_EXT from '../../frontend/third_party/inter/inter-latin-ext.woff2';
-
-const STATIC_ASSETS = Object.freeze({
-    'third_party/inter/inter.css': { buf: INTER_CSS, type: 'text/css; charset=utf-8' },
-    'third_party/inter/inter-latin.woff2': { buf: INTER_LATIN, type: 'font/woff2' },
-    'third_party/inter/inter-latin-ext.woff2': { buf: INTER_LATIN_EXT, type: 'font/woff2' },
-});
+import { serveStaticAsset } from './handlers/static.js';
+import { handleQuery, handleUncached } from './handlers/query.js';
 
 /**
  * Rate limiter instance for GraphQL requests.
@@ -50,51 +39,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
     limitAuth: 300,
 });
 
-/** Pre-built headers for the GraphiQL HTML page. */
-const H_GRAPHIQL = Object.freeze({
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'public, max-age=3600',
-});
-
-/**
- * Lazily initialised graphql-yoga instance.
- * Created on first request to avoid cold-start overhead when the
- * isolate is recycled. Module-scoped singleton pattern.
- * @type {ReturnType<typeof createYoga>|null}
- */
-let _yoga = null;
-
-/**
- * Returns the graphql-yoga instance, creating it on first call.
- * The schema is compiled once and reused for the isolate lifetime.
- * GraphiQL is disabled — we serve our own branded page instead.
- *
- * @returns {ReturnType<typeof createYoga>} The yoga instance.
- */
-function getYoga() {
-    if (!_yoga) {
-        _yoga = createYoga({
-            schema: createSchema({ typeDefs, resolvers }),
-            graphiql: false,
-            landingPage: false,
-            graphqlEndpoint: '*',
-        });
-    }
-    return _yoga;
-}
-
-/**
- * Checks whether a request is a browser navigation (GET with Accept: text/html).
- *
- * @param {Request} request - The inbound request.
- * @returns {boolean} True if this looks like a browser navigation.
- */
-function isBrowserGet(request) {
-    if (request.method !== 'GET') return false;
-    const accept = request.headers.get('Accept') || '';
-    return accept.includes('text/html');
-}
-
 /**
  * Handles incoming requests to the GraphQL worker.
  *
@@ -102,10 +46,10 @@ function isBrowserGet(request) {
  *   1. L2 cache initialisation (needs origin URL for key prefix)
  *   2. CORS preflight handling
  *   3. Admin endpoints (health, robots.txt, cache stats)
- *   4. Browser GET → branded GraphiQL page
+ *   4. Static assets (GraphiQL, fonts)
  *   5. Auth resolution
  *   6. Rate limiting
- *   7. Delegate to graphql-yoga
+ *   7. Delegate to query handler (POST) or uncached yoga (GET/HEAD)
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
@@ -140,24 +84,9 @@ async function handleRequest(request, env, ctx) {
     });
     if (adminResponse) return adminResponse;
 
-    // Static assets (CSS/Font bundles for standalone UI)
-    if (STATIC_ASSETS[rawPath]) {
-        const asset = STATIC_ASSETS[rawPath];
-        return new Response(asset.buf, {
-            status: 200,
-            headers: {
-                'Content-Type': asset.type,
-                'Cache-Control': 'public, max-age=31536000, immutable',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
-    }
-
-    // Browser navigation → branded GraphiQL page
-    // Matches both root (graphql.pdbfe.dev/) and path-based route (api.pdbfe.dev/graphql)
-    if ((rawPath === '' || rawPath === 'graphql') && isBrowserGet(request)) {
-        return new Response(GRAPHIQL_HTML, { status: 200, headers: H_GRAPHIQL });
-    }
+    // Static assets (GraphiQL page, CSS/Font bundles)
+    const staticResponse = serveStaticAsset(request, rawPath);
+    if (staticResponse) return staticResponse;
 
     // Auth resolution
     const { authenticated, identity, rejection } = await resolveAuth(request, env);
@@ -171,9 +100,12 @@ async function handleRequest(request, env, ctx) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
-    // Delegate to graphql-yoga with D1 and auth context
-    const yoga = getYoga();
-    return yoga.fetch(request, { db, authenticated });
+    // POST → cached query pipeline (returns null on negative cache bypass)
+    const cached = await handleQuery(request, db, ctx, authenticated);
+    if (cached) return cached;
+
+    // Fallback: uncached yoga for non-POST, HEAD, or negative-cache bypass
+    return handleUncached(request, db, authenticated);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-graphql');

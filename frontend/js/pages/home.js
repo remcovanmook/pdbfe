@@ -8,7 +8,7 @@
  * built with createElement/textContent, not innerHTML.
  */
 
-import { fetchList, fetchCount, fetchEntity } from '../api.js';
+import { fetchList, fetchEntity } from '../api.js';
 import { createLink, createLoading, formatDate, createEntityBadge } from '../render.js';
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
@@ -53,23 +53,48 @@ export async function renderHome(_params) {
     const desc1 = document.createElement('p');
     desc1.className = 'home-hero__desc';
     desc1.append(
-        'This is a read-only mirror of the ',
+        'A read-only mirror of the ',
         _extLink('https://www.peeringdb.com', 'PeeringDB'),
-        ' database. The data is synchronised periodically and served from edge locations for low-latency lookups. All data is subject to the PeeringDB ',
-        _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'),
+        ' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the ',
+        _extLink('https://www.peeringdb.com/apidocs/', 'PeeringDB-compatible'),
+        ' REST API, a ',
+        _extLink('https://graphql.pdbfe.dev/', 'GraphQL endpoint'),
+        ', and an ',
+        _extLink('https://rest.pdbfe.dev/', 'OpenAPI-documented REST API'),
         '.'
     );
     hero.appendChild(desc1);
 
     const desc2 = document.createElement('p');
     desc2.className = 'home-hero__desc';
-    desc2.append('Learn more ');
+    desc2.append(
+        'Features include ',
+    );
+    const advLink = document.createElement('a');
+    advLink.href = '/advanced_search';
+    advLink.dataset.link = '';
+    advLink.textContent = 'advanced search';
+    const cmpLink = document.createElement('a');
+    cmpLink.href = '/compare';
+    cmpLink.dataset.link = '';
+    cmpLink.textContent = 'infrastructure comparison';
+    desc2.append(advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about.');
+    hero.appendChild(desc2);
+
+    const desc2b = document.createElement('p');
+    desc2b.className = 'home-hero__desc';
+    desc2b.append('All data is subject to the PeeringDB ', _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
+    hero.appendChild(desc2b);
+
+    const desc3 = document.createElement('p');
+    desc3.className = 'home-hero__desc';
+    desc3.append('Learn more ');
     const aboutLink = document.createElement('a');
     aboutLink.href = '/about';
     aboutLink.dataset.link = '';
     aboutLink.textContent = 'about this mirror';
-    desc2.append(aboutLink, '.');
-    hero.appendChild(desc2);
+    desc3.append(aboutLink, '.');
+    hero.appendChild(desc3);
 
     homeTop.appendChild(hero);
 
@@ -93,17 +118,18 @@ export async function renderHome(_params) {
     searchDiv.appendChild(searchWrapper);
     rightCol.appendChild(searchDiv);
 
-    // Favorites section — shows for any user with favorites
-    // (anonymous: localStorage, authenticated: D1)
+    // Favorites section — always visible; links to /favorites management page
     const favorites = getFavorites();
-    if (favorites.length > 0) {
-        const favsSection = document.createElement('div');
-        favsSection.className = 'home-favorites';
-        const favsHeading = document.createElement('h2');
-        favsHeading.className = 'home-recent__heading';
-        favsHeading.textContent = t('Your Favorites');
-        favsSection.appendChild(favsHeading);
+    const favsSection = document.createElement('div');
+    favsSection.className = 'home-favorites';
+    const favsHeading = document.createElement('a');
+    favsHeading.href = '/favorites';
+    favsHeading.dataset.link = '';
+    favsHeading.className = 'home-recent__heading home-recent__heading--link';
+    favsHeading.textContent = '★ ' + t('Your Favorites');
+    favsSection.appendChild(favsHeading);
 
+    if (favorites.length > 0) {
         const favsGrid = document.createElement('div');
         favsGrid.className = 'favorites-grid';
         favsGrid.id = 'home-favorites-grid';
@@ -129,35 +155,14 @@ export async function renderHome(_params) {
         }
 
         favsSection.appendChild(favsGrid);
-        rightCol.appendChild(favsSection);
+    } else {
+        const hint = document.createElement('p');
+        hint.className = 'home-hero__desc';
+        hint.style.fontSize = '0.8125rem';
+        hint.textContent = t('Use the ★ on any entity page to add favorites.');
+        favsSection.appendChild(hint);
     }
-
-    // Compare widget
-    const compareSection = document.createElement('div');
-    compareSection.className = 'home-compare';
-    compareSection.style.marginTop = 'var(--space-lg)';
-    const compareHeading = document.createElement('h2');
-    compareHeading.className = 'home-recent__heading';
-    compareHeading.textContent = t('Compare Infrastructure');
-    compareSection.appendChild(compareHeading);
-
-    const compareDesc = document.createElement('p');
-    compareDesc.className = 'home-hero__desc';
-    compareDesc.style.fontSize = 'var(--font-size-sm)';
-    compareDesc.style.marginBottom = 'var(--space-md)';
-    compareDesc.textContent = t('Analyze redundant topology and intersections between Networks, Exchanges, and Facilities.');
-    compareSection.appendChild(compareDesc);
-
-    const compareBtn = document.createElement('a');
-    compareBtn.href = '/compare';
-    compareBtn.dataset.link = '';
-    compareBtn.className = 'compare-submit'; 
-    compareBtn.style.display = 'inline-block';
-    compareBtn.style.textDecoration = 'none';
-    compareBtn.textContent = '↔ ' + t('Start Comparison');
-    compareSection.appendChild(compareBtn);
-
-    rightCol.appendChild(compareSection);
+    rightCol.appendChild(favsSection);
 
     homeTop.appendChild(rightCol);
     frag.appendChild(homeTop);
@@ -176,10 +181,7 @@ export async function renderHome(_params) {
     recentDiv.appendChild(recentBody);
     frag.appendChild(recentDiv);
 
-    // Stats container
-    const statsDiv = document.createElement('div');
-    statsDiv.id = 'global-stats';
-    frag.appendChild(statsDiv);
+
 
     _app.replaceChildren(frag);
 
@@ -190,7 +192,6 @@ export async function renderHome(_params) {
     // Fetch recent updates, stats, and favorites live data in parallel
     const tasks = [
         loadRecentUpdates(),
-        loadGlobalStats(),
     ];
     if (favorites.length > 0) {
         tasks.push(loadFavoritesLiveData(favorites));
@@ -239,7 +240,10 @@ async function loadRecentUpdates() {
 
             const title = document.createElement('div');
             title.className = 'recent-updates__title';
-            title.textContent = t(typ.label);
+            title.appendChild(createEntityBadge(typ.type));
+            const titleText = document.createElement('span');
+            titleText.textContent = t(typ.label);
+            title.appendChild(titleText);
             col.appendChild(title);
 
             const items = results[i].slice(0, 5);
@@ -280,57 +284,7 @@ async function loadRecentUpdates() {
     }
 }
 
-/**
- * Fetches global entity counts for all database-backed types and
- * renders them as a statistics list.
- */
-async function loadGlobalStats() {
-    const container = document.getElementById('global-stats');
-    if (!container) return;
 
-    /** @type {Record<string, string>} */
-    const statLabels = {
-        netixlan: 'Connections to Exchanges',
-        netfac: 'Connections to Facilities',
-    };
-    const types = ['ix', 'net', 'fac', 'campus', 'carrier', 'netixlan', 'netfac', 'org']
-        .map(tag => ({ type: tag, label: statLabels[tag] || getLabel(tag) }));
-
-    try {
-        const counts = await Promise.all(
-            types.map(typ => fetchCount(typ.type).catch(() => 0))
-        );
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'global-stats';
-
-        const heading = document.createElement('h3');
-        heading.className = 'global-stats__heading';
-        heading.textContent = t('Global System Statistics');
-        wrapper.appendChild(heading);
-
-        const ul = document.createElement('ul');
-        ul.className = 'global-stats__list';
-
-        for (const [i, typ] of types.entries()) {
-            const li = document.createElement('li');
-            li.className = 'global-stats__item';
-
-            const countSpan = document.createElement('span');
-            countSpan.className = 'global-stats__count';
-            countSpan.textContent = counts[i].toLocaleString();
-            li.appendChild(countSpan);
-
-            li.appendChild(document.createTextNode(' ' + t(typ.label)));
-            ul.appendChild(li);
-        }
-
-        wrapper.appendChild(ul);
-        container.replaceChildren(wrapper);
-    } catch {
-        // Stats are non-critical — fail silently
-    }
-}
 
 /**
  * Fetches live entity data for each favorite and updates the grid.

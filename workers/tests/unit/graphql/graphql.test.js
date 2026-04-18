@@ -264,34 +264,34 @@ describe('graphql-resolvers.js', () => {
 
 describe('graphqlCacheKey', () => {
     it('produces deterministic keys for the same input', async () => {
-        const { graphqlCacheKey } = await import('../../../graphql/l2.js');
+        const { graphqlCacheKey } = await import('../../../graphql/cache.js');
         const key1 = await graphqlCacheKey('{ networks { id } }', {});
         const key2 = await graphqlCacheKey('{ networks { id } }', {});
         assert.equal(key1, key2);
     });
 
     it('produces different keys for different queries', async () => {
-        const { graphqlCacheKey } = await import('../../../graphql/l2.js');
+        const { graphqlCacheKey } = await import('../../../graphql/cache.js');
         const key1 = await graphqlCacheKey('{ networks { id } }', {});
         const key2 = await graphqlCacheKey('{ exchanges { id } }', {});
         assert.notEqual(key1, key2);
     });
 
     it('produces different keys for different variables', async () => {
-        const { graphqlCacheKey } = await import('../../../graphql/l2.js');
+        const { graphqlCacheKey } = await import('../../../graphql/cache.js');
         const key1 = await graphqlCacheKey('{ network(id: $id) { name } }', { id: 1 });
         const key2 = await graphqlCacheKey('{ network(id: $id) { name } }', { id: 2 });
         assert.notEqual(key1, key2);
     });
 
     it('key starts with gql/ prefix', async () => {
-        const { graphqlCacheKey } = await import('../../../graphql/l2.js');
+        const { graphqlCacheKey } = await import('../../../graphql/cache.js');
         const key = await graphqlCacheKey('{ __typename }', undefined);
         assert.ok(key.startsWith('gql/'));
     });
 
     it('key has correct hex length (gql/ + 64 hex chars)', async () => {
-        const { graphqlCacheKey } = await import('../../../graphql/l2.js');
+        const { graphqlCacheKey } = await import('../../../graphql/cache.js');
         const key = await graphqlCacheKey('{ __typename }', {});
         // "gql/" (4 chars) + 64 hex chars = 68
         assert.equal(key.length, 68);

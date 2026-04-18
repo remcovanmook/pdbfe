@@ -12,9 +12,22 @@ import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemen
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
-import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
+import { createRateLimiter } from '../core/ratelimit.js';
 import { resolveAuth } from '../core/auth.js';
-import { initL2 } from './l2cache.js';
+import { initL2 } from '../core/l2cache.js';
+
+/**
+ * Rate limiter for API requests.
+ * 4000 IP slots, 1 MB ceiling, 60-second window.
+ * Anonymous: 60 req/min; Authenticated: 600 req/min.
+ */
+const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
+    slots: 4000,
+    maxBytes: 1024 * 1024,
+    windowMs: 60_000,
+    limitAnon: 60,
+    limitAuth: 600,
+});
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
@@ -189,15 +202,24 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // Restricted entities (poc) are not accessible to anonymous callers.
-    // List returns 200 with empty data (upstream behaviour); detail returns 404.
+    // Restricted entities (poc) are gated for anonymous callers.
+    // Upstream behaviour:
+    //   - Bare /api/poc → 200 with empty data
+    //   - /api/poc?visible=Public → 200 with public contacts
+    //   - /api/poc/{id} → 404 (we don't know visibility without querying)
+    // If the caller explicitly filters for the allowed visibility value,
+    // let the query through with the filter enforced to prevent spoofing.
     if (!authenticated && entity._restricted) {
-        if (id > 0) {
-            return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+        const af = entity._anonFilter;
+        const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
+        if (!visFilter) {
+            if (id > 0) {
+                return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+            }
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
         }
-        // 200 empty result — not an error — matches upstream's treatment
-        // of unauthenticated /api/poc as a valid but empty result set.
-        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
+        // Force the filter value to the allowed value (e.g. "Public")
+        visFilter.value = af.value;
     }
 
     // If-Modified-Since shortcut: return 304 without touching cache or D1
@@ -226,34 +248,14 @@ async function handleRequest(request, env, ctx) {
     const opts = { depth, limit, skip, since, sort, fields, pdbfe };
 
     // ── Handler dispatch ─────────────────────────────────────────────
+    // entityVersionMs and userId are threaded into the context so that
+    // serveJSON can bake Last-Modified and X-Auth-Id into the initial
+    // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated };
-    const response = id > 0
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, entityVersionMs, userId };
+    return id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
-
-    // Batch header mutations into a single Response constructor to avoid
-    // instantiating intermediate garbage Response objects on the hot path.
-    if (entityVersionMs > 0 || userId !== null) {
-        const h = new Headers(response.headers);
-
-        if (entityVersionMs > 0) {
-            h.set('Last-Modified', lastModifiedHeader(entityVersionMs));
-        }
-
-        // Format matches upstream PeeringDB convention: "u{peeringdb_user_id}"
-        if (userId !== null) {
-            h.set('X-Auth-Id', `u${userId}`);
-        }
-
-        return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: h,
-        });
-    }
-
-    return response;
 }
 
 /**

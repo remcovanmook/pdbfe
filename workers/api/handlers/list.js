@@ -9,10 +9,10 @@
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { getEntityCache, LIST_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
-import { cachedQuery, EMPTY_ENVELOPE } from '../pipeline.js';
+import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
+import { normaliseCacheKey } from '../../core/cache.js';
+import { EMPTY_ENVELOPE } from '../../core/pipeline.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../swr.js';
 import { parseJsonFields, countRows } from './shared.js';
 
 /**
@@ -56,7 +56,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
+    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON, hc.entityVersionMs, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ async function handleCount(hc, entity) {
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
                 cache.add(cacheKey, buf, { entityTag }, Date.now());
-                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi);
+                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi, hc.entityVersionMs, hc.userId);
             }
         }
     }
@@ -145,7 +145,7 @@ async function handleCount(hc, entity) {
         }
     );
 
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi);
+    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**

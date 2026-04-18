@@ -8,9 +8,9 @@
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { normaliseCacheKey, DETAIL_TTL } from '../cache.js';
+import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
+import { normaliseCacheKey } from '../../core/cache.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../swr.js';
 import { parseJsonFields } from './shared.js';
 
 /**
@@ -34,7 +34,7 @@ export async function handleDetail(hc, id) {
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
+    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON, hc.entityVersionMs, hc.userId);
 }
 
 /**

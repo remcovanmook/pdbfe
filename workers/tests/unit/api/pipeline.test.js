@@ -6,7 +6,8 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { EMPTY_ENVELOPE, isNegative, cachedQuery } from '../../../api/pipeline.js';
+import { cachedQuery } from '../../../api/cache.js';
+import { EMPTY_ENVELOPE, isNegative } from '../../../core/pipeline.js';
 import { LRUCache } from '../../../core/cache.js';
 
 // ── isNegative tests ─────────────────────────────────────────────────────────
@@ -38,6 +39,23 @@ describe("isNegative", () => {
         buf.fill(0x41); // 'A' bytes
         assert.equal(isNegative(buf), false);
     });
+
+    it("should match a custom sentinel by reference", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        assert.equal(isNegative(gqlSentinel, gqlSentinel), true);
+    });
+
+    it("should match a custom sentinel by byte comparison", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        const copy = new Uint8Array(gqlSentinel);
+        assert.notEqual(copy, gqlSentinel);
+        assert.equal(isNegative(copy, gqlSentinel), true);
+    });
+
+    it("should not match default sentinel against custom sentinel", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        assert.equal(isNegative(EMPTY_ENVELOPE, gqlSentinel), false);
+    });
 });
 
 // ── EMPTY_ENVELOPE sentinel tests ────────────────────────────────────────────
@@ -53,7 +71,7 @@ describe("EMPTY_ENVELOPE", () => {
     });
 
     it("should be the same reference across imports", async () => {
-        const mod = await import('../../../api/pipeline.js');
+        const mod = await import('../../../core/pipeline.js');
         assert.equal(mod.EMPTY_ENVELOPE, EMPTY_ENVELOPE);
     });
 });

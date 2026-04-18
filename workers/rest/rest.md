@@ -1,6 +1,6 @@
 # REST API Worker Architecture
 
-The REST worker surfaces a versioned API architecture modeled around the generated OpenAPI specification mapping. It acts as an abstraction layer above the PeeringDB data layer.
+The REST worker surfaces a versioned API modeled around the generated OpenAPI specification. It acts as an abstraction layer above the PeeringDB data layer.
 
 ## Request Flow
 
@@ -10,51 +10,81 @@ Client → wrapHandler (error trap + telemetry headers)
        → isRateLimited (isolate-level, per-IP or per-identity)
        → validateRequest (method checks, URL validation)
        → Router
-            → GET /openapi.json
-            → GET / → Scalar API Docs mapping
-            → GET /v1/{entity}
-            → GET /v1/{entity}/{id}
-            → GET /v1/{entity}/{id}/{relation} (sub-resources)
-       → L1 Read + Stale While Revalidate (SWR) mapping
+            → GET / → Scalar API Docs UI (handlers/static.js)
+            → GET /openapi.json → pre-encoded spec (handlers/static.js)
+            → GET /v1/{entity} → handleListRequest (handlers/list.js)
+            → GET /v1/{entity}/{id} → handleDetail (handlers/detail.js)
+            → GET /v1/{entity}/{id}/{relation} → sub-resource (subresource.js)
+       → L1 Read + Stale While Revalidate (SWR)
        → L2 Read
        → D1 Read
 ```
 
+## Module Layout
+
+```
+rest/
+├── index.js              Router, rate limiter init
+├── cache.js              LRU cache, TTLs, withRestSWR()
+├── subresource.js        FK traversal + child relationship queries
+└── handlers/
+    ├── static.js         Scalar docs UI + OpenAPI spec + font assets
+    ├── detail.js         handleDetail
+    └── list.js           handleListRequest
+```
+
+Dependencies flow downward: handlers → `cache.js` → `core/`.
+No cross-worker imports — shared logic lives in `core/`.
+
 ## Endpoints
 
-1. **Entities & Detail (`/v1/{entity}` and `/v1/{entity}/{id}`)**: Surfaced from `index.js`. 
-2. **Sub-Resource Traversal (`/v1/{entity}/{id}/{relation}`)**: These traversals map relationships without JOIN formulation required, via `subresource.js`.
-3. **Specification (`/openapi.json`)**: Pre-encoded OpenAPI spec surfaced from the auto-generation pipeline.
-4. **Docs UI (`/`)**: Scalar HTML template loaded dynamically. 
+1. **Entities & Detail (`/v1/{entity}` and `/v1/{entity}/{id}`)**: Handled by `handlers/list.js` and `handlers/detail.js`.
+2. **Sub-Resource Traversal (`/v1/{entity}/{id}/{relation}`)**: Relationship traversals without JOIN formulation, via `subresource.js`.
+3. **Specification (`/openapi.json`)**: Pre-encoded OpenAPI spec, serialised once at module load.
+4. **Docs UI (`/`)**: Scalar HTML template served from `handlers/static.js`.
 
-## Code Sharing and Dependency Architecture
+## Code Sharing
 
-The REST API utilizes the underlying database engine elements established inside the root API worker:
+The REST worker uses shared infrastructure from `core/` and `api/`:
 
-* Uses the same filter parsers (`parseQueryFilters()` from `api/utils.js`).
-* Utilizes the same query composition models (`buildJsonQuery()` and `buildRowQuery()` from `api/query.js`).
-* Utilizes the same caching engines (`withEdgeSWR()` mapping to `cachedQuery()`).
-* Extends `api/entities.js` without modification.
+* Filter parsers (`parseQueryFilters()` from `api/utils.js`)
+* Query composition (`buildJsonQuery()` and `buildRowQuery()` from `api/query.js`)
+* Entity registry (`api/entities.js`)
+* Its own SWR pipeline (`cache.js` → `core/swr.js` → `core/pipeline.js`)
 
-This avoids duplication across API generation surfaces and guarantees performance parity.
+This avoids duplication across API surfaces and guarantees performance parity.
 
 ## Sub-Resource Traversal
 
-The REST sub-resource engine `subresource.js` inspects relational maps to compute queries:
+`subresource.js` inspects relational maps to compute queries:
 
-* **FK Forwards (`/v1/network-facilities/1/network`)**: Evaluates a single record utilizing `foreignKey` properties in its parent to resolve its 1:1 mapped FK constraint ID across the parent.
-* **Child Traversals (`/v1/network/1/network-facilities`)**: Establishes filtered parameter scopes on secondary lookup logic (`?net_id=1`).
+* **FK Forwards (`/v1/network-facilities/1/network`)**: Resolves a single record using the `foreignKey` property to look up the related entity.
+* **Child Traversals (`/v1/network/1/network-facilities`)**: Establishes filtered parameter scopes on secondary lookups (e.g. `?net_id=1`).
 
-These lookups utilize the same SQL caching pipelines and are paginated parameters mapping `limit` and `skip`.
+These lookups use the same SWR caching pipeline and support `limit` and `skip` pagination.
+
+## Restricted Entities
+
+Entities marked `_restricted: true` in the entity registry (currently only `poc`) have access controls matching upstream PeeringDB:
+
+| Path | Anonymous Behaviour |
+|------|-------------------|
+| `GET /v1/poc` | Returns `{"data":[],"meta":{}}` (empty) |
+| `GET /v1/poc?visible=Public` | Returns public contacts |
+| `GET /v1/poc/{id}` | Returns 404 |
+| `GET /v1/network/1/contacts` (reverse edge) | Injects `visible=Public` filter, returns only public contacts |
+| `GET /v1/poc/1/network` (forward FK) | Returns empty (can't filter by visibility on single-record lookup) |
+
+For direct access, the router checks for an explicit `visible=Public` filter in the query string. If present, the filter value is forced to `"Public"` to prevent spoofing. For sub-resource reverse edges, the `anonFilter` is injected automatically. Forward FK lookups on restricted entities are blocked entirely.
+
+Authenticated callers receive all visibility levels without restriction.
 
 ## Specification and Visual Documentation
 
 ### OpenAPI Specification
 
-The full specification exists inside `extracted/openapi.json`. It relies upon the `gen_openapi_spec.py` pipeline definition to map upstream schema definitions into 3.1 references that bind sub-resource parameter lookups and definition blocks. The worker caches its serialized JSON payload at module-load execution to serve it instantly.
+The full specification is at `extracted/openapi.json`, generated by the `gen_openapi_spec.py` pipeline from upstream schema definitions. The worker pre-encodes the JSON payload at module load for instant serving.
 
 ### Scalar API Docs UI
 
-The REST module acts as the UI distributor mapping interactive reference definitions via the open-source Scalar ecosystem UI. The response body directly mounts UI specifications bypassing any legacy Javascript hydration steps via declarative data attributes (`data-url`). 
-
-Similar to the GraphQL deployment, `frontend/api/rest.html` decouples layout functionality by establishing inlined layout CSS structures and importing typography to satisfy Cloudflare Access CORS parameters.
+The REST worker serves the Scalar API reference UI from `handlers/static.js`. The HTML page (`frontend/api/rest.html`) loads Scalar from CDN with declarative `data-url` attributes. Typography is imported from bundled Inter font assets to avoid Cloudflare Access CORS issues.

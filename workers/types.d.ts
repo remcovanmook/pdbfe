@@ -513,4 +513,8 @@ interface HandlerContext {
     rawPath: string;
     queryString: string;
     authenticated: boolean;
+    /** Entity last-modified epoch ms (0 if unknown). serveJSON uses this to set Last-Modified. */
+    entityVersionMs?: number;
+    /** Authenticated user ID (null for anon). serveJSON uses this to set X-Auth-Id. */
+    userId?: number | null;
 }
