@@ -146,9 +146,9 @@ function buildFavoriteRow(fav, listEl) {
         const rect = row.getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
         if (e.clientY < midY) {
-            listEl.insertBefore(dragging, row);
+            row.before(dragging);
         } else {
-            listEl.insertBefore(dragging, row.nextSibling);
+            row.after(dragging);
         }
     });
 
