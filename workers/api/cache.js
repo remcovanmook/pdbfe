@@ -5,6 +5,7 @@
  *   - Per-entity LRU cache instances with tier-based sizing
  *   - TTL constants (list, detail, count, negative)
  *   - SWR wrapper (thin adapter over core/swr.js)
+ *   - cachedQuery wrapper (injects API-specific defaults)
  *   - Cache stats and admin flush
  *
  * Each entity type gets its own cache with slot counts and max sizes
@@ -36,7 +37,7 @@
 
 import { LRUCache } from '../core/cache.js';
 import { withSWR } from '../core/swr.js';
-import { EMPTY_ENVELOPE } from '../core/pipeline.js';
+import { cachedQuery as _cachedQuery, EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
 import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
 import { getEntityVersion } from './sync_state.js';
 
@@ -152,6 +153,9 @@ export function purgeAllCaches() {
 // from './cache.js' without changing their import paths.
 export { normaliseCacheKey } from '../core/cache.js';
 
+// Re-export sentinels and helpers from core/pipeline.js.
+export { EMPTY_ENVELOPE, isNegative };
+
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 
 /**
@@ -191,5 +195,36 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
         emptySentinel: EMPTY_ENVELOPE,
         getVersion: getEntityVersion,
         staleMs,
+    });
+}
+
+// ── cachedQuery wrapper ──────────────────────────────────────────────────────
+
+/** @typedef {import('../core/pipeline.js').CacheTier} CacheTier */
+/** @typedef {import('../core/pipeline.js').CachedResult} CachedResult */
+
+/**
+ * API-worker cachedQuery wrapper. Pre-fills `getVersion` with the
+ * API worker's entity version tracker and `negativeTtlMs` with the
+ * API worker's NEGATIVE_TTL constant.
+ *
+ * Call sites in api/handlers/*.js continue to work unchanged —
+ * they never passed these parameters before because the old
+ * pipeline.js imported them directly.
+ *
+ * @param {Object} opts - Pipeline configuration.
+ * @param {string} opts.cacheKey - Normalised cache key.
+ * @param {LocalCache} opts.cache - Per-entity LRU cache instance.
+ * @param {string} opts.entityTag - Entity tag for cache metadata.
+ * @param {number} opts.ttlMs - TTL for positive results in milliseconds.
+ * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query closure.
+ * @param {ExecutionContext} [opts.ctx] - Worker execution context.
+ * @returns {Promise<import('../core/pipeline.js').CachedResult>}
+ */
+export async function cachedQuery(opts) {
+    return _cachedQuery({
+        negativeTtlMs: NEGATIVE_TTL,
+        getVersion: getEntityVersion,
+        ...opts,
     });
 }

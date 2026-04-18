@@ -45,7 +45,7 @@ export const H_NOCACHE_AUTH = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "au
 export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "unauthenticated" });
 
 /** Default cache metadata for responses that bypassed all cache tiers. */
-const DEFAULT_META = Object.freeze({ tier: /** @type {import('./pipeline.js').CacheTier} */ ('MISS'), hits: 0 });
+const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
 /**
  * Serves a Uint8Array of pre-encoded JSON bytes as an HTTP Response.
@@ -54,7 +54,7 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./pipeline.js').Ca
  *
  * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
- * @param {{tier: import('./pipeline.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
+ * @param {{tier: import('./cache.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
  * @returns {Response} The HTTP response ready for the client.

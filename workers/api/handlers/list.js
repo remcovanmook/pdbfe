@@ -10,7 +10,7 @@ import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
-import { cachedQuery, EMPTY_ENVELOPE } from '../pipeline.js';
+import { cachedQuery, EMPTY_ENVELOPE } from '../cache.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
 import { withEdgeSWR } from '../cache.js';
 import { parseJsonFields, countRows } from './shared.js';
