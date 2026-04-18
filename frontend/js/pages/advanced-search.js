@@ -387,8 +387,9 @@ function buildTabBar(activeKey) {
             if (formWrap && resultsWrap) {
                 // Update active state
                 for (const b of bar.querySelectorAll('.adv-search__tab')) {
-                    b.classList.toggle('adv-search__tab--active', b.dataset.tab === tab.key);
-                    b.setAttribute('aria-selected', b.dataset.tab === tab.key ? 'true' : 'false');
+                    const htmlB = /** @type {HTMLElement} */ (b);
+                    b.classList.toggle('adv-search__tab--active', htmlB.dataset.tab === tab.key);
+                    b.setAttribute('aria-selected', htmlB.dataset.tab === tab.key ? 'true' : 'false');
                 }
                 resultsWrap.innerHTML = '';
                 renderTabForm(tab.key, formWrap, resultsWrap, {});
@@ -655,7 +656,7 @@ function renderAsnConnectivityForm(formWrap, resultsWrap) {
         try {
             const results = await Promise.all(
                 asns.map(async (asn) => {
-                    const net = await fetchByAsn(asn).catch(() => null);
+                    const net = await fetchByAsn(asn).catch(/** @returns {null} */ () => null);
                     return { asn, net };
                 })
             );

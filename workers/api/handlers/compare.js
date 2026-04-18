@@ -18,6 +18,7 @@
 import { encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
 import { normaliseCacheKey, DETAIL_TTL } from '../cache.js';
 import { withEdgeSWR } from '../swr.js';
+import { tokenizeString } from '../../core/utils.js';
 
 /**
  * Set of supported entity pair keys. The pair key is constructed by
@@ -644,16 +645,19 @@ async function executeCompareQuery(db, refA, refB, pk) {
  * @returns {Promise<Response>} JSON response with overlap data.
  */
 export async function handleCompare(request, db, ctx, queryString, authenticated, hNocache) {
-    // Parse query parameters manually (no URLSearchParams allocation)
+    // Parse query parameters via tokenizeString (no array allocation).
+    // The compare endpoint expects exactly 3 params: a, b, __pdbfe.
+    // maxParts=3 hits the hardwired indexOf fast path in tokenizeString.
     const params = new Map();
     if (queryString) {
-        for (const part of queryString.split('&')) { // ap-ok: bounded by URL length, once per request
-            const eqIdx = part.indexOf('=');
-            if (eqIdx === -1) continue;
-            params.set(
-                decodeURIComponent(part.slice(0, eqIdx)),
-                decodeURIComponent(part.slice(eqIdx + 1))
-            );
+        const pairs = queryString.includes('&')
+            ? tokenizeString(queryString, '&', 3)
+            : { p0: queryString };
+
+        for (let i = 0; pairs[`p${i}`] !== undefined; i++) {
+            const { p0: rawKey, p1: rawValue } = tokenizeString(pairs[`p${i}`], '=', 2);
+            if (rawValue === undefined) continue;
+            params.set(decodeURIComponent(rawKey), decodeURIComponent(rawValue));
         }
     }
 

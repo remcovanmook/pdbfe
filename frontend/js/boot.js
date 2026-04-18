@@ -218,10 +218,23 @@ if (syncResult.status === 'fulfilled') {
                 { label: t('Connections to IXPs'), count: entities.netixlan?.row_count || 0 },
                 { label: t('Connections to Facilities'), count: entities.netfac?.row_count || 0 },
             ];
-            const parts = stats.map(s =>
-                `<span class="stats-ticker__item"><strong>${s.count.toLocaleString()}</strong> ${s.label}</span>`
-            );
-            ticker.innerHTML = parts.join('<span class="stats-ticker__sep">·</span>');
+            const fragment = document.createDocumentFragment();
+            for (let i = 0; i < stats.length; i++) {
+                if (i > 0) {
+                    const sep = document.createElement('span');
+                    sep.className = 'stats-ticker__sep';
+                    sep.textContent = '·';
+                    fragment.appendChild(sep);
+                }
+                const item = document.createElement('span');
+                item.className = 'stats-ticker__item';
+                const strong = document.createElement('strong');
+                strong.textContent = stats[i].count.toLocaleString();
+                item.appendChild(strong);
+                item.appendChild(document.createTextNode(' ' + stats[i].label));
+                fragment.appendChild(item);
+            }
+            ticker.replaceChildren(fragment);
         }
     }
 }

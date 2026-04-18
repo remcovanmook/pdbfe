@@ -25,7 +25,10 @@ import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
+import { encoder } from '../core/http.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
+import { graphqlCacheKey } from './l2.js';
+import { withGqlSWR } from './swr.js';
 import GRAPHIQL_HTML from '../../frontend/api/graphql.html';
 import INTER_CSS from '../../frontend/third_party/inter/inter.css';
 import INTER_LATIN from '../../frontend/third_party/inter/inter-latin.woff2';
@@ -171,7 +174,51 @@ async function handleRequest(request, env, ctx) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
-    // Delegate to graphql-yoga with D1 and auth context
+    // ── POST caching via SWR ─────────────────────────────────────
+    // GraphQL queries parse an AST, map resolvers, and stringify JSON
+    // on every call. Wrap in the L1 SWR layer to avoid GC thrashing.
+    if (request.method === 'POST') {
+        const clonedReq = request.clone();
+        const bodyText = await clonedReq.text();
+
+        // Build a deterministic cache key from query + variables + auth state.
+        // graphqlCacheKey() SHA-256 hashes the body; we suffix with auth tier
+        // because authenticated users may see different resolver results.
+        const baseKey = await graphqlCacheKey(
+            bodyText, // raw body contains {query, variables} — hash the whole thing
+            undefined  // variables already embedded in bodyText
+        );
+        const cacheKey = authenticated ? baseKey + ':auth' : baseKey + ':anon';
+
+        const { buf, tier, hits } = await withGqlSWR(
+            cacheKey, ctx,
+            async () => {
+                const yoga = getYoga();
+                const response = await yoga.fetch(request, { db, authenticated });
+                if (!response.ok) return null;
+                const text = await response.text();
+                return encoder.encode(text);
+            }
+        );
+
+        if (buf) {
+            return new Response(buf, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'X-Cache': tier,
+                    'X-Cache-Hits': hits.toString()
+                }
+            });
+        }
+
+        // Negative cache hit — query returned an error or empty result.
+        // Fall through to yoga for a fresh attempt so the client gets
+        // the actual GraphQL error response.
+    }
+
+    // Fallback for non-POST, HEAD, or negative-cache bypass
     const yoga = getYoga();
     return yoga.fetch(request, { db, authenticated });
 }

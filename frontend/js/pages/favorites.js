@@ -39,10 +39,12 @@ export async function renderFavorites(_params) {
     const favorites = getFavorites();
 
     if (favorites.length === 0) {
-        wrap.appendChild(createEmptyState(
-            t('No favorites yet'),
-            t('Use the ★ button on any network, exchange, or facility page to add it here.')
-        ));
+        const emptyEl = createEmptyState(t('No favorites yet'));
+        const hint = document.createElement('p');
+        hint.className = 'empty-state__hint';
+        hint.textContent = t('Use the ★ button on any network, exchange, or facility page to add it here.');
+        wrap.appendChild(emptyEl);
+        wrap.appendChild(hint);
         app.replaceChildren(wrap);
         return;
     }
