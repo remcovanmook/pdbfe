@@ -37,7 +37,7 @@
 
 import { LRUCache } from '../core/cache.js';
 import { withSWR } from '../core/swr.js';
-import { cachedQuery as _cachedQuery, EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
+import { cachedQuery as _cachedQuery, EMPTY_ENVELOPE } from '../core/pipeline.js';
 import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
 import { getEntityVersion } from './sync_state.js';
 
@@ -154,7 +154,7 @@ export function purgeAllCaches() {
 export { normaliseCacheKey } from '../core/cache.js';
 
 // Re-export sentinels and helpers from core/pipeline.js.
-export { EMPTY_ENVELOPE, isNegative };
+export { EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
 
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 
