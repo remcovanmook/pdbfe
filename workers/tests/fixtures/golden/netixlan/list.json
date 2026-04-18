@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "asn": 0,
+      "ipaddr4": null,
+      "ipaddr6": null,
+      "is_rs_peer": false,
+      "bfd_support": false,
+      "notes": "",
+      "speed": 0,
+      "operational": false,
+      "net_id": 0,
+      "ixlan_id": 0,
+      "net_side_id": null,
+      "ix_side_id": null,
+      "ix_id": 0,
+      "name": "Golden netixlan",
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

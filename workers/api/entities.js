@@ -45,7 +45,7 @@ export function getColumns(entity, includePdbfe = false) {
     // Lazy-cache the filtered column list to avoid re-filtering per request.
     const e = /** @type {any} */ (entity);
     if (!e._columnsPublic) {
-        e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__'));
+        e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__') && c !== 'notes_private');
     }
     return e._columnsPublic;
 }
@@ -91,6 +91,22 @@ export function getNullableColumns(entity) {
     if (/** @type {any} */ (entity)._nullableColumns) return /** @type {any} */ (entity)._nullableColumns;
     const s = new Set();
     for (const field of entity.fields) { if (field.nullable) s.add(field.name); }
+    return s;
+}
+
+/**
+ * Returns Set of omitempty column names. Used by the query builder to
+ * strip these fields from the JSON output via json_remove() when their
+ * value is null, empty string, or the type's zero value — matching
+ * upstream PeeringDB's Django serializer behaviour.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} Column names with omitempty: true.
+ */
+export function getOmitEmptyColumns(entity) {
+    if (/** @type {any} */ (entity)._omitEmptyColumns) return /** @type {any} */ (entity)._omitEmptyColumns;
+    const s = new Set();
+    for (const field of entity.fields) { if (field.omitempty) s.add(field.name); }
     return s;
 }
 

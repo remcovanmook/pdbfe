@@ -35,6 +35,7 @@ extracted/src/
 # Legacy
 debthin_workers/
 peeringdb/
+peeringdb-plus/
 
 # OS
 .DS_Store

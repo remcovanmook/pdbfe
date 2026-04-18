@@ -3,12 +3,14 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/unit/*.test.js tests/unit/**/*.test.js",
+    "test": "node --experimental-test-coverage --test tests/unit/*.test.js tests/unit/**/*.test.js",
     "test:integration": "node --test tests/test_api.js",
     "test:conformance": "node --test tests/test_conformance.js",
     "test:conformance-ext": "node --test tests/test_conformance_extended.js",
     "test:equivalence": "node --test tests/test_equivalence.js",
-    "test:upstream": "node --test tests/test_upstream_patterns.js"
+    "test:upstream": "node --test tests/test_upstream_patterns.js",
+    "test:golden": "node --test tests/unit/api/golden.test.js",
+    "test:golden:update": "UPDATE_GOLDEN=1 node --test tests/unit/api/golden.test.js"
   },
   "devDependencies": {
     "typescript": "^5.8.2"

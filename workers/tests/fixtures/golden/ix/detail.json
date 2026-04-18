@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "name": "Golden ix",
+      "aka": "",
+      "name_long": "",
+      "city": "",
+      "country": "",
+      "notes": "",
+      "region_continent": "",
+      "media": "",
+      "proto_unicast": false,
+      "proto_multicast": false,
+      "proto_ipv6": false,
+      "website": "",
+      "social_media": "[]",
+      "url_stats": "",
+      "tech_email": "",
+      "tech_phone": "",
+      "policy_email": "",
+      "policy_phone": "",
+      "sales_email": "",
+      "sales_phone": "",
+      "ixf_net_count": 0,
+      "ixf_last_import": null,
+      "service_level": "",
+      "terms": "",
+      "status_dashboard": null,
+      "org_id": 0,
+      "net_count": 0,
+      "fac_count": 0,
+      "ixf_import_request": "2025-01-01T00:00:00Z",
+      "ixf_import_request_status": "",
+      "logo": null,
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

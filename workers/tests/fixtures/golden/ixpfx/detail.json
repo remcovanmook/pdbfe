@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "notes": "",
+      "protocol": "",
+      "prefix": "",
+      "in_dfz": false,
+      "ixlan_id": 0,
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

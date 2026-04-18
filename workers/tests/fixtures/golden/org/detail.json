@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "name": "Golden org",
+      "aka": "",
+      "name_long": "",
+      "website": "",
+      "social_media": "[]",
+      "notes": "",
+      "logo": null,
+      "address1": "",
+      "address2": "",
+      "city": "",
+      "country": "",
+      "state": "",
+      "zipcode": "",
+      "floor": "",
+      "suite": "",
+      "latitude": 0,
+      "longitude": 0,
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

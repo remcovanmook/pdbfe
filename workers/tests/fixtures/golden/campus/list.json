@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "name": "Golden campus",
+      "name_long": null,
+      "aka": null,
+      "website": "",
+      "social_media": "[]",
+      "notes": "",
+      "org_id": 0,
+      "org_name": "",
+      "country": "",
+      "city": "",
+      "zipcode": "",
+      "state": "",
+      "logo": null,
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

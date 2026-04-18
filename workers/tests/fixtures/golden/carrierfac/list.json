@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "carrier_id": 0,
+      "fac_id": 0,
+      "name": "Golden carrierfac",
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

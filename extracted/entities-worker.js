@@ -61,6 +61,7 @@ const _entity_org = {
     _jsonColumns: new Set(["social_media"]),
     _boolColumns: new Set(["__logo_migrated"]),
     _nullableColumns: new Set(["logo"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "address1", "address2", "aka", "city", "country", "created", "floor", "id", "latitude", "logo", "longitude", "name", "name_long", "notes", "social_media", "state", "status", "suite", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["city", "string"], ["country", "string"], ["state", "string"], ["zipcode", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -100,6 +101,7 @@ const _entity_campus = {
     _jsonColumns: new Set(["social_media"]),
     _boolColumns: new Set(["__logo_migrated"]),
     _nullableColumns: new Set(["aka", "logo", "name_long"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "aka", "city", "country", "created", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "state", "status", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["name_long", "string"], ["aka", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -165,6 +167,7 @@ const _entity_fac = {
     _jsonColumns: new Set(["available_voltage_services", "social_media"]),
     _boolColumns: new Set(["__logo_migrated", "diverse_serving_substations"]),
     _nullableColumns: new Set(["campus_id", "diverse_serving_substations", "logo", "property", "region_continent", "status_dashboard"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "address1", "address2", "aka", "available_voltage_services", "campus_id", "carrier_count", "city", "clli", "country", "created", "diverse_serving_substations", "floor", "id", "ix_count", "latitude", "logo", "longitude", "name", "name_long", "net_count", "notes", "npanxx", "org_id", "org_name", "property", "region_continent", "rencode", "sales_email", "sales_phone", "social_media", "state", "status", "status_dashboard", "suite", "tech_email", "tech_phone", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["website", "string"], ["aka", "string"], ["name_long", "string"], ["clli", "string"], ["rencode", "string"], ["npanxx", "string"], ["tech_email", "string"], ["tech_phone", "string"], ["sales_email", "string"], ["sales_phone", "string"], ["property", "string"], ["diverse_serving_substations", "boolean"], ["notes", "string"], ["region_continent", "string"], ["status_dashboard", "string"], ["org_id", "number"], ["campus_id", "number"], ["net_count", "number"], ["ix_count", "number"], ["carrier_count", "number"], ["city", "string"], ["country", "string"], ["state", "string"], ["zipcode", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -231,6 +234,7 @@ const _entity_net = {
     _jsonColumns: new Set(["info_types", "social_media"]),
     _boolColumns: new Set(["__logo_migrated", "allow_ixp_update", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_unicast", "policy_ratio"]),
     _nullableColumns: new Set(["info_prefixes4", "info_prefixes6", "logo", "rir_status", "rir_status_updated", "status_dashboard"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "rir_status", "rir_status_updated", "route_server", "social_media", "status", "status_dashboard", "updated", "website"]),
     _filterTypes: new Map([["id", "number"], ["asn", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["irr_as_set", "string"], ["website", "string"], ["looking_glass", "string"], ["route_server", "string"], ["notes", "string"], ["notes_private", "string"], ["info_traffic", "string"], ["info_ratio", "string"], ["info_scope", "string"], ["info_prefixes4", "number"], ["info_prefixes6", "number"], ["info_unicast", "boolean"], ["info_multicast", "boolean"], ["info_ipv6", "boolean"], ["info_never_via_route_servers", "boolean"], ["policy_url", "string"], ["policy_general", "string"], ["policy_locations", "string"], ["policy_ratio", "boolean"], ["policy_contracts", "string"], ["status_dashboard", "string"], ["rir_status", "string"], ["rir_status_updated", "datetime"], ["org_id", "number"], ["ix_count", "number"], ["fac_count", "number"], ["netixlan_updated", "datetime"], ["netfac_updated", "datetime"], ["poc_updated", "datetime"], ["allow_ixp_update", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -289,6 +293,7 @@ const _entity_ix = {
     _jsonColumns: new Set(["social_media"]),
     _boolColumns: new Set(["__logo_migrated", "proto_ipv6", "proto_multicast", "proto_unicast"]),
     _nullableColumns: new Set(["ixf_last_import", "logo", "status_dashboard"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "aka", "city", "country", "created", "fac_count", "id", "ixf_import_request", "ixf_import_request_status", "ixf_last_import", "ixf_net_count", "logo", "media", "name", "name_long", "net_count", "notes", "org_id", "policy_email", "policy_phone", "proto_ipv6", "proto_multicast", "proto_unicast", "region_continent", "sales_email", "sales_phone", "service_level", "social_media", "status", "status_dashboard", "tech_email", "tech_phone", "terms", "updated", "url_stats", "website"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["city", "string"], ["country", "string"], ["notes", "string"], ["region_continent", "string"], ["media", "string"], ["proto_unicast", "boolean"], ["proto_multicast", "boolean"], ["proto_ipv6", "boolean"], ["website", "string"], ["url_stats", "string"], ["tech_email", "string"], ["tech_phone", "string"], ["policy_email", "string"], ["policy_phone", "string"], ["sales_email", "string"], ["sales_phone", "string"], ["ixf_net_count", "number"], ["ixf_last_import", "datetime"], ["service_level", "string"], ["terms", "string"], ["status_dashboard", "string"], ["org_id", "number"], ["net_count", "number"], ["fac_count", "number"], ["ixf_import_request", "datetime"], ["ixf_import_request_status", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -325,6 +330,7 @@ const _entity_carrier = {
     _jsonColumns: new Set(["social_media"]),
     _boolColumns: new Set(["__logo_migrated"]),
     _nullableColumns: new Set(["logo"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "aka", "created", "fac_count", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "status", "updated", "website"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -351,6 +357,7 @@ const _entity_carrierfac = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set([]),
     _nullableColumns: new Set([]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["carrier_id", "created", "fac_id", "id", "name", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["carrier_id", "number"], ["fac_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -379,6 +386,7 @@ const _entity_ixfac = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set([]),
     _nullableColumns: new Set([]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["city", "country", "created", "fac_id", "id", "ix_id", "name", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["ix_id", "number"], ["fac_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -395,11 +403,11 @@ const _entity_ixlan = {
         { name: "name", type: "string" },
         { name: "descr", type: "string" },
         { name: "mtu", type: "number" },
-        { name: "vlan", type: "number", nullable: true },
+        { name: "vlan", type: "number", nullable: true, omitempty: true },
         { name: "dot1q_support", type: "boolean" },
         { name: "rs_asn", type: "number", nullable: true },
         { name: "arp_sponge", type: "string", nullable: true },
-        { name: "ixf_ixp_member_list_url", type: "string", nullable: true },
+        { name: "ixf_ixp_member_list_url", type: "string", nullable: true, omitempty: true },
         { name: "ixf_ixp_member_list_url_visible", type: "string" },
         { name: "ix_id", type: "number", foreignKey: "ix" },
         { name: "ixf_ixp_import_enabled", type: "boolean" },
@@ -416,6 +424,7 @@ const _entity_ixlan = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set(["dot1q_support", "ixf_ixp_import_enabled"]),
     _nullableColumns: new Set(["arp_sponge", "ixf_ixp_member_list_url", "rs_asn", "vlan"]),
+    _omitEmptyColumns: new Set(["ixf_ixp_member_list_url", "vlan"]),
     _fieldNames: new Set(["arp_sponge", "created", "descr", "dot1q_support", "id", "ix_id", "ixf_ixp_import_enabled", "ixf_ixp_member_list_url", "ixf_ixp_member_list_url_visible", "mtu", "name", "rs_asn", "status", "updated", "vlan"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["descr", "string"], ["mtu", "number"], ["vlan", "number"], ["dot1q_support", "boolean"], ["rs_asn", "number"], ["arp_sponge", "string"], ["ixf_ixp_member_list_url", "string"], ["ixf_ixp_member_list_url_visible", "string"], ["ix_id", "number"], ["ixf_ixp_import_enabled", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -429,7 +438,7 @@ const _entity_ixpfx = {
     _anonFilter: undefined,
     fields: [
         { name: "id", type: "number" },
-        { name: "notes", type: "string" },
+        { name: "notes", type: "string", omitempty: true },
         { name: "protocol", type: "string" },
         { name: "prefix", type: "string" },
         { name: "in_dfz", type: "boolean" },
@@ -444,6 +453,7 @@ const _entity_ixpfx = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set(["in_dfz"]),
     _nullableColumns: new Set([]),
+    _omitEmptyColumns: new Set(["notes"]),
     _fieldNames: new Set(["created", "id", "in_dfz", "ixlan_id", "notes", "prefix", "protocol", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["notes", "string"], ["protocol", "string"], ["prefix", "string"], ["in_dfz", "boolean"], ["ixlan_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -474,6 +484,7 @@ const _entity_poc = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set([]),
     _nullableColumns: new Set([]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["created", "email", "id", "name", "net_id", "phone", "role", "status", "updated", "url", "visible"]),
     _filterTypes: new Map([["id", "number"], ["role", "string"], ["visible", "string"], ["name", "string"], ["phone", "string"], ["email", "string"], ["url", "string"], ["net_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -487,9 +498,9 @@ const _entity_netfac = {
     _anonFilter: undefined,
     fields: [
         { name: "id", type: "number" },
-        { name: "avail_sonet", type: "boolean" },
-        { name: "avail_ethernet", type: "boolean" },
-        { name: "avail_atm", type: "boolean" },
+        { name: "avail_sonet", type: "boolean", omitempty: true },
+        { name: "avail_ethernet", type: "boolean", omitempty: true },
+        { name: "avail_atm", type: "boolean", omitempty: true },
         { name: "net_id", type: "number", foreignKey: "net", resolve: { "name": "net_name", "asn": "net_asn" } },
         { name: "fac_id", type: "number", foreignKey: "fac", resolve: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } },
         { name: "name", type: "string" },
@@ -506,6 +517,7 @@ const _entity_netfac = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set(["avail_atm", "avail_ethernet", "avail_sonet"]),
     _nullableColumns: new Set([]),
+    _omitEmptyColumns: new Set(["avail_atm", "avail_ethernet", "avail_sonet"]),
     _fieldNames: new Set(["avail_atm", "avail_ethernet", "avail_sonet", "city", "country", "created", "fac_id", "id", "local_asn", "name", "net_id", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["avail_sonet", "boolean"], ["avail_ethernet", "boolean"], ["avail_atm", "boolean"], ["net_id", "number"], ["fac_id", "number"], ["name", "string"], ["city", "string"], ["country", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
@@ -543,6 +555,7 @@ const _entity_netixlan = {
     _jsonColumns: new Set([]),
     _boolColumns: new Set(["bfd_support", "is_rs_peer", "operational"]),
     _nullableColumns: new Set(["ipaddr4", "ipaddr6", "ix_side_id", "net_side_id"]),
+    _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["asn", "bfd_support", "created", "id", "ipaddr4", "ipaddr6", "is_rs_peer", "ix_id", "ix_side_id", "ixlan_id", "name", "net_id", "net_side_id", "notes", "operational", "speed", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["asn", "number"], ["ipaddr4", "string"], ["ipaddr6", "string"], ["is_rs_peer", "boolean"], ["bfd_support", "boolean"], ["notes", "string"], ["speed", "number"], ["operational", "boolean"], ["net_id", "number"], ["ixlan_id", "number"], ["net_side_id", "number"], ["ix_side_id", "number"], ["ix_id", "number"], ["name", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
