@@ -20,6 +20,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { compareStructure } from './lib/compare.js';
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
@@ -840,6 +841,64 @@ describe('Conformance: divergence edge cases', { concurrency: 1 }, () => {
         assert.deepStrictEqual(mismatches, [],
             `Null/non-null mismatches:\n${mismatches.join('\n')}`);
     });
+});
+
+// ==========================================================================
+// SECTION 9.5 — STRUCTURAL PARITY (with known divergence registry)
+// ==========================================================================
+
+/**
+ * Known structural divergences between the mirror and upstream.
+ * Key format: "{entity}|{path}|{kind}" — must match the diff engine output.
+ * Value is a mandatory justification string.
+ *
+ * Add entries here when a structural difference is intentional (e.g. our
+ * mirror adds a field that upstream doesn't have, or upstream deprecated
+ * a field we still carry). Unlisted diffs fail the test.
+ *
+ * Modelled on peeringdb-plus/internal/pdbcompat knownDivergences.
+ * @type {Map<string, string>}
+ */
+const KNOWN_DIVERGENCES = new Map([
+    // Example entry (remove if no divergences exist):
+    // ['net|data[0].some_field|extra_field', 'PDBFE extension for internal use, tracked in #42'],
+]);
+
+describe('Conformance: structural parity', { concurrency: 1 }, () => {
+    // Only run when we can reach both mirror and upstream.
+    const entities = ['net', 'org', 'fac', 'ix', 'ixlan', 'ixpfx', 'netfac', 'netixlan', 'ixfac'];
+
+    for (const entity of entities) {
+        it(`/api/${entity} — structural shape matches upstream`, async (t) => {
+            const { mirror, upstream } = await fetchBoth(`/api/${entity}?limit=1&depth=0`, t);
+
+            if (!upstream.body?.data || upstream.body.data.length === 0) {
+                t.diagnostic(`upstream ${entity} returned empty data, skipping`);
+                return;
+            }
+            if (!mirror.body?.data || mirror.body.data.length === 0) {
+                t.diagnostic(`mirror ${entity} returned empty data, skipping`);
+                return;
+            }
+
+            // Compare data[0] structure (the interesting part).
+            const diffs = compareStructure(upstream.body.data[0], mirror.body.data[0]);
+            const unexpected = [];
+
+            for (const d of diffs) {
+                const key = `${entity}|data[0].${d.path}|${d.kind}`;
+                const justification = KNOWN_DIVERGENCES.get(key);
+                if (justification) {
+                    t.diagnostic(`known divergence: ${key} — ${justification}`);
+                } else {
+                    unexpected.push(`  ${d.kind} at ${d.path}: ${d.details}`);
+                }
+            }
+
+            assert.deepStrictEqual(unexpected, [],
+                `${entity}: unexpected structural differences:\n${unexpected.join('\n')}`);
+        });
+    }
 });
 
 // ==========================================================================

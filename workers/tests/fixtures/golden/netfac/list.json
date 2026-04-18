@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "avail_sonet": false,
+      "avail_ethernet": false,
+      "avail_atm": false,
+      "net_id": 0,
+      "fac_id": 0,
+      "name": "Golden netfac",
+      "city": "",
+      "country": "",
+      "local_asn": "",
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}

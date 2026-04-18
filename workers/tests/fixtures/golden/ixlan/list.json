@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "id": 100,
+      "name": "Golden ixlan",
+      "descr": "",
+      "mtu": 0,
+      "vlan": null,
+      "dot1q_support": false,
+      "rs_asn": null,
+      "arp_sponge": null,
+      "ixf_ixp_member_list_url": null,
+      "ixf_ixp_member_list_url_visible": "",
+      "ix_id": 0,
+      "ixf_ixp_import_enabled": false,
+      "created": "2025-01-01T00:00:00Z",
+      "updated": "2025-01-01T00:00:00Z",
+      "status": ""
+    }
+  ],
+  "meta": {}
+}
