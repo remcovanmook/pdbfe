@@ -7,8 +7,11 @@
  * UI at the root path.
  *
  * Architecture:
+ *   - handlers/static.js  — Scalar UI, OpenAPI spec, font assets
+ *   - handlers/detail.js  — Single entity by ID
+ *   - handlers/list.js    — Entity list with filters
+ *   - cache.js            — LRU cache, SWR wrapper
  *   - Query building via the shared api/query.js module
- *   - Response format matches the upstream PeeringDB JSON envelope
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
  *   - L2 cache via core/l2cache.js with /v1/ path keys
@@ -17,46 +20,19 @@
  */
 
 import { ENTITIES, ENTITY_TAGS, validateQuery, validateFields, resolveImplicitFilters } from '../api/entities.js';
-import { buildJsonQuery, buildRowQuery } from '../api/query.js';
 import { parseQueryFilters } from '../api/utils.js';
-import { expandDepth } from '../api/depth.js';
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
-import { handlePreflight, jsonError, encodeJSON, encoder } from '../core/http.js';
-import { serveJSON, H_API_AUTH, H_API_ANON } from '../api/http.js';
+import { handlePreflight, jsonError } from '../core/http.js';
+import { H_API_AUTH, H_API_ANON } from '../api/http.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
-import { normaliseCacheKey } from '../core/cache.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
-import { withRestSWR } from './swr.js';
-import { EMPTY_ENVELOPE } from '../core/pipeline.js';
 import { getRestCacheStats, purgeRestCache } from './cache.js';
-import { serveScalarUI } from './scalar.js';
+import { serveStaticAsset } from './handlers/static.js';
+import { handleDetail } from './handlers/detail.js';
+import { handleListRequest } from './handlers/list.js';
 import { handleSubResource } from './subresource.js';
-import openApiSpec from '../../extracted/openapi.json';
-import INTER_CSS from '../../frontend/third_party/inter/inter.css';
-import INTER_LATIN from '../../frontend/third_party/inter/inter-latin.woff2';
-import INTER_LATIN_EXT from '../../frontend/third_party/inter/inter-latin-ext.woff2';
-
-const STATIC_ASSETS = Object.freeze({
-    'third_party/inter/inter.css': { buf: INTER_CSS, type: 'text/css; charset=utf-8' },
-    'third_party/inter/inter-latin.woff2': { buf: INTER_LATIN, type: 'font/woff2' },
-    'third_party/inter/inter-latin-ext.woff2': { buf: INTER_LATIN_EXT, type: 'font/woff2' },
-});
-
-/**
- * Pre-encoded OpenAPI spec served at /openapi.json.
- * Encoded once at module load to avoid repeated serialisation.
- * @type {Uint8Array}
- */
-const SPEC_BYTES = encoder.encode(JSON.stringify(openApiSpec));
-
-/** Headers for the OpenAPI JSON spec response. */
-const H_SPEC = Object.freeze({
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'public, max-age=3600',
-    'Access-Control-Allow-Origin': '*',
-});
 
 /**
  * Rate limiter for REST requests.
@@ -70,37 +46,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
     limitAnon: 60,
     limitAuth: 600,
 });
-
-/**
- * Serves static assets: Scalar UI and OpenAPI spec.
- * Returns null if the path doesn't match a static asset.
- *
- * @param {string} rawPath - URL path without leading slash.
- * @returns {Response|null} Static response or null.
- */
-function serveStaticAsset(rawPath) {
-    if (rawPath === '' || rawPath === 'index.html') {
-        return serveScalarUI();
-    }
-    if (rawPath === 'openapi.json') {
-        return new Response(
-            /** @type {BodyInit} */(/** @type {unknown} */ (SPEC_BYTES)),
-            { status: 200, headers: H_SPEC }
-        );
-    }
-    if (STATIC_ASSETS[rawPath]) {
-        const asset = STATIC_ASSETS[rawPath];
-        return new Response(asset.buf, {
-            status: 200,
-            headers: {
-                'Content-Type': asset.type,
-                'Cache-Control': 'public, max-age=31536000, immutable',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
-    }
-    return null;
-}
 
 /**
  * Handles incoming requests to the REST worker.
@@ -221,83 +166,6 @@ async function routeApiRequest(request, rc) {
     }
 
     return handleListRequest(request, entity, filters, opts, rawPath, qc);
-}
-
-/**
- * Handles a detail request for a single entity by ID.
- * Uses withEdgeSWR for L1/L2 caching.
- *
- * @param {Request} request - Inbound request.
- * @param {EntityMeta} entity - Entity metadata.
- * @param {number} id - Entity primary key.
- * @param {QueryOpts} opts - Parsed query options.
- * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} qc - Query context.
- * @returns {Promise<Response>}
- */
-async function handleDetail(request, entity, id, opts, qc) {
-    const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
-    const cacheKey = normaliseCacheKey(`v1/${entityTag}/${id}`, queryString);
-
-    const { buf, tier, hits } = await withRestSWR(
-        entityTag, cacheKey, ctx,
-        async () => {
-            if (opts.depth > 0) {
-                const { sql, params } = buildRowQuery(entity, [], opts, id);
-                const result = await db.prepare(sql).bind(...params).all();
-                const rows = result.results || [];
-                if (rows.length === 0) return null;
-                const expanded = await expandDepth(db, entity, rows, opts.depth, authenticated);
-                return encodeJSON({ data: expanded, meta: {} });
-            }
-            const { sql, params } = buildJsonQuery(entity, [], opts, id);
-            const row = await db.prepare(sql).bind(...params).first();
-            if (!row?.payload) return null;
-            return encoder.encode(/** @type {string} */(row.payload));
-        }
-    );
-
-    if (!buf) {
-        return jsonError(404, `${entityTag} with id ${id} not found`);
-    }
-
-    return serveJSON(request, buf, { tier, hits }, hResponse);
-}
-
-/**
- * Handles a list request for entities matching the given filters.
- * Uses withEdgeSWR for L1/L2 caching.
- *
- * @param {Request} request - Inbound request.
- * @param {EntityMeta} entity - Entity metadata.
- * @param {ParsedFilter[]} filters - Query filters.
- * @param {QueryOpts} opts - Parsed query options.
- * @param {string} rawPath - Raw URL path (for cache key).
- * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} qc - Query context.
- * @returns {Promise<Response>}
- */
-async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
-    const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
-    const cacheKey = normaliseCacheKey(rawPath, queryString);
-
-    const { buf, tier, hits } = await withRestSWR(
-        entityTag, cacheKey, ctx,
-        async () => {
-            if (opts.depth > 0) {
-                const { sql, params } = buildRowQuery(entity, filters, opts);
-                const result = await db.prepare(sql).bind(...params).all();
-                const rows = result.results || [];
-                const expanded = await expandDepth(db, entity, rows, opts.depth, authenticated);
-                return encodeJSON({ data: expanded, meta: {} });
-            }
-            const { sql, params } = buildJsonQuery(entity, filters, opts);
-            const row = await db.prepare(sql).bind(...params).first();
-            if (!row?.payload) return null;
-            return encoder.encode(/** @type {string} */(row.payload));
-        }
-    );
-
-    const effectiveBuf = buf || EMPTY_ENVELOPE;
-    return serveJSON(request, effectiveBuf, { tier, hits }, hResponse);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-rest');
