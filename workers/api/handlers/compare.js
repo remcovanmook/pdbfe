@@ -658,9 +658,7 @@ export async function handleCompare(request, db, ctx, queryString, authenticated
     // maxParts=3 hits the hardwired indexOf fast path in tokenizeString.
     const params = new Map();
     if (queryString) {
-        const pairs = queryString.includes('&')
-            ? tokenizeString(queryString, '&', 3)
-            : { p0: queryString };
+        const pairs = tokenizeString(queryString, '&', 3);
 
         for (let i = 0; pairs[`p${i}`] !== undefined; i++) {
             const { p0: rawKey, p1: rawValue } = tokenizeString(pairs[`p${i}`], '=', 2);

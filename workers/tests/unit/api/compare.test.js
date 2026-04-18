@@ -322,6 +322,27 @@ describe('handleCompare', () => {
                 'shared_networks should be the same regardless of a/b order'
             );
         });
+
+        it('swaps only_a/only_b labels when pair order is reversed', async () => {
+            const db = crossEntityDb();
+            const forward = await callCompare(db, 'a=fac:5&b=ix:10&__pdbfe=1');
+            const reverse = await callCompare(db, 'a=ix:10&b=fac:5&__pdbfe=1');
+
+            const fwdBody = await forward.json();
+            const revBody = await reverse.json();
+
+            // In forward order (a=fac, b=ix): only_a = fac-specific, only_b = ix-specific
+            // In reverse order (a=ix, b=fac): labels should be flipped so that
+            // only_a = ix-specific (matching the caller's a) and only_b = fac-specific
+            assert.deepEqual(
+                fwdBody.only_a_networks, revBody.only_b_networks,
+                'forward only_a should equal reverse only_b'
+            );
+            assert.deepEqual(
+                fwdBody.only_b_networks, revBody.only_a_networks,
+                'forward only_b should equal reverse only_a'
+            );
+        });
     });
 
     describe('response format', () => {

@@ -178,16 +178,29 @@ async function handleRequest(request, env, ctx) {
     // GraphQL queries parse an AST, map resolvers, and stringify JSON
     // on every call. Wrap in the L1 SWR layer to avoid GC thrashing.
     if (request.method === 'POST') {
-        const clonedReq = request.clone();
-        const bodyText = await clonedReq.text();
+        const bodyText = await request.clone().text();
+
+        // Parse the body to separate query and variables. This allows
+        // graphqlCacheKey to normalise the hash input — two clients
+        // sending the same query with different JSON whitespace or key
+        // order will produce the same cache key.
+        let query = bodyText;
+        /** @type {Record<string, any>|undefined} */
+        let variables;
+        try {
+            const parsed = JSON.parse(bodyText);
+            query = parsed.query || bodyText;
+            variables = parsed.variables;
+        } catch {
+            // Malformed JSON — hash the raw body. yoga will return an
+            // error anyway, which gets negative-cached.
+        }
 
         // Build a deterministic cache key from query + variables + auth state.
-        // graphqlCacheKey() SHA-256 hashes the body; we suffix with auth tier
-        // because authenticated users may see different resolver results.
-        const baseKey = await graphqlCacheKey(
-            bodyText, // raw body contains {query, variables} — hash the whole thing
-            undefined  // variables already embedded in bodyText
-        );
+        // graphqlCacheKey() SHA-256 hashes the normalised payload; we suffix
+        // with auth tier because authenticated users may see different
+        // resolver results.
+        const baseKey = await graphqlCacheKey(query, variables);
         const cacheKey = authenticated ? baseKey + ':auth' : baseKey + ':anon';
 
         const { buf, tier, hits } = await withGqlSWR(
