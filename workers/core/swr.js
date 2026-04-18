@@ -70,6 +70,13 @@ export async function withSWR({
 }) {
     const effectiveStaleMs = staleMs !== undefined ? staleMs : Math.floor(ttlMs * 0.8);
 
+    /** @type {Parameters<typeof cachedQuery>[0]} */
+    const pipelineOpts = {
+        cacheKey, cache, entityTag: tag, ttlMs,
+        negativeTtlMs, queryFn, getVersion, ctx,
+        emptySentinel,
+    };
+
     // ── SYNCHRONOUS DESTRUCTURE ──────────────────────────────────────
     // cache.get() returns a shared mutable object (_ret) that is
     // overwritten on every call. Extract needed fields immediately
@@ -93,11 +100,7 @@ export async function withSWR({
                 // Negative entries are not refreshed in SWR — they expire
                 // and get re-queried on the next request past negativeTtlMs.
                 ctx.waitUntil(
-                    cachedQuery({
-                        cacheKey, cache, entityTag: tag, ttlMs,
-                        negativeTtlMs, queryFn, getVersion, ctx,
-                        emptySentinel,
-                    }).catch(err => {
+                    cachedQuery(pipelineOpts).catch(err => {
                         console.error(`[SWR] Background refresh failed for ${cacheKey}:`, err);
                     })
                 );
@@ -113,10 +116,6 @@ export async function withSWR({
     }
 
     // ── CACHE MISS (blocking) ────────────────────────────────────────
-    const result = await cachedQuery({
-        cacheKey, cache, entityTag: tag, ttlMs,
-        negativeTtlMs, queryFn, getVersion, ctx,
-        emptySentinel,
-    });
+    const result = await cachedQuery(pipelineOpts);
     return { buf: result.buf, tier: result.tier, hits: 0 };
 }

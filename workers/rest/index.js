@@ -28,9 +28,9 @@ import { parseURL, tokenizeString } from '../core/utils.js';
 import { normaliseCacheKey } from '../core/cache.js';
 import { initL2 } from '../core/l2cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
-import { withEdgeSWR } from '../api/swr.js';
+import { withRestSWR } from './swr.js';
 import { EMPTY_ENVELOPE } from '../core/pipeline.js';
-import { getRestCacheStats, purgeRestCache, REST_TTL } from './cache.js';
+import { getRestCacheStats, purgeRestCache } from './cache.js';
 import { serveScalarUI } from './scalar.js';
 import { handleSubResource } from './subresource.js';
 import openApiSpec from '../../extracted/openapi.json';
@@ -238,8 +238,8 @@ async function handleDetail(request, entity, id, opts, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     const cacheKey = normaliseCacheKey(`v1/${entityTag}/${id}`, queryString);
 
-    const { buf, tier, hits } = await withEdgeSWR(
-        entityTag, cacheKey, ctx, REST_TTL,
+    const { buf, tier, hits } = await withRestSWR(
+        entityTag, cacheKey, ctx,
         async () => {
             if (opts.depth > 0) {
                 const { sql, params } = buildRowQuery(entity, [], opts, id);
@@ -279,8 +279,8 @@ async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     const cacheKey = normaliseCacheKey(rawPath, queryString);
 
-    const { buf, tier, hits } = await withEdgeSWR(
-        entityTag, cacheKey, ctx, REST_TTL,
+    const { buf, tier, hits } = await withRestSWR(
+        entityTag, cacheKey, ctx,
         async () => {
             if (opts.depth > 0) {
                 const { sql, params } = buildRowQuery(entity, filters, opts);

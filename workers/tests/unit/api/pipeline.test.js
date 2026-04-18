@@ -38,6 +38,23 @@ describe("isNegative", () => {
         buf.fill(0x41); // 'A' bytes
         assert.equal(isNegative(buf), false);
     });
+
+    it("should match a custom sentinel by reference", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        assert.equal(isNegative(gqlSentinel, gqlSentinel), true);
+    });
+
+    it("should match a custom sentinel by byte comparison", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        const copy = new Uint8Array(gqlSentinel);
+        assert.notEqual(copy, gqlSentinel);
+        assert.equal(isNegative(copy, gqlSentinel), true);
+    });
+
+    it("should not match default sentinel against custom sentinel", () => {
+        const gqlSentinel = new TextEncoder().encode('{"data":null,"errors":[]}');
+        assert.equal(isNegative(EMPTY_ENVELOPE, gqlSentinel), false);
+    });
 });
 
 // ── EMPTY_ENVELOPE sentinel tests ────────────────────────────────────────────
