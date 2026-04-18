@@ -134,12 +134,18 @@ async function routeApiRequest(request, rc) {
 
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // Restricted entities (poc) → empty for anonymous callers
+    // Restricted entities (poc) are gated for anonymous callers.
+    // Bare /v1/poc → empty; /v1/poc?visible=Public → returns public contacts.
     if (!authenticated && entity._restricted) {
-        if (idStr !== undefined) {
-            return jsonError(404, `${entityTag} not found`);
+        const af = entity._anonFilter;
+        const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
+        if (!visFilter) {
+            if (idStr !== undefined) {
+                return jsonError(404, `${entityTag} not found`);
+            }
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
         }
-        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
+        visFilter.value = af.value;
     }
 
     resolveImplicitFilters(entity, filters);

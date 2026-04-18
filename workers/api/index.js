@@ -202,15 +202,24 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // Restricted entities (poc) are not accessible to anonymous callers.
-    // List returns 200 with empty data (upstream behaviour); detail returns 404.
+    // Restricted entities (poc) are gated for anonymous callers.
+    // Upstream behaviour:
+    //   - Bare /api/poc → 200 with empty data
+    //   - /api/poc?visible=Public → 200 with public contacts
+    //   - /api/poc/{id} → 404 (we don't know visibility without querying)
+    // If the caller explicitly filters for the allowed visibility value,
+    // let the query through with the filter enforced to prevent spoofing.
     if (!authenticated && entity._restricted) {
-        if (id > 0) {
-            return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+        const af = entity._anonFilter;
+        const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
+        if (!visFilter) {
+            if (id > 0) {
+                return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
+            }
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
         }
-        // 200 empty result — not an error — matches upstream's treatment
-        // of unauthenticated /api/poc as a valid but empty result set.
-        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
+        // Force the filter value to the allowed value (e.g. "Public")
+        visFilter.value = af.value;
     }
 
     // If-Modified-Since shortcut: return 304 without touching cache or D1

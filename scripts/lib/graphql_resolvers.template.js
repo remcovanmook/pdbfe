@@ -85,6 +85,10 @@ function decodeCursor(cursor) {
  * it bridges GraphQL arguments (limit, skip, filters) seamlessly into `buildRowQuery`. 
  * It automatically hardcaps unconstrained requests at 250 rows to protect the D1 database.
  *
+ * For restricted entities (e.g. poc), anonymous callers must provide an explicit
+ * visibility filter matching the entity's _anonFilter. Without it, an empty array
+ * is returned. This matches upstream PeeringDB behaviour.
+ *
  * @param {string} tag - The unique system identifier for the entity (e.g. "net", "org").
  * @returns {Function} An asynchronous GraphQL resolver closure executing the SQL builder.
  */
@@ -92,6 +96,13 @@ function listResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
         const filters = whereToFilters(args.where);
+        // Restricted entity gate: anon callers need an explicit visibility filter.
+        if (!ctx.authenticated && entity._restricted) {
+            const af = entity._anonFilter;
+            const vis = af && filters.find(f => f.field === af.field);
+            if (!vis) return [];
+            vis.value = af.value;
+        }
         const opts = {
             depth: 0,
             limit: Math.min(args.limit ?? 20, 250),
@@ -108,12 +119,17 @@ function listResolver(tag) {
 /**
  * Creates a detail resolver for the given entity tag.
  *
+ * For restricted entities (e.g. poc), anonymous callers get null.
+ * Single-record lookups cannot be filtered by visibility without
+ * querying the database first, so we block entirely.
+ *
  * @param {string} tag - Entity tag (e.g. "net").
  * @returns {Function} GraphQL resolver function.
  */
 function detailResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
+        if (!ctx.authenticated && entity._restricted) return null;
         const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];
         const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };
         const { sql, params } = buildRowQuery(entity, filters, opts);
@@ -145,6 +161,10 @@ function fkResolver(fkField, targetTag) {
 /**
  * Creates a reverse-edge resolver that loads child entities by parent ID.
  *
+ * For restricted entities (e.g. poc), anonymous callers get only records
+ * matching the entity's _anonFilter (visible=Public). This matches the
+ * depth-expansion behaviour in the API worker.
+ *
  * @param {string} fkField - The FK field on the child entity (e.g. "org_id").
  * @param {string} childTag - Child entity tag (e.g. "net").
  * @returns {Function} GraphQL resolver function.
@@ -153,6 +173,11 @@ function reverseEdgeResolver(fkField, childTag) {
     return async (parent, args, ctx) => {
         const entity = ENTITIES[childTag];
         const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];
+        // Inject anonFilter for restricted entities when caller is anonymous.
+        if (!ctx.authenticated && entity._restricted && entity._anonFilter) {
+            const af = entity._anonFilter;
+            filters.push({ field: af.field, op: 'eq', value: af.value });
+        }
         const opts = {
             depth: 0,
             limit: Math.min(args.limit ?? 250, 250),
@@ -175,13 +200,29 @@ function reverseEdgeResolver(fkField, childTag) {
  * 2. An execution boundary query evaluating the Base64 parsed `after`/`before` cursors 
  *    relative to the requested `first`/`last` boundaries to slice page edges.
  *
+ * For restricted entities, anonymous callers must provide an explicit visibility
+ * filter. Without it, an empty connection is returned.
+ *
  * @param {string} tag - The unique target entity identifier.
  * @returns {Function} A GraphQL resolver returning a strict `Connection` root object.
  */
 function connectionResolver(tag) {
+    const EMPTY_CONNECTION = Object.freeze({
+        edges: [], pageInfo: Object.freeze({
+            hasNextPage: false, hasPreviousPage: false,
+            startCursor: null, endCursor: null,
+        }), totalCount: 0,
+    });
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
         const filters = whereToFilters(args.where);
+        // Restricted entity gate: same pattern as listResolver.
+        if (!ctx.authenticated && entity._restricted) {
+            const af = entity._anonFilter;
+            const vis = af && filters.find(f => f.field === af.field);
+            if (!vis) return EMPTY_CONNECTION;
+            vis.value = af.value;
+        }
 
         // Count query
         const countFilters = [...filters, { field: 'status', op: 'eq', value: 'ok' }];

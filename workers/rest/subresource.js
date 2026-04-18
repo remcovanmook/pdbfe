@@ -138,12 +138,18 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
 
     const targetEntity = ENTITIES[def.targetTag];
 
-    // Restricted entities (poc) are empty for anonymous callers
-    if (!authenticated && targetEntity._restricted) {
-        return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
-    }
-
     const { filters, limit, skip } = parseQueryFilters(queryString);
+
+    // Restricted entities (poc): for anonymous callers, inject the
+    // anonFilter (visible=Public) on reverse edges and block forward
+    // FK lookups (single-record, can't filter by visibility).
+    if (!authenticated && targetEntity._restricted) {
+        const af = targetEntity._anonFilter;
+        if (def.direction === 'forward' || !af) {
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
+        }
+        filters.push({ field: af.field, op: 'eq', value: af.value });
+    }
 
     if (def.direction === 'forward') {
         return handleForwardFK(rc.db, sourceTag, sourceId, def, hResponse);
