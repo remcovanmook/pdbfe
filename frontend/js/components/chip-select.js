@@ -118,7 +118,7 @@ export class ChipSelect {
             if (e.key === 'Backspace' && this._input.value === '' && this._selected.size > 0) {
                 // Remove last chip
                 const vals = [...this._selected];
-                this._selected.delete(vals[vals.length - 1]);
+                this._selected.delete(vals.at(-1));
                 this._renderChips();
                 this._notifyChange();
                 this._showDropdown();
@@ -145,7 +145,6 @@ export class ChipSelect {
                 if (this._highlightIdx >= 0 && this._highlightIdx < visible.length) {
                     this._toggleOption(visible[this._highlightIdx].value);
                 }
-                return;
             }
         });
 
