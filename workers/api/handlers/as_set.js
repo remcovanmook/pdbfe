@@ -4,9 +4,8 @@
  * Looks up a network by ASN and returns its irr_as_set field.
  */
 
-import { DETAIL_TTL } from '../cache.js';
+import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
 import { encoder, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../cache.js';
 
 /**
  * Handles the special /api/as_set/{asn} endpoint.

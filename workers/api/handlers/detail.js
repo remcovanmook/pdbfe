@@ -8,9 +8,8 @@
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { normaliseCacheKey, DETAIL_TTL } from '../cache.js';
+import { normaliseCacheKey, DETAIL_TTL, withEdgeSWR } from '../cache.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../cache.js';
 import { parseJsonFields } from './shared.js';
 
 /**
