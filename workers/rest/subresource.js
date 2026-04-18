@@ -132,7 +132,7 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
 
     const def = rels.get(relation);
     if (!def) {
-        const available = [...rels.keys()].join(', ');
+        const available = [...rels.keys()].join(', '); // ap-ok: error path only, not per-request
         return jsonError(404, `Unknown relation '${relation}' on ${sourceTag}. Available: ${available}`);
     }
 
@@ -187,7 +187,7 @@ async function handleForwardFK(db, sourceTag, sourceId, def, hResponse) {
     const tgtResult = await db.prepare(tgtSql).bind(...tgtParams).all();
 
     const data = tgtResult.results || [];
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse });
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
 }
 
 /**
@@ -206,7 +206,7 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
     const targetEntity = ENTITIES[def.targetTag];
     const filters = [
         { field: def.fkField, op: 'eq', value: String(parentId) },
-        ...extraFilters,
+        ...extraFilters, // ap-ok: sub-resource cold path, filter merge
     ];
     const opts = {
         depth: 0,
@@ -220,5 +220,5 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
     const result = await db.prepare(sql).bind(...params).all();
     const data = result.results || [];
 
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse });
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
 }

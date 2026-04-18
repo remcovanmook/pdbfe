@@ -43,7 +43,7 @@ const WORKERS_ROOT = join(__dirname, '..', '..');
  * Hot-path source directories scanned for universal rules (§1-§3, §10).
  * Excludes api/entities.js (cold-boot module-level setup).
  */
-const HOT_PATH_DIRS = ['api', 'core'];
+const HOT_PATH_DIRS = ['api', 'core', 'graphql', 'rest'];
 const COLD_BOOT_FILES = new Set(['entities.js']);
 
 /**
@@ -55,6 +55,9 @@ const SYNC_ONLY_FILES = [
     'core/cache.js',
     'core/http.js',
     'api/http.js',
+    'graphql/handlers/static.js',
+    'rest/handlers/static.js',
+    'rest/scalar.js',
 ];
 
 /**
@@ -67,6 +70,11 @@ const NO_D1_FILES = [
     'core/utils.js',
     'api/cache.js',
     'api/l2cache.js',
+    'graphql/cache.js',
+    'graphql/handlers/static.js',
+    'rest/cache.js',
+    'rest/handlers/static.js',
+    'rest/scalar.js',
 ];
 
 /**
@@ -82,6 +90,14 @@ const NO_PENDING_FILES = [
     'api/http.js',
     'api/cache.js',
     'core/cache.js',
+    'graphql/cache.js',
+    'graphql/handlers/static.js',
+    'graphql/handlers/query.js',
+    'rest/cache.js',
+    'rest/handlers/static.js',
+    'rest/handlers/detail.js',
+    'rest/handlers/list.js',
+    'rest/scalar.js',
 ];
 
 /**
@@ -92,6 +108,9 @@ const HANDLER_FILES = [
     'api/handlers/list.js',
     'api/handlers/detail.js',
     'api/handlers/as_set.js',
+    'graphql/handlers/query.js',
+    'rest/handlers/detail.js',
+    'rest/handlers/list.js',
 ];
 
 /**
@@ -103,6 +122,9 @@ const NO_JSON_ROUNDTRIP_FILES = [
     'api/handlers/list.js',
     'api/handlers/detail.js',
     'api/handlers/as_set.js',
+    'graphql/handlers/query.js',
+    'rest/handlers/detail.js',
+    'rest/handlers/list.js',
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────

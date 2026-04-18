@@ -75,7 +75,7 @@ export async function handleQuery(request, db, ctx, authenticated) {
     /** @type {Record<string, any>|undefined} */
     let variables;
     try {
-        const parsed = JSON.parse(bodyText);
+        const parsed = JSON.parse(bodyText); // ap-ok: body normalization for cache key dedup
         query = parsed.query || bodyText;
         variables = parsed.variables;
     } catch {

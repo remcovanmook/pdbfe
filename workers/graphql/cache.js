@@ -88,7 +88,7 @@ export function purgeGqlCache() {
  * @returns {Promise<string>} Cache key in the form "gql/{hex}".
  */
 export async function graphqlCacheKey(query, variables) {
-    const payload = JSON.stringify({ query, variables: variables || {} });
+    const payload = JSON.stringify({ query, variables: variables || {} }); // ap-ok: deterministic hash input, not response construction
     const digest = await globalThis.crypto.subtle.digest(
         'SHA-256',
         encoder.encode(payload)

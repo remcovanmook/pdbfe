@@ -27,7 +27,7 @@ const STATIC_ASSETS = Object.freeze({
  * Encoded once at module load to avoid repeated serialisation.
  * @type {Uint8Array}
  */
-const SPEC_BYTES = encoder.encode(JSON.stringify(openApiSpec));
+const SPEC_BYTES = encoder.encode(JSON.stringify(openApiSpec)); // ap-ok: module-level precomputation, runs once
 
 /** Headers for the OpenAPI JSON spec response. */
 const H_SPEC = Object.freeze({
