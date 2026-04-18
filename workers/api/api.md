@@ -27,33 +27,29 @@ The API worker creates a D1 session per request (`"first-unconstrained"`), enabl
 
 All handler functions receive `db` (typed as `D1Session`) instead of `env`. The sync worker does not use sessions — writes always go to the primary.
 
-## Module Dependency Graph
+## Module Layout
 
 ```
-api/index.js (router)
-├── core/admin.js         (validateRequest, wrapHandler, routeAdminPath)
-├── core/utils.js         (parseURL, tokenizeString)
-├── core/auth.js          (extractApiKey, verifyApiKey, extractSessionId, resolveSession, hashKey)
-├── api/http.js           (serveJSON, jsonError, H_API_AUTH, H_API_ANON, isNotModifiedSince)
-│   └── core/http.js      (encoder, encodeJSON, handlePreflight, H_CORS, H_NOCACHE)
-├── api/utils.js          (parseQueryFilters)
-├── api/ratelimit.js      (isRateLimited, normaliseIP, getRateLimitStats, purgeRateLimit)
-├── api/handlers/
-│   ├── index.js          (re-exports from individual handler modules)
-│   ├── list.js           (handleList, executeListQuery, handleCount, prefetchPage)
-│   ├── detail.js         (handleDetail, executeDetailQuery)
-│   ├── as_set.js         (handleAsSet)
-│   └── shared.js         (handleNotImplemented, parseJsonFields, countRows)
-│       ├── api/swr.js    (withEdgeSWR — L1 read + SWR + cachedQuery miss flow)
-│       ├── api/pipeline.js (cachedQuery, EMPTY_ENVELOPE, isNegative)
-│       ├── api/query.js  (buildJsonQuery, buildRowQuery, nextPageParams)
-│       ├── api/depth.js  (expandDepth)
-│       ├── api/cache.js  (getEntityCache, normaliseCacheKey, TTL constants)
-│       └── api/entities.js (ENTITIES, ENTITY_TAGS, getFilterType, validateQuery)
-└── core/cache.js         (LRUCache — instantiated 14× by api/cache.js + 1× by api/ratelimit.js)
+api/
+├── index.js          Router, rate limiter init
+├── cache.js          Per-entity LRU caches, TTLs, withEdgeSWR(), cachedQuery()
+├── http.js           serveJSON, jsonError, header sets
+├── entities.js       Entity registry (re-exports extracted/entities-worker.js)
+├── query.js          buildJsonQuery, buildRowQuery, nextPageParams
+├── depth.js          expandDepth (_set field expansion)
+├── utils.js          parseQueryFilters
+├── sync_state.js     Entity version tracking
+└── handlers/
+    ├── index.js      Re-exports from handler modules
+    ├── list.js       handleList, executeListQuery, handleCount, prefetchPage
+    ├── detail.js     handleDetail, executeDetailQuery
+    ├── as_set.js     handleAsSet
+    ├── compare.js    handleCompare
+    └── shared.js     handleNotImplemented, parseJsonFields, countRows
 ```
 
-Handlers live in `api/handlers/` as individual focused modules, re-exported via `api/handlers/index.js`.
+Dependencies flow downward: handlers → `cache.js` / `query.js` / `http.js` → `core/`.
+No cross-worker imports — shared logic lives in `core/`.
 
 ## Caching Strategy
 
@@ -70,7 +66,7 @@ Each entity type gets its own LRU cache instance. This prevents heavy traffic on
 | Low | poc | 256 | 1 MB |
 | Light | ixlan, ixpfx, ixfac, carrier, carrierfac, campus | 128 | 1 MB each |
 
-Total: ~64 MB. Remaining ~64 MB is available for working memory and a future pre-cooked answer cache.
+Total: ~64 MB. Remaining ~64 MB is available for working memory.
 
 ### Raw JSON Byte Forwarding (Zero-Allocation Hot Path)
 
@@ -82,7 +78,18 @@ For `depth>0` queries, the handler falls back to `buildRowQuery` (traditional ro
 
 ### Cache Stampede Protection
 
-All three handlers coalesce concurrent cache-miss requests via the `cache.pending` map. When a popular key expires and N requests arrive before the D1 query resolves, only the first request creates the fetch Promise — the remaining N-1 await the same Promise. The pending entry is cleaned up via `.finally()` regardless of success or failure.
+All handlers coalesce concurrent cache-miss requests via the `cache.pending` map. When a popular key expires and N requests arrive before the D1 query resolves, only the first request creates the fetch Promise — the remaining N-1 await the same Promise. The pending entry is cleaned up via `.finally()` regardless of success or failure.
+
+### SWR (Stale-While-Revalidate)
+
+Handlers use `withEdgeSWR()` from `cache.js` instead of raw `cache.get()` + `cachedQuery()`. This encapsulates:
+1. L1 cache hit with synchronous field extraction (respects the shared `_ret` contract)
+2. Fresh entry → serve immediately
+3. Stale entry (within SWR window) → serve stale, fire `ctx.waitUntil()` background refresh
+4. Expired/miss → block on `cachedQuery()` (L2 → D1 fallback)
+5. Negative cache TTL override for 404 entries
+
+`cachedQuery()` is also in `cache.js` — a thin wrapper around `core/pipeline.js` that injects the API worker's `NEGATIVE_TTL` and `getEntityVersion`.
 
 ### SWR Pre-fetch
 
@@ -90,24 +97,13 @@ When a paginated list response fills its limit, `handleList` fires a background 
 
 ### Cache Keys
 
-Cache keys are normalised: URL path + alphabetically sorted query string. This ensures `?limit=10&asn=13335` and `?asn=13335&limit=10` hit the same cache slot.
+Cache keys are normalised (`core/cache.js`): URL path + alphabetically sorted query string. This ensures `?limit=10&asn=13335` and `?asn=13335&limit=10` hit the same cache slot.
 
-Cache keys are **partitioned by authentication state** (prefixed with `auth:` or `anon:`) to prevent cache poisoning. Anonymous users see restricted `poc_set` filtered to `visible=Public`; authenticated users see all visibility levels. Without partitioning, whichever request populates the cache first determines what the other group sees until TTL expires.
-
-### SWR (Stale-While-Revalidate)
-
-Handlers use `withEdgeSWR()` (`api/swr.js`) instead of raw `cache.get()` + `cachedQuery()`. This encapsulates:
-1. L1 cache hit with synchronous field extraction (respects the shared `_ret` contract)
-2. Fresh entry → serve immediately
-3. Stale entry (within SWR window) → serve stale, fire `ctx.waitUntil()` background refresh
-4. Expired/miss → block on `cachedQuery()` (L2 → D1 fallback)
-5. Negative cache TTL override for 404 entries
-
-See ANTI_PATTERNS.md §12 for rationale.
+Cache keys are **partitioned by authentication state** (prefixed with `auth:` or `anon:`) to prevent cache poisoning. Anonymous users see restricted `poc_set` filtered to `visible=Public`; authenticated users see all visibility levels.
 
 ### Rate Limiting
 
-`api/ratelimit.js` provides isolate-level rate limiting using a dedicated LRU cache instance (4000 slots, 60s window). No KV reads, no external dependencies, sub-millisecond overhead.
+Rate limiting is initialised inline in `index.js` using `createRateLimiter()` from `core/ratelimit.js`. It uses a dedicated LRU cache instance (4000 slots, 60s window). No KV reads, no external dependencies, sub-millisecond overhead.
 
 - **Anonymous callers**: Keyed by client IP (IPv6 truncated to /64 prefix), 60 req/min per isolate
 - **Authenticated callers**: Keyed by API key or session ID, 600 req/min per isolate
