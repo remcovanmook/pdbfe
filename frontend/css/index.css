@@ -1583,6 +1583,93 @@ body[data-page="home"] .site-logo {
     }
 }
 
+/* ── Mobile table card layout ─────────────────────────────────── */
+/* At narrow widths, each table row becomes a self-contained card
+   with labelled fields instead of a horizontal scrolling table.
+   Labels come from the data-label attribute set by pdb-table.js. */
+
+@media (max-width: 640px) {
+    .data-table thead {
+        display: none;
+    }
+
+    .data-table,
+    .data-table tbody,
+    .data-table tr {
+        display: block;
+    }
+
+    .data-table tr {
+        padding: var(--space-sm) var(--space-md);
+        margin-bottom: var(--space-xs);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-sm);
+        background: var(--bg-card);
+    }
+
+    .data-table tr:hover {
+        border-color: var(--border);
+    }
+
+    /* Override the nth-child striping — cards use border instead */
+    .data-table tr:nth-child(even) td {
+        background: transparent;
+    }
+
+    .data-table tr:hover td {
+        background: transparent;
+    }
+
+    .data-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: var(--space-sm);
+        padding: 2px var(--space-xs);
+        white-space: normal;
+        border-bottom: none;
+        text-align: right;
+        max-width: none;
+        overflow: visible;
+    }
+
+    .data-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        font-size: 0.625rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-muted);
+        text-align: left;
+        flex-shrink: 0;
+        min-width: 5em;
+    }
+
+    /* IP address stacks should display inline in card mode */
+    .data-table td .ip-stack {
+        flex-direction: row;
+        gap: var(--space-sm);
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    /* Mono cells don't need reduced font in card mode */
+    .data-table td.td-mono {
+        font-size: inherit;
+    }
+
+    /* Right-aligned cells align left in card mode (value is on the right via flex) */
+    .data-table td.td-right {
+        text-align: right;
+    }
+
+    /* Scroll hint not needed in card mode */
+    .data-table-wrapper {
+        mask-image: none;
+        -webkit-mask-image: none;
+    }
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    Debug Overlay (Ctrl+Shift+D)
    Hidden diagnostic panel for inspecting the distributed cache state.
@@ -1913,6 +2000,68 @@ body[data-page="home"] .site-logo {
     box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
+/* ── Account page affiliation tree ───────────────────────────────── */
+/* Org-grouped tree: each org is a divider/header row, with child
+   entities (networks, exchanges, facilities) listed beneath it.    */
+
+.affiliation-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.affiliation-tree__org {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    margin-top: var(--space-sm);
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    background: var(--bg-body);
+    border-top: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+}
+
+.affiliation-tree__org:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
+.affiliation-tree__entity {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-md) var(--space-xs) var(--space-xl);
+    font-size: 0.8125rem;
+    transition: background var(--transition-fast);
+}
+
+.affiliation-tree__entity:hover {
+    background: var(--bg-hover);
+}
+
+.affiliation-tree__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.affiliation-tree__compare {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+.affiliation-tree__compare:hover {
+    color: var(--accent);
+}
+
 /* ── Compare page ──────────────────────────────────────────────── */
 /* Side-by-side entity selector grid, submit button, and search
    wrapper positioning. All visual components (cards, tables, stats
@@ -1951,6 +2100,20 @@ body[data-page="home"] .site-logo {
 
 .compare-search-wrap {
     position: relative;
+}
+
+/* Locked state: A-side pre-filled from URL, not editable */
+.compare-search-wrap--locked .search-input {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    color: var(--text-secondary);
+    cursor: default;
+    opacity: 0.8;
+}
+
+.compare-search-wrap--locked .search-input:focus {
+    border-color: var(--border-subtle);
+    box-shadow: none;
 }
 
 .compare-selected {

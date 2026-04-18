@@ -1,6 +1,7 @@
 import { AUTH_ORIGIN } from '../config.js';
 import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
+import { fetchEntity } from '../api.js';
 import { t, setLanguage, LANGUAGES } from '../i18n.js';
 import { getTheme, setTheme } from '../theme.js';
 import { getTimezonePreference, setTimezone } from '../timezone.js';
@@ -281,8 +282,8 @@ export async function renderAccount(_params) {
     // Wire up create key button
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
 
-    // Render network affiliations into the sidebar
-    netsContainer.appendChild(renderNetworks(user));
+    // Render org-grouped affiliations into the left column
+    renderAffiliations(user, netsContainer);
 
     // Wire up language preference selector — persists to server
     langSelect.addEventListener('change', async () => {
@@ -369,54 +370,156 @@ export async function renderAccount(_params) {
 }
 
 /**
- * Renders the user's network affiliations as a sidebar card.
- * Uses DOM builders — network names go through textContent.
+ * Fetches and renders the user's organisational affiliations as an
+ * org-grouped tree. Each org acts as a divider/header row, with its
+ * child entities (networks, exchanges, facilities) listed beneath.
+ *
+ * Data flow:
+ *   1. Start from user.networks (already in session data)
+ *   2. Fetch each network at depth=0 to resolve org_id
+ *   3. Deduplicate org IDs, fetch each org at depth=1
+ *   4. Render grouped tree into the container
  *
  * @param {SessionData|null} user - The session/user data.
- * @returns {HTMLDivElement|DocumentFragment} Card element, or empty fragment.
+ * @param {HTMLElement} container - DOM element to render into.
  */
-function renderNetworks(user) {
+async function renderAffiliations(user, container) {
     const nets = user?.networks || [];
-    if (nets.length === 0) return document.createDocumentFragment();
-
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    const header = document.createElement('div');
-    header.className = 'card__header';
-    const title = document.createElement('span');
-    title.className = 'card__title';
-    title.textContent = t('Networks');
-    const badge = document.createElement('span');
-    badge.className = 'card__badge';
-    badge.textContent = String(nets.length);
-    header.append(title, badge);
-    card.appendChild(header);
-
-    const body = document.createElement('div');
-    body.className = 'card__body';
-    const group = document.createElement('div');
-    group.className = 'info-group';
-
-    for (const n of nets) {
-        const field = document.createElement('div');
-        field.className = 'info-field';
-
-        const label = document.createElement('span');
-        label.className = 'info-field__label';
-        label.textContent = `AS${n.asn}`;
-
-        const value = document.createElement('span');
-        value.className = 'info-field__value';
-        value.appendChild(createLink('net', n.id, n.name));
-
-        field.append(label, value);
-        group.appendChild(field);
+    if (nets.length === 0) {
+        container.appendChild(
+            el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No network affiliations.') })
+        );
+        return;
     }
 
-    body.appendChild(group);
-    card.appendChild(body);
-    return card;
+    // Show loading state
+    container.appendChild(
+        el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading affiliations')}...` })
+    );
+
+    try {
+        // Fetch each network at depth=0 to get their org_id
+        const netDetails = await Promise.all(
+            nets.map(n => fetchEntity('net', n.id, 0).catch(/** @returns {null} */() => null))
+        );
+
+        // Collect unique org IDs
+        /** @type {Set<number>} */
+        const orgIds = new Set();
+        for (const net of netDetails) {
+            if (net?.org_id) orgIds.add(net.org_id);
+        }
+
+        // Fetch each org at depth=1 to get net_set, ix_set, fac_set
+        const orgEntries = await Promise.all(
+            [...orgIds].map(async (orgId) => {
+                const org = await fetchEntity('org', orgId, 1).catch(/** @returns {null} */() => null);
+                return org ? { id: orgId, org } : null;
+            })
+        );
+
+        const orgs = orgEntries.filter(Boolean);
+
+        if (orgs.length === 0) {
+            container.replaceChildren(
+                el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No affiliations found.') })
+            );
+            return;
+        }
+
+        container.replaceChildren(buildOrgTree(orgs));
+    } catch (err) {
+        console.warn('Failed to load affiliations:', err);
+        container.replaceChildren(
+            el('p', { style: 'color:var(--status-error);font-size:0.8125rem', text: t('Failed to load affiliations.') })
+        );
+    }
+}
+
+/**
+ * Builds the org-grouped affiliation tree as a card element.
+ * Each org is a divider row, with child nets/ixes/facs below it.
+ *
+ * @param {Array<{id: number, org: any}>} orgs - Org entries with depth=1 data.
+ * @returns {HTMLElement} Card element containing the tree.
+ */
+function buildOrgTree(orgs) {
+    // Count total entities across all orgs
+    let totalCount = 0;
+    for (const { org } of orgs) {
+        totalCount += (org.net_set?.length || 0) + (org.ix_set?.length || 0) + (org.fac_set?.length || 0);
+    }
+
+    const wrapper = el('div', { className: 'card' });
+    const header = el('div', { className: 'card__header' });
+    header.appendChild(el('span', { className: 'card__title', text: t('My Affiliations') }));
+    const badge = el('span', { className: 'card__badge' });
+    badge.textContent = String(totalCount);
+    header.appendChild(badge);
+    wrapper.appendChild(header);
+
+    const body = el('div', { className: 'card__body' });
+    const tree = el('div', { className: 'affiliation-tree' });
+
+    for (const { org } of orgs) {
+        // ── Org divider row ──
+        const orgRow = el('div', { className: 'affiliation-tree__org' });
+        orgRow.appendChild(createEntityBadge('org'));
+        orgRow.appendChild(createLink('org', org.id, org.name || `Org ${org.id}`));
+        tree.appendChild(orgRow);
+
+        // ── Child entities: networks, then exchanges, then facilities ──
+        if (org.net_set) {
+            for (const net of org.net_set) {
+                tree.appendChild(buildEntityRow('net', net.id, net.name ? `AS${net.asn} — ${net.name}` : `AS${net.asn}`));
+            }
+        }
+        if (org.ix_set) {
+            for (const ix of org.ix_set) {
+                tree.appendChild(buildEntityRow('ix', ix.id, ix.name || `IX ${ix.id}`));
+            }
+        }
+        if (org.fac_set) {
+            for (const fac of org.fac_set) {
+                tree.appendChild(buildEntityRow('fac', fac.id, fac.name || `Fac ${fac.id}`));
+            }
+        }
+    }
+
+    body.appendChild(tree);
+    wrapper.appendChild(body);
+    return wrapper;
+}
+
+/**
+ * Builds a single entity row for the affiliation tree.
+ * Contains an entity badge, a link to the entity, and a compare shortcut.
+ *
+ * @param {string} tag - Entity type tag (net, ix, fac).
+ * @param {number} id - Entity ID.
+ * @param {string} name - Display name.
+ * @returns {HTMLElement} Row element.
+ */
+function buildEntityRow(tag, id, name) {
+    const row = el('div', { className: 'affiliation-tree__entity' });
+    row.appendChild(createEntityBadge(tag));
+
+    const link = createLink(tag, id, name);
+    link.className += ' affiliation-tree__name';
+    row.appendChild(link);
+
+    // Compare shortcut (only for types that support comparison)
+    if (['net', 'ix', 'fac'].includes(tag)) {
+        const cmpLink = document.createElement('a');
+        cmpLink.href = `/compare?a=${tag}:${id}`;
+        cmpLink.dataset.link = '';
+        cmpLink.className = 'affiliation-tree__compare';
+        cmpLink.textContent = '↔ ' + t('Compare');
+        cmpLink.title = t('Compare with another entity');
+        row.appendChild(cmpLink);
+    }
+
+    return row;
 }
 
 /**

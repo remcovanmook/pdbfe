@@ -572,6 +572,7 @@ class PdbTable extends HTMLElement {
             for (const col of cfg.columns) {
                 if (this._hiddenCols.has(col.key)) continue;
                 const td = document.createElement('td');
+                td.dataset.label = t(col.label);
                 if (col.class) td.className = col.class;
                 if (col.maxWidth) {
                     td.style.maxWidth = col.maxWidth;
