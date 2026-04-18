@@ -55,7 +55,6 @@ const SYNC_ONLY_FILES = [
     'core/cache.js',
     'core/http.js',
     'api/http.js',
-    'api/ratelimit.js',
 ];
 
 /**
@@ -67,7 +66,6 @@ const NO_D1_FILES = [
     'core/http.js',
     'core/utils.js',
     'api/cache.js',
-    'api/ratelimit.js',
     'api/l2cache.js',
 ];
 
@@ -83,7 +81,6 @@ const NO_PENDING_FILES = [
     'core/http.js',
     'api/http.js',
     'api/cache.js',
-    'api/ratelimit.js',
     'core/cache.js',
 ];
 

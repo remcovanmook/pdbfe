@@ -12,9 +12,22 @@ import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemen
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
-import { isRateLimited, getRateLimitStats, purgeRateLimit } from './ratelimit.js';
+import { createRateLimiter } from '../core/ratelimit.js';
 import { resolveAuth } from '../core/auth.js';
 import { initL2 } from './l2cache.js';
+
+/**
+ * Rate limiter for API requests.
+ * 4000 IP slots, 1 MB ceiling, 60-second window.
+ * Anonymous: 60 req/min; Authenticated: 600 req/min.
+ */
+const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
+    slots: 4000,
+    maxBytes: 1024 * 1024,
+    windowMs: 60_000,
+    limitAnon: 60,
+    limitAuth: 600,
+});
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
