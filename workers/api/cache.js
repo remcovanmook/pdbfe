@@ -149,12 +149,7 @@ export function purgeAllCaches() {
     }
 }
 
-// Re-export normaliseCacheKey from core so api/ modules can import
-// from './cache.js' without changing their import paths.
-export { normaliseCacheKey } from '../core/cache.js';
 
-// Re-export sentinels and helpers from core/pipeline.js.
-export { EMPTY_ENVELOPE, isNegative } from '../core/pipeline.js';
 
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 

@@ -6,8 +6,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { LRUCache } from '../../../core/cache.js';
-import { getEntityCache, getCacheStats, purgeAllCaches, NEGATIVE_TTL, DETAIL_TTL, normaliseCacheKey } from '../../../api/cache.js';
+import { LRUCache, normaliseCacheKey } from '../../../core/cache.js';
+import { getEntityCache, getCacheStats, purgeAllCaches, NEGATIVE_TTL, DETAIL_TTL } from '../../../api/cache.js';
 
 describe("LRUCache core operations", () => {
     it("should store and retrieve an entry", () => {

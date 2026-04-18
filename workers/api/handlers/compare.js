@@ -16,7 +16,8 @@
  */
 
 import { encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { normaliseCacheKey, DETAIL_TTL, withEdgeSWR } from '../cache.js';
+import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
+import { normaliseCacheKey } from '../../core/cache.js';
 import { tokenizeString } from '../../core/utils.js';
 
 /**

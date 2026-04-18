@@ -9,7 +9,9 @@
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
-import { getEntityCache, LIST_TTL, COUNT_TTL, normaliseCacheKey, cachedQuery, EMPTY_ENVELOPE, withEdgeSWR } from '../cache.js';
+import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
+import { normaliseCacheKey } from '../../core/cache.js';
+import { EMPTY_ENVELOPE } from '../../core/pipeline.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
 import { parseJsonFields, countRows } from './shared.js';
 
