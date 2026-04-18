@@ -311,7 +311,7 @@ export async function renderAdvancedSearch(params) {
 
     // Determine active tab from URL hash or params
     const hash = globalThis.location.hash.replace('#', '');
-    const activeTab = TABS.find(tb => tb.key === hash) ? hash : 'ix';
+    const activeTab = TABS.some(tb => tb.key === hash) ? hash : 'ix';
 
     // Tab bar
     const tabBar = buildTabBar(activeTab);
@@ -615,7 +615,7 @@ function renderAsnConnectivityForm(formWrap, resultsWrap) {
         const raw = textarea.value.trim();
         if (!raw) return;
 
-        const asns = raw.split(/[,\s\n]+/).map(s => s.trim().replace(/^as/i, '')).filter(s => /^\d+$/.test(s));
+        const asns = raw.split(/[,\s]+/).map(s => s.trim().replace(/^as/i, '')).filter(s => /^\d+$/.test(s));
         if (asns.length === 0) {
             resultsWrap.replaceChildren(createError(t('No valid ASNs found in input.')));
             return;
@@ -688,6 +688,35 @@ function renderAsnResults(wrap, results) {
 // ── Search execution ────────────────────────────────────────────────────
 
 /**
+ * Converts the fieldGetters map into an API-compatible filter object.
+ * Handles chip-selects (arrays), exact-match fields (asn), boolean
+ * fields (true/false strings), __in suffixed keys, and text fields
+ * (which get __contains appended for substring matching).
+ *
+ * @param {Map<string, () => string|string[]>} fieldGetters - Field name → value getter.
+ * @returns {Record<string, string|number>} Filter object for the API.
+ */
+function buildFilters(fieldGetters) {
+    /** @type {Record<string, string|number>} */
+    const filters = {};
+    for (const [key, getter] of fieldGetters) {
+        const value = getter();
+        if (Array.isArray(value)) {
+            if (value.length > 0) filters[key] = value.join(',');
+            continue;
+        }
+        if (typeof value !== 'string' || value === '') continue;
+
+        if (key === 'asn' || key.endsWith('__in') || value === 'true' || value === 'false') {
+            filters[key] = value;
+        } else {
+            filters[`${key}__contains`] = value;
+        }
+    }
+    return filters;
+}
+
+/**
  * Collects form values, builds API query params, executes the search,
  * and renders results.
  *
@@ -696,32 +725,7 @@ function renderAsnResults(wrap, results) {
  * @param {HTMLElement} resultsWrap - Results container.
  */
 async function executeSearch(entityType, fieldGetters, resultsWrap) {
-    /** @type {Record<string, string|number>} */
-    const filters = {};
-
-    for (const [key, getter] of fieldGetters) {
-        const value = getter();
-        if (Array.isArray(value)) {
-            // Chip-select: join values for __in operator
-            if (value.length > 0) {
-                filters[key] = value.join(',');
-            }
-        } else if (typeof value === 'string' && value !== '') {
-            // Text or bool field
-            if (key === 'asn') {
-                // ASN is exact match
-                filters[key] = value;
-            } else if (key.endsWith('__in')) {
-                filters[key] = value;
-            } else if (value === 'true' || value === 'false') {
-                // Boolean field
-                filters[key] = value;
-            } else {
-                // Text field: use __contains for substring matching
-                filters[`${key}__contains`] = value;
-            }
-        }
-    }
+    const filters = buildFilters(fieldGetters);
 
     // Update URL with active filters
     const searchParams = new URLSearchParams();
