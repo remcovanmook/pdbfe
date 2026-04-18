@@ -248,34 +248,14 @@ async function handleRequest(request, env, ctx) {
     const opts = { depth, limit, skip, since, sort, fields, pdbfe };
 
     // ── Handler dispatch ─────────────────────────────────────────────
+    // entityVersionMs and userId are threaded into the context so that
+    // serveJSON can bake Last-Modified and X-Auth-Id into the initial
+    // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated };
-    const response = id > 0
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, entityVersionMs, userId };
+    return id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
-
-    // Batch header mutations into a single Response constructor to avoid
-    // instantiating intermediate garbage Response objects on the hot path.
-    if (entityVersionMs > 0 || userId !== null) {
-        const h = new Headers(response.headers);
-
-        if (entityVersionMs > 0) {
-            h.set('Last-Modified', lastModifiedHeader(entityVersionMs));
-        }
-
-        // Format matches upstream PeeringDB convention: "u{peeringdb_user_id}"
-        if (userId !== null) {
-            h.set('X-Auth-Id', `u${userId}`);
-        }
-
-        return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: h,
-        });
-    }
-
-    return response;
 }
 
 /**

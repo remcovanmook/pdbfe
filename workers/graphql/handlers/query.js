@@ -46,14 +46,31 @@ function getYoga() {
 }
 
 /**
+ * Bounded map from raw POST body text → resolved base cache key (without
+ * auth suffix). Skips JSON.parse + SHA-256 on repeat queries.
+ *
+ * Uses insertion-order iteration for LRU eviction: the oldest entry
+ * (first key in iteration order) is deleted when the map reaches
+ * BODY_KEY_CACHE_LIMIT. This is a "cache for the cache key" pattern.
+ *
+ * @type {Map<string, string>}
+ */
+const bodyKeyCache = new Map();
+
+/** Maximum entries in bodyKeyCache before LRU eviction kicks in. */
+const BODY_KEY_CACHE_LIMIT = 500;
+
+/**
  * Handles a GraphQL POST request with SWR caching.
  *
  * Flow:
- *   1. Clone and parse the POST body to extract query + variables
- *   2. SHA-256 hash → deterministic cache key (with auth tier suffix)
- *   3. withGqlSWR → L1 check → coalesce → L2 → yoga.fetch
- *   4. On cache hit: return pre-encoded response with cache headers
- *   5. On negative hit: fall through to yoga for fresh error response
+ *   1. Read the raw POST body text
+ *   2. Fast-path: check bodyKeyCache for a previously resolved cache key.
+ *      On hit, skip JSON.parse + SHA-256 entirely.
+ *   3. Slow-path: parse body, normalise query + variables, SHA-256 hash
+ *   4. withGqlSWR → L1 check → coalesce → L2 → yoga.fetch
+ *   5. On cache hit: return pre-encoded response with cache headers
+ *   6. On negative hit: fall through to yoga for fresh error response
  *
  * @param {Request} request - The inbound POST request.
  * @param {D1Session} db - D1 database binding for resolvers.
@@ -67,25 +84,38 @@ export async function handleQuery(request, db, ctx, authenticated) {
 
     const bodyText = await request.clone().text();
 
-    // Parse the body to separate query and variables. This allows
-    // graphqlCacheKey to normalise the hash input — two clients
-    // sending the same query with different JSON whitespace or key
-    // order will produce the same cache key.
-    let query = bodyText;
-    /** @type {Record<string, any>|undefined} */
-    let variables;
-    try {
-        const parsed = JSON.parse(bodyText); // ap-ok: body normalization for cache key dedup
-        query = parsed.query || bodyText;
-        variables = parsed.variables;
-    } catch {
-        // Malformed JSON — hash the raw body. yoga will return an
-        // error anyway, which gets negative-cached.
-    }
+    // Fast-path: if we've seen this exact body before, reuse the
+    // resolved cache key without paying for JSON.parse + SHA-256.
+    const authSuffix = authenticated ? ':auth' : ':anon';
+    const fastKey = bodyKeyCache.get(bodyText);
+    let cacheKey;
+    if (fastKey) {
+        cacheKey = fastKey + authSuffix;
+    } else {
+        // Slow path: parse body, normalise, and hash.
+        let query = bodyText;
+        /** @type {Record<string, any>|undefined} */
+        let variables;
+        try {
+            const parsed = JSON.parse(bodyText); // ap-ok: body normalization for cache key dedup
+            query = parsed.query || bodyText;
+            variables = parsed.variables;
+        } catch {
+            // Malformed JSON — hash the raw body. yoga will return an
+            // error anyway, which gets negative-cached.
+        }
 
-    // Build a deterministic cache key from query + variables + auth state.
-    const baseKey = await graphqlCacheKey(query, variables);
-    const cacheKey = authenticated ? baseKey + ':auth' : baseKey + ':anon';
+        const baseKey = await graphqlCacheKey(query, variables);
+        cacheKey = baseKey + authSuffix;
+
+        // Store in the fast-path cache for next time.
+        // Evict oldest entry if at capacity.
+        if (bodyKeyCache.size >= BODY_KEY_CACHE_LIMIT) {
+            const oldest = bodyKeyCache.keys().next().value;
+            bodyKeyCache.delete(oldest);
+        }
+        bodyKeyCache.set(bodyText, baseKey);
+    }
 
     const { buf, tier, hits } = await withGqlSWR(
         cacheKey, ctx,

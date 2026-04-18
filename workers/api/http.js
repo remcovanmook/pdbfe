@@ -52,21 +52,33 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  * Handles ETag generation and 304 Not Modified checks. On a cache hit,
  * the buf is forwarded directly — no JSON.parse or JSON.stringify.
  *
+ * Optional `lastModifiedMs` and `authId` params bake Last-Modified and
+ * X-Auth-Id directly into the initial header dict, avoiding a subsequent
+ * Response repack (new Headers + new Response) on the hot path.
+ *
  * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
  * @param {{tier: import('./cache.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
+ * @param {number} [lastModifiedMs] - Entity last-modified epoch ms. When >0, sets Last-Modified.
+ * @param {number|null} [authId] - Authenticated user ID. When non-null, sets X-Auth-Id.
  * @returns {Response} The HTTP response ready for the client.
  */
-export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API) {
+export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API, lastModifiedMs = 0, authId = null) {
     const etag = generateETag(buf);
+
+    /** @type {Record<string, string>} */
+    const extra = {};
+    if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
+    if (authId !== null) extra['X-Auth-Id'] = `u${authId}`;
 
     if (isNotModified(request.headers, etag)) {
         return new Response(null, {
             status: 304,
             headers: {
                 ...baseHeaders,
+                ...extra,
                 "ETag": etag,
                 "X-Cache": meta.tier,
                 "X-Cache-Hits": meta.hits.toString()
@@ -78,6 +90,7 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
         status: 200,
         headers: {
             ...baseHeaders,
+            ...extra,
             "ETag": etag,
             "Content-Length": buf.byteLength.toString(),
             "X-Cache": meta.tier,

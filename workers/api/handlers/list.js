@@ -56,7 +56,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
+    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON, hc.entityVersionMs, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ async function handleCount(hc, entity) {
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
                 cache.add(cacheKey, buf, { entityTag }, Date.now());
-                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi);
+                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi, hc.entityVersionMs, hc.userId);
             }
         }
     }
@@ -145,7 +145,7 @@ async function handleCount(hc, entity) {
         }
     );
 
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi);
+    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**
