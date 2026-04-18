@@ -280,7 +280,9 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
     // Build the json_remove() wrapper for omitempty columns (if any).
-    const omitArgs = omitEmptyRemoveArgs(columns, omitCols, boolCols, tableAlias || undefined);
+    // No table-alias prefix: these CASE expressions execute in the outer
+    // SELECT where subquery columns are bare (same as jsonObjectArgs).
+    const omitArgs = omitEmptyRemoveArgs(columns, omitCols, boolCols);
 
     if (hasJoins) {
         const { joinSql } = buildJoinFragments(
