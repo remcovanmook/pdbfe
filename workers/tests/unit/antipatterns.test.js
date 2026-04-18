@@ -54,7 +54,6 @@ const COLD_BOOT_FILES = new Set(['entities.js']);
 const SYNC_ONLY_FILES = [
     'core/cache.js',
     'core/http.js',
-    'api/cache.js',
     'api/http.js',
     'api/ratelimit.js',
 ];
@@ -66,7 +65,6 @@ const SYNC_ONLY_FILES = [
 const NO_D1_FILES = [
     'core/cache.js',
     'core/http.js',
-    'api/swr.js',
     'core/utils.js',
     'api/cache.js',
     'api/ratelimit.js',
@@ -82,7 +80,6 @@ const NO_PENDING_FILES = [
     'api/handlers/detail.js',
     'api/handlers/as_set.js',
     'api/handlers/shared.js',
-    'api/swr.js',
     'core/http.js',
     'api/http.js',
     'api/cache.js',

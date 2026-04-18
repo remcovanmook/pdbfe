@@ -6,7 +6,7 @@
 
 import { DETAIL_TTL } from '../cache.js';
 import { encoder, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../swr.js';
+import { withEdgeSWR } from '../cache.js';
 
 /**
  * Handles the special /api/as_set/{asn} endpoint.

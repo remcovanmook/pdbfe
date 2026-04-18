@@ -8,7 +8,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { withEdgeSWR } from '../../../api/swr.js';
+import { withEdgeSWR } from '../../../api/cache.js';
 import { LRUCache } from '../../../core/cache.js';
 import { getEntityCache, NEGATIVE_TTL } from '../../../api/cache.js';
 import { EMPTY_ENVELOPE } from '../../../api/pipeline.js';

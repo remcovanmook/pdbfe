@@ -12,7 +12,7 @@ import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, normaliseCacheKey } from '../cache.js';
 import { cachedQuery, EMPTY_ENVELOPE } from '../pipeline.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { withEdgeSWR } from '../swr.js';
+import { withEdgeSWR } from '../cache.js';
 import { parseJsonFields, countRows } from './shared.js';
 
 /**
