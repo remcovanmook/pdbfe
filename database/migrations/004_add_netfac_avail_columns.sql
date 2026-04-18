@@ -8,5 +8,3 @@
 ALTER TABLE "peeringdb_network_facility" ADD COLUMN "avail_sonet" BOOL NOT NULL DEFAULT 0;
 ALTER TABLE "peeringdb_network_facility" ADD COLUMN "avail_ethernet" BOOL NOT NULL DEFAULT 0;
 ALTER TABLE "peeringdb_network_facility" ADD COLUMN "avail_atm" BOOL NOT NULL DEFAULT 0;
-
-INSERT INTO "_migrations" ("name") VALUES ('004_add_netfac_avail_columns');
