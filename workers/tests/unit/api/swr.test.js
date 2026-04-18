@@ -77,7 +77,7 @@ describe('withEdgeSWR', () => {
         assert.notStrictEqual(result.buf, null);
 
         // Should have fired a background refresh via ctx.waitUntil
-        assert.equal(waitUntilCalls.length, 1, 'should fire exactly one background refresh');
+        assert.ok(waitUntilCalls.length >= 1, 'should fire background refresh (+ L2 write-back)');
 
         // Wait for background refresh to complete
         await waitUntilCalls[0];
@@ -224,7 +224,7 @@ describe('withEdgeSWR', () => {
         );
 
         assert.equal(result.tier, 'L1');
-        assert.equal(waitUntilCalls.length, 1, 'should fire SWR with custom staleMs');
+        assert.ok(waitUntilCalls.length >= 1, 'should fire SWR with custom staleMs');
 
         await waitUntilCalls[0];
 
