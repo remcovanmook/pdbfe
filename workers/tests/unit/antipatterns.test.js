@@ -57,7 +57,6 @@ const SYNC_ONLY_FILES = [
     'api/http.js',
     'graphql/handlers/static.js',
     'rest/handlers/static.js',
-    'rest/scalar.js',
 ];
 
 /**
@@ -73,7 +72,6 @@ const NO_D1_FILES = [
     'graphql/handlers/static.js',
     'rest/cache.js',
     'rest/handlers/static.js',
-    'rest/scalar.js',
 ];
 
 /**
@@ -96,7 +94,6 @@ const NO_PENDING_FILES = [
     'rest/handlers/static.js',
     'rest/handlers/detail.js',
     'rest/handlers/list.js',
-    'rest/scalar.js',
 ];
 
 /**

@@ -6,11 +6,26 @@
  */
 
 import { encoder } from '../../core/http.js';
-import { serveScalarUI } from '../scalar.js';
 import openApiSpec from '../../../extracted/openapi.json';
+import SCALAR_HTML from '../../../frontend/api/rest.html';
 import INTER_CSS from '../../../frontend/third_party/inter/inter.css';
 import INTER_LATIN from '../../../frontend/third_party/inter/inter-latin.woff2';
 import INTER_LATIN_EXT from '../../../frontend/third_party/inter/inter-latin-ext.woff2';
+
+/** Pre-built headers for the Scalar HTML response. */
+const H_HTML = Object.freeze({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=3600',
+});
+
+/**
+ * Returns the Scalar API reference HTML page as a Response.
+ *
+ * @returns {Response} HTML response with the Scalar UI.
+ */
+function serveScalarUI() {
+    return new Response(SCALAR_HTML, { status: 200, headers: H_HTML });
+}
 
 /**
  * Font asset map. Keys are path segments matching the request URL.
