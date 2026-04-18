@@ -14,7 +14,7 @@
  *   in        → WHERE col IN (?, ?, ...)
  */
 
-import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
+import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmitEmptyColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 
 /**
  * Suffix operators that can appear after `__` in PeeringDB query parameters.
@@ -181,6 +181,34 @@ function jsonObjectArgs(columns, jsonCols, boolCols, nullableCols, prefix) {
 }
 
 /**
+ * Builds the CASE expressions for json_remove() to strip omitempty fields.
+ *
+ * For each omitempty column, generates a CASE expression that returns the
+ * JSON path when the value is "empty" (null, empty string, false, or 0)
+ * and a non-existent path otherwise (json_remove no-ops on missing paths).
+ *
+ * @param {string[]} columns - All columns being emitted.
+ * @param {Set<string>} omitCols - Column names with omitempty: true.
+ * @param {Set<string>} boolCols - Boolean-typed columns.
+ * @param {string} [prefix] - Optional table alias prefix (e.g. "t").
+ * @returns {string[]} CASE expressions for json_remove() arguments.
+ */
+function omitEmptyRemoveArgs(columns, omitCols, boolCols, prefix) {
+    const pfx = prefix ? `${prefix}.` : '';
+    const args = [];
+    for (const c of columns) {
+        if (!omitCols.has(c)) continue;
+        // Boolean fields: omit when false (SQLite stores as 0).
+        // Others: omit when NULL or empty string.
+        const condition = boolCols.has(c)
+            ? `${pfx}"${c}" = 0`
+            : `${pfx}"${c}" IS NULL OR ${pfx}"${c}" = ''`;
+        args.push(`CASE WHEN ${condition} THEN '$.${c}' ELSE '$.___noop' END`);
+    }
+    return args;
+}
+
+/**
  * Builds LEFT JOIN clauses and SELECT column additions from
  * joinColumns metadata. Used by both buildJsonQuery and buildRowQuery.
  *
@@ -243,6 +271,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     const jsonCols = getJsonColumns(entity);
     const boolCols = getBoolColumns(entity);
     const nullableCols = getNullableColumns(entity);
+    const omitCols = getOmitEmptyColumns(entity);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(
@@ -250,8 +279,10 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     );
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
 
+    // Build the json_remove() wrapper for omitempty columns (if any).
+    const omitArgs = omitEmptyRemoveArgs(columns, omitCols, boolCols, tableAlias || undefined);
+
     if (hasJoins) {
-        const hasExplicitFields = opts.fields && opts.fields.length > 0;
         const { joinSql } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
@@ -261,19 +292,17 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', '); // ap-ok: SQL construction
         const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
 
-        let allSelectCols, allJsonArgs;
-        if (hasExplicitFields) {
-            // Explicit ?fields= — respect the user's selection, no join cols.
-            allSelectCols = baseCols;
-            allJsonArgs = baseJsonArgs;
-        } else {
-            // Standard depth=0 list — base entity columns only.
-            allSelectCols = baseCols;
-            allJsonArgs = baseJsonArgs;
-        }
+        // Standard depth=0 — base entity columns only, no join cols.
+        const allSelectCols = baseCols;
+        const allJsonArgs = baseJsonArgs;
+
+        const innerExpr = `json_object(${allJsonArgs})`;
+        const rowExpr = omitArgs.length > 0
+            ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
+            : innerExpr;
 
         const sql =
-            `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +
+            `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload` +
             ` FROM (SELECT ${allSelectCols}` +
             ` FROM "${entity.table}" AS t${joinSql}${where}` +
             ` ORDER BY ${orderBy}${pagination})`;
@@ -282,8 +311,12 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
     }
 
     const jsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
+    const innerExpr = `json_object(${jsonArgs})`;
+    const rowExpr = omitArgs.length > 0
+        ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
+        : innerExpr;
     const sql =
-        `SELECT json_object('data',json_group_array(json_object(${jsonArgs})),'meta',json_object()) AS payload` +
+        `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload` +
         ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
 
     return { sql, params };

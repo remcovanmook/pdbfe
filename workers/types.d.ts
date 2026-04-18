@@ -400,6 +400,8 @@ interface FieldDef {
     json?: boolean;
     /** Whether this column is nullable in D1 (TEXT without NOT NULL). Defaults to false. */
     nullable?: boolean;
+    /** Whether to omit this field from JSON output when its value is null/empty/zero. Defaults to false. */
+    omitempty?: boolean;
     /** Target entity tag if this field is a foreign key (e.g. "org"). id column implied. */
     foreignKey?: string;
     /** Columns to resolve via LEFT JOIN when this FK is present (e.g. { name: "org_name" }). */
@@ -452,6 +454,8 @@ interface EntityMeta {
     _boolColumns?: Set<string>;
     /** Precompiled set of nullable column names. */
     _nullableColumns?: Set<string>;
+    /** Precompiled set of omitempty column names (stripped via json_remove when empty). */
+    _omitEmptyColumns?: Set<string>;
     /** Precompiled set of all field names. */
     _fieldNames?: Set<string>;
     /** Precompiled map of filterable field name → field type. */

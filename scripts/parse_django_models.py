@@ -1007,6 +1007,15 @@ _CACHE_TIERS = {
 
 _DEFAULT_TIER = {"slots": 128, "maxSize": 1 * 1024 * 1024}
 
+# Fields where upstream PeeringDB omits the key from JSON when the value
+# is null, empty string, or the type's zero value.  Keyed by entity tag.
+# The query builder wraps these in json_remove() to match upstream shape.
+_OMITEMPTY_FIELDS = {
+    "ixlan":  {"ixf_ixp_member_list_url", "vlan"},
+    "ixpfx":  {"notes"},
+    "netfac": {"avail_atm", "avail_ethernet", "avail_sonet"},
+}
+
 # Local-only fields added by pdbfe that don't exist in upstream PeeringDB.
 # Keyed by entity tag. These are injected after the standard fields during
 # worker entity generation so they survive schema regeneration.
@@ -1084,6 +1093,7 @@ def _build_entity_fields(tag, schema, overrides):
 
     Mirrors the Entity builder pipeline from buildEntities in entities.js:
     schema fields → override application → address group → timestamps → local fields.
+    Also applies omitempty flags from _OMITEMPTY_FIELDS.
 
     Args:
         tag: Entity tag (e.g. 'net').
@@ -1094,6 +1104,7 @@ def _build_entity_fields(tag, schema, overrides):
         List of field dicts ready for JS emission.
     """
     tag_overrides = overrides.get(tag, {}).get("fieldOverrides", {})
+    omitempty_set = _OMITEMPTY_FIELDS.get(tag, set())
 
     # Start with id field
     fields = [{"name": "id", "type": "number"}]
@@ -1107,7 +1118,10 @@ def _build_entity_fields(tag, schema, overrides):
         if has_address and name in _ADDRESS_FIELDS:
             continue
 
-        fields.append(_build_single_field(field, tag_overrides.get(name, {})))
+        f = _build_single_field(field, tag_overrides.get(name, {}))
+        if name in omitempty_set:
+            f["omitempty"] = True
+        fields.append(f)
 
     # Add address group (mirrors Entity.address() — fixed order & queryable flags)
     if has_address:
@@ -1220,14 +1234,15 @@ def _compute_field_caches(entities):
     Compute precompiled field lookup caches for each entity.
 
     Builds _columns, _jsonColumns, _boolColumns, _nullableColumns,
-    _fieldNames, and _filterTypes from the entity's field list.
-    Mutates entities in-place.
+    _omitEmptyColumns, _fieldNames, and _filterTypes from the entity's
+    field list. Mutates entities in-place.
     """
     for entity in entities.values():
         columns = []
         json_columns = set()
         bool_columns = set()
         nullable_columns = set()
+        omitempty_columns = set()
         field_names = set()
         filter_types = {}
 
@@ -1241,6 +1256,8 @@ def _compute_field_caches(entities):
                 bool_columns.add(name)
             if field.get("nullable"):
                 nullable_columns.add(name)
+            if field.get("omitempty"):
+                omitempty_columns.add(name)
             if field.get("queryable") is not False:
                 filter_types[name] = field["type"]
 
@@ -1248,6 +1265,7 @@ def _compute_field_caches(entities):
         entity["_jsonColumns"] = sorted(json_columns)
         entity["_boolColumns"] = sorted(bool_columns)
         entity["_nullableColumns"] = sorted(nullable_columns)
+        entity["_omitEmptyColumns"] = sorted(omitempty_columns)
         entity["_fieldNames"] = sorted(field_names)
         entity["_filterTypes"] = filter_types
 
@@ -1290,6 +1308,8 @@ def _emit_js_field(field):
         parts.append("json: true")
     if field.get("nullable"):
         parts.append("nullable: true")
+    if field.get("omitempty"):
+        parts.append("omitempty: true")
     if field.get("foreignKey"):
         parts.append(f'foreignKey: {json.dumps(field["foreignKey"])}')
     if field.get("resolve"):
@@ -1394,6 +1414,7 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
         json_cols_str = json.dumps(entity["_jsonColumns"])
         bool_cols_str = json.dumps(entity["_boolColumns"])
         nullable_cols_str = json.dumps(entity["_nullableColumns"])
+        omitempty_cols_str = json.dumps(entity["_omitEmptyColumns"])
         field_names_str = json.dumps(entity["_fieldNames"])
 
         # filterTypes as a Map initialiser array
@@ -1423,6 +1444,7 @@ def generate_worker_entities_js(merged_entities, overrides, versions=None):
         lines.append(f"    _jsonColumns: new Set({json_cols_str}),")
         lines.append(f"    _boolColumns: new Set({bool_cols_str}),")
         lines.append(f"    _nullableColumns: new Set({nullable_cols_str}),")
+        lines.append(f"    _omitEmptyColumns: new Set({omitempty_cols_str}),")
         lines.append(f"    _fieldNames: new Set({field_names_str}),")
         lines.append(f"    _filterTypes: new Map([{ft_pairs}]),")
         lines.append("};")

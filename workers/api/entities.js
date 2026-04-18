@@ -95,6 +95,22 @@ export function getNullableColumns(entity) {
 }
 
 /**
+ * Returns Set of omitempty column names. Used by the query builder to
+ * strip these fields from the JSON output via json_remove() when their
+ * value is null, empty string, or the type's zero value — matching
+ * upstream PeeringDB's Django serializer behaviour.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @returns {Set<string>} Column names with omitempty: true.
+ */
+export function getOmitEmptyColumns(entity) {
+    if (/** @type {any} */ (entity)._omitEmptyColumns) return /** @type {any} */ (entity)._omitEmptyColumns;
+    const s = new Set();
+    for (const field of entity.fields) { if (field.omitempty) s.add(field.name); }
+    return s;
+}
+
+/**
  * Looks up a field's type for filter validation. Uses the precompiled
  * _filterTypes Map when available, falls back to linear scan for test mocks.
  *

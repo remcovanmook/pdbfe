@@ -280,6 +280,57 @@ describe("buildJsonQuery with joinColumns", () => {
     });
 });
 
+describe("buildJsonQuery omitempty", () => {
+    /** @type {EntityMeta} */
+    const OMIT_ENTITY = {
+        tag: "ixlan",
+        table: "peeringdb_ix_lan",
+        fields: [
+            f("id", "number"),
+            f("ix_id", "number"),
+            f("name", "string"),
+            { name: "vlan", type: "number", nullable: true, omitempty: true },
+            f("status", "string"),
+        ],
+        relationships: []
+    };
+
+    it("should wrap json_object in json_remove for omitempty fields", () => {
+        const result = buildJsonQuery(OMIT_ENTITY, [], { depth: 0, limit: 5, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('json_remove(json_object('),
+            'should wrap json_object in json_remove');
+        assert.ok(result.sql.includes("'$.vlan'"),
+            'should reference $.vlan path for conditional removal');
+        assert.ok(result.sql.includes("'$.___noop'"),
+            'should use noop path when field is present');
+    });
+
+    it("should not emit json_remove when entity has no omitempty fields", () => {
+        const result = buildJsonQuery(NET_ENTITY, [], { depth: 0, limit: 5, skip: 0, since: 0 });
+        assert.ok(!result.sql.includes('json_remove'),
+            'entities without omitempty should not use json_remove');
+    });
+
+    it("should use boolean condition for boolean omitempty fields", () => {
+        /** @type {EntityMeta} */
+        const boolOmitEntity = {
+            tag: "netfac",
+            table: "peeringdb_network_facility",
+            fields: [
+                f("id", "number"),
+                f("net_id", "number"),
+                f("fac_id", "number"),
+                { name: "avail_atm", type: "boolean", omitempty: true },
+                f("status", "string"),
+            ],
+            relationships: []
+        };
+        const result = buildJsonQuery(boolOmitEntity, [], { depth: 0, limit: 5, skip: 0, since: 0 });
+        assert.ok(result.sql.includes('"avail_atm" = 0'),
+            'boolean omitempty should check for 0 (false)');
+    });
+});
+
 describe("buildCountQuery", () => {
     it("should generate COUNT(*) query with default status filter", () => {
         const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
