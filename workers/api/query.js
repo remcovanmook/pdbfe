@@ -252,18 +252,25 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
 
     if (hasJoins) {
         const hasExplicitFields = opts.fields && opts.fields.length > 0;
-        const { joinSql, selectCols, outerJsonArgs } = buildJoinFragments(
+        const { joinSql } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
+        // At depth=0, only emit base entity columns — skip JOIN-resolved
+        // fields (org_name, net_name, etc.) to match upstream PeeringDB.
+        // The LEFT JOINs remain in the query for cross-entity WHERE filters.
         const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', '); // ap-ok: SQL construction
-        const allSelectCols = hasExplicitFields
-            ? baseCols
-            : baseCols + ', ' + selectCols.join(', ');
-
         const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
-        const allJsonArgs = hasExplicitFields
-            ? baseJsonArgs
-            : baseJsonArgs + ', ' + outerJsonArgs.join(', ');
+
+        let allSelectCols, allJsonArgs;
+        if (hasExplicitFields) {
+            // Explicit ?fields= — respect the user's selection, no join cols.
+            allSelectCols = baseCols;
+            allJsonArgs = baseJsonArgs;
+        } else {
+            // Standard depth=0 list — base entity columns only.
+            allSelectCols = baseCols;
+            allJsonArgs = baseJsonArgs;
+        }
 
         const sql =
             `SELECT json_object('data',json_group_array(json_object(${allJsonArgs})),'meta',json_object()) AS payload` +

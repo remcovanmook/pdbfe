@@ -45,7 +45,7 @@ export function getColumns(entity, includePdbfe = false) {
     // Lazy-cache the filtered column list to avoid re-filtering per request.
     const e = /** @type {any} */ (entity);
     if (!e._columnsPublic) {
-        e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__'));
+        e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__') && c !== 'notes_private');
     }
     return e._columnsPublic;
 }

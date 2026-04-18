@@ -267,12 +267,15 @@ describe("buildRowQuery with joinColumns", () => {
 });
 
 describe("buildJsonQuery with joinColumns", () => {
-    it("should generate subquery with JOIN and outer json_object", () => {
+    it("should include LEFT JOIN but skip join columns from json_object at depth=0", () => {
         const result = buildJsonQuery(NETIXLAN_ENTITY, [], { depth: 0, limit: 5, skip: 0, since: 0 });
         assert.ok(result.sql.includes('json_group_array'));
         assert.ok(result.sql.includes('json_object'));
+        // LEFT JOIN remains for cross-entity WHERE filter support.
         assert.ok(result.sql.includes('LEFT JOIN "peeringdb_network"'));
-        assert.ok(result.sql.includes('"net_name"'));
+        // But join-resolved columns are NOT emitted (upstream parity).
+        assert.ok(!result.sql.includes("'net_name'"),
+            'net_name should not appear in depth=0 json_object');
         assert.ok(result.sql.includes('AS payload'));
     });
 });
