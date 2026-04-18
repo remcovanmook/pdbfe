@@ -79,6 +79,48 @@ function decodeCursor(cursor) {
 }
 
 /**
+ * Enforces restricted-entity access control for anonymous callers.
+ * Returns a truthy "bail" value when the caller should short-circuit,
+ * or null when the query may proceed.
+ *
+ * Modes:
+ *   - 'block':   Returns the provided `emptyVal` unconditionally.
+ *                 Used by detailResolver (single-row lookups can't be filtered).
+ *   - 'require': Requires an explicit visibility filter in `filters`.
+ *                 If missing, returns `emptyVal`. If present, forces the
+ *                 filter value to _anonFilter.value to prevent spoofing.
+ *   - 'inject':  Appends the _anonFilter to `filters` unconditionally.
+ *                 Used by reverseEdgeResolver (auto-inject, never bail).
+ *
+ * For non-restricted entities or authenticated callers, returns null (no-op).
+ *
+ * @param {object} entity - Entity metadata with _restricted and _anonFilter.
+ * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {Array} filters - Mutable filters array.
+ * @param {'block'|'require'|'inject'} mode - Enforcement mode.
+ * @param {any} [emptyVal] - Value to return on bail ([], null, EMPTY_CONNECTION).
+ * @returns {any|null} The bail value, or null to continue.
+ */
+function applyAnonGate(entity, authenticated, filters, mode, emptyVal) {
+    if (authenticated || !entity._restricted) return null;
+    const af = entity._anonFilter;
+    if (!af) return null;
+
+    if (mode === 'block') return emptyVal;
+
+    if (mode === 'inject') {
+        filters.push({ field: af.field, op: 'eq', value: af.value });
+        return null;
+    }
+
+    // mode === 'require'
+    const vis = filters.find(f => f.field === af.field);
+    if (!vis) return emptyVal;
+    vis.value = af.value;
+    return null;
+}
+
+/**
  * Generates a GraphQL collection resolver (`list`) bound to a specific entity natively.
  *
  * This injects the `ENTITIES` registry map inside the resolver closure. When executed,
@@ -96,13 +138,8 @@ function listResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
         const filters = whereToFilters(args.where);
-        // Restricted entity gate: anon callers need an explicit visibility filter.
-        if (!ctx.authenticated && entity._restricted) {
-            const af = entity._anonFilter;
-            const vis = af && filters.find(f => f.field === af.field);
-            if (!vis) return [];
-            vis.value = af.value;
-        }
+        const bail = applyAnonGate(entity, ctx.authenticated, filters, 'require', []);
+        if (bail) return bail;
         const opts = {
             depth: 0,
             limit: Math.min(args.limit ?? 20, 250),
@@ -129,7 +166,8 @@ function listResolver(tag) {
 function detailResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
-        if (!ctx.authenticated && entity._restricted) return null;
+        const bail = applyAnonGate(entity, ctx.authenticated, [], 'block', null);
+        if (bail !== null) return bail;
         const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];
         const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };
         const { sql, params } = buildRowQuery(entity, filters, opts);
@@ -173,11 +211,7 @@ function reverseEdgeResolver(fkField, childTag) {
     return async (parent, args, ctx) => {
         const entity = ENTITIES[childTag];
         const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];
-        // Inject anonFilter for restricted entities when caller is anonymous.
-        if (!ctx.authenticated && entity._restricted && entity._anonFilter) {
-            const af = entity._anonFilter;
-            filters.push({ field: af.field, op: 'eq', value: af.value });
-        }
+        applyAnonGate(entity, ctx.authenticated, filters, 'inject');
         const opts = {
             depth: 0,
             limit: Math.min(args.limit ?? 250, 250),
@@ -216,13 +250,8 @@ function connectionResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
         const filters = whereToFilters(args.where);
-        // Restricted entity gate: same pattern as listResolver.
-        if (!ctx.authenticated && entity._restricted) {
-            const af = entity._anonFilter;
-            const vis = af && filters.find(f => f.field === af.field);
-            if (!vis) return EMPTY_CONNECTION;
-            vis.value = af.value;
-        }
+        const bail = applyAnonGate(entity, ctx.authenticated, filters, 'require', EMPTY_CONNECTION);
+        if (bail) return bail;
 
         // Count query
         const countFilters = [...filters, { field: 'status', op: 'eq', value: 'ok' }];
@@ -268,3 +297,4 @@ function connectionResolver(tag) {
         };
     };
 }
+
