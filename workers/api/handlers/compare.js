@@ -592,7 +592,16 @@ const OVERLAP_FNS = {
  * @returns {Promise<Uint8Array|null>} Encoded JSON payload, or null if an entity is missing.
  */
 async function executeCompareQuery(db, refA, refB, pk) {
-    // Fetch entity headers in parallel
+    // Normalise refs to match the canonical pair key order (alphabetical).
+    // The overlap functions have fixed parameter signatures — e.g.
+    // overlapFacIx(db, facId, ixId) — so we must feed them the right
+    // types in the right positions. If the user's a/b order doesn't
+    // match, we swap the refs here and flip the headers in the response.
+    const swapped = refA.tag > refB.tag;
+    const first  = swapped ? refB : refA;
+    const second = swapped ? refA : refB;
+
+    // Fetch entity headers in parallel (use original a/b order for response)
     const [headerA, headerB] = await Promise.all([
         fetchEntityHeader(db, refA.tag, refA.id),
         fetchEntityHeader(db, refB.tag, refB.id),
@@ -600,29 +609,28 @@ async function executeCompareQuery(db, refA, refB, pk) {
 
     if (!headerA || !headerB) return null;
 
-    // Run the overlap query. For asymmetric pairs (e.g. net+ix in future),
-    // the dispatcher normalises the order so the first arg matches the
-    // first tag in the pair key.
+    // Run the overlap query with arguments in canonical order.
+    // The overlap function's "A" side always corresponds to the
+    // alphabetically-first tag in the pair key.
     const overlapFn = OVERLAP_FNS[pk];
-    let overlap;
-    if (refA.tag <= refB.tag) {
-        overlap = await overlapFn(db, refA.id, refB.id);
-    } else {
-        // Swap so the "smaller" tag is always first
-        overlap = await overlapFn(db, refB.id, refA.id);
-        // Swap only_a / only_b labels
+    const overlap = await overlapFn(db, first.id, second.id);
+
+    // If we swapped the refs to match canonical order, the overlap
+    // function's only_a/only_b labels are reversed relative to the
+    // user's a/b. Swap them back so the response envelope is consistent.
+    if (swapped) {
         /** @type {Record<string, any>} */
-        const swapped = {};
+        const fixed = {};
         for (const [key, val] of Object.entries(overlap)) {
             if (key.startsWith('only_a_')) {
-                swapped[key.replace('only_a_', 'only_b_')] = val;
+                fixed[key.replace('only_a_', 'only_b_')] = val;
             } else if (key.startsWith('only_b_')) {
-                swapped[key.replace('only_b_', 'only_a_')] = val;
+                fixed[key.replace('only_b_', 'only_a_')] = val;
             } else {
-                swapped[key] = val;
+                fixed[key] = val;
             }
         }
-        overlap = swapped;
+        return encodeJSON({ a: headerA, b: headerB, ...fixed });
     }
 
     return encodeJSON({ a: headerA, b: headerB, ...overlap });

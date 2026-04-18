@@ -256,6 +256,74 @@ describe('handleCompare', () => {
         });
     });
 
+    describe('cross-entity pair normalization', () => {
+        /**
+         * Builds a mock D1 that handles both fac and ix header lookups,
+         * plus the overlap queries for overlapFacIx.
+         */
+        function crossEntityDb() {
+            return /** @type {any} */ ({
+                prepare: (/** @type {string} */ sql) => ({
+                    bind: (/** @type {any[]} */ ..._args) => ({
+                        all: async () => {
+                            // Shared networks query (fac+ix)
+                            if (sql.includes('peeringdb_network_facility') && sql.includes('ixlan.ix_id')) {
+                                return {
+                                    results: [{ net_id: 1, net_name: 'Shared Net', asn: 13335 }],
+                                    success: true,
+                                };
+                            }
+                            return { results: [], success: true };
+                        },
+                        first: async () => {
+                            if (sql.includes('peeringdb_facility') && sql.includes('"id" = ?')) {
+                                return { id: _args[0], name: `Fac ${_args[0]}` };
+                            }
+                            if (sql.includes('peeringdb_ix') && sql.includes('"id" = ?')) {
+                                return { id: _args[0], name: `IX ${_args[0]}` };
+                            }
+                            return null;
+                        },
+                    }),
+                }),
+            });
+        }
+
+        it('accepts a=fac&b=ix (canonical order)', async () => {
+            const res = await callCompare(crossEntityDb(), 'a=fac:5&b=ix:10&__pdbfe=1');
+            assert.equal(res.status, 200);
+
+            const body = await res.json();
+            assert.equal(body.a.tag, 'fac', 'header A should be fac');
+            assert.equal(body.b.tag, 'ix', 'header B should be ix');
+        });
+
+        it('accepts a=ix&b=fac (reversed order) and preserves caller a/b', async () => {
+            const res = await callCompare(crossEntityDb(), 'a=ix:10&b=fac:5&__pdbfe=1');
+            assert.equal(res.status, 200);
+
+            const body = await res.json();
+            // Headers should reflect the caller's original a/b order
+            assert.equal(body.a.tag, 'ix', 'header A should be ix (caller order)');
+            assert.equal(body.b.tag, 'fac', 'header B should be fac (caller order)');
+        });
+
+        it('returns consistent shared data regardless of a/b order', async () => {
+            const db = crossEntityDb();
+            const forward = await callCompare(db, 'a=fac:5&b=ix:10&__pdbfe=1');
+            const reverse = await callCompare(db, 'a=ix:10&b=fac:5&__pdbfe=1');
+
+            const fwdBody = await forward.json();
+            const revBody = await reverse.json();
+
+            // Shared sections should be identical
+            assert.deepEqual(
+                fwdBody.shared_networks, revBody.shared_networks,
+                'shared_networks should be the same regardless of a/b order'
+            );
+        });
+    });
+
     describe('response format', () => {
         it('uses serveJSON headers (Cache-Control, CORS, ETag)', async () => {
             const db = /** @type {any} */ ({
