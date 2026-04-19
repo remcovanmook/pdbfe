@@ -643,6 +643,81 @@ export async function handleAddFavorite(request, env) {
 }
 
 /**
+ * PUT /account/favorites — Replaces the entire favorites list with an
+ * ordered array. Used to persist reorder operations from the UI.
+ *
+ * Expects JSON body: { favorites: [{entity_type, entity_id, label}, ...] }
+ *
+ * Implements an atomic DELETE-all + batch INSERT. Order is encoded via
+ * sequential created_at timestamps (one second apart) so the existing
+ * ORDER BY created_at query returns them in the submitted order.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handleReplaceFavorites(request, env) {
+    const { session, origin, error } = await requireSession(request, env);
+    if (error) return error;
+
+    let body;
+    try {
+        body = /** @type {{favorites?: Array<{entity_type: string, entity_id: number, label?: string}>}} */ (await request.json());
+    } catch {
+        return jsonResponse({ error: 'Invalid JSON body' }, 400, origin);
+    }
+
+    if (!Array.isArray(body.favorites)) {
+        return jsonResponse({ error: 'favorites must be an array' }, 400, origin);
+    }
+
+    if (body.favorites.length > MAX_FAVORITES_PER_USER) {
+        return jsonResponse(
+            { error: `Maximum of ${MAX_FAVORITES_PER_USER} favorites allowed` },
+            400, origin
+        );
+    }
+
+    // Validate each entry
+    for (const fav of body.favorites) {
+        if (!fav.entity_type || !VALID_FAVORITE_TYPES.has(fav.entity_type)) {
+            return jsonResponse(
+                { error: `entity_type must be one of: ${[...VALID_FAVORITE_TYPES].join(', ')}` },
+                400, origin
+            );
+        }
+        if (typeof fav.entity_id !== 'number' || !Number.isInteger(fav.entity_id) || fav.entity_id <= 0) {
+            return jsonResponse({ error: 'entity_id must be a positive integer' }, 400, origin);
+        }
+    }
+
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+
+    // Build batch: delete all existing, then insert in order.
+    // Sequential created_at values encode the sort order without
+    // needing a sort_order column.
+    const baseTime = Date.now();
+    const stmts = [
+        env.USERDB.prepare('DELETE FROM user_favorites WHERE user_id = ?').bind(session.id),
+    ];
+    for (let i = 0; i < body.favorites.length; i++) {
+        const fav = body.favorites[i];
+        const label = (typeof fav.label === 'string' && fav.label.trim().length > 0)
+            ? fav.label.trim().slice(0, 200)
+            : '';
+        const ts = new Date(baseTime + i).toISOString();
+        stmts.push(
+            env.USERDB.prepare(
+                'INSERT INTO user_favorites (user_id, entity_type, entity_id, label, created_at) VALUES (?, ?, ?, ?, ?)'
+            ).bind(session.id, fav.entity_type, fav.entity_id, label, ts)
+        );
+    }
+    await env.USERDB.batch(stmts);
+
+    return jsonResponse({ replaced: body.favorites.length }, 200, origin);
+}
+
+/**
  * DELETE /account/favorites/:type/:id — Removes an entity from favorites.
  * Returns 200 even if the favorite didn't exist (idempotent delete).
  *

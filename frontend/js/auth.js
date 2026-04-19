@@ -432,7 +432,7 @@ export async function removeFavorite(entityType, entityId) {
  * Reorders the in-memory favorites list to match the given key order.
  * Each key is a "{entity_type}:{entity_id}" string.
  * For anonymous users, the new order is persisted to localStorage.
- * For authenticated users, order is local-only (server doesn't track order).
+ * For authenticated users, the full ordered list is PUT to the server.
  *
  * @param {string[]} orderedKeys - Array of "type:id" strings in the desired order.
  */
@@ -456,7 +456,26 @@ export function reorderFavorites(orderedKeys) {
     }
 
     _favoritesList = reordered;
-    if (!_cachedSid) _writeLocalFavorites();
+
+    if (_cachedSid) {
+        // Persist to server — fire-and-forget, UI is already updated
+        fetch(`${AUTH_ORIGIN}/account/favorites`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${_cachedSid}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                favorites: reordered.map(f => ({
+                    entity_type: f.entity_type,
+                    entity_id: f.entity_id,
+                    label: f.label || '',
+                })),
+            }),
+        }).catch(() => { /* best-effort */ });
+    } else {
+        _writeLocalFavorites();
+    }
 }
 
 /**
