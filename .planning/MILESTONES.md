@@ -1,8 +1,12 @@
 # Milestones
 
 Milestones are derived from merged PR branches. Each milestone groups related PRs
-by theme. PR descriptions and branch names are the source of truth — these summaries
-are backfilled from the git history.
+by theme and category. PR descriptions and branch names are the source of truth —
+these summaries are backfilled from the git history.
+
+Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
+**Database** (D1 schema, migrations, data), **Auth** (OAuth, sessions, accounts),
+**Infra** (CI/CD, deploy, config), **i18n** (localisation), **Content** (logos, assets, docs).
 
 ---
 
@@ -10,9 +14,12 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04 (early)
 
-- PeeringDB API worker with D1 storage, zero-allocation JSON via SQLite json_object()
-- Frontend SPA shell with entity detail pages, search, routing
-- Cached query pipeline with SWR, Promise coalescing for stampede protection
+| Category | Work |
+|----------|------|
+| Backend | PeeringDB API worker with D1 storage, zero-allocation JSON via SQLite json_object() |
+| Backend | Cached query pipeline with SWR, Promise coalescing for stampede protection |
+| Database | Initial D1 schema for all 13 PeeringDB entity types |
+| Frontend | SPA shell with entity detail pages, search, client-side routing |
 
 ---
 
@@ -20,11 +27,12 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- CSP headers, self-hosted Inter font, /status endpoint
-- Homepage feature parity with upstream
-- Entity field refactor for consistent rendering
-- API worker review and cleanup
-- Review fixes across frontend and workers
+| Category | Work |
+|----------|------|
+| Frontend | Homepage parity with upstream PeeringDB |
+| Frontend | Entity field refactor for consistent rendering |
+| Infra | CSP headers, self-hosted Inter font, /status endpoint |
+| Backend | API worker review and cleanup |
 
 ---
 
@@ -32,11 +40,12 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- Implicit cross-entity filters (Django-style __in, __contains, etc.)
-- D1 sessions API for auth worker
-- Conformance fixes against upstream API
-- Django gotcha gaps (edge cases in filter parsing)
-- Conformance upstream safety (structural diff tooling)
+| Category | Work |
+|----------|------|
+| Backend | Implicit cross-entity filters (Django-style __in, __contains, etc.) |
+| Backend | D1 sessions API for auth worker |
+| Backend | Conformance fixes and structural diff tooling against upstream API |
+| Database | Django gotcha gaps (edge cases in filter parsing, schema alignment) |
 
 ---
 
@@ -44,11 +53,13 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- POC visibility filtering (upstream access control enforcement)
-- OAuth2 auth worker with PeeringDB identity provider
-- User profiles and API key management
-- Mobile header/about/docs fixes
-- Load test and cache tier validation
+| Category | Work |
+|----------|------|
+| Auth | OAuth2 auth worker with PeeringDB identity provider |
+| Auth | User profiles and API key management |
+| Backend | POC visibility filtering (upstream access control enforcement) |
+| Frontend | Mobile header, about page, docs page fixes |
+| Backend | Load test and cache tier validation |
 
 ---
 
@@ -56,14 +67,16 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- Public release cleanup and documentation
-- Cache optimisations (L2, SWR pipeline)
-- i18n framework with upstream language tests
-- i18n string catalog completion
-- Developer safety guards (pre-commit hooks, linting)
-- CI/CD pipeline (GitHub Actions)
-- Security review remediations
-- PeeringDB Python client compatibility
+| Category | Work |
+|----------|------|
+| Infra | Public release cleanup, documentation |
+| Infra | CI/CD pipeline (GitHub Actions — lint, typecheck, XSS scan, tests) |
+| Infra | Security review remediations |
+| Backend | Cache optimisations (L2, SWR pipeline) |
+| Backend | PeeringDB Python client compatibility |
+| i18n | i18n framework with upstream language tests |
+| i18n | i18n string catalog completion |
+| Infra | Developer safety guards (pre-commit hooks, linting) |
 
 ---
 
@@ -71,14 +84,15 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- Isolate-level rate limiter
-- Anti-pattern test suite
-- Sync invalidation and freshness tracking
-- Migration integrity checks
-- Upstream schema pipeline (Django model → entity codegen)
-- Deploy pipeline fixes and config management
-- Precompiled entities with L2 cache
-- HTTP response headers (Allow, If-Modified-Since, X-Auth-Status)
+| Category | Work |
+|----------|------|
+| Backend | Isolate-level rate limiter |
+| Backend | Anti-pattern test suite |
+| Backend | Sync invalidation and freshness tracking |
+| Backend | HTTP response headers (Allow, If-Modified-Since, X-Auth-Status) |
+| Database | Migration integrity checks |
+| Database | Upstream schema pipeline (Django model → entity codegen) |
+| Infra | Deploy pipeline fixes, config management, precompiled entities with L2 cache |
 
 ---
 
@@ -86,15 +100,16 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04
 
-- Gitignore and orphan cleanup
-- Worker refactoring (handler folders, module consolidation)
-- Web component patterns
-- Tokenizer, footer sync display, review bug fixes
-- User DB migration (KV → D1)
-- Frontend code quality (dataset API, SonarQube, replaceAll)
-- Table filters and entity logos
-- Auth origin fixes, SID input validation
-- User preferences and favorites system
+| Category | Work |
+|----------|------|
+| Frontend | Web component patterns, table filters, entity logos |
+| Frontend | Advanced search with tabbed entity forms |
+| Frontend | Favorites management page with drag-to-reorder |
+| Frontend | Code quality (dataset API, SonarQube, replaceAll) |
+| Auth | User DB migration (KV → D1 for profiles, API keys, favorites) |
+| Auth | SID input validation, auth origin fixes |
+| Backend | Worker refactoring (handler folders, module consolidation) |
+| Infra | Gitignore cleanup, orphan removal |
 
 ---
 
@@ -102,23 +117,20 @@ are backfilled from the git history.
 
 **Shipped**: 2026-04-18
 
-- API key revocation fixes
-- Account UI tweaks
-- R2 logo sync infrastructure
-- 24-hour time format
-- IX prefix display improvements
-- SonarQube remediation across all workers and frontend
-- Code cleanups and CORS apex origin fixes
-- Advanced search with tabbed entity forms
-- Favorites management page with drag-to-reorder
-- Homepage redesign (stats ticker, nav pills, hero)
-- Compare infrastructure improvements
-- Frontend visual polish (contrast, chip-select, drag-and-drop)
-- Worker codebase deduplication and module consolidation
-- POC access control enforcement across all workers
-- Hot-path allocation elimination
-- Upstream API parity (omitempty, field stripping, structural diff tooling)
-- Worker unit test adoption (pdbcompat patterns, golden files, fuzz)
+| Category | Work |
+|----------|------|
+| Frontend | Homepage redesign (stats ticker, nav pills, hero) |
+| Frontend | Compare infrastructure improvements |
+| Frontend | Visual polish (contrast, chip-select, drag-and-drop) |
+| Backend | Upstream API parity (omitempty, field stripping, structural diff) |
+| Backend | POC access control enforcement across all workers |
+| Backend | Hot-path allocation elimination |
+| Backend | Worker codebase deduplication and module consolidation |
+| Backend | Worker unit test adoption (pdbcompat patterns, golden files, fuzz) |
+| Content | R2 logo sync infrastructure and bulk backfill |
+| Auth | API key revocation fixes, account UI tweaks |
+| Database | IX prefix display, 24h time format, schema updates |
+| Infra | SonarQube remediation, CORS apex origin fixes |
 
 ---
 
@@ -127,22 +139,25 @@ are backfilled from the git history.
 **Branch**: `frontend/account-mystuff-mobile`
 **Status**: Active development
 
-- Account page org tree with affiliated networks, IXes, facilities
-- "My stuff" section on homepage with affiliated entities
-- Compare with locked A-side (pre-filled from entity pages)
-- Mobile responsive table cards for detail pages
-- Account page reshuffle (profile left, affiliations/favorites/keys right)
-- Favorites drag-and-drop with server persistence (PUT /account/favorites)
-- PeeringDB profile link on account page
-- OAuth redirect to originating frontend (Referer-based return origin)
-- Dynamic CORS origin resolution for all account endpoints
+| Category | Work |
+|----------|------|
+| Frontend | Account page reshuffle (profile left, affiliations/favorites/keys right) |
+| Frontend | "My stuff" section on homepage with affiliated entities |
+| Frontend | Compare with locked A-side (pre-filled from entity pages) |
+| Frontend | Mobile responsive table cards for detail pages |
+| Frontend | PeeringDB profile link on account page |
+| Auth | Favorites drag-and-drop with server persistence (PUT /account/favorites) |
+| Auth | OAuth redirect to originating frontend (Referer-based return origin) |
+| Auth | Dynamic CORS origin resolution for all account endpoints |
 
 ---
 
 ## Backlog
 
-- Mobile card layout for all detail page tables
-- E2E browser test suite
-- R2 logo bulk backfill
-- Semantic search (Vectorize integration — branch exists)
-- Git tags and release versioning
+| Category | Item |
+|----------|------|
+| Frontend | Mobile card layout for remaining detail page entity tables |
+| Backend | Semantic search (Vectorize integration — branch `feat-semantic-search` exists) |
+| Infra | E2E browser test suite |
+| Infra | Git tags and release versioning |
+| Infra | AUP approval → remove Cloudflare Access gate on production frontend |

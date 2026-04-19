@@ -48,7 +48,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 
 ## Current State
 
-479 commits across 69 PRs. Production deployment on `pdbfe.dev` with branch previews on `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites.
+479 commits across 69 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites.
 
 **Active branch**: `frontend/account-mystuff-mobile` — account page reshuffle, mobile table cards, "my stuff" on homepage, compare with locked A-side, OAuth return-to-origin.
 
@@ -57,7 +57,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 - No tags/releases — version tracking via PR numbers only
 - Worker test coverage is catch-up, not TDD
 - No automated E2E browser tests
-- Logo mirroring (R2) pipeline exists but bulk backfill not yet run
+- Production frontend gated behind Cloudflare Access (AUP approval pending)
 
 ---
 *Last updated: 2026-04-19 — 69 PRs merged, active work on account/mobile/auth improvements*

@@ -2,28 +2,28 @@
 
 **Last updated**: 2026-04-19
 **Active branch**: `frontend/account-mystuff-mobile`
-**Production**: `pdbfe.dev` (Cloudflare Pages + Workers)
+**Production**: `pdbfe.dev` (Cloudflare Pages + Workers) — gated behind Cloudflare Access pending AUP approval
 **Preview**: `*.pdbfe-frontend.pages.dev`
 
 ## Deployment Topology
 
-| Service | Domain | Platform |
-|---------|--------|----------|
-| Frontend SPA | pdbfe.dev, www.pdbfe.dev | Cloudflare Pages |
-| API Worker | api.pdbfe.dev | Cloudflare Worker + D1 |
-| Auth Worker | auth.pdbfe.dev | Cloudflare Worker + KV + D1 |
-| GraphQL | graphql.pdbfe.dev | Cloudflare Worker |
-| REST/OpenAPI | rest.pdbfe.dev | Cloudflare Worker |
-| Sync | cron trigger (hourly) | Cloudflare Worker + D1 |
+| Service | Domain | Platform | Status |
+|---------|--------|----------|--------|
+| Frontend SPA | pdbfe.dev, www.pdbfe.dev | Cloudflare Pages | 🔒 CF Access gated |
+| API Worker | api.pdbfe.dev | Cloudflare Worker + D1 | ✅ Live |
+| Auth Worker | auth.pdbfe.dev | Cloudflare Worker + KV + D1 | ✅ Live |
+| GraphQL | graphql.pdbfe.dev | Cloudflare Worker | ✅ Live |
+| REST/OpenAPI | rest.pdbfe.dev | Cloudflare Worker | ✅ Live |
+| Sync | cron trigger (hourly) | Cloudflare Worker + D1 | ✅ Live |
 
 ## Data Stores
 
-| Store | Type | Purpose |
-|-------|------|---------|
-| peeringdb | D1 | Mirror of all 13 PeeringDB entity types |
-| pdbfe-users | D1 | User profiles, API keys, favorites, preferences |
-| SESSIONS | KV | OAuth session state (shared between auth + API workers) |
-| pdbfe-logos | R2 | Entity logo assets (infrastructure exists, bulk backfill pending) |
+| Store | Type | Purpose | Status |
+|-------|------|---------|--------|
+| peeringdb | D1 | Mirror of all 13 PeeringDB entity types | ✅ Synced and current |
+| pdbfe-users | D1 | User profiles, API keys, favorites, preferences | ✅ Live |
+| SESSIONS | KV | OAuth session state (shared between auth + API workers) | ✅ Live |
+| pdbfe-logos | R2 | Entity logo assets | ✅ Backfilled and current |
 
 ## Statistics
 
@@ -38,11 +38,20 @@
 ## In-Flight Work
 
 Active branch `frontend/account-mystuff-mobile` adds:
-- Account page org tree with affiliated entities
-- "My stuff" homepage section
-- Compare with locked A-side
-- Mobile responsive table cards
-- Account page layout reshuffle
-- Favorites server-side reorder persistence
-- OAuth return-to-origin for preview deployments
-- Dynamic CORS origin for all account endpoints
+
+| Category | Item | Status |
+|----------|------|--------|
+| Frontend | Account page org tree with affiliated entities | ✅ |
+| Frontend | "My stuff" homepage section | ✅ |
+| Frontend | Compare with locked A-side | ✅ |
+| Frontend | Mobile responsive table cards | ✅ |
+| Frontend | Account page layout reshuffle | ✅ |
+| Auth | Favorites server-side reorder persistence | ✅ |
+| Auth | OAuth return-to-origin for preview deployments | ✅ |
+| Auth | Dynamic CORS origin for all account endpoints | ✅ |
+| Frontend | Mobile card layout for remaining tables | ☐ |
+| Frontend | Visual QA pass | ☐ |
+
+## Blockers
+
+- **AUP approval**: Production frontend remains behind Cloudflare Access until AUP is approved. API workers are publicly accessible.

@@ -10,17 +10,18 @@
 <details>
 <summary>🔧 M9 — Account & Mobile (in progress)</summary>
 
-- [x] Account page org tree with affiliated entities
-- [x] "My stuff" on homepage
-- [x] Compare with locked A-side
-- [x] Mobile table card layout (initial)
-- [x] Account page reshuffle (profile left, right column)
-- [x] PeeringDB profile link
-- [x] Favorites drag-and-drop with server persistence
-- [x] OAuth redirect to originating frontend (Referer-based)
-- [x] Dynamic CORS for all account endpoints
-- [ ] Mobile card layout for remaining detail page tables
-- [ ] Visual QA pass on branch preview
+| Category | Item | Status |
+|----------|------|--------|
+| Frontend | Account page reshuffle (profile left, right column) | ✅ |
+| Frontend | "My stuff" on homepage | ✅ |
+| Frontend | Compare with locked A-side | ✅ |
+| Frontend | Mobile table card layout (initial) | ✅ |
+| Frontend | PeeringDB profile link | ✅ |
+| Auth | Favorites drag-and-drop with server persistence | ✅ |
+| Auth | OAuth redirect to originating frontend (Referer-based) | ✅ |
+| Auth | Dynamic CORS for all account endpoints | ✅ |
+| Frontend | Mobile card layout for remaining detail page tables | ☐ |
+| Frontend | Visual QA pass on branch preview | ☐ |
 
 Archive: PR branch `frontend/account-mystuff-mobile`
 
@@ -28,15 +29,18 @@ Archive: PR branch `frontend/account-mystuff-mobile`
 
 ## Next: M10 — Mobile & Responsive (planned)
 
-- Full mobile card layout for all detail page entity tables
-- Responsive breakpoints for header navigation
-- Touch-friendly interactions for drag-and-drop
-- Mobile-first compare page layout
+| Category | Item |
+|----------|------|
+| Frontend | Full mobile card layout for all detail page entity tables |
+| Frontend | Responsive breakpoints for header navigation |
+| Frontend | Touch-friendly interactions for drag-and-drop |
+| Frontend | Mobile-first compare page layout |
 
 ## Backlog
 
-- **Semantic search** — Vectorize integration (branch `feat-semantic-search` exists)
-- **R2 logo backfill** — bulk migration of entity logos to R2
-- **E2E tests** — browser-based integration test suite
-- **Release versioning** — git tags, changelog generation
-- **Cache tags** — Cloudflare Pages cache invalidation via cache tags
+| Category | Item |
+|----------|------|
+| Backend | Semantic search — Vectorize integration (branch `feat-semantic-search` exists) |
+| Infra | E2E browser test suite |
+| Infra | Git tags and release versioning |
+| Infra | AUP approval → remove Cloudflare Access gate on production frontend |
