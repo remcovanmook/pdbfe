@@ -17,7 +17,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 | GraphQL Worker | Cloudflare Worker + Yoga | GraphQL API endpoint |
 | REST Worker | Cloudflare Worker + Scalar | OpenAPI reference + REST pass-through |
 | Auth Worker | Cloudflare Worker + KV + D1 | OAuth2, sessions, user profiles, API keys |
-| Sync Worker | Cloudflare Cron Trigger + D1 | Hourly incremental PeeringDB sync |
+| Sync Worker | Cloudflare Cron Trigger + D1 | Incremental PeeringDB sync every 15 minutes |
 | Pipeline | Node.js scripts | Schema extraction, entity codegen, D1 migrations |
 
 ## Constraints
