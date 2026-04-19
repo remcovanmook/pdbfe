@@ -1,5 +1,5 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, fetchPreferenceOptions } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { fetchEntity } from '../api.js';
 import { t, setLanguage, LANGUAGES } from '../i18n.js';
@@ -103,11 +103,8 @@ export async function renderAccount(_params) {
     // ── Page heading ─────────────────────────────────────────────
     frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-    // Top row: networks + profile sidebar side by side
+    // Two-column layout: profile (left) + affiliations/favorites/keys (right)
     const topRow = el('div', { className: 'account-top' });
-
-    // ── Sidebar: Profile card ────────────────────────────────────
-    const sidebar = el('div', { className: 'detail-sidebar' });
 
     const profileGroup = el('div', { className: 'info-group', id: 'profile-info' });
 
@@ -202,39 +199,39 @@ export async function renderAccount(_params) {
         }
     }).catch(() => { /* Non-critical */ });
 
+    // ── Left column: Profile card ────────────────────────────────
     const profileCard = card(t('Profile'), profileGroup);
-    sidebar.appendChild(profileCard);
+    topRow.appendChild(profileCard);
 
-    // Networks container on the left (populated after layout is in the DOM)
+    // ── Right column: Affiliations, Favorites, API Keys ──────────
+    const rightCol = el('div', { className: 'account-main' });
+
+    // Networks container (populated async after mount)
     const netsContainer = el('div', { id: 'networks-container' });
-    topRow.appendChild(netsContainer);
+    rightCol.appendChild(netsContainer);
 
-    topRow.appendChild(sidebar);
-
-    frag.appendChild(topRow);
-
-    // ── Full-width main: API keys + favorites ────────────────────
-    const main = el('div', { className: 'account-main' });
-
-    const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
-    const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
-    const keysBody = el('div', { id: 'keys-container' });
-    keysBody.appendChild(keysLoading);
-    const keysCard = card(t('API Keys'), keysBody, [createBtn]);
-    main.appendChild(keysCard);
-
-    // ── Favorites card ──────────────────────────────────────────
+    // Favorites card with drag-and-drop reorder
     const favBody = el('div', { id: 'favorites-container' });
     const favorites = getFavorites();
     if (favorites.length === 0) {
         favBody.appendChild(el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No favorites yet. Use the star button on any entity page to add favorites.') }));
     } else {
-        favBody.appendChild(buildFavoritesList(favorites, sid));
+        favBody.appendChild(buildFavoritesList(favorites));
     }
     const favCard = card(t('Favorites'), favBody);
-    main.appendChild(favCard);
+    rightCol.appendChild(favCard);
 
-    frag.appendChild(main);
+    // API Keys card
+    const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
+    const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
+    const keysBody = el('div', { id: 'keys-container' });
+    keysBody.appendChild(keysLoading);
+    const keysCard = card(t('API Keys'), keysBody, [createBtn]);
+    rightCol.appendChild(keysCard);
+
+    topRow.appendChild(rightCol);
+
+    frag.appendChild(topRow);
 
     // ── Create key modal ─────────────────────────────────────────
     const createModalBody = document.createDocumentFragment();
@@ -803,56 +800,123 @@ function showRevokeDialog(sid, keyId, label, prefix) {
 }
 
 /**
- * Builds the favorites list for the account page.
- * Each row shows the entity type, a link to the entity, and a remove button.
+ * Builds the favorites list for the account page with drag-and-drop
+ * reorder support and delete buttons. Uses the same drag-and-drop
+ * pattern as the standalone favorites management page.
  *
  * @param {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>} favorites - User favorites.
- * @param {string} sid - Session ID for auth header.
  * @returns {HTMLElement} The favorites list element.
  */
-function buildFavoritesList(favorites, sid) {
-    const list = el('div', { className: 'favorites-list' });
+function buildFavoritesList(favorites) {
+    const list = el('div', { className: 'favorites-manage', id: 'account-favorites-list' });
 
     for (const fav of favorites) {
-        const row = el('div', { className: 'favorites-list__item' });
-
-        // Entity type badge (colour-coded)
-        row.appendChild(createEntityBadge(fav.entity_type));
-
-        // Link to entity
-        const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
-        row.appendChild(link);
-
-        // Remove button
-        const removeBtn = /** @type {HTMLButtonElement} */ (el('button', {
-            className: 'favorites-list__remove',
-            text: '×',
-        }));
-        removeBtn.title = t('Remove from favorites');
-        removeBtn.setAttribute('aria-label', t('Remove from favorites'));
-        removeBtn.addEventListener('click', async () => {
-            removeBtn.disabled = true;
-            const ok = await removeFavorite(fav.entity_type, fav.entity_id);
-            if (ok) {
-                row.remove();
-                // Show empty state if no favorites left
-                const container = document.getElementById('favorites-container');
-                if (container && container.querySelectorAll('.favorites-list__item').length === 0) {
-                    container.replaceChildren(
-                        el('p', {
-                            style: 'color:var(--text-muted);font-size:0.8125rem',
-                            text: t('No favorites yet. Use the star button on any entity page to add favorites.'),
-                        })
-                    );
-                }
-            } else {
-                removeBtn.disabled = false;
-            }
-        });
-        row.appendChild(removeBtn);
-
-        list.appendChild(row);
+        list.appendChild(buildFavoriteRow(fav, list));
     }
 
     return list;
+}
+
+/**
+ * Builds a single draggable favorite row with entity badge, link,
+ * and delete button. Supports HTML5 drag-and-drop reorder.
+ *
+ * @param {{entity_type: string, entity_id: number, label: string}} fav - Favorite entry.
+ * @param {HTMLElement} listEl - Parent list for reorder persistence.
+ * @returns {HTMLElement} The row element.
+ */
+function buildFavoriteRow(fav, listEl) {
+    const row = el('div', { className: 'favorites-manage__item' });
+    row.draggable = true;
+    row.dataset.key = `${fav.entity_type}:${fav.entity_id}`;
+
+    // Drag handle
+    const handle = el('span', { className: 'favorites-manage__handle', text: '⠿' });
+    handle.title = t('Drag to reorder');
+    row.appendChild(handle);
+
+    // Entity badge
+    row.appendChild(createEntityBadge(fav.entity_type));
+
+    // Entity link
+    const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
+    link.className += ' favorites-manage__name';
+    row.appendChild(link);
+
+    // Delete button
+    const deleteBtn = /** @type {HTMLButtonElement} */ (el('button', {
+        className: 'favorites-manage__delete',
+        text: '×',
+    }));
+    deleteBtn.title = t('Remove from favorites');
+    deleteBtn.setAttribute('aria-label', t('Remove from favorites'));
+    deleteBtn.addEventListener('click', async () => {
+        deleteBtn.disabled = true;
+        const ok = await removeFavorite(fav.entity_type, fav.entity_id);
+        if (ok) {
+            row.remove();
+            // Show empty state if no favorites left
+            const container = document.getElementById('favorites-container');
+            if (container && container.querySelectorAll('.favorites-manage__item').length === 0) {
+                container.replaceChildren(
+                    el('p', {
+                        style: 'color:var(--text-muted);font-size:0.8125rem',
+                        text: t('No favorites yet. Use the star button on any entity page to add favorites.'),
+                    })
+                );
+            }
+        } else {
+            deleteBtn.disabled = false;
+        }
+    });
+    row.appendChild(deleteBtn);
+
+    // ── Drag and drop handlers ──
+
+    row.addEventListener('dragstart', (e) => {
+        row.classList.add('favorites-manage__item--dragging');
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.key || '');
+        }
+    });
+
+    row.addEventListener('dragend', () => {
+        row.classList.remove('favorites-manage__item--dragging');
+        persistFavoritesOrder(listEl);
+    });
+
+    row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+        const dragging = listEl.querySelector('.favorites-manage__item--dragging');
+        if (!dragging || dragging === row) return;
+
+        const rect = row.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+            row.before(dragging);
+        } else {
+            row.after(dragging);
+        }
+    });
+
+    return row;
+}
+
+/**
+ * Reads the current DOM order of favorite rows and persists it via
+ * the auth module's reorderFavorites() function.
+ *
+ * @param {HTMLElement} listEl - The list container element.
+ */
+function persistFavoritesOrder(listEl) {
+    /** @type {string[]} */
+    const keys = [];
+    for (const child of listEl.children) {
+        const key = /** @type {HTMLElement} */ (child).dataset.key;
+        if (key) keys.push(key);
+    }
+    reorderFavorites(keys);
 }
