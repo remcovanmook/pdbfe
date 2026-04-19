@@ -199,6 +199,20 @@ export async function renderAccount(_params) {
         }
     }).catch(() => { /* Non-critical */ });
 
+    // PeeringDB upstream profile link
+    const pdbField = el('div', { className: 'info-field' });
+    pdbField.appendChild(el('span', { className: 'info-field__label', text: '' }));
+    const pdbValue = el('span', { className: 'info-field__value' });
+    const pdbLink = document.createElement('a');
+    pdbLink.href = 'https://www.peeringdb.com/profile';
+    pdbLink.target = '_blank';
+    pdbLink.rel = 'noopener';
+    pdbLink.textContent = t('Go to your profile on PeeringDB') + ' ↗';
+    pdbLink.style.fontSize = '0.8125rem';
+    pdbValue.appendChild(pdbLink);
+    pdbField.appendChild(pdbValue);
+    profileGroup.appendChild(pdbField);
+
     // ── Left column: Profile card ────────────────────────────────
     const profileCard = card(t('Profile'), profileGroup);
     topRow.appendChild(profileCard);
