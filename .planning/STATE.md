@@ -30,12 +30,13 @@
 | Category | Tests | Suites | Scope |
 |----------|------:|-------:|-------|
 | Worker unit | 693 | 143 | API, auth, core, GraphQL, REST, sync |
-| Frontend unit | 79 | 16 | Home, about, i18n, markdown, debug, formatSpeed |
+| Frontend unit | 123 | 28 | Home, about, i18n, markdown, debug, formatSpeed, countries, entities, router, theme, timezone |
 | Compliance | 56 | 5 | Golden files, wire format, filter fuzz (subset of worker unit) |
-| **Total** | **772** | **159** | |
+| **Total** | **816** | **171** | |
 
 - CI runs: lint, typecheck, XSS scan, all unit tests
 - Compliance tests: structural diff against upstream JSON, golden file snapshots, filter fuzz
+- Frontend coverage: 10 of 33 modules tested (up from 5)
 - No E2E browser tests yet
 
 ## Statistics
@@ -45,7 +46,7 @@
 - **Entity types**: 13 (net, ix, fac, org, carrier, campus, poc, ixfac, ixlan, ixpfx, netfac, netixlan, as_set)
 - **Frontend JS**: ~15 page modules, ~8 shared modules
 - **Workers**: 5 (api, auth, graphql, rest, sync)
-- **Test files**: 40 (35 worker, 5 frontend)
+- **Test files**: 45 (35 worker, 10 frontend)
 - **CI**: GitHub Actions (lint, typecheck, XSS scan, unit tests)
 
 ## In-Flight Work

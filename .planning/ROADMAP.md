@@ -3,12 +3,12 @@
 ## Milestones
 
 - ✅ **M1–M8** — shipped (see [MILESTONES.md](./MILESTONES.md))
-- 🔧 **M9 — Account & Mobile** — in progress (branch `frontend/account-mystuff-mobile`)
+- 📦 **M9 — Account & Mobile** — PR pending (branch `frontend/account-mystuff-mobile`)
 
 ## Current: M9 — Account & Mobile
 
 <details>
-<summary>🔧 M9 — Account & Mobile (in progress)</summary>
+<summary>📦 M9 — Account & Mobile (PR pending)</summary>
 
 | Category | Item | Status |
 |----------|------|--------|
@@ -21,7 +21,8 @@
 | Auth | OAuth redirect to originating frontend (Referer-based) | ✅ |
 | Auth | Dynamic CORS for all account endpoints | ✅ |
 | Frontend | Mobile card layout for remaining detail page tables | ☐ |
-| Frontend | Visual QA pass on branch preview | ☐ |
+| Frontend | Unit tests (countries, entities, router, theme, timezone) | ✅ |
+| Infra | .planning docs (PROJECT, MILESTONES, ROADMAP, STATE) | ✅ |
 
 Archive: PR branch `frontend/account-mystuff-mobile`
 

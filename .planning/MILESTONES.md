@@ -134,10 +134,10 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M9: Account & Mobile (in progress)
+## M9: Account & Mobile (PR pending)
 
 **Branch**: `frontend/account-mystuff-mobile`
-**Status**: Active development
+**Status**: PR ready — 11 commits, 18 files changed, +1840/-238 lines
 
 | Category | Work |
 |----------|------|
@@ -146,9 +146,11 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Frontend | Compare with locked A-side (pre-filled from entity pages) |
 | Frontend | Mobile responsive table cards for detail pages |
 | Frontend | PeeringDB profile link on account page |
+| Frontend | Unit tests for countries, entities, router, theme, timezone (79 → 123 tests) |
 | Auth | Favorites drag-and-drop with server persistence (PUT /account/favorites) |
 | Auth | OAuth redirect to originating frontend (Referer-based return origin) |
 | Auth | Dynamic CORS origin resolution for all account endpoints |
+| Infra | .planning directory with PROJECT, MILESTONES, ROADMAP, STATE docs |
 
 ---
 
