@@ -290,11 +290,15 @@ export async function searchAll(query, signal, types) {
  * because IX peers come from the netixlan entity filtered by ix_id,
  * not from the IX entity's own depth expansion.
  *
+ * Requests depth=1 so the API includes the LEFT JOIN resolved
+ * net_name column. At depth=0, JOIN columns are stripped for
+ * upstream parity.
+ *
  * @param {number|string} ixId - Exchange ID.
- * @returns {Promise<any[]>} Array of netixlan records.
+ * @returns {Promise<any[]>} Array of netixlan records with net_name.
  */
 export async function fetchIxPeers(ixId) {
-    return fetchList('netixlan', { ix_id: ixId, limit: 5000 });
+    return fetchList('netixlan', { ix_id: ixId, depth: 1, limit: 5000 });
 }
 
 /**
