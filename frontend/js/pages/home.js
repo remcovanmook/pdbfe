@@ -415,9 +415,9 @@ async function loadMyStuffExtended() {
             if (net?.org_id) orgIds.add(net.org_id);
         }
 
-        // Fetch each org at depth=1
+        // Fetch each org at depth=2 to get expanded child sets
         const orgs = await Promise.all(
-            [...orgIds].map(orgId => fetchEntity('org', String(orgId), 1).catch(/** @returns {null} */() => null))
+            [...orgIds].map(orgId => fetchEntity('org', String(orgId), 2).catch(/** @returns {null} */() => null))
         );
 
         const MAX_ITEMS = 10;

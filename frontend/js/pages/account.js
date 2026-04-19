@@ -410,10 +410,10 @@ async function renderAffiliations(user, container) {
             if (net?.org_id) orgIds.add(net.org_id);
         }
 
-        // Fetch each org at depth=1 to get net_set, ix_set, fac_set
+        // Fetch each org at depth=2 to get expanded net_set, ix_set, fac_set
         const orgEntries = await Promise.all(
             [...orgIds].map(async (orgId) => {
-                const org = await fetchEntity('org', orgId, 1).catch(/** @returns {null} */() => null);
+                const org = await fetchEntity('org', orgId, 2).catch(/** @returns {null} */() => null);
                 return org ? { id: orgId, org } : null;
             })
         );
