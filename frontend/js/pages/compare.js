@@ -229,11 +229,19 @@ function createEntityInput(label, prefix, initialRef) {
     const refInput = document.createElement('input');
     refInput.type = 'hidden';
     refInput.id = `${prefix}-ref`;
+
+    // Selection confirmation — shows badge + entity name after pick
+    const selected = document.createElement('div');
+    selected.className = 'compare-selected';
+    selected.id = `${prefix}-selected`;
+
     if (initialRef) {
+        // ── Locked mode: A-side is pre-filled and non-editable ──
         refInput.value = initialRef;
         const [tag, id] = initialRef.split(':');
         input.value = initialRef;
-        input.disabled = true;
+        input.readOnly = true;
+        searchWrap.classList.add('compare-search-wrap--locked');
 
         fetchEntity(tag, id)
             .then(entity => {
@@ -247,57 +255,52 @@ function createEntityInput(label, prefix, initialRef) {
                     selected.appendChild(desc);
                 }
             })
-            .catch(() => { /* ignore fetch errors on bootstrap */ })
-            .finally(() => {
-                input.disabled = false;
-            });
+            .catch(() => { /* ignore fetch errors on bootstrap */ });
+
+        // No typeahead wiring for locked inputs
+    } else {
+        // ── Editable mode: full typeahead search ──
+        let debounceTimer = 0;
+        let abortCtrl = /** @type {AbortController|null} */ (null);
+
+        input.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            // Clear the previous selection when the user edits
+            refInput.value = '';
+            selected.replaceChildren();
+
+            const q = input.value.trim();
+            if (q.length < 2) {
+                dropdown.classList.remove('is-open');
+                return;
+            }
+            debounceTimer = globalThis.setTimeout(async () => {
+                if (abortCtrl) abortCtrl.abort();
+                abortCtrl = new AbortController();
+                try {
+                    const results = await searchWithAsn(q, abortCtrl.signal, COMPARE_TYPES);
+                    renderDropdown(dropdown, results, (tag, id, name) => {
+                        refInput.value = `${tag}:${id}`;
+                        input.value = name;
+                        dropdown.classList.remove('is-open');
+                        // Show badge + name in selection confirmation
+                        selected.replaceChildren();
+                        selected.appendChild(createEntityBadge(tag));
+                        const desc = document.createElement('span');
+                        desc.textContent = ` ${name}`;
+                        selected.appendChild(desc);
+                    });
+                } catch { /* aborted or network error */ }
+            }, 250);
+        });
+
+        input.addEventListener('blur', () => {
+            globalThis.setTimeout(() => { dropdown.classList.remove('is-open'); }, 200);
+        });
     }
+
     group.appendChild(refInput);
-
-    // Selection confirmation — shows badge + entity name after pick
-    const selected = document.createElement('div');
-    selected.className = 'compare-selected';
-    selected.id = `${prefix}-selected`;
     group.appendChild(selected);
-
-    // Wire up typeahead — filtered to COMPARE_TYPES only
-    let debounceTimer = 0;
-    let abortCtrl = /** @type {AbortController|null} */ (null);
-
-    input.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        // Clear the previous selection when the user edits
-        refInput.value = '';
-        selected.replaceChildren();
-
-        const q = input.value.trim();
-        if (q.length < 2) {
-            dropdown.classList.remove('is-open');
-            return;
-        }
-        debounceTimer = globalThis.setTimeout(async () => {
-            if (abortCtrl) abortCtrl.abort();
-            abortCtrl = new AbortController();
-            try {
-                const results = await searchWithAsn(q, abortCtrl.signal, COMPARE_TYPES);
-                renderDropdown(dropdown, results, (tag, id, name) => {
-                    refInput.value = `${tag}:${id}`;
-                    input.value = name;
-                    dropdown.classList.remove('is-open');
-                    // Show badge + name in selection confirmation
-                    selected.replaceChildren();
-                    selected.appendChild(createEntityBadge(tag));
-                    const desc = document.createElement('span');
-                    desc.textContent = ` ${name}`;
-                    selected.appendChild(desc);
-                });
-            } catch { /* aborted or network error */ }
-        }, 250);
-    });
-
-    input.addEventListener('blur', () => {
-        globalThis.setTimeout(() => { dropdown.classList.remove('is-open'); }, 200);
-    });
 
     return group;
 }

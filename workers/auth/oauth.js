@@ -88,6 +88,26 @@ function corsHeaders(frontendOrigin) {
 export function handleLogin(request, env) {
     const state = generateSessionId();
 
+    // Determine return origin from the Referer header. When the user
+    // clicks "Sign in", the browser includes the referring page URL.
+    // We extract the origin and validate it against our allowlist.
+    // Falls back to FRONTEND_ORIGIN if Referer is missing (e.g. strict
+    // privacy settings or direct URL entry).
+    let returnOrigin = env.FRONTEND_ORIGIN;
+    const referer = request.headers.get('Referer');
+    if (referer) {
+        try {
+            const refOrigin = new URL(referer).origin; // ap-ok: auth worker only
+            const probe = new Request(request.url, {
+                headers: { 'Origin': refOrigin },
+            });
+            const resolved = resolveAllowedOrigin(probe, env);
+            if (resolved === refOrigin) {
+                returnOrigin = refOrigin;
+            }
+        } catch { /* malformed referer — use default */ }
+    }
+
     const params = new URLSearchParams({
         response_type: 'code',
         client_id: env.OAUTH_CLIENT_ID,
@@ -96,18 +116,18 @@ export function handleLogin(request, env) {
         state,
     });
 
-    // Bind the state nonce to this browser via a cookie. The callback
-    // handler will verify the cookie matches the URL state parameter,
-    // preventing login CSRF attacks where an attacker sends their own
-    // authorization URL to a victim.
-    return new Response(null, {
-        status: 302,
-        headers: {
-            'Location': `${PDB_AUTHORIZE_URL}?${params.toString()}`,
-            'Cache-Control': 'no-store',
-            'Set-Cookie': `pdbfe_oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`,
-        },
+    // Bind the state nonce and return origin to this browser via
+    // cookies. The callback handler verifies the nonce cookie matches
+    // the URL state parameter, preventing login CSRF attacks.
+    // The return origin cookie tells the callback where to redirect.
+    const headers = new Headers({
+        'Location': `${PDB_AUTHORIZE_URL}?${params.toString()}`,
+        'Cache-Control': 'no-store',
     });
+    headers.append('Set-Cookie', `pdbfe_oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`);
+    headers.append('Set-Cookie', `pdbfe_oauth_return=${encodeURIComponent(returnOrigin)}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`);
+
+    return new Response(null, { status: 302, headers });
 }
 
 /**
@@ -131,22 +151,46 @@ export async function handleCallback(request, env) {
     const state = url.searchParams.get('state');
     const error = url.searchParams.get('error');
 
-    // Cookie clearing header — expires the oauth_state cookie regardless
+    // Cookie clearing headers — expire both oauth cookies regardless
     // of whether the callback succeeds or fails.
-    const clearCookie = 'pdbfe_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0';
+    const clearCookies = [
+        'pdbfe_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
+        'pdbfe_oauth_return=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
+    ];
+
+    /**
+     * Helper to append cookie-clearing headers to a response.
+     * @param {Response} resp
+     * @returns {Response}
+     */
+    const clearAndReturn = (resp) => {
+        for (const c of clearCookies) resp.headers.append('Set-Cookie', c);
+        return resp;
+    };
+
+    // Resolve the return origin from the cookie (set during /auth/login).
+    // Falls back to FRONTEND_ORIGIN if missing or invalid.
+    let returnOrigin = env.FRONTEND_ORIGIN;
+    const rawReturn = extractCookie(request, 'pdbfe_oauth_return');
+    if (rawReturn) {
+        const decoded = decodeURIComponent(rawReturn);
+        const probe = new Request(request.url, {
+            headers: { 'Origin': decoded },
+        });
+        const resolved = resolveAllowedOrigin(probe, env);
+        if (resolved === decoded) {
+            returnOrigin = decoded;
+        }
+    }
 
     // PeeringDB may redirect with an error parameter on user denial
     if (error) {
         const desc = url.searchParams.get('error_description') || error;
-        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, desc);
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        return clearAndReturn(redirectToFrontend(returnOrigin, null, desc));
     }
 
     if (!code || !state) {
-        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Missing code or state parameter');
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'Missing code or state parameter'));
     }
 
     // Validate CSRF state nonce: verify the cookie set during /auth/login
@@ -154,36 +198,28 @@ export async function handleCallback(request, env) {
     // login flow was initiated by this browser (Double Submit Cookie).
     const cookieState = extractCookie(request, 'pdbfe_oauth_state');
     if (!cookieState || cookieState !== state) {
-        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'State mismatch (possible CSRF)');
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'State mismatch (possible CSRF)'));
     }
 
     // Exchange authorization code for access token
     const tokenResult = await exchangeCode(code, env);
     if (!tokenResult.ok) {
-        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, tokenResult.error || 'Token exchange failed');
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        return clearAndReturn(redirectToFrontend(returnOrigin, null, tokenResult.error || 'Token exchange failed'));
     }
 
     // Fetch user profile from PeeringDB
     const profile = await fetchProfile(tokenResult.access_token);
     if (!profile) {
-        const resp = redirectToFrontend(env.FRONTEND_ORIGIN, null, 'Failed to fetch user profile');
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'Failed to fetch user profile'));
     }
 
     // Require verified user — unverified accounts cannot log in
     if (!profile.verified_user) {
-        const resp = redirectToFrontend(
-            env.FRONTEND_ORIGIN,
+        return clearAndReturn(redirectToFrontend(
+            returnOrigin,
             null,
             'PeeringDB account is not verified. Please verify your account and try again.'
-        );
-        resp.headers.append('Set-Cookie', clearCookie);
-        return resp;
+        ));
     }
 
     // Create session
@@ -203,9 +239,7 @@ export async function handleCallback(request, env) {
 
     await writeSession(env.SESSIONS, sid, sessionData, SESSION_TTL);
 
-    const resp = redirectToFrontend(env.FRONTEND_ORIGIN, sid, null);
-    resp.headers.append('Set-Cookie', clearCookie);
-    return resp;
+    return clearAndReturn(redirectToFrontend(returnOrigin, sid, null));
 }
 
 /**

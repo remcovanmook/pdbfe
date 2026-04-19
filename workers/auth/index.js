@@ -36,6 +36,7 @@ import {
     handleDeleteKey,
     handleListFavorites,
     handleAddFavorite,
+    handleReplaceFavorites,
     handleRemoveFavorite,
     handleAccountPreflight,
 } from './account.js';
@@ -123,7 +124,8 @@ async function handleRequest(request, env, _ctx) {
     if (path === '/account/favorites') {
         if (request.method === 'GET')  return handleListFavorites(request, env);
         if (request.method === 'POST') return handleAddFavorite(request, env);
-        return methodNotAllowed('GET, POST, OPTIONS');
+        if (request.method === 'PUT')  return handleReplaceFavorites(request, env);
+        return methodNotAllowed('GET, POST, PUT, OPTIONS');
     }
 
     // DELETE /account/favorites/:type/:id

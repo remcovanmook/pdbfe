@@ -1,6 +1,7 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, fetchPreferenceOptions } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, fetchPreferenceOptions } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
+import { fetchEntity } from '../api.js';
 import { t, setLanguage, LANGUAGES } from '../i18n.js';
 import { getTheme, setTheme } from '../theme.js';
 import { getTimezonePreference, setTimezone } from '../timezone.js';
@@ -102,11 +103,8 @@ export async function renderAccount(_params) {
     // ── Page heading ─────────────────────────────────────────────
     frag.appendChild(el('h1', { className: 'detail-header__title', style: 'margin-bottom:var(--space-xl)', text: t('Account') }));
 
-    // Top row: networks + profile sidebar side by side
+    // Two-column layout: profile (left) + affiliations/favorites/keys (right)
     const topRow = el('div', { className: 'account-top' });
-
-    // ── Sidebar: Profile card ────────────────────────────────────
-    const sidebar = el('div', { className: 'detail-sidebar' });
 
     const profileGroup = el('div', { className: 'info-group', id: 'profile-info' });
 
@@ -201,39 +199,53 @@ export async function renderAccount(_params) {
         }
     }).catch(() => { /* Non-critical */ });
 
+    // PeeringDB upstream profile link
+    const pdbField = el('div', { className: 'info-field' });
+    pdbField.appendChild(el('span', { className: 'info-field__label', text: '' }));
+    const pdbValue = el('span', { className: 'info-field__value' });
+    const pdbLink = document.createElement('a');
+    pdbLink.href = 'https://www.peeringdb.com/profile';
+    pdbLink.target = '_blank';
+    pdbLink.rel = 'noopener';
+    pdbLink.textContent = t('Go to your profile on PeeringDB') + ' ↗';
+    pdbLink.style.fontSize = '0.8125rem';
+    pdbValue.appendChild(pdbLink);
+    pdbField.appendChild(pdbValue);
+    profileGroup.appendChild(pdbField);
+
+    // ── Left column: Profile card ────────────────────────────────
     const profileCard = card(t('Profile'), profileGroup);
-    sidebar.appendChild(profileCard);
+    topRow.appendChild(profileCard);
 
-    // Networks container on the left (populated after layout is in the DOM)
+    // ── Right column: Affiliations, Favorites, API Keys ──────────
+    const rightCol = el('div', { className: 'account-main' });
+
+    // Networks container (populated async after mount)
     const netsContainer = el('div', { id: 'networks-container' });
-    topRow.appendChild(netsContainer);
+    rightCol.appendChild(netsContainer);
 
-    topRow.appendChild(sidebar);
-
-    frag.appendChild(topRow);
-
-    // ── Full-width main: API keys + favorites ────────────────────
-    const main = el('div', { className: 'account-main' });
-
-    const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
-    const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
-    const keysBody = el('div', { id: 'keys-container' });
-    keysBody.appendChild(keysLoading);
-    const keysCard = card(t('API Keys'), keysBody, [createBtn]);
-    main.appendChild(keysCard);
-
-    // ── Favorites card ──────────────────────────────────────────
+    // Favorites card with drag-and-drop reorder
     const favBody = el('div', { id: 'favorites-container' });
     const favorites = getFavorites();
     if (favorites.length === 0) {
         favBody.appendChild(el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No favorites yet. Use the star button on any entity page to add favorites.') }));
     } else {
-        favBody.appendChild(buildFavoritesList(favorites, sid));
+        favBody.appendChild(buildFavoritesList(favorites));
     }
     const favCard = card(t('Favorites'), favBody);
-    main.appendChild(favCard);
+    rightCol.appendChild(favCard);
 
-    frag.appendChild(main);
+    // API Keys card
+    const createBtn = el('button', { id: 'btn-create-key', className: 'auth-link', style: 'cursor:pointer;background:none', text: `+ ${t('New Key')}` });
+    const keysLoading = el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading')}...` });
+    const keysBody = el('div', { id: 'keys-container' });
+    keysBody.appendChild(keysLoading);
+    const keysCard = card(t('API Keys'), keysBody, [createBtn]);
+    rightCol.appendChild(keysCard);
+
+    topRow.appendChild(rightCol);
+
+    frag.appendChild(topRow);
 
     // ── Create key modal ─────────────────────────────────────────
     const createModalBody = document.createDocumentFragment();
@@ -281,8 +293,8 @@ export async function renderAccount(_params) {
     // Wire up create key button
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
 
-    // Render network affiliations into the sidebar
-    netsContainer.appendChild(renderNetworks(user));
+    // Render org-grouped affiliations into the left column
+    renderAffiliations(user, netsContainer);
 
     // Wire up language preference selector — persists to server
     langSelect.addEventListener('change', async () => {
@@ -369,54 +381,156 @@ export async function renderAccount(_params) {
 }
 
 /**
- * Renders the user's network affiliations as a sidebar card.
- * Uses DOM builders — network names go through textContent.
+ * Fetches and renders the user's organisational affiliations as an
+ * org-grouped tree. Each org acts as a divider/header row, with its
+ * child entities (networks, exchanges, facilities) listed beneath.
+ *
+ * Data flow:
+ *   1. Start from user.networks (already in session data)
+ *   2. Fetch each network at depth=0 to resolve org_id
+ *   3. Deduplicate org IDs, fetch each org at depth=1
+ *   4. Render grouped tree into the container
  *
  * @param {SessionData|null} user - The session/user data.
- * @returns {HTMLDivElement|DocumentFragment} Card element, or empty fragment.
+ * @param {HTMLElement} container - DOM element to render into.
  */
-function renderNetworks(user) {
+async function renderAffiliations(user, container) {
     const nets = user?.networks || [];
-    if (nets.length === 0) return document.createDocumentFragment();
-
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    const header = document.createElement('div');
-    header.className = 'card__header';
-    const title = document.createElement('span');
-    title.className = 'card__title';
-    title.textContent = t('Networks');
-    const badge = document.createElement('span');
-    badge.className = 'card__badge';
-    badge.textContent = String(nets.length);
-    header.append(title, badge);
-    card.appendChild(header);
-
-    const body = document.createElement('div');
-    body.className = 'card__body';
-    const group = document.createElement('div');
-    group.className = 'info-group';
-
-    for (const n of nets) {
-        const field = document.createElement('div');
-        field.className = 'info-field';
-
-        const label = document.createElement('span');
-        label.className = 'info-field__label';
-        label.textContent = `AS${n.asn}`;
-
-        const value = document.createElement('span');
-        value.className = 'info-field__value';
-        value.appendChild(createLink('net', n.id, n.name));
-
-        field.append(label, value);
-        group.appendChild(field);
+    if (nets.length === 0) {
+        container.appendChild(
+            el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No network affiliations.') })
+        );
+        return;
     }
 
-    body.appendChild(group);
-    card.appendChild(body);
-    return card;
+    // Show loading state
+    container.appendChild(
+        el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: `${t('Loading affiliations')}...` })
+    );
+
+    try {
+        // Fetch each network at depth=0 to get their org_id
+        const netDetails = await Promise.all(
+            nets.map(n => fetchEntity('net', n.id, 0).catch(/** @returns {null} */() => null))
+        );
+
+        // Collect unique org IDs
+        /** @type {Set<number>} */
+        const orgIds = new Set();
+        for (const net of netDetails) {
+            if (net?.org_id) orgIds.add(net.org_id);
+        }
+
+        // Fetch each org at depth=2 to get expanded net_set, ix_set, fac_set
+        const orgEntries = await Promise.all(
+            [...orgIds].map(async (orgId) => {
+                const org = await fetchEntity('org', orgId, 2).catch(/** @returns {null} */() => null);
+                return org ? { id: orgId, org } : null;
+            })
+        );
+
+        const orgs = orgEntries.filter(Boolean);
+
+        if (orgs.length === 0) {
+            container.replaceChildren(
+                el('p', { style: 'color:var(--text-muted);font-size:0.8125rem', text: t('No affiliations found.') })
+            );
+            return;
+        }
+
+        container.replaceChildren(buildOrgTree(orgs));
+    } catch (err) {
+        console.warn('Failed to load affiliations:', err);
+        container.replaceChildren(
+            el('p', { style: 'color:var(--status-error);font-size:0.8125rem', text: t('Failed to load affiliations.') })
+        );
+    }
+}
+
+/**
+ * Builds the org-grouped affiliation tree as a card element.
+ * Each org is a divider row, with child nets/ixes/facs below it.
+ *
+ * @param {Array<{id: number, org: any}>} orgs - Org entries with depth=1 data.
+ * @returns {HTMLElement} Card element containing the tree.
+ */
+function buildOrgTree(orgs) {
+    // Count total entities across all orgs
+    let totalCount = 0;
+    for (const { org } of orgs) {
+        totalCount += (org.net_set?.length || 0) + (org.ix_set?.length || 0) + (org.fac_set?.length || 0);
+    }
+
+    const wrapper = el('div', { className: 'card' });
+    const header = el('div', { className: 'card__header' });
+    header.appendChild(el('span', { className: 'card__title', text: t('My Affiliations') }));
+    const badge = el('span', { className: 'card__badge' });
+    badge.textContent = String(totalCount);
+    header.appendChild(badge);
+    wrapper.appendChild(header);
+
+    const body = el('div', { className: 'card__body' });
+    const tree = el('div', { className: 'affiliation-tree' });
+
+    for (const { org } of orgs) {
+        // ── Org divider row ──
+        const orgRow = el('div', { className: 'affiliation-tree__org' });
+        orgRow.appendChild(createEntityBadge('org'));
+        orgRow.appendChild(createLink('org', org.id, org.name || `Org ${org.id}`));
+        tree.appendChild(orgRow);
+
+        // ── Child entities: networks, then exchanges, then facilities ──
+        if (org.net_set) {
+            for (const net of org.net_set) {
+                tree.appendChild(buildEntityRow('net', net.id, net.name ? `AS${net.asn} — ${net.name}` : `AS${net.asn}`));
+            }
+        }
+        if (org.ix_set) {
+            for (const ix of org.ix_set) {
+                tree.appendChild(buildEntityRow('ix', ix.id, ix.name || `IX ${ix.id}`));
+            }
+        }
+        if (org.fac_set) {
+            for (const fac of org.fac_set) {
+                tree.appendChild(buildEntityRow('fac', fac.id, fac.name || `Fac ${fac.id}`));
+            }
+        }
+    }
+
+    body.appendChild(tree);
+    wrapper.appendChild(body);
+    return wrapper;
+}
+
+/**
+ * Builds a single entity row for the affiliation tree.
+ * Contains an entity badge, a link to the entity, and a compare shortcut.
+ *
+ * @param {string} tag - Entity type tag (net, ix, fac).
+ * @param {number} id - Entity ID.
+ * @param {string} name - Display name.
+ * @returns {HTMLElement} Row element.
+ */
+function buildEntityRow(tag, id, name) {
+    const row = el('div', { className: 'affiliation-tree__entity' });
+    row.appendChild(createEntityBadge(tag));
+
+    const link = createLink(tag, id, name);
+    link.className += ' affiliation-tree__name';
+    row.appendChild(link);
+
+    // Compare shortcut (only for types that support comparison)
+    if (['net', 'ix', 'fac'].includes(tag)) {
+        const cmpLink = document.createElement('a');
+        cmpLink.href = `/compare?a=${tag}:${id}`;
+        cmpLink.dataset.link = '';
+        cmpLink.className = 'affiliation-tree__compare';
+        cmpLink.textContent = '↔ ' + t('Compare');
+        cmpLink.title = t('Compare with another entity');
+        row.appendChild(cmpLink);
+    }
+
+    return row;
 }
 
 /**
@@ -700,56 +814,123 @@ function showRevokeDialog(sid, keyId, label, prefix) {
 }
 
 /**
- * Builds the favorites list for the account page.
- * Each row shows the entity type, a link to the entity, and a remove button.
+ * Builds the favorites list for the account page with drag-and-drop
+ * reorder support and delete buttons. Uses the same drag-and-drop
+ * pattern as the standalone favorites management page.
  *
  * @param {Array<{entity_type: string, entity_id: number, label: string, created_at: string}>} favorites - User favorites.
- * @param {string} sid - Session ID for auth header.
  * @returns {HTMLElement} The favorites list element.
  */
-function buildFavoritesList(favorites, sid) {
-    const list = el('div', { className: 'favorites-list' });
+function buildFavoritesList(favorites) {
+    const list = el('div', { className: 'favorites-manage', id: 'account-favorites-list' });
 
     for (const fav of favorites) {
-        const row = el('div', { className: 'favorites-list__item' });
-
-        // Entity type badge (colour-coded)
-        row.appendChild(createEntityBadge(fav.entity_type));
-
-        // Link to entity
-        const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
-        row.appendChild(link);
-
-        // Remove button
-        const removeBtn = /** @type {HTMLButtonElement} */ (el('button', {
-            className: 'favorites-list__remove',
-            text: '×',
-        }));
-        removeBtn.title = t('Remove from favorites');
-        removeBtn.setAttribute('aria-label', t('Remove from favorites'));
-        removeBtn.addEventListener('click', async () => {
-            removeBtn.disabled = true;
-            const ok = await removeFavorite(fav.entity_type, fav.entity_id);
-            if (ok) {
-                row.remove();
-                // Show empty state if no favorites left
-                const container = document.getElementById('favorites-container');
-                if (container && container.querySelectorAll('.favorites-list__item').length === 0) {
-                    container.replaceChildren(
-                        el('p', {
-                            style: 'color:var(--text-muted);font-size:0.8125rem',
-                            text: t('No favorites yet. Use the star button on any entity page to add favorites.'),
-                        })
-                    );
-                }
-            } else {
-                removeBtn.disabled = false;
-            }
-        });
-        row.appendChild(removeBtn);
-
-        list.appendChild(row);
+        list.appendChild(buildFavoriteRow(fav, list));
     }
 
     return list;
+}
+
+/**
+ * Builds a single draggable favorite row with entity badge, link,
+ * and delete button. Supports HTML5 drag-and-drop reorder.
+ *
+ * @param {{entity_type: string, entity_id: number, label: string}} fav - Favorite entry.
+ * @param {HTMLElement} listEl - Parent list for reorder persistence.
+ * @returns {HTMLElement} The row element.
+ */
+function buildFavoriteRow(fav, listEl) {
+    const row = el('div', { className: 'favorites-manage__item' });
+    row.draggable = true;
+    row.dataset.key = `${fav.entity_type}:${fav.entity_id}`;
+
+    // Drag handle
+    const handle = el('span', { className: 'favorites-manage__handle', text: '⠿' });
+    handle.title = t('Drag to reorder');
+    row.appendChild(handle);
+
+    // Entity badge
+    row.appendChild(createEntityBadge(fav.entity_type));
+
+    // Entity link
+    const link = createLink(fav.entity_type, fav.entity_id, fav.label || `${fav.entity_type} ${fav.entity_id}`);
+    link.className += ' favorites-manage__name';
+    row.appendChild(link);
+
+    // Delete button
+    const deleteBtn = /** @type {HTMLButtonElement} */ (el('button', {
+        className: 'favorites-manage__delete',
+        text: '×',
+    }));
+    deleteBtn.title = t('Remove from favorites');
+    deleteBtn.setAttribute('aria-label', t('Remove from favorites'));
+    deleteBtn.addEventListener('click', async () => {
+        deleteBtn.disabled = true;
+        const ok = await removeFavorite(fav.entity_type, fav.entity_id);
+        if (ok) {
+            row.remove();
+            // Show empty state if no favorites left
+            const container = document.getElementById('favorites-container');
+            if (container && container.querySelectorAll('.favorites-manage__item').length === 0) {
+                container.replaceChildren(
+                    el('p', {
+                        style: 'color:var(--text-muted);font-size:0.8125rem',
+                        text: t('No favorites yet. Use the star button on any entity page to add favorites.'),
+                    })
+                );
+            }
+        } else {
+            deleteBtn.disabled = false;
+        }
+    });
+    row.appendChild(deleteBtn);
+
+    // ── Drag and drop handlers ──
+
+    row.addEventListener('dragstart', (e) => {
+        row.classList.add('favorites-manage__item--dragging');
+        if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.key || '');
+        }
+    });
+
+    row.addEventListener('dragend', () => {
+        row.classList.remove('favorites-manage__item--dragging');
+        persistFavoritesOrder(listEl);
+    });
+
+    row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+        const dragging = listEl.querySelector('.favorites-manage__item--dragging');
+        if (!dragging || dragging === row) return;
+
+        const rect = row.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+            row.before(dragging);
+        } else {
+            row.after(dragging);
+        }
+    });
+
+    return row;
+}
+
+/**
+ * Reads the current DOM order of favorite rows and persists it via
+ * the auth module's reorderFavorites() function.
+ *
+ * @param {HTMLElement} listEl - The list container element.
+ */
+function persistFavoritesOrder(listEl) {
+    /** @type {string[]} */
+    const keys = [];
+    for (const child of listEl.children) {
+        const key = /** @type {HTMLElement} */ (child).dataset.key;
+        if (key) keys.push(key);
+    }
+    reorderFavorites(keys);
 }

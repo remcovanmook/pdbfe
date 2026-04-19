@@ -139,24 +139,29 @@ function jsonResponse(body, status, origin) {
 
 /**
  * Resolves the current session from the request. Returns the session
- * data or a 401 response if not authenticated.
+ * data, the resolved CORS origin, or a 401 response if not authenticated.
+ *
+ * The CORS origin is resolved once here so all downstream handlers use
+ * a consistent, validated origin that works for both production and
+ * Cloudflare Pages preview deployments.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<{session: SessionData|null, error: Response|null}>}
+ * @returns {Promise<{session: SessionData|null, origin: string, error: Response|null}>}
  */
 async function requireSession(request, env) {
+    const origin = resolveAllowedOrigin(request, env);
     const sid = extractSessionId(request);
     if (!sid) {
-        return { session: null, error: jsonResponse({ error: 'Authentication required' }, 401, env.FRONTEND_ORIGIN) };
+        return { session: null, origin, error: jsonResponse({ error: 'Authentication required' }, 401, origin) };
     }
 
     const session = await resolveSession(env.SESSIONS, sid);
     if (!session) {
-        return { session: null, error: jsonResponse({ error: 'Invalid or expired session' }, 401, env.FRONTEND_ORIGIN) };
+        return { session: null, origin, error: jsonResponse({ error: 'Invalid or expired session' }, 401, origin) };
     }
 
-    return { session, error: null };
+    return { session, origin, error: null };
 }
 
 // ── User record helpers (D1) ─────────────────────────────────────────────────
@@ -300,7 +305,7 @@ export async function handlePreferenceOptions(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleGetProfile(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
@@ -317,7 +322,7 @@ export async function handleGetProfile(request, env) {
         networks: session.networks,
         created_at: user.created_at,
         updated_at: user.updated_at,
-    }, 200, env.FRONTEND_ORIGIN);
+    }, 200, origin);
 }
 
 /**
@@ -329,14 +334,14 @@ export async function handleGetProfile(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleUpdateProfile(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     let body;
     try {
         body = /** @type {{name?: string, preferences?: UserPreferences}} */ (await request.json());
     } catch {
-        return jsonResponse({ error: 'Invalid JSON body' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'Invalid JSON body' }, 400, origin);
     }
 
     const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
@@ -349,7 +354,7 @@ export async function handleUpdateProfile(request, env) {
     // Name update
     if (body.name !== undefined) {
         if (typeof body.name !== 'string' || body.name.trim().length === 0) {
-            return jsonResponse({ error: 'name must be non-empty' }, 400, env.FRONTEND_ORIGIN);
+            return jsonResponse({ error: 'name must be non-empty' }, 400, origin);
         }
         sets.push('name = ?');
         binds.push(body.name.trim());
@@ -362,20 +367,20 @@ export async function handleUpdateProfile(request, env) {
 
     if (body.preferences !== undefined) {
         if (typeof body.preferences !== 'object' || body.preferences === null) {
-            return jsonResponse({ error: 'preferences must be an object' }, 400, env.FRONTEND_ORIGIN);
+            return jsonResponse({ error: 'preferences must be an object' }, 400, origin);
         }
 
         // Validate each preference key/value against the preference_options table.
         // This avoids hardcoded enum checks — adding a new preference is a DB INSERT.
         for (const [key, value] of Object.entries(body.preferences)) {
             if (typeof value !== 'string') {
-                return jsonResponse({ error: `Preference '${key}' must be a string` }, 400, env.FRONTEND_ORIGIN);
+                return jsonResponse({ error: `Preference '${key}' must be a string` }, 400, origin);
             }
             const valid = await env.USERDB.prepare(
                 'SELECT 1 FROM preference_options WHERE pref_key = ? AND pref_value = ?'
             ).bind(key, value).first();
             if (!valid) {
-                return jsonResponse({ error: `Invalid preference: ${key}=${value}` }, 400, env.FRONTEND_ORIGIN);
+                return jsonResponse({ error: `Invalid preference: ${key}=${value}` }, 400, origin);
             }
             mergedPrefs[key] = value;
         }
@@ -385,7 +390,7 @@ export async function handleUpdateProfile(request, env) {
     }
 
     if (sets.length === 0) {
-        return jsonResponse({ error: 'No fields to update' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'No fields to update' }, 400, origin);
     }
 
     sets.push('updated_at = ?');
@@ -401,7 +406,7 @@ export async function handleUpdateProfile(request, env) {
         email: user.email,
         preferences: mergedPrefs,
         updated_at: now,
-    }, 200, env.FRONTEND_ORIGIN);
+    }, 200, origin);
 }
 
 /**
@@ -413,7 +418,7 @@ export async function handleUpdateProfile(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleListKeys(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
@@ -425,7 +430,7 @@ export async function handleListKeys(request, env) {
     return jsonResponse({
         keys: result.results,
         max_keys: MAX_KEYS_PER_USER,
-    }, 200, env.FRONTEND_ORIGIN);
+    }, 200, origin);
 }
 
 /**
@@ -447,7 +452,7 @@ export async function handleListKeys(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleCreateKey(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     let body;
@@ -473,7 +478,7 @@ export async function handleCreateKey(request, env) {
         return jsonResponse(
             { error: `Maximum of ${MAX_KEYS_PER_USER} API keys allowed` },
             400,
-            env.FRONTEND_ORIGIN
+            origin
         );
     }
 
@@ -501,7 +506,7 @@ export async function handleCreateKey(request, env) {
         label,
         prefix,
         created_at: now,
-    }, 201, env.FRONTEND_ORIGIN);
+    }, 201, origin);
 }
 
 /**
@@ -515,7 +520,7 @@ export async function handleCreateKey(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleDeleteKey(request, env, deleteKeyId) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
@@ -526,7 +531,7 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
     ).bind(session.id, deleteKeyId).first();
 
     if (!existing) {
-        return jsonResponse({ error: 'API key not found' }, 404, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'API key not found' }, 404, origin);
     }
 
     const now = new Date().toISOString();
@@ -541,7 +546,7 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
         ).bind(now, session.id),
     ]);
 
-    return jsonResponse({ deleted: deleteKeyId }, 200, env.FRONTEND_ORIGIN);
+    return jsonResponse({ deleted: deleteKeyId }, 200, origin);
 }
 
 // ── Favorites Handlers ───────────────────────────────────────────────────────
@@ -555,7 +560,7 @@ export async function handleDeleteKey(request, env, deleteKeyId) {
  * @returns {Promise<Response>}
  */
 export async function handleListFavorites(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
@@ -567,7 +572,7 @@ export async function handleListFavorites(request, env) {
     return jsonResponse({
         favorites: result.results,
         max_favorites: MAX_FAVORITES_PER_USER,
-    }, 200, env.FRONTEND_ORIGIN);
+    }, 200, origin);
 }
 
 /**
@@ -581,27 +586,27 @@ export async function handleListFavorites(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleAddFavorite(request, env) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     let body;
     try {
         body = /** @type {{entity_type?: string, entity_id?: number, label?: string}} */ (await request.json());
     } catch {
-        return jsonResponse({ error: 'Invalid JSON body' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'Invalid JSON body' }, 400, origin);
     }
 
     // Validate entity_type
     if (!body.entity_type || !VALID_FAVORITE_TYPES.has(body.entity_type)) {
         return jsonResponse(
             { error: `entity_type must be one of: ${[...VALID_FAVORITE_TYPES].join(', ')}` },
-            400, env.FRONTEND_ORIGIN
+            400, origin
         );
     }
 
     // Validate entity_id
     if (typeof body.entity_id !== 'number' || !Number.isInteger(body.entity_id) || body.entity_id <= 0) {
-        return jsonResponse({ error: 'entity_id must be a positive integer' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'entity_id must be a positive integer' }, 400, origin);
     }
 
     const label = (typeof body.label === 'string' && body.label.trim().length > 0)
@@ -619,7 +624,7 @@ export async function handleAddFavorite(request, env) {
     if (favCount >= MAX_FAVORITES_PER_USER) {
         return jsonResponse(
             { error: `Maximum of ${MAX_FAVORITES_PER_USER} favorites allowed` },
-            400, env.FRONTEND_ORIGIN
+            400, origin
         );
     }
 
@@ -634,7 +639,82 @@ export async function handleAddFavorite(request, env) {
         entity_id: body.entity_id,
         label,
         created_at: now,
-    }, 201, env.FRONTEND_ORIGIN);
+    }, 201, origin);
+}
+
+/**
+ * PUT /account/favorites — Replaces the entire favorites list with an
+ * ordered array. Used to persist reorder operations from the UI.
+ *
+ * Expects JSON body: { favorites: [{entity_type, entity_id, label}, ...] }
+ *
+ * Implements an atomic DELETE-all + batch INSERT. Order is encoded via
+ * sequential created_at timestamps (one second apart) so the existing
+ * ORDER BY created_at query returns them in the submitted order.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>}
+ */
+export async function handleReplaceFavorites(request, env) {
+    const { session, origin, error } = await requireSession(request, env);
+    if (error) return error;
+
+    let body;
+    try {
+        body = /** @type {{favorites?: Array<{entity_type: string, entity_id: number, label?: string}>}} */ (await request.json());
+    } catch {
+        return jsonResponse({ error: 'Invalid JSON body' }, 400, origin);
+    }
+
+    if (!Array.isArray(body.favorites)) {
+        return jsonResponse({ error: 'favorites must be an array' }, 400, origin);
+    }
+
+    if (body.favorites.length > MAX_FAVORITES_PER_USER) {
+        return jsonResponse(
+            { error: `Maximum of ${MAX_FAVORITES_PER_USER} favorites allowed` },
+            400, origin
+        );
+    }
+
+    // Validate each entry
+    for (const fav of body.favorites) {
+        if (!fav.entity_type || !VALID_FAVORITE_TYPES.has(fav.entity_type)) {
+            return jsonResponse(
+                { error: `entity_type must be one of: ${[...VALID_FAVORITE_TYPES].join(', ')}` },
+                400, origin
+            );
+        }
+        if (typeof fav.entity_id !== 'number' || !Number.isInteger(fav.entity_id) || fav.entity_id <= 0) {
+            return jsonResponse({ error: 'entity_id must be a positive integer' }, 400, origin);
+        }
+    }
+
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+
+    // Build batch: delete all existing, then insert in order.
+    // Sequential created_at values encode the sort order without
+    // needing a sort_order column.
+    const baseTime = Date.now();
+    const stmts = [
+        env.USERDB.prepare('DELETE FROM user_favorites WHERE user_id = ?').bind(session.id),
+    ];
+    for (let i = 0; i < body.favorites.length; i++) {
+        const fav = body.favorites[i];
+        const label = (typeof fav.label === 'string' && fav.label.trim().length > 0)
+            ? fav.label.trim().slice(0, 200)
+            : '';
+        const ts = new Date(baseTime + i).toISOString();
+        stmts.push(
+            env.USERDB.prepare(
+                'INSERT INTO user_favorites (user_id, entity_type, entity_id, label, created_at) VALUES (?, ?, ?, ?, ?)'
+            ).bind(session.id, fav.entity_type, fav.entity_id, label, ts)
+        );
+    }
+    await env.USERDB.batch(stmts);
+
+    return jsonResponse({ replaced: body.favorites.length }, 200, origin);
 }
 
 /**
@@ -648,23 +728,23 @@ export async function handleAddFavorite(request, env) {
  * @returns {Promise<Response>}
  */
 export async function handleRemoveFavorite(request, env, entityType, entityId) {
-    const { session, error } = await requireSession(request, env);
+    const { session, origin, error } = await requireSession(request, env);
     if (error) return error;
 
     if (!VALID_FAVORITE_TYPES.has(entityType)) {
-        return jsonResponse({ error: 'Invalid entity type' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'Invalid entity type' }, 400, origin);
     }
 
     const id = Number.parseInt(entityId, 10);
     if (Number.isNaN(id) || id <= 0) {
-        return jsonResponse({ error: 'Invalid entity ID' }, 400, env.FRONTEND_ORIGIN);
+        return jsonResponse({ error: 'Invalid entity ID' }, 400, origin);
     }
 
     await env.USERDB.prepare(
         'DELETE FROM user_favorites WHERE user_id = ? AND entity_type = ? AND entity_id = ?'
     ).bind(session.id, entityType, id).run();
 
-    return jsonResponse({ deleted: { entity_type: entityType, entity_id: id } }, 200, env.FRONTEND_ORIGIN);
+    return jsonResponse({ deleted: { entity_type: entityType, entity_id: id } }, 200, origin);
 }
 
 /**

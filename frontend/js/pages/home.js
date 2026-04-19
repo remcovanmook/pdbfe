@@ -13,7 +13,7 @@ import { createLink, createLoading, formatDate, createEntityBadge } from '../ren
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
 import { getLabel } from '../entities.js';
-import { getFavorites } from '../auth.js';
+import { isAuthenticated, getUser, getFavorites } from '../auth.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -118,6 +118,13 @@ export async function renderHome(_params) {
     searchDiv.appendChild(searchWrapper);
     rightCol.appendChild(searchDiv);
 
+    // "My Stuff" section — only for authenticated users
+    if (isAuthenticated()) {
+        const user = getUser();
+        const myStuffSection = buildMyStuffSection(user);
+        rightCol.appendChild(myStuffSection);
+    }
+
     // Favorites section — always visible; links to /favorites management page
     const favorites = getFavorites();
     const favsSection = document.createElement('div');
@@ -189,12 +196,15 @@ export async function renderHome(_params) {
     const input = /** @type {HTMLInputElement} */ (document.getElementById('home-search-input'));
     attachTypeahead(input);
 
-    // Fetch recent updates, stats, and favorites live data in parallel
+    // Fetch recent updates, favorites live data, and extended affiliations in parallel
     const tasks = [
         loadRecentUpdates(),
     ];
     if (favorites.length > 0) {
         tasks.push(loadFavoritesLiveData(favorites));
+    }
+    if (isAuthenticated()) {
+        tasks.push(loadMyStuffExtended());
     }
     await Promise.all(tasks);
 }
@@ -285,6 +295,169 @@ async function loadRecentUpdates() {
 }
 
 
+
+/**
+ * Builds the "My Stuff" section showing the user's affiliated entities.
+ * Networks are shown immediately from session data. Exchanges and
+ * facilities are loaded asynchronously via loadMyStuffExtended().
+ *
+ * @param {SessionData|null} user - The session/user data.
+ * @returns {HTMLElement} The My Stuff section element.
+ */
+function buildMyStuffSection(user) {
+    const section = document.createElement('div');
+    section.className = 'home-favorites'; // reuse the same layout
+
+    const heading = document.createElement('a');
+    heading.href = '/account';
+    heading.dataset.link = '';
+    heading.className = 'home-recent__heading home-recent__heading--link';
+    heading.textContent = '⚡ ' + t('My Stuff');
+    section.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'favorites-grid';
+    grid.id = 'home-mystuff-grid';
+
+    const nets = user?.networks || [];
+    if (nets.length === 0) {
+        const hint = document.createElement('p');
+        hint.className = 'home-hero__desc';
+        hint.style.fontSize = '0.8125rem';
+        hint.textContent = t('No network affiliations.');
+        section.appendChild(hint);
+        return section;
+    }
+
+    // Show networks immediately (already in session data)
+    const MAX_ITEMS = 10;
+    let count = 0;
+    for (const net of nets) {
+        if (count >= MAX_ITEMS) break;
+        grid.appendChild(buildMyStuffItem('net', net.id, net.name ? `AS${net.asn} — ${net.name}` : `AS${net.asn}`));
+        count++;
+    }
+
+    section.appendChild(grid);
+
+    // Placeholder for additional items loaded asynchronously
+    if (nets.length >= MAX_ITEMS) {
+        const viewAll = document.createElement('a');
+        viewAll.href = '/account';
+        viewAll.dataset.link = '';
+        viewAll.className = 'home-hero__desc';
+        viewAll.style.fontSize = '0.8125rem';
+        viewAll.style.display = 'block';
+        viewAll.style.marginTop = 'var(--space-sm)';
+        viewAll.textContent = t('View all in Account') + ' →';
+        section.appendChild(viewAll);
+    }
+
+    return section;
+}
+
+/**
+ * Builds a single item for the My Stuff grid.
+ * Contains an entity badge, a link, and a compare shortcut.
+ *
+ * @param {string} tag - Entity type tag (net, ix, fac).
+ * @param {number} id - Entity ID.
+ * @param {string} name - Display name.
+ * @returns {HTMLElement} Grid item element.
+ */
+function buildMyStuffItem(tag, id, name) {
+    const item = document.createElement('div');
+    item.className = 'favorites-grid__item';
+    item.dataset.type = tag;
+    item.dataset.id = String(id);
+
+    item.appendChild(createEntityBadge(tag));
+
+    const nameLink = createLink(tag, id, name);
+    nameLink.className += ' favorites-grid__name';
+    item.appendChild(nameLink);
+
+    // Compare shortcut
+    const cmpLink = document.createElement('a');
+    cmpLink.href = `/compare?a=${tag}:${id}`;
+    cmpLink.dataset.link = '';
+    cmpLink.className = 'favorites-grid__updated'; // reuse the muted style
+    cmpLink.style.fontSize = '0.6875rem';
+    cmpLink.textContent = '↔ ' + t('Compare');
+    cmpLink.title = t('Compare with another entity');
+    item.appendChild(cmpLink);
+
+    return item;
+}
+
+/**
+ * Background-fetches the user's org affiliations to discover exchanges
+ * and facilities, then appends them to the My Stuff grid.
+ * Runs after initial render — networks are already visible.
+ */
+async function loadMyStuffExtended() {
+    const grid = document.getElementById('home-mystuff-grid');
+    if (!grid) return;
+
+    const user = getUser();
+    const nets = user?.networks || [];
+    if (nets.length === 0) return;
+
+    try {
+        // Fetch each network at depth=0 to get org_id
+        const netDetails = await Promise.all(
+            nets.map(n => fetchEntity('net', String(n.id), 0).catch(/** @returns {null} */() => null))
+        );
+
+        /** @type {Set<number>} */
+        const orgIds = new Set();
+        for (const net of netDetails) {
+            if (net?.org_id) orgIds.add(net.org_id);
+        }
+
+        // Fetch each org at depth=2 to get expanded child sets
+        const orgs = await Promise.all(
+            [...orgIds].map(orgId => fetchEntity('org', String(orgId), 2).catch(/** @returns {null} */() => null))
+        );
+
+        const MAX_ITEMS = 10;
+        let currentCount = grid.children.length;
+
+        for (const org of orgs) {
+            if (!org) continue;
+            // Add exchanges
+            for (const ix of (org.ix_set || [])) {
+                if (currentCount >= MAX_ITEMS) break;
+                grid.appendChild(buildMyStuffItem('ix', ix.id, ix.name || `IX ${ix.id}`));
+                currentCount++;
+            }
+            // Add facilities
+            for (const fac of (org.fac_set || [])) {
+                if (currentCount >= MAX_ITEMS) break;
+                grid.appendChild(buildMyStuffItem('fac', fac.id, fac.name || `Fac ${fac.id}`));
+                currentCount++;
+            }
+        }
+
+        // Show "View all" if capped
+        if (currentCount >= MAX_ITEMS) {
+            const section = grid.parentElement;
+            if (section && !section.querySelector('a[href="/account"]')) {
+                const viewAll = document.createElement('a');
+                viewAll.href = '/account';
+                viewAll.dataset.link = '';
+                viewAll.className = 'home-hero__desc';
+                viewAll.style.fontSize = '0.8125rem';
+                viewAll.style.display = 'block';
+                viewAll.style.marginTop = 'var(--space-sm)';
+                viewAll.textContent = t('View all in Account') + ' →';
+                section.appendChild(viewAll);
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load extended affiliations for My Stuff:', err);
+    }
+}
 
 /**
  * Fetches live entity data for each favorite and updates the grid.
