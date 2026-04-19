@@ -3,12 +3,12 @@
 ## Milestones
 
 - ✅ **M1–M8** — shipped (see [MILESTONES.md](./MILESTONES.md))
-- 📦 **M9 — Account & Mobile** — PR pending (branch `frontend/account-mystuff-mobile`)
+- 📦 **M9 — Account & Mobile** — PR #70 (branch `frontend/account-mystuff-mobile`)
 
 ## Current: M9 — Account & Mobile
 
 <details>
-<summary>📦 M9 — Account & Mobile (PR pending)</summary>
+<summary>📦 M9 — Account & Mobile (PR #70)</summary>
 
 | Category | Item | Status |
 |----------|------|--------|

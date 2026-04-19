@@ -44,7 +44,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 | Entity codegen from upstream Django models | Auto-sync schema changes, reduce manual field mapping | #33 |
 | SWR + L2 Cache pipeline | Stale-while-revalidate with Cloudflare Cache API for multi-isolate sharing | #38 |
 | Semantic search via Vectorize | AI-powered entity discovery without exact-match requirements | feat-semantic-search |
-| Referer-based OAuth return origin | Clean redirect to Pages preview deployments without frontend changes | #70 (pending) |
+| Referer-based OAuth return origin | Clean redirect to Pages preview deployments without frontend changes | #70 |
 
 ## Current State
 
@@ -60,4 +60,4 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 - Production frontend gated behind Cloudflare Access (AUP approval pending)
 
 ---
-*Last updated: 2026-04-19 — 69 PRs merged, active work on account/mobile/auth improvements*
+*Last updated: 2026-04-19 — PR #70 pending, 69 PRs merged*

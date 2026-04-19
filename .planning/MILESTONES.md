@@ -134,17 +134,19 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M9: Account & Mobile (PR pending)
+## M9: Account & Mobile (PR #70)
 
 **Branch**: `frontend/account-mystuff-mobile`
-**Status**: PR ready — 11 commits, 18 files changed, +1840/-238 lines
+**Status**: PR ready — 12 commits, 18 files changed, +1840/-238 lines
 
 | Category | Work |
 |----------|------|
 | Frontend | Account page reshuffle (profile left, affiliations/favorites/keys right) |
+| Frontend | Org affiliation tree with grouped child entities (networks, IXes, facilities) |
 | Frontend | "My stuff" section on homepage with affiliated entities |
 | Frontend | Compare with locked A-side (pre-filled from entity pages) |
-| Frontend | Mobile responsive table cards for detail pages |
+| Frontend | Mobile table card layout — rows become labelled cards at ≤640px via `data-label` attributes |
+| Frontend | Mobile-specific CSS: card borders, IP stack inline wrap, scroll-hint removal |
 | Frontend | PeeringDB profile link on account page |
 | Frontend | Unit tests for countries, entities, router, theme, timezone (79 → 123 tests) |
 | Auth | Favorites drag-and-drop with server persistence (PUT /account/favorites) |

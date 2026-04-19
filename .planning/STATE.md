@@ -51,21 +51,23 @@
 
 ## In-Flight Work
 
-Active branch `frontend/account-mystuff-mobile` adds:
+Branch `frontend/account-mystuff-mobile` — **PR #70**, 13 commits:
 
 | Category | Item | Status |
 |----------|------|--------|
-| Frontend | Account page org tree with affiliated entities | ✅ |
+| Frontend | Account page reshuffle (profile left, right column) | ✅ |
+| Frontend | Org affiliation tree with grouped child entities | ✅ |
 | Frontend | "My stuff" homepage section | ✅ |
 | Frontend | Compare with locked A-side | ✅ |
-| Frontend | Mobile responsive table cards | ✅ |
-| Frontend | Account page layout reshuffle | ✅ |
-| Auth | Favorites server-side reorder persistence | ✅ |
+| Frontend | Mobile table card layout (≤640px, data-label, card borders) | ✅ |
+| Frontend | Mobile CSS (IP stack wrap, scroll-hint removal, card striping) | ✅ |
+| Frontend | PeeringDB profile link on account page | ✅ |
+| Frontend | Unit tests: countries, entities, router, theme, timezone | ✅ |
+| Auth | Favorites server-side reorder persistence (PUT) | ✅ |
 | Auth | OAuth return-to-origin for preview deployments | ✅ |
 | Auth | Dynamic CORS origin for all account endpoints | ✅ |
-| Frontend | Mobile card layout for remaining tables | ☐ |
-| Frontend | Visual QA pass | ☐ |
+| Infra | .planning docs (PROJECT, MILESTONES, ROADMAP, STATE) | ✅ |
 
 ## Blockers
 
-- **AUP approval**: Production frontend remains behind Cloudflare Access until AUP is approved. API workers are publicly accessible.
+- **AUP approval**: Production frontend remains behind Cloudflare Access until AUP is approved.
