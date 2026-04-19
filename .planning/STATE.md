@@ -51,11 +51,11 @@
 
 ## In-Flight Work
 
-Branch `fix/ix-peer-network-names` — **PR #71**, 1 commit:
+Branch `refactor/auth-handler-structure` — **PR #72**, 1 commit:
 
 | Category | Item | Status |
 |----------|------|--------|
-| Frontend | IX peer table shows ASN instead of network name (regression from #69) | ✅ |
+| Auth | Auth worker structural refactor: handler-based architecture with method dispatch | ✅ |
 
 ## Blockers
 
