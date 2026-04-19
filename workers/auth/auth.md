@@ -192,6 +192,7 @@ session (`Authorization: Bearer <sid>`).
 | `/account/keys/:id` | DELETE | Yes | Revoke an API key |
 | `/account/favorites` | GET | Yes | List favorited entities |
 | `/account/favorites` | POST | Yes | Add a favorite (entity_type, entity_id, label) |
+| `/account/favorites` | PUT | Yes | Replace entire favorites list (reorder) |
 | `/account/favorites/:type/:id` | DELETE | Yes | Remove a favorite |
 
 User records are auto-provisioned on first OAuth login if missing.
@@ -223,9 +224,13 @@ No hardcoded lists in the worker code.
 ## Files
 
 ### Auth Worker
-- `workers/auth/index.js` — Router for /auth/* and /account/* endpoints
-- `workers/auth/oauth.js` — OAuth handlers (login, callback, logout, me)
-- `workers/auth/account.js` — Account profile and API key CRUD handlers
+- `workers/auth/index.js` — Router: path prefix matching, delegates to handlers
+- `workers/auth/http.js` — Shared CORS, preflight, response helpers, session resolution, user record helpers
+- `workers/auth/handlers/index.js` — Barrel re-exports: handleAuth, handlePreferences, handleProfile, handleKeys, handleFavorites
+- `workers/auth/handlers/oauth.js` — handleAuth: login, callback, logout, me
+- `workers/auth/handlers/profile.js` — handlePreferences + handleProfile: preference options, profile GET/PUT
+- `workers/auth/handlers/keys.js` — handleKeys: API key list, create, revoke
+- `workers/auth/handlers/favorites.js` — handleFavorites: favorites list, add, replace, remove
 
 ### Shared Auth Module
 - `workers/core/auth.js` — Session resolution, API key verification (with in-memory cache), session lifecycle

@@ -1,28 +1,20 @@
 /**
- * @fileoverview Unit tests for the auth/account.js endpoint handlers.
+ * @fileoverview Unit tests for the auth handler endpoint modules.
  *
  * Tests all CRUD handlers for profiles, API keys, and favorites
  * against a mock D1 database and mock KV session store.
  *
- * Each handler requires an authenticated session (except handlePreferenceOptions
+ * Each handler requires an authenticated session (except handlePreferences
  * and handleAccountPreflight). The session is injected via the Authorization
  * header and mocked KV namespace.
  */
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    handlePreferenceOptions,
-    handleGetProfile,
-    handleUpdateProfile,
-    handleListKeys,
-    handleCreateKey,
-    handleDeleteKey,
-    handleListFavorites,
-    handleAddFavorite,
-    handleRemoveFavorite,
-    handleAccountPreflight,
-} from '../../../auth/account.js';
+import { handlePreferences, handleProfile } from '../../../auth/handlers/profile.js';
+import { handleKeys } from '../../../auth/handlers/keys.js';
+import { handleFavorites } from '../../../auth/handlers/favorites.js';
+import { resolveAllowedOrigin, accountCorsHeaders } from '../../../auth/http.js';
 
 // ── Mock factories ───────────────────────────────────────────────────────────
 
@@ -208,9 +200,9 @@ async function json(res) {
     return res.json();
 }
 
-// ── handlePreferenceOptions ──────────────────────────────────────────────────
+// ── handlePreferences ──────────────────────────────────────────────────
 
-describe('handlePreferenceOptions', () => {
+describe('handlePreferences', () => {
     it('returns grouped preference options', async () => {
         const env = mockEnv({
             USERDB: mockUserDB({
@@ -224,7 +216,7 @@ describe('handlePreferenceOptions', () => {
         });
 
         const req = new Request('https://auth.pdbfe.dev/account/preferences/options');
-        const res = await handlePreferenceOptions(req, env);
+        const res = await handlePreferences(req, env);
         assert.equal(res.status, 200);
 
         const body = await json(res);
@@ -235,7 +227,7 @@ describe('handlePreferenceOptions', () => {
     it('returns 200 with empty object when no options exist', async () => {
         const env = mockEnv({ USERDB: mockUserDB({ prefOptions: [] }) });
         const req = new Request('https://auth.pdbfe.dev/account/preferences/options');
-        const res = await handlePreferenceOptions(req, env);
+        const res = await handlePreferences(req, env);
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.deepEqual(body, {});
@@ -246,39 +238,39 @@ describe('handlePreferenceOptions', () => {
         const req = new Request('https://auth.pdbfe.dev/account/preferences/options', {
             headers: { 'Origin': 'https://pdbfe.dev' }
         });
-        const res = await handlePreferenceOptions(req, env);
+        const res = await handlePreferences(req, env);
         assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://pdbfe.dev');
     });
 
     it('sets Cache-Control for public caching', async () => {
         const env = mockEnv();
         const req = new Request('https://auth.pdbfe.dev/account/preferences/options');
-        const res = await handlePreferenceOptions(req, env);
+        const res = await handlePreferences(req, env);
         assert.ok(res.headers.get('Cache-Control').includes('public'));
     });
 });
 
-// ── handleGetProfile ─────────────────────────────────────────────────────────
+// ── handleProfile ─────────────────────────────────────────────────────────
 
-describe('handleGetProfile', () => {
+describe('handleProfile', () => {
     it('returns 401 when no auth header is present', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/profile');
-        const res = await handleGetProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 401);
     });
 
     it('returns 401 for invalid session', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = authRequest('https://auth.pdbfe.dev/account/profile');
-        const res = await handleGetProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 401);
     });
 
     it('returns profile for authenticated user', async () => {
         const env = mockEnv();
         const req = authRequest('https://auth.pdbfe.dev/account/profile');
-        const res = await handleGetProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 200);
 
         const body = await json(res);
@@ -293,7 +285,7 @@ describe('handleGetProfile', () => {
             USERDB: mockUserDB({ user: null }),
         });
         const req = authRequest('https://auth.pdbfe.dev/account/profile');
-        const res = await handleGetProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 200);
 
         const body = await json(res);
@@ -309,23 +301,23 @@ describe('handleGetProfile', () => {
             }),
         });
         const req = authRequest('https://auth.pdbfe.dev/account/profile');
-        const res = await handleGetProfile(req, env);
+        const res = await handleProfile(req, env);
         const body = await json(res);
         assert.equal(body.preferences.language, 'de');
         assert.equal(body.preferences.theme, 'dark');
     });
 });
 
-// ── handleUpdateProfile ──────────────────────────────────────────────────────
+// ── handleProfile ──────────────────────────────────────────────────────
 
-describe('handleUpdateProfile', () => {
+describe('handleProfile', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/profile', {
             method: 'PUT',
             body: '{"name":"New Name"}',
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 401);
     });
 
@@ -335,7 +327,7 @@ describe('handleUpdateProfile', () => {
             method: 'PUT',
             body: 'not json',
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
         const body = await json(res);
         assert.ok(body.error.includes('Invalid JSON'));
@@ -348,7 +340,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: '' }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
     });
 
@@ -359,7 +351,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({}),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
         const body = await json(res);
         assert.ok(body.error.includes('No fields'));
@@ -372,7 +364,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: 'Updated Name' }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.name, 'Updated Name');
@@ -387,7 +379,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ preferences: { language: 'invalid' } }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
         const body = await json(res);
         assert.ok(body.error.includes('Invalid preference'));
@@ -400,7 +392,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ preferences: 'not-an-object' }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
     });
 
@@ -411,7 +403,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ preferences: { theme: 42 } }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 400);
     });
 
@@ -427,7 +419,7 @@ describe('handleUpdateProfile', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ preferences: { theme: 'dark' } }),
         });
-        const res = await handleUpdateProfile(req, env);
+        const res = await handleProfile(req, env);
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.preferences.language, 'en');
@@ -435,13 +427,13 @@ describe('handleUpdateProfile', () => {
     });
 });
 
-// ── handleListKeys ───────────────────────────────────────────────────────────
+// ── handleKeys ───────────────────────────────────────────────────────────
 
-describe('handleListKeys', () => {
+describe('handleKeys', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/keys');
-        const res = await handleListKeys(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 401);
     });
 
@@ -453,7 +445,7 @@ describe('handleListKeys', () => {
             USERDB: mockUserDB({ apiKeys: keys }),
         });
         const req = authRequest('https://auth.pdbfe.dev/account/keys');
-        const res = await handleListKeys(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.keys.length, 1);
@@ -462,15 +454,15 @@ describe('handleListKeys', () => {
     });
 });
 
-// ── handleCreateKey ──────────────────────────────────────────────────────────
+// ── handleKeys ──────────────────────────────────────────────────────────
 
-describe('handleCreateKey', () => {
+describe('handleKeys', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/keys', {
             method: 'POST',
         });
-        const res = await handleCreateKey(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 401);
     });
 
@@ -483,7 +475,7 @@ describe('handleCreateKey', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ label: 'My API Key' }),
         });
-        const res = await handleCreateKey(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 201);
         const body = await json(res);
         assert.ok(body.key.startsWith('pdbfe.'));
@@ -500,7 +492,7 @@ describe('handleCreateKey', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/keys', {
             method: 'POST',
         });
-        const res = await handleCreateKey(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 400);
         const body = await json(res);
         assert.ok(body.error.includes('Maximum'));
@@ -513,7 +505,7 @@ describe('handleCreateKey', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/keys', {
             method: 'POST',
         });
-        const res = await handleCreateKey(req, env);
+        const res = await handleKeys(req, env, '/');
         assert.equal(res.status, 201);
         const body = await json(res);
         assert.equal(body.label, 'Unnamed key');
@@ -529,21 +521,21 @@ describe('handleCreateKey', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ label: longLabel }),
         });
-        const res = await handleCreateKey(req, env);
+        const res = await handleKeys(req, env, '/');
         const body = await json(res);
         assert.equal(body.label.length, 64);
     });
 });
 
-// ── handleDeleteKey ──────────────────────────────────────────────────────────
+// ── handleKeys ──────────────────────────────────────────────────────────
 
-describe('handleDeleteKey', () => {
+describe('handleKeys', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/keys/abc12345', {
             method: 'DELETE',
         });
-        const res = await handleDeleteKey(req, env, 'abc12345');
+        const res = await handleKeys(req, env, '/abc12345');
         assert.equal(res.status, 401);
     });
 
@@ -554,7 +546,7 @@ describe('handleDeleteKey', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/keys/deadbeef', {
             method: 'DELETE',
         });
-        const res = await handleDeleteKey(req, env, 'deadbeef');
+        const res = await handleKeys(req, env, '/deadbeef');
         assert.equal(res.status, 404);
         const body = await json(res);
         assert.ok(body.error.includes('not found'));
@@ -567,20 +559,20 @@ describe('handleDeleteKey', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/keys/abc12345', {
             method: 'DELETE',
         });
-        const res = await handleDeleteKey(req, env, 'abc12345');
+        const res = await handleKeys(req, env, '/abc12345');
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.deleted, 'abc12345');
     });
 });
 
-// ── handleListFavorites ──────────────────────────────────────────────────────
+// ── handleFavorites ──────────────────────────────────────────────────────
 
-describe('handleListFavorites', () => {
+describe('handleFavorites', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/favorites');
-        const res = await handleListFavorites(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 401);
     });
 
@@ -592,7 +584,7 @@ describe('handleListFavorites', () => {
             USERDB: mockUserDB({ favorites: favs }),
         });
         const req = authRequest('https://auth.pdbfe.dev/account/favorites');
-        const res = await handleListFavorites(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.favorites.length, 1);
@@ -601,16 +593,16 @@ describe('handleListFavorites', () => {
     });
 });
 
-// ── handleAddFavorite ────────────────────────────────────────────────────────
+// ── handleFavorites ────────────────────────────────────────────────────────
 
-describe('handleAddFavorite', () => {
+describe('handleFavorites', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/favorites', {
             method: 'POST',
             body: '{}',
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 401);
     });
 
@@ -621,7 +613,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'invalid', entity_id: 1 }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 400);
     });
 
@@ -632,7 +624,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'net', entity_id: -1 }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 400);
     });
 
@@ -643,7 +635,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'net', entity_id: 1.5 }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 400);
     });
 
@@ -653,7 +645,7 @@ describe('handleAddFavorite', () => {
             method: 'POST',
             body: 'not json',
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 400);
     });
 
@@ -666,7 +658,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'net', entity_id: 694, label: 'Cloudflare' }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 201);
         const body = await json(res);
         assert.equal(body.entity_type, 'net');
@@ -683,7 +675,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'net', entity_id: 1 }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         assert.equal(res.status, 400);
         const body = await json(res);
         assert.ok(body.error.includes('Maximum'));
@@ -699,7 +691,7 @@ describe('handleAddFavorite', () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ entity_type: 'net', entity_id: 1, label: longLabel }),
         });
-        const res = await handleAddFavorite(req, env);
+        const res = await handleFavorites(req, env, '');
         const body = await json(res);
         assert.equal(body.label.length, 200);
     });
@@ -715,21 +707,21 @@ describe('handleAddFavorite', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ entity_type: entityType, entity_id: 1 }),
             });
-            const res = await handleAddFavorite(req, env);
+            const res = await handleFavorites(req, env, '');
             assert.equal(res.status, 201, `Expected 201 for entity_type=${entityType}`);
         }
     });
 });
 
-// ── handleRemoveFavorite ─────────────────────────────────────────────────────
+// ── handleFavorites ─────────────────────────────────────────────────────
 
-describe('handleRemoveFavorite', () => {
+describe('handleFavorites', () => {
     it('returns 401 without auth', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/account/favorites/net/1', {
             method: 'DELETE',
         });
-        const res = await handleRemoveFavorite(req, env, 'net', '1');
+        const res = await handleFavorites(req, env, '/net/1');
         assert.equal(res.status, 401);
     });
 
@@ -738,7 +730,7 @@ describe('handleRemoveFavorite', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/favorites/invalid/1', {
             method: 'DELETE',
         });
-        const res = await handleRemoveFavorite(req, env, 'invalid', '1');
+        const res = await handleFavorites(req, env, '/invalid/1');
         assert.equal(res.status, 400);
     });
 
@@ -747,7 +739,7 @@ describe('handleRemoveFavorite', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/favorites/net/abc', {
             method: 'DELETE',
         });
-        const res = await handleRemoveFavorite(req, env, 'net', 'abc');
+        const res = await handleFavorites(req, env, '/net/abc');
         assert.equal(res.status, 400);
     });
 
@@ -756,7 +748,7 @@ describe('handleRemoveFavorite', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/favorites/net/-5', {
             method: 'DELETE',
         });
-        const res = await handleRemoveFavorite(req, env, 'net', '-5');
+        const res = await handleFavorites(req, env, '/net/-5');
         assert.equal(res.status, 400);
     });
 
@@ -765,7 +757,7 @@ describe('handleRemoveFavorite', () => {
         const req = authRequest('https://auth.pdbfe.dev/account/favorites/net/694', {
             method: 'DELETE',
         });
-        const res = await handleRemoveFavorite(req, env, 'net', '694');
+        const res = await handleFavorites(req, env, '/net/694');
         assert.equal(res.status, 200);
         const body = await json(res);
         assert.equal(body.deleted.entity_type, 'net');
@@ -773,21 +765,21 @@ describe('handleRemoveFavorite', () => {
     });
 });
 
-// ── handleAccountPreflight ───────────────────────────────────────────────────
+// ── Account CORS preflight (via shared helpers) ─────────────────────────────
 
-describe('handleAccountPreflight', () => {
-    it('returns 204 with CORS headers', () => {
+describe('accountCorsHeaders + resolveAllowedOrigin (preflight)', () => {
+    it('returns correct CORS headers for production origin', () => {
         const env = mockEnv();
         const req = new Request('https://auth.pdbfe.dev/account/profile', {
             method: 'OPTIONS',
             headers: { 'Origin': 'https://pdbfe.dev' },
         });
-        const res = handleAccountPreflight(req, env);
-        assert.equal(res.status, 204);
-        assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://pdbfe.dev');
-        assert.ok(res.headers.get('Access-Control-Allow-Methods').includes('GET'));
-        assert.ok(res.headers.get('Access-Control-Allow-Methods').includes('POST'));
-        assert.ok(res.headers.get('Access-Control-Allow-Methods').includes('DELETE'));
+        const origin = resolveAllowedOrigin(req, env);
+        const headers = accountCorsHeaders(origin);
+        assert.equal(headers['Access-Control-Allow-Origin'], 'https://pdbfe.dev');
+        assert.ok(headers['Access-Control-Allow-Methods'].includes('GET'));
+        assert.ok(headers['Access-Control-Allow-Methods'].includes('POST'));
+        assert.ok(headers['Access-Control-Allow-Methods'].includes('DELETE'));
     });
 
     it('reflects Pages preview origin', () => {
@@ -796,7 +788,8 @@ describe('handleAccountPreflight', () => {
             method: 'OPTIONS',
             headers: { 'Origin': 'https://abc123.pdbfe-frontend.pages.dev' },
         });
-        const res = handleAccountPreflight(req, env);
-        assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://abc123.pdbfe-frontend.pages.dev');
+        const origin = resolveAllowedOrigin(req, env);
+        const headers = accountCorsHeaders(origin);
+        assert.equal(headers['Access-Control-Allow-Origin'], 'https://abc123.pdbfe-frontend.pages.dev');
     });
 });

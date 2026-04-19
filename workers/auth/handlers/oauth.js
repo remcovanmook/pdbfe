@@ -25,8 +25,8 @@ import {
     generateSessionId,
     writeSession,
     deleteSession
-} from '../core/auth.js';
-import { resolveAllowedOrigin } from './account.js';
+} from '../../core/auth.js';
+import { resolveAllowedOrigin, accountCorsHeaders, methodNotAllowed, handlePreflight } from '../http.js';
 
 // ── PeeringDB OAuth2 Constants ───────────────────────────────────────────────
 
@@ -49,29 +49,36 @@ const STATE_TTL = 300;
 /** Session TTL in seconds (24 hours). */
 const SESSION_TTL = 86400;
 
-// ── CORS helpers ─────────────────────────────────────────────────────────────
-
-/**
- * Builds CORS headers that allow the frontend origin to make
- * credentialed requests to the auth worker.
- *
- * @param {string} frontendOrigin - The allowed frontend origin.
- * @returns {Record<string, string>} CORS headers.
- */
-function corsHeaders(frontendOrigin) {
-    return {
-        'Access-Control-Allow-Origin': frontendOrigin,
-        'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Max-Age': '86400',
-    };
-}
-
 // ── Endpoint Handlers ────────────────────────────────────────────────────────
 
 /**
- * Handles GET /auth/login.
+ * Dispatches /auth/* requests by path. Enforces GET-only for all
+ * auth endpoints and handles OPTIONS preflight.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @param {string} path - The URL pathname.
+ * @returns {Promise<Response>|Response} The HTTP response.
+ */
+export function handleAuth(request, env, path) {
+    if (request.method === 'OPTIONS') return handlePreflight(request, env);
+    if (request.method !== 'GET') return methodNotAllowed('GET, OPTIONS');
+
+    switch (path) {
+        case '/auth/login':    return handleLogin(request, env);
+        case '/auth/callback': return handleCallback(request, env);
+        case '/auth/logout':   return handleLogout(request, env);
+        case '/auth/me':       return handleMe(request, env);
+        default:
+            return new Response(
+                JSON.stringify({ error: 'Not found' }) + '\n',
+                { status: 404, headers: { 'Content-Type': 'application/json' } }
+            );
+    }
+}
+
+/**
+ * GET /auth/login.
  *
  * Generates a CSRF state nonce, binds it to the browser via an HttpOnly
  * cookie (Double Submit Cookie pattern), and redirects the user to
@@ -85,7 +92,7 @@ function corsHeaders(frontendOrigin) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Response} 302 redirect to PeeringDB authorize URL.
  */
-export function handleLogin(request, env) {
+function handleLogin(request, env) {
     const state = generateSessionId();
 
     // Determine return origin from the Referer header. When the user
@@ -145,7 +152,7 @@ export function handleLogin(request, env) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Promise<Response>} 302 redirect to the frontend, or error response.
  */
-export async function handleCallback(request, env) {
+async function handleCallback(request, env) {
     const url = new URL(request.url); // ap-ok: auth worker only, not API hot path
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
@@ -251,7 +258,7 @@ export async function handleCallback(request, env) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Promise<Response>} 302 redirect to the frontend.
  */
-export async function handleLogout(request, env) {
+async function handleLogout(request, env) {
     const sid = extractSessionId(request);
     if (sid) {
         await deleteSession(env.SESSIONS, sid);
@@ -276,14 +283,18 @@ export async function handleLogout(request, env) {
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {Promise<Response>} JSON response with session data or 401.
  */
-export async function handleMe(request, env) {
-    const headers = corsHeaders(resolveAllowedOrigin(request, env));
+async function handleMe(request, env) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        ...accountCorsHeaders(resolveAllowedOrigin(request, env)),
+    };
 
     const sid = extractSessionId(request);
     if (!sid) {
         return new Response(
             JSON.stringify({ authenticated: false }) + '\n',
-            { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } }
+            { status: 401, headers }
         );
     }
 
@@ -291,28 +302,16 @@ export async function handleMe(request, env) {
     if (!session) {
         return new Response(
             JSON.stringify({ authenticated: false }) + '\n',
-            { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } }
+            { status: 401, headers }
         );
     }
 
     return new Response(
         JSON.stringify({ authenticated: true, user: session }) + '\n',
-        { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } }
+        { status: 200, headers }
     );
 }
 
-/**
- * Handles OPTIONS preflight for /auth/* endpoints.
- *
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Response} 204 with CORS headers.
- */
-export function handleAuthPreflight(request, env) {
-    return new Response(null, {
-        status: 204,
-        headers: corsHeaders(resolveAllowedOrigin(request, env)),
-    });
-}
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 

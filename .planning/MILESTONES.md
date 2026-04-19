@@ -134,9 +134,9 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M9: Account & Mobile (PR #70, #71)
+## M9: Account & Mobile (PR #70, #71, #72)
 
-**Branches**: `frontend/account-mystuff-mobile`, `fix/ix-peer-network-names`
+**Branches**: `frontend/account-mystuff-mobile`, `fix/ix-peer-network-names`, `refactor/auth-handler-structure`
 **Shipped**: 2026-04-19
 
 | Category | Work |
@@ -153,6 +153,7 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Auth | Favorites drag-and-drop with server persistence (PUT /account/favorites) |
 | Auth | OAuth redirect to originating frontend (Referer-based return origin) |
 | Auth | Dynamic CORS origin resolution for all account endpoints |
+| Auth | Auth worker handler-based architecture (method dispatch inside handlers, barrel exports) |
 | Infra | .planning directory with PROJECT, MILESTONES, ROADMAP, STATE docs |
 
 ---

@@ -8,7 +8,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateApiKey, resolveAllowedOrigin } from '../../../auth/account.js';
+import { generateApiKey } from '../../../auth/handlers/keys.js';
+import { resolveAllowedOrigin } from '../../../auth/http.js';
 import { verifyApiKey, extractApiKey, hashKey } from '../../../core/auth.js';
 
 // ── Mock D1 database ─────────────────────────────────────────────────────────
