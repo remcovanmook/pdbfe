@@ -31,17 +31,18 @@ describe('getTimezone', () => {
     it('returns the browser timezone when no preference is stored', async () => {
         const { getTimezone } = await import('../js/timezone.js');
         const tz = getTimezone();
-        // Node.js has Intl support — result should be a valid IANA string
+        // Node.js has Intl support — result should be a valid IANA string.
+        // CI runners may return 'UTC' (no slash), local machines return 'Region/City'.
         assert.equal(typeof tz, 'string');
         assert.ok(tz.length > 0, 'Should return a non-empty timezone');
-        assert.ok(tz.includes('/'), `Expected IANA format (e.g. "Region/City"), got "${tz}"`);
     });
 
     it('returns the browser timezone when "auto" is stored', async () => {
         store.set('pdbfe-tz', 'auto');
         const { getTimezone } = await import('../js/timezone.js');
         const tz = getTimezone();
-        assert.ok(tz.includes('/'), 'auto should resolve to IANA timezone');
+        assert.equal(typeof tz, 'string');
+        assert.ok(tz.length > 0, 'auto should resolve to a valid timezone');
     });
 
     it('returns a valid stored timezone', async () => {
@@ -57,7 +58,8 @@ describe('getTimezone', () => {
         const tz = getTimezone();
         // Should have cleared the invalid entry
         assert.equal(store.has('pdbfe-tz'), false, 'Invalid timezone should be purged');
-        assert.ok(tz.includes('/'), 'Should fall back to browser timezone');
+        assert.equal(typeof tz, 'string');
+        assert.ok(tz.length > 0, 'Should fall back to a valid timezone');
     });
 });
 
