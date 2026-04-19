@@ -41,8 +41,8 @@
 
 ## Statistics
 
-- **Commits**: 479+ on main
-- **Merged PRs**: 69
+- **Commits**: 493+ on main
+- **Merged PRs**: 70
 - **Entity types**: 13 (net, ix, fac, org, carrier, campus, poc, ixfac, ixlan, ixpfx, netfac, netixlan, as_set)
 - **Frontend JS**: ~15 page modules, ~8 shared modules
 - **Workers**: 5 (api, auth, graphql, rest, sync)
@@ -51,22 +51,11 @@
 
 ## In-Flight Work
 
-Branch `frontend/account-mystuff-mobile` — **PR #70**, 13 commits:
+Branch `fix/ix-peer-network-names` — **PR #71**, 1 commit:
 
 | Category | Item | Status |
 |----------|------|--------|
-| Frontend | Account page reshuffle (profile left, right column) | ✅ |
-| Frontend | Org affiliation tree with grouped child entities | ✅ |
-| Frontend | "My stuff" homepage section | ✅ |
-| Frontend | Compare with locked A-side | ✅ |
-| Frontend | Mobile table card layout (≤640px, data-label, card borders) | ✅ |
-| Frontend | Mobile CSS (IP stack wrap, scroll-hint removal, card striping) | ✅ |
-| Frontend | PeeringDB profile link on account page | ✅ |
-| Frontend | Unit tests: countries, entities, router, theme, timezone | ✅ |
-| Auth | Favorites server-side reorder persistence (PUT) | ✅ |
-| Auth | OAuth return-to-origin for preview deployments | ✅ |
-| Auth | Dynamic CORS origin for all account endpoints | ✅ |
-| Infra | .planning docs (PROJECT, MILESTONES, ROADMAP, STATE) | ✅ |
+| Frontend | IX peer table shows ASN instead of network name (regression from #69) | ✅ |
 
 ## Blockers
 

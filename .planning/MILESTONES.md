@@ -134,10 +134,10 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M9: Account & Mobile (PR #70)
+## M9: Account & Mobile (PR #70, #71)
 
-**Branch**: `frontend/account-mystuff-mobile`
-**Status**: PR ready — 12 commits, 18 files changed, +1840/-238 lines
+**Branches**: `frontend/account-mystuff-mobile`, `fix/ix-peer-network-names`
+**Shipped**: 2026-04-19
 
 | Category | Work |
 |----------|------|
@@ -149,6 +149,7 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Frontend | Mobile-specific CSS: card borders, IP stack inline wrap, scroll-hint removal |
 | Frontend | PeeringDB profile link on account page |
 | Frontend | Unit tests for countries, entities, router, theme, timezone (79 → 123 tests) |
+| Frontend | Hotfix: `fetchIxPeers` depth=1 to restore `net_name` JOIN column stripped by #69 |
 | Auth | Favorites drag-and-drop with server persistence (PUT /account/favorites) |
 | Auth | OAuth redirect to originating frontend (Referer-based return origin) |
 | Auth | Dynamic CORS origin resolution for all account endpoints |
