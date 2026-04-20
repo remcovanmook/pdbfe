@@ -158,6 +158,21 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
+## M10: Core Refactoring & Test Hardening (PRs #73)
+
+**Branches**: `chore/core-internal-tags`
+**Shipped**: 2026-04-20
+
+| Category | Work |
+|----------|------|
+| Backend | Reorganise `core/pipeline/` — move `l2cache`, `query`, `swr` into subdirectory with barrel export |
+| Backend | Tag test-only core exports as `@internal` to clarify public API surface |
+| Auth | Extract generic OAuth2 Authorization Code flow factory (`core/oauth.js`) with typed `OAuthHandlerConfig` hooks |
+| Auth | Reduce `auth/handlers/oauth.js` to PeeringDB-specific config and thin router (~441 → ~175 lines) |
+| Auth | New `tests/unit/auth/oauth.test.js` — 30+ assertions covering CSRF flow, token exchange, profile parsing, session management, routing |
+
+---
+
 ## Backlog
 
 | Category | Item |

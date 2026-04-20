@@ -374,8 +374,12 @@ describe('createOAuthHandler / handleLogout', () => {
     });
 
     it('deletes the session from KV when sid is present', async () => {
-        const kv = mockKV();
-        kv._store.set('ses:deadbeef', JSON.stringify({ id: 1 }));
+        let deletedKey = null;
+        const kv = /** @type {any} */ ({
+            get: () => Promise.resolve(null),
+            put: () => Promise.resolve(),
+            delete: (key) => { deletedKey = key; return Promise.resolve(); },
+        });
 
         const handler = createOAuthHandler(minimalConfig());
         const env = mockEnv({ SESSIONS: kv });
@@ -384,8 +388,8 @@ describe('createOAuthHandler / handleLogout', () => {
         });
 
         await handler.handleLogout(req, env);
-        // KV delete is fire-and-forget but our mock tracks it
-        assert.equal(kv._store.has('ses:deadbeef'), false);
+        assert.ok(deletedKey, 'KV delete should have been called');
+        assert.ok(deletedKey.includes('deadbeef'), `Expected sid in deleted key, got: ${deletedKey}`);
     });
 });
 

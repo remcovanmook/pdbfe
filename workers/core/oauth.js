@@ -78,7 +78,7 @@ import { generateSessionId, writeSession, deleteSession, extractSessionId, resol
 function extractCookie(request, name) {
     const header = request.headers.get('Cookie');
     if (!header) return null;
-    const re = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]+)`);
+    const re = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]+)`); // ap-ok: auth worker only, not API hot path
     const match = re.exec(header);
     return match ? match[1].trim() : null;
 }
@@ -391,7 +391,7 @@ export function createOAuthHandler(config) {
      * @returns {Promise<Response>|Response}
      */
     function handleOAuth(request, env, resolveReturnOrigin) {
-        const path = new URL(request.url).pathname;
+        const path = new URL(request.url).pathname; // ap-ok: auth worker only, not API hot path
         const returnOrigin = resolveReturnOrigin
             ? resolveReturnOrigin(request, env)
             : env.FRONTEND_ORIGIN;

@@ -1,7 +1,7 @@
 # Current State
 
-**Last updated**: 2026-04-19
-**Active branch**: `frontend/account-mystuff-mobile`
+**Last updated**: 2026-04-20
+**Active branch**: `chore/core-internal-tags`
 **Production**: `pdbfe.dev` (Cloudflare Pages + Workers) — gated behind Cloudflare Access pending AUP approval
 **Preview**: `*.pdbfe-frontend.pages.dev`
 
@@ -29,10 +29,10 @@
 
 | Category | Tests | Suites | Scope |
 |----------|------:|-------:|-------|
-| Worker unit | 693 | 143 | API, auth, core, GraphQL, REST, sync |
+| Worker unit | 934 | 161 | API, auth, core, GraphQL, REST, sync |
 | Frontend unit | 123 | 28 | Home, about, i18n, markdown, debug, formatSpeed, countries, entities, router, theme, timezone |
 | Compliance | 56 | 5 | Golden files, wire format, filter fuzz (subset of worker unit) |
-| **Total** | **816** | **171** | |
+| **Total** | **1057** | **189** | |
 
 - CI runs: lint, typecheck, XSS scan, all unit tests
 - Compliance tests: structural diff against upstream JSON, golden file snapshots, filter fuzz
@@ -41,21 +41,23 @@
 
 ## Statistics
 
-- **Commits**: 493+ on main
-- **Merged PRs**: 70
+- **Commits**: 496+ on main
+- **Merged PRs**: 72 (PR #73 pending)
 - **Entity types**: 13 (net, ix, fac, org, carrier, campus, poc, ixfac, ixlan, ixpfx, netfac, netixlan, as_set)
 - **Frontend JS**: ~15 page modules, ~8 shared modules
 - **Workers**: 5 (api, auth, graphql, rest, sync)
-- **Test files**: 45 (35 worker, 10 frontend)
+- **Test files**: 47 (37 worker, 10 frontend)
 - **CI**: GitHub Actions (lint, typecheck, XSS scan, unit tests)
 
 ## In-Flight Work
 
-Branch `refactor/auth-handler-structure` — **PR #72**, 1 commit:
+Branch `chore/core-internal-tags` — **PR #73** (pending merge), 3 commits:
 
 | Category | Item | Status |
 |----------|------|--------|
-| Auth | Auth worker structural refactor: handler-based architecture with method dispatch | ✅ |
+| Infra | Tag test-only core exports as @internal | ✅ |
+| Backend | Move l2cache/pipeline/swr into `core/pipeline/` with barrel export | ✅ |
+| Auth | Extract generic OAuth2 factory into `core/oauth.js`; refactor auth handler to PDB-specific config + thin router; add OAuth unit tests | ✅ |
 
 ## Blockers
 
