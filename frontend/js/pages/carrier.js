@@ -23,13 +23,13 @@ export async function renderCarrier(params) {
     const id = params.id;
 
     document.title = `Carrier — PDBFE`;
-    app.replaceChildren(createLoading('Loading carrier'));
+    app.replaceChildren(createLoading(t('Loading carrier')));
 
     try {
         const carrier = await fetchEntity('carrier', id, 2);
 
         if (!carrier) {
-            app.replaceChildren(createError(`Carrier ${id} not found`));
+            app.replaceChildren(createError(t('Carrier {id} not found', { id })));
             return;
         }
 
@@ -94,7 +94,7 @@ function buildSidebar(carrier) {
  */
 function buildTables(carrier) {
     if (!carrier.carrierfac_set || carrier.carrierfac_set.length === 0) {
-        return createEmptyState('No facilities listed');
+        return createEmptyState(t('No facilities listed'));
     }
 
     const table = /** @type {any} */ (document.createElement('pdb-table'));
@@ -104,7 +104,7 @@ function buildTables(carrier) {
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
         columns: [
-            { key: 'name', label: 'Facility' },
+            { key: 'name', label: t('Facility') },
         ],
         rows: carrier.carrierfac_set,
         cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

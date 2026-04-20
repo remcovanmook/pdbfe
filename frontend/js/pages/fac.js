@@ -24,12 +24,12 @@ export async function renderFac(params) {
     const id = params.id;
 
     document.title = `Facility — PDBFE`;
-    app.replaceChildren(createLoading('Loading facility'));
+    app.replaceChildren(createLoading(t('Loading facility')));
 
     try {
         const fac = await fetchEntity('fac', id, 2);
         if (!fac) {
-            app.replaceChildren(createError(`Facility ${id} not found`));
+            app.replaceChildren(createError(t('Facility {id} not found', { id })));
             return;
         }
 
@@ -122,8 +122,8 @@ function buildTables(fac) {
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
             columns: [
-                { key: 'network',   label: 'Network' },
-                { key: 'local_asn', label: 'ASN', class: 'td-right', width: '100px' },
+                { key: 'network',   label: t('Network') },
+                { key: 'local_asn', label: t('ASN'), class: 'td-right', width: '100px' },
             ],
             rows: fac.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -150,7 +150,7 @@ function buildTables(fac) {
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
-                { key: 'exchange', label: 'Exchange' },
+                { key: 'exchange', label: t('Exchange') },
             ],
             rows: fac.ixfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -167,7 +167,7 @@ function buildTables(fac) {
     }
 
     if (frag.children.length === 0) {
-        frag.appendChild(createEmptyState('No networks or exchanges'));
+        frag.appendChild(createEmptyState(t('No networks or exchanges')));
     }
 
     return frag;

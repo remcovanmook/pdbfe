@@ -7,6 +7,8 @@
  * the view boundary as locations resolve.
  */
 
+import { t } from '../i18n.js';
+
 const TEMPLATE = /** @type {HTMLTemplateElement} */ (document.getElementById('tpl-pdb-map'));
 
 // Geocoding queue to respect Nominatim's strict 1 RPS policy
@@ -190,7 +192,7 @@ export class PdbMap extends HTMLElement {
         };
 
         const closeBtn = document.createElement('button');
-        closeBtn.textContent = '✕ Close';
+        closeBtn.textContent = t('✕ Close');
         Object.assign(closeBtn.style, {
             position: 'absolute', top: '10px', right: '10px', zIndex: '1000',
             background: 'var(--bg-primary)', color: 'var(--text-primary)',

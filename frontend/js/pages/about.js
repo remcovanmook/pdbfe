@@ -7,6 +7,7 @@
 
 import { renderMarkdown } from '../markdown.js';
 import { createLoading, createError } from '../render.js';
+import { t } from '../i18n.js';
 
 /**
  * Renders the about page into the app container.
@@ -18,7 +19,7 @@ export async function renderAbout(_params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     document.title = 'About — PDBFE';
 
-    app.replaceChildren(createLoading('Loading'));
+    app.replaceChildren(createLoading(t('Loading')));
 
     try {
         const res = await fetch('/content/about.md');

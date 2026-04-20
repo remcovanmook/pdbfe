@@ -8,6 +8,7 @@
 import { fetchByAsn } from '../api.js';
 import { createLoading, createError } from '../render.js';
 import { navigate } from '../router.js';
+import { t } from '../i18n.js';
 
 /**
  * Handles the /asn/:asn route. Strips an optional "AS" prefix,
@@ -24,13 +25,13 @@ export async function renderAsn(params) {
     const asn = Number.parseInt(raw, 10);
 
     if (Number.isNaN(asn) || asn <= 0) {
-        app.replaceChildren(createError(`Invalid ASN: ${params.asn}`));
+        app.replaceChildren(createError(t('Invalid ASN: {asn}', { asn: params.asn })));
         document.title = 'Invalid ASN — PDBFE';
         return;
     }
 
     document.title = `AS${asn} — PDBFE`;
-    app.replaceChildren(createLoading(`Looking up AS${asn}`));
+    app.replaceChildren(createLoading(t('Looking up AS{asn}', { asn })));
 
     try {
         const net = await fetchByAsn(asn);
@@ -39,7 +40,7 @@ export async function renderAsn(params) {
             globalThis.history.replaceState(null, '', `/net/${net.id}`);
             navigate(`/net/${net.id}`);
         } else {
-            app.replaceChildren(createError(`No network found for AS${asn}`));
+            app.replaceChildren(createError(t('No network found for AS{asn}', { asn })));
         }
     } catch (err) {
         app.replaceChildren(createError(`Failed to look up AS${asn}: ${err.message}`));

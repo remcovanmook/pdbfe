@@ -24,12 +24,12 @@ export async function renderOrg(params) {
     const id = params.id;
 
     document.title = `Organization — PDBFE`;
-    app.replaceChildren(createLoading('Loading organization'));
+    app.replaceChildren(createLoading(t('Loading organization')));
 
     try {
         const org = await fetchEntity('org', id, 2);
         if (!org) {
-            app.replaceChildren(createError(`Organization ${id} not found`));
+            app.replaceChildren(createError(t('Organization {id} not found', { id })));
             return;
         }
 
@@ -106,8 +106,8 @@ function buildTables(org) {
             filterable: true,
             filterPlaceholder: t('Filter networks...'),
             columns: [
-                { key: 'name', label: 'Network' },
-                { key: 'asn',  label: 'ASN', class: 'td-right', width: '100px' },
+                { key: 'name', label: t('Network') },
+                { key: 'asn',  label: t('ASN'), class: 'td-right', width: '100px' },
             ],
             rows: org.net_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -127,9 +127,9 @@ function buildTables(org) {
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
-                { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City', maxWidth: '250px' },
-                { key: 'country', label: 'Country', maxWidth: '100px' },
+                { key: 'name',    label: t('Facility') },
+                { key: 'city',    label: t('City'), maxWidth: '250px' },
+                { key: 'country', label: t('Country'), maxWidth: '100px' },
             ],
             rows: org.fac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -148,9 +148,9 @@ function buildTables(org) {
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
-                { key: 'name',    label: 'Exchange' },
-                { key: 'city',    label: 'City', maxWidth: '250px' },
-                { key: 'country', label: 'Country', maxWidth: '100px' },
+                { key: 'name',    label: t('Exchange') },
+                { key: 'city',    label: t('City'), maxWidth: '250px' },
+                { key: 'country', label: t('Country'), maxWidth: '100px' },
             ],
             rows: org.ix_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -162,7 +162,7 @@ function buildTables(org) {
     }
 
     if (frag.children.length === 0) {
-        frag.appendChild(createEmptyState('No networks, facilities, or exchanges'));
+        frag.appendChild(createEmptyState(t('No networks, facilities, or exchanges')));
     }
 
     return frag;

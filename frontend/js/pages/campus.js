@@ -23,12 +23,12 @@ export async function renderCampus(params) {
     const id = params.id;
 
     document.title = `Campus — PDBFE`;
-    app.replaceChildren(createLoading('Loading campus'));
+    app.replaceChildren(createLoading(t('Loading campus')));
 
     try {
         const campus = await fetchEntity('campus', id, 2);
         if (!campus) {
-            app.replaceChildren(createError(`Campus ${id} not found`));
+            app.replaceChildren(createError(t('Campus {id} not found', { id })));
             return;
         }
 
@@ -88,7 +88,7 @@ function buildSidebar(campus) {
  */
 function buildTables(campus) {
     if (!campus.fac_set || campus.fac_set.length === 0) {
-        return createEmptyState('No facilities listed');
+        return createEmptyState(t('No facilities listed'));
     }
 
     const table = /** @type {any} */ (document.createElement('pdb-table'));
@@ -98,9 +98,9 @@ function buildTables(campus) {
         filterable: true,
         filterPlaceholder: t('Filter facilities...'),
         columns: [
-            { key: 'name', label: 'Facility' },
-            { key: 'city', label: 'City', maxWidth: '250px' },
-            { key: 'country', label: 'Country', maxWidth: '100px' },
+            { key: 'name', label: t('Facility') },
+            { key: 'city', label: t('City'), maxWidth: '250px' },
+            { key: 'country', label: t('Country'), maxWidth: '100px' },
         ],
         rows: campus.fac_set,
         cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

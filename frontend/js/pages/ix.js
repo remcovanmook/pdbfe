@@ -26,13 +26,13 @@ export async function renderIx(params) {
     const id = params.id;
 
     document.title = `Exchange — PDBFE`;
-    app.replaceChildren(createLoading('Loading exchange'));
+    app.replaceChildren(createLoading(t('Loading exchange')));
 
     try {
         const ix = await fetchEntity('ix', id, 2);
 
         if (!ix) {
-            app.replaceChildren(createError(`Exchange ${id} not found`));
+            app.replaceChildren(createError(t('Exchange {id} not found', { id })));
             return;
         }
 
@@ -66,11 +66,11 @@ export async function renderIx(params) {
         );
 
         const statsBar = createStatsBar([
-            { label: 'Peers', value: totalPeers.toLocaleString() },
-            { label: 'Connections', value: totalConnections.toLocaleString() },
-            { label: 'Open Peers', value: openPeers.toLocaleString() },
-            { label: 'Total Speed', value: formatSpeed(totalSpeed) },
-            { label: 'IPv6', value: ipv6Pct },
+            { label: t('Peers'), value: totalPeers.toLocaleString() },
+            { label: t('Connections'), value: totalConnections.toLocaleString() },
+            { label: t('Open Peers'), value: openPeers.toLocaleString() },
+            { label: t('Total Speed'), value: formatSpeed(totalSpeed) },
+            { label: t('IPv6'), value: ipv6Pct },
         ]);
 
         const subtitle = location;
@@ -198,16 +198,16 @@ function buildTables(ix, peers) {
 
         /** @type {TableColumn[]} */
         const columns = [
-            { key: 'name',       label: 'Network' },
-            { key: 'asn',        label: 'ASN', class: 'td-right', width: '80px' },
-            { key: 'speed',      label: 'Speed', class: 'td-right', width: '90px' },
+            { key: 'name',       label: t('Network') },
+            { key: 'asn',        label: t('ASN'), class: 'td-right', width: '80px' },
+            { key: 'speed',      label: t('Speed'), class: 'td-right', width: '90px' },
         ];
         if (hasFacData) {
-            columns.push({ key: 'facility', label: 'Facility' });
+            columns.push({ key: 'facility', label: t('Facility') });
         }
         columns.push(
-            { key: 'ip',         label: 'IP Address', class: 'td-mono' },
-            { key: 'is_rs_peer', label: 'RS', width: '70px' },
+            { key: 'ip',         label: t('IP Address'), class: 'td-mono' },
+            { key: 'is_rs_peer', label: t('RS'), width: '70px' },
         );
 
         const peerTable = /** @type {HTMLElement & {configure: Function}} */ (
@@ -278,9 +278,9 @@ function buildTables(ix, peers) {
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
-                { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City', maxWidth: '250px' },
-                { key: 'country', label: 'Country', maxWidth: '100px' },
+                { key: 'name',    label: t('Facility') },
+                { key: 'city',    label: t('City'), maxWidth: '250px' },
+                { key: 'country', label: t('Country'), maxWidth: '100px' },
             ],
             rows: ix.ixfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -294,7 +294,7 @@ function buildTables(ix, peers) {
     }
 
     if (frag.children.length === 0) {
-        frag.appendChild(createEmptyState('No peers or facilities'));
+        frag.appendChild(createEmptyState(t('No peers or facilities')));
     }
 
     return frag;

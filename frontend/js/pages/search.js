@@ -26,7 +26,7 @@ export async function renderSearch(params) {
     document.title = `Search: ${query} — PDBFE`;
 
     if (!query) {
-        app.replaceChildren(createEmptyState('Enter a search term'));
+        app.replaceChildren(createEmptyState(t('Enter a search term')));
         return;
     }
 
@@ -44,7 +44,7 @@ export async function renderSearch(params) {
 
     const body = document.createElement('div');
     body.id = 'search-body';
-    body.appendChild(createLoading('Searching'));
+    body.appendChild(createLoading(t('Searching')));
     wrapper.appendChild(body);
 
     app.replaceChildren(wrapper);

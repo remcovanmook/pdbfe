@@ -256,7 +256,7 @@ export async function renderAccount(_params) {
     labelInput.type = 'text';
     labelInput.id = 'key-label-input';
     labelInput.className = 'key-label-input';
-    labelInput.placeholder = 'e.g. "curl scripts"';
+    labelInput.placeholder = t('e.g. "curl scripts"');
     labelInput.maxLength = 64;
     labelInput.autofocus = true;
     createDiv.appendChild(labelInput);

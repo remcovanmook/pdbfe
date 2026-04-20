@@ -46,21 +46,21 @@ export async function renderHome(_params) {
 
     const tagline = document.createElement('h2');
     tagline.className = 'home-hero__tagline';
-    tagline.textContent = 'Synced. Read Only. Fast.';
+    tagline.textContent = t('Synced. Read Only. Fast.');
     hero.appendChild(tagline);
 
     // Hero description (contains links, so we build inline)
     const desc1 = document.createElement('p');
     desc1.className = 'home-hero__desc';
     desc1.append(
-        'A read-only mirror of the ',
+        t('A read-only mirror of the '),
         _extLink('https://www.peeringdb.com', 'PeeringDB'),
-        ' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the ',
-        _extLink('https://www.peeringdb.com/apidocs/', 'PeeringDB-compatible'),
-        ' REST API, a ',
-        _extLink('https://graphql.pdbfe.dev/', 'GraphQL endpoint'),
-        ', and an ',
-        _extLink('https://rest.pdbfe.dev/', 'OpenAPI-documented REST API'),
+        t(' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the '),
+        _extLink('https://www.peeringdb.com/apidocs/', t('PeeringDB-compatible')),
+        t(' REST API, a '),
+        _extLink('https://graphql.pdbfe.dev/', t('GraphQL endpoint')),
+        t(', and an '),
+        _extLink('https://rest.pdbfe.dev/', t('OpenAPI-documented REST API')),
         '.'
     );
     hero.appendChild(desc1);
@@ -68,31 +68,31 @@ export async function renderHome(_params) {
     const desc2 = document.createElement('p');
     desc2.className = 'home-hero__desc';
     desc2.append(
-        'Features include ',
+        t('Features include '),
     );
     const advLink = document.createElement('a');
     advLink.href = '/advanced_search';
     advLink.dataset.link = '';
-    advLink.textContent = 'advanced search';
+    advLink.textContent = t('advanced search');
     const cmpLink = document.createElement('a');
     cmpLink.href = '/compare';
     cmpLink.dataset.link = '';
-    cmpLink.textContent = 'infrastructure comparison';
-    desc2.append(advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about.');
+    cmpLink.textContent = t('infrastructure comparison');
+    desc2.append(advLink, t(' across all entity types, '), cmpLink, t(' to find shared peering points and facilities, and personal favorites to track the resources you care about.'));
     hero.appendChild(desc2);
 
     const desc2b = document.createElement('p');
     desc2b.className = 'home-hero__desc';
-    desc2b.append('All data is subject to the PeeringDB ', _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
+    desc2b.append(t('All data is subject to the PeeringDB '), _extLink('https://www.peeringdb.com/aup', t('Acceptable Use Policy')), '.');
     hero.appendChild(desc2b);
 
     const desc3 = document.createElement('p');
     desc3.className = 'home-hero__desc';
-    desc3.append('Learn more ');
+    desc3.append(t('Learn more '));
     const aboutLink = document.createElement('a');
     aboutLink.href = '/about';
     aboutLink.dataset.link = '';
-    aboutLink.textContent = 'about this mirror';
+    aboutLink.textContent = t('about this mirror');
     desc3.append(aboutLink, '.');
     hero.appendChild(desc3);
 
@@ -184,7 +184,7 @@ export async function renderHome(_params) {
 
     const recentBody = document.createElement('div');
     recentBody.id = 'recent-updates';
-    recentBody.appendChild(createLoading('Loading recent updates'));
+    recentBody.appendChild(createLoading(t('Loading recent updates')));
     recentDiv.appendChild(recentBody);
     frag.appendChild(recentDiv);
 
