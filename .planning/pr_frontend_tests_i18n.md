@@ -91,7 +91,6 @@ Added `t()` to all missing user-visible strings across 13 page/component files:
 
 ### Override File Translations (99% Coverage)
 
-`scripts/patch_overrides.py` written and committed. Populated 148 PDBFE-specific translations across all 13 override files (cs, de, el, es, fr, it, ja, lt, pt, ro, ru, zh-cn, zh-tw).
 
 **Coverage before**: ~57% (199/344 per locale)  
 **Coverage after**: 99% (340/343 per locale)
@@ -112,6 +111,5 @@ Remaining 3 untranslated strings are technical standards names (`802.1Q`, `MTU`,
 | Tests – unit | `frontend/tests/unit/` (12 files, new or moved) |
 | Tests – E2E | `frontend/tests/e2e/` (5 spec files, new) |
 | Tests – helpers | `frontend/tests/helpers/mock-dom.js` |
-| Tooling | `scripts/patch_overrides.py` |
 
 75 files changed, 8,731 insertions, 484 deletions.
