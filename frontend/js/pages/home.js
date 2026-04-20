@@ -49,27 +49,24 @@ export async function renderHome(_params) {
     tagline.textContent = t('Synced. Read Only. Fast.');
     hero.appendChild(tagline);
 
-    // Hero description (contains links, so we build inline)
+    // Hero description
     const desc1 = document.createElement('p');
     desc1.className = 'home-hero__desc';
     desc1.append(
-        t('A read-only mirror of the '),
+        'A read-only mirror of the ',
         _extLink('https://www.peeringdb.com', 'PeeringDB'),
-        t(' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the '),
-        _extLink('https://www.peeringdb.com/apidocs/', t('PeeringDB-compatible')),
-        t(' REST API, a '),
-        _extLink('https://graphql.pdbfe.dev/', t('GraphQL endpoint')),
-        t(', and an '),
-        _extLink('https://rest.pdbfe.dev/', t('OpenAPI-documented REST API')),
+        ' database, synchronised periodically and served from edge locations for low-latency lookups worldwide. Browse networks, exchanges, facilities, and carriers — or query the data through three API surfaces: the ',
+        _extLink('https://www.peeringdb.com/apidocs/', 'PeeringDB-compatible'),
+        ' REST API, a ',
+        _extLink('https://graphql.pdbfe.dev/', 'GraphQL endpoint'),
+        ', and an ',
+        _extLink('https://rest.pdbfe.dev/', 'OpenAPI-documented REST API'),
         '.'
     );
     hero.appendChild(desc1);
 
     const desc2 = document.createElement('p');
     desc2.className = 'home-hero__desc';
-    desc2.append(
-        t('Features include '),
-    );
     const advLink = document.createElement('a');
     advLink.href = '/advanced_search';
     advLink.dataset.link = '';
@@ -78,22 +75,21 @@ export async function renderHome(_params) {
     cmpLink.href = '/compare';
     cmpLink.dataset.link = '';
     cmpLink.textContent = t('infrastructure comparison');
-    desc2.append(advLink, t(' across all entity types, '), cmpLink, t(' to find shared peering points and facilities, and personal favorites to track the resources you care about.'));
+    desc2.append('Features include ', advLink, ' across all entity types, ', cmpLink, ' to find shared peering points and facilities, and personal favorites to track the resources you care about.');
     hero.appendChild(desc2);
 
     const desc2b = document.createElement('p');
     desc2b.className = 'home-hero__desc';
-    desc2b.append(t('All data is subject to the PeeringDB '), _extLink('https://www.peeringdb.com/aup', t('Acceptable Use Policy')), '.');
+    desc2b.append('All data is subject to the PeeringDB ', _extLink('https://www.peeringdb.com/aup', 'Acceptable Use Policy'), '.');
     hero.appendChild(desc2b);
 
     const desc3 = document.createElement('p');
     desc3.className = 'home-hero__desc';
-    desc3.append(t('Learn more '));
     const aboutLink = document.createElement('a');
     aboutLink.href = '/about';
     aboutLink.dataset.link = '';
     aboutLink.textContent = t('about this mirror');
-    desc3.append(aboutLink, '.');
+    desc3.append('Learn more ', aboutLink, '.');
     hero.appendChild(desc3);
 
     homeTop.appendChild(hero);
