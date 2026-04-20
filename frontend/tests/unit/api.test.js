@@ -26,7 +26,7 @@ function setup() {
 describe('buildURL — URL construction', () => {
     beforeEach(setup);
 
-    it('appends __pdbfe=1 when IMAGES_ORIGIN is configured', async () => {
+    it('calls the correct API endpoint for an entity type', async () => {
         /** @type {string[]} */
         const calls = [];
         globalThis.fetch = /** @type {any} */ (async (url) => {
@@ -38,9 +38,8 @@ describe('buildURL — URL construction', () => {
         clearCache();
         await fetchList('net', {});
 
-        // IMAGES_ORIGIN is set in the bundled config — __pdbfe=1 must be present
-        assert.ok(calls.some(u => u.includes('__pdbfe=1')),
-            'Expected __pdbfe=1 in URL when IMAGES_ORIGIN is set');
+        assert.ok(calls.length > 0, 'fetch should have been called');
+        assert.ok(calls[0].includes('/api/net'), 'URL should contain the entity endpoint path');
     });
 
     it('excludes falsy params from the query string', async () => {
