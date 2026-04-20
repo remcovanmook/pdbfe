@@ -44,6 +44,7 @@ export function initL2(requestUrl) {
  * Attempts to retrieve a cached payload from the per-PoP L2 cache.
  * Returns the raw bytes if found and not expired, or null on miss.
  *
+ * @internal Exported for unit testing. Production callers use the pipeline.
  * @param {string} cacheKey - Normalised cache key (e.g. "api/net/694" or "api/net?country=NL&limit=50").
  * @returns {Promise<Uint8Array|null>} Cached payload bytes, or null on miss.
  */
@@ -67,6 +68,7 @@ export async function getL2(cacheKey) {
  * Writes a payload to the per-PoP L2 cache with a specified TTL.
  * Non-blocking — errors are silently swallowed since L2 is optional.
  *
+ * @internal Exported for unit testing. Production callers use the pipeline.
  * @param {string} cacheKey - Normalised cache key.
  * @param {Uint8Array} buf - JSON payload bytes to cache.
  * @param {number} ttlSeconds - Cache-Control max-age in seconds.

@@ -44,6 +44,7 @@ const SESSION_PREFIX = 'session:';
  * or null if the header is missing, empty, or uses an
  * unrecognised scheme.
  *
+ * @internal Exported for unit testing. Production callers use resolveAuth().
  * @param {Request} request - The inbound HTTP request.
  * @returns {string|null} The extracted API key, or null.
  */
@@ -68,6 +69,7 @@ export function extractApiKey(request) {
  * Key format: `pdbfe.<32 hex chars>`.
  * D1 query: `SELECT user_id FROM api_keys WHERE hash = ?`.
  *
+ * @internal Exported for unit testing. Production callers use resolveAuth().
  * @param {D1Database|D1DatabaseSession} db - USERDB D1 binding (or session).
  * @param {string} apiKey - The API key to validate.
  * @returns {Promise<{valid: boolean, userId: number|null}>} Validation result with owning user ID.
