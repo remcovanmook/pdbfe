@@ -106,6 +106,26 @@ function redirectToFrontend(frontendOrigin, sid, error) {
 }
 
 /**
+ * GET /auth/logout.
+ *
+ * Deletes the KV session and redirects to the frontend.
+ *
+ * @param {Request} request
+ * @param {any} env
+ * @returns {Promise<Response>}
+ */
+async function handleLogout(request, env) {
+    const sid = extractSessionId(request);
+    if (sid) {
+        await deleteSession(env.SESSIONS, sid);
+    }
+    return new Response(null, {
+        status: 302,
+        headers: { 'Location': env.FRONTEND_ORIGIN, 'Cache-Control': 'no-store' },
+    });
+}
+
+/**
  * POSTs an authorization code to the provider's token endpoint and
  * returns the access token.
  *
@@ -318,25 +338,6 @@ export function createOAuthHandler(config) {
         return clearAndReturn(redirectToFrontend(returnOrigin, sid, null));
     }
 
-    /**
-     * GET /auth/logout.
-     *
-     * Deletes the KV session and redirects to the frontend.
-     *
-     * @param {Request} request
-     * @param {any} env
-     * @returns {Promise<Response>}
-     */
-    async function handleLogout(request, env) {
-        const sid = extractSessionId(request);
-        if (sid) {
-            await deleteSession(env.SESSIONS, sid);
-        }
-        return new Response(null, {
-            status: 302,
-            headers: { 'Location': env.FRONTEND_ORIGIN, 'Cache-Control': 'no-store' },
-        });
-    }
 
     /**
      * GET /auth/me.
