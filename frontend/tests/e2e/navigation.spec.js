@@ -72,21 +72,12 @@ test('clicking a data-link navigates without a full page reload', async ({ page 
 test('browser back button returns to previous page', async ({ page }) => {
     await page.goto('/');
 
-    // The /about page fetches content/about.md asynchronously. If that fetch
-    // resolves after goBack() fires, its callback can overwrite the homepage.
-    // Mock the response so we control when the fetch settles.
-    await page.route('**/content/about.md', (route) =>
-        route.fulfill({
-            status: 200,
-            contentType: 'text/markdown',
-            body: '# About This Mirror\n\nTest content.',
-        })
-    );
-
     const aboutLink = page.locator('a[href="/about"][data-link]').first();
     await aboutLink.click();
     await expect(page).toHaveURL(/\/about/);
-    // Wait until /about is fully rendered (fetch settled) before going back
+    // Wait until the about page is fully rendered before going back.
+    // The router's _navGen guard (added to fix the stale-fetch race condition)
+    // ensures the /about fetch cannot overwrite the homepage after goBack().
     await expect(page.locator('h1')).toContainText('About', { timeout: 5_000 });
 
     await page.goBack();

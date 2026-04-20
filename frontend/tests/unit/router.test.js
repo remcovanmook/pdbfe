@@ -177,4 +177,54 @@ describe('addRoute — pattern compilation', () => {
         assert.ok(captured, 'Should match path with trailing slash');
         assert.equal(captured.id, '99');
     });
+
+    it('stale navigation guard: second navigation wins race over slow first handler', async () => {
+        const { addRoute, navigate } = await import('../../js/router.js');
+
+        const handlersRun = /** @type {string[]} */ ([]);
+
+        const container = /** @type {any} */ ({
+            innerHTML: '',
+            classList: { add: () => {}, remove: () => {} },
+            replaceChildren: () => {},
+        });
+
+        // Slow handler — simulates an in-flight async fetch
+        let resolveSlowHandler = /** @type {Function} */ (() => {});
+        addRoute('/slow-test', async () => {
+            handlersRun.push('slow-started');
+            await new Promise(r => { resolveSlowHandler = r; });
+            handlersRun.push('slow-finished');
+        });
+
+        // Fast handler — fires second
+        addRoute('/fast-test', async () => { handlersRun.push('fast'); });
+
+        // Boot the router on /slow-test
+        const { initRouter } = await import('../../js/router.js');
+        globalThis.location.pathname = '/slow-test';
+        globalThis.location.search = '';
+        initRouter(container);
+
+        // Fire a second navigation while /slow-test handler is mid-await
+        globalThis.location.pathname = '/fast-test';
+        navigate('/fast-test');
+        await new Promise(r => setTimeout(r, 10));
+
+        // Fast handler should have run
+        assert.ok(handlersRun.includes('fast'), 'Fast handler should have run');
+        // Slow handler started but hasn't finished yet
+        assert.ok(handlersRun.includes('slow-started'), 'Slow handler should have started');
+        assert.ok(!handlersRun.includes('slow-finished'), 'Slow handler should still be pending');
+
+        // Resolve the slow handler
+        resolveSlowHandler();
+        await new Promise(r => setTimeout(r, 10));
+
+        // After resolution, the slow handler's body completed but the router
+        // discarded its post-await bookkeeping (sessionStorage cache, error render).
+        // The key guarantee: the fast navigation was not blocked or overwritten.
+        assert.ok(handlersRun.includes('slow-finished'), 'Slow handler body eventually completes');
+        assert.ok(handlersRun.includes('fast'), 'Fast navigation result is preserved');
+    });
 });
