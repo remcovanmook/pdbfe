@@ -8,32 +8,26 @@
  *   /auth/logout   → Delete session from KV, redirect to frontend
  *   /auth/me       → Return current session data as JSON
  *
+ * The generic OAuth2 flow (CSRF, token exchange, profile fetch, session
+ * creation) is handled by {@link createOAuthHandler} from core/oauth.js.
+ * This module supplies the PeeringDB-specific configuration: endpoints,
+ * scopes, extra request headers, and profile validation.
+ *
  * All session state is stored in the SESSIONS KV namespace, shared
  * with pdbfe-api which performs read-only lookups.
- *
- * PeeringDB OAuth2 endpoints (auth.peeringdb.com):
- *   Authorize:  /oauth2/authorize/
- *   Token:      /oauth2/token/
- *   Profile:    /profile/v1
  *
  * @see https://docs.peeringdb.com/oauth/
  */
 
-import {
-    extractSessionId,
-    resolveSession,
-    generateSessionId,
-    writeSession,
-    deleteSession
-} from '../../core/auth.js';
 import { resolveAllowedOrigin, accountCorsHeaders, methodNotAllowed, handlePreflight } from '../http.js';
+import { createOAuthHandler } from '../../core/oauth.js';
 
 // ── PeeringDB OAuth2 Constants ───────────────────────────────────────────────
 
-const PDB_AUTH_BASE = 'https://auth.peeringdb.com';
+const PDB_AUTH_BASE     = 'https://auth.peeringdb.com';
 const PDB_AUTHORIZE_URL = `${PDB_AUTH_BASE}/oauth2/authorize/`;
-const PDB_TOKEN_URL = `${PDB_AUTH_BASE}/oauth2/token/`;
-const PDB_PROFILE_URL = `${PDB_AUTH_BASE}/profile/v1`;
+const PDB_TOKEN_URL     = `${PDB_AUTH_BASE}/oauth2/token/`;
+const PDB_PROFILE_URL   = `${PDB_AUTH_BASE}/profile/v1`;
 
 /**
  * OAuth scopes requested from PeeringDB.
@@ -43,398 +37,130 @@ const PDB_PROFILE_URL = `${PDB_AUTH_BASE}/profile/v1`;
  */
 const OAUTH_SCOPES = 'profile email networks';
 
-/** CSRF state cookie TTL in seconds (5 minutes). */
-const STATE_TTL = 300;
-
-/** Session TTL in seconds (24 hours). */
-const SESSION_TTL = 86400;
-
-// ── Endpoint Handlers ────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Dispatches /auth/* requests by path. Enforces GET-only for all
- * auth endpoints and handles OPTIONS preflight.
+ * Maps a PeeringDB profile response to session data.
+ * Rejects unverified accounts before a session is written.
  *
- * @param {Request} request - The inbound HTTP request.
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @param {string} path - The URL pathname.
- * @returns {Promise<Response>|Response} The HTTP response.
+ * @param {Record<string, any>} profile - Raw profile JSON from PeeringDB.
+ * @returns {import('../../core/oauth.js').OAuthProfileResult}
  */
-export function handleAuth(request, env, path) {
-    if (request.method === 'OPTIONS') return handlePreflight(request, env);
-    if (request.method !== 'GET') return methodNotAllowed('GET, OPTIONS');
-
-    switch (path) {
-        case '/auth/login':    return handleLogin(request, env);
-        case '/auth/callback': return handleCallback(request, env);
-        case '/auth/logout':   return handleLogout(request, env);
-        case '/auth/me':       return handleMe(request, env);
-        default:
-            return new Response(
-                JSON.stringify({ error: 'Not found' }) + '\n',
-                { status: 404, headers: { 'Content-Type': 'application/json' } }
-            );
+function parsePeeringDbProfile(profile) {
+    if (!profile.verified_user) {
+        return {
+            valid: false,
+            error: 'PeeringDB account is not verified. Please verify your account and try again.',
+        };
     }
+
+    return {
+        valid: true,
+        /** @type {SessionData} */
+        sessionData: {
+            id:             profile.id,
+            name:           profile.name,
+            given_name:     profile.given_name,
+            family_name:    profile.family_name,
+            email:          profile.email          || '',
+            verified_user:  profile.verified_user,
+            verified_email: profile.verified_email || false,
+            networks:       profile.networks       || [],
+            created_at:     new Date().toISOString(),
+        },
+    };
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 /**
- * GET /auth/login.
+ * Resolves the return origin for the OAuth login redirect.
  *
- * Generates a CSRF state nonce, binds it to the browser via an HttpOnly
- * cookie (Double Submit Cookie pattern), and redirects the user to
- * PeeringDB's OAuth2 authorization endpoint.
- *
- * No server-side storage is needed for the state — the cookie is the
- * sole CSRF binding. The callback handler verifies the cookie matches
- * the URL state parameter returned by PeeringDB.
+ * Extracts the origin from the Referer header and validates it against
+ * the CORS allowlist. Falls back to `env.FRONTEND_ORIGIN` if the header
+ * is absent, malformed, or not on the allowlist.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Response} 302 redirect to PeeringDB authorize URL.
+ * @returns {string} A validated origin URL.
  */
-function handleLogin(request, env) {
-    const state = generateSessionId();
-
-    // Determine return origin from the Referer header. When the user
-    // clicks "Sign in", the browser includes the referring page URL.
-    // We extract the origin and validate it against our allowlist.
-    // Falls back to FRONTEND_ORIGIN if Referer is missing (e.g. strict
-    // privacy settings or direct URL entry).
-    let returnOrigin = env.FRONTEND_ORIGIN;
+function resolveReturnOrigin(request, env) {
     const referer = request.headers.get('Referer');
     if (referer) {
         try {
             const refOrigin = new URL(referer).origin; // ap-ok: auth worker only
-            const probe = new Request(request.url, {
-                headers: { 'Origin': refOrigin },
-            });
-            const resolved = resolveAllowedOrigin(probe, env);
-            if (resolved === refOrigin) {
-                returnOrigin = refOrigin;
+            const probe = new Request(request.url, { headers: { 'Origin': refOrigin } });
+            if (resolveAllowedOrigin(probe, env) === refOrigin) {
+                return refOrigin;
             }
-        } catch { /* malformed referer — use default */ }
+        } catch { /* malformed Referer — use default */ }
     }
-
-    const params = new URLSearchParams({
-        response_type: 'code',
-        client_id: env.OAUTH_CLIENT_ID,
-        redirect_uri: env.OAUTH_REDIRECT_URI,
-        scope: OAUTH_SCOPES,
-        state,
-    });
-
-    // Bind the state nonce and return origin to this browser via
-    // cookies. The callback handler verifies the nonce cookie matches
-    // the URL state parameter, preventing login CSRF attacks.
-    // The return origin cookie tells the callback where to redirect.
-    const headers = new Headers({
-        'Location': `${PDB_AUTHORIZE_URL}?${params.toString()}`,
-        'Cache-Control': 'no-store',
-    });
-    headers.append('Set-Cookie', `pdbfe_oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`);
-    headers.append('Set-Cookie', `pdbfe_oauth_return=${encodeURIComponent(returnOrigin)}; HttpOnly; Secure; SameSite=Lax; Max-Age=${STATE_TTL}; Path=/`);
-
-    return new Response(null, { status: 302, headers });
+    return env.FRONTEND_ORIGIN;
 }
 
-/**
- * Handles GET /auth/callback.
- *
- * This is the OAuth2 redirect URI. PeeringDB sends back a `code`
- * and `state` parameter. The handler:
- *   1. Validates the state nonce via cookie (CSRF protection)
- *   2. Exchanges the authorization code for an access token
- *   3. Fetches the user profile using the access token
- *   4. Creates a session in KV
- *   5. Redirects to the frontend with the session ID as a query parameter
- *
- * @param {Request} request - The inbound HTTP request (with ?code=...&state=...).
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<Response>} 302 redirect to the frontend, or error response.
- */
-async function handleCallback(request, env) {
-    const url = new URL(request.url); // ap-ok: auth worker only, not API hot path
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-    const error = url.searchParams.get('error');
-
-    // Cookie clearing headers — expire both oauth cookies regardless
-    // of whether the callback succeeds or fails.
-    const clearCookies = [
-        'pdbfe_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
-        'pdbfe_oauth_return=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0',
-    ];
-
-    /**
-     * Helper to append cookie-clearing headers to a response.
-     * @param {Response} resp
-     * @returns {Response}
-     */
-    const clearAndReturn = (resp) => {
-        for (const c of clearCookies) resp.headers.append('Set-Cookie', c);
-        return resp;
-    };
-
-    // Resolve the return origin from the cookie (set during /auth/login).
-    // Falls back to FRONTEND_ORIGIN if missing or invalid.
-    let returnOrigin = env.FRONTEND_ORIGIN;
-    const rawReturn = extractCookie(request, 'pdbfe_oauth_return');
-    if (rawReturn) {
-        const decoded = decodeURIComponent(rawReturn);
-        const probe = new Request(request.url, {
-            headers: { 'Origin': decoded },
-        });
-        const resolved = resolveAllowedOrigin(probe, env);
-        if (resolved === decoded) {
-            returnOrigin = decoded;
-        }
-    }
-
-    // PeeringDB may redirect with an error parameter on user denial
-    if (error) {
-        const desc = url.searchParams.get('error_description') || error;
-        return clearAndReturn(redirectToFrontend(returnOrigin, null, desc));
-    }
-
-    if (!code || !state) {
-        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'Missing code or state parameter'));
-    }
-
-    // Validate CSRF state nonce: verify the cookie set during /auth/login
-    // matches the state parameter returned by PeeringDB. This proves the
-    // login flow was initiated by this browser (Double Submit Cookie).
-    const cookieState = extractCookie(request, 'pdbfe_oauth_state');
-    if (!cookieState || cookieState !== state) {
-        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'State mismatch (possible CSRF)'));
-    }
-
-    // Exchange authorization code for access token
-    const tokenResult = await exchangeCode(code, env);
-    if (!tokenResult.ok) {
-        return clearAndReturn(redirectToFrontend(returnOrigin, null, tokenResult.error || 'Token exchange failed'));
-    }
-
-    // Fetch user profile from PeeringDB
-    const profile = await fetchProfile(tokenResult.access_token);
-    if (!profile) {
-        return clearAndReturn(redirectToFrontend(returnOrigin, null, 'Failed to fetch user profile'));
-    }
-
-    // Require verified user — unverified accounts cannot log in
-    if (!profile.verified_user) {
-        return clearAndReturn(redirectToFrontend(
-            returnOrigin,
-            null,
-            'PeeringDB account is not verified. Please verify your account and try again.'
-        ));
-    }
-
-    // Create session
-    const sid = generateSessionId();
-    /** @type {SessionData} */
-    const sessionData = {
-        id: profile.id,
-        name: profile.name,
-        given_name: profile.given_name,
-        family_name: profile.family_name,
-        email: profile.email || '',
-        verified_user: profile.verified_user,
-        verified_email: profile.verified_email || false,
-        networks: profile.networks || [],
-        created_at: new Date().toISOString(),
-    };
-
-    await writeSession(env.SESSIONS, sid, sessionData, SESSION_TTL);
-
-    return clearAndReturn(redirectToFrontend(returnOrigin, sid, null));
-}
+// ── OAuth Handler ─────────────────────────────────────────────────────────────
 
 /**
- * Handles GET /auth/logout.
+ * Module-level handler instance. Initialized on the first request when
+ * `env` is available, then reused for the lifetime of the isolate.
  *
- * Deletes the session from KV and redirects to the frontend.
- *
- * @param {Request} request - The inbound HTTP request.
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<Response>} 302 redirect to the frontend.
+ * @type {import('../../core/oauth.js').OAuthHandler|null}
  */
-async function handleLogout(request, env) {
-    const sid = extractSessionId(request);
-    if (sid) {
-        await deleteSession(env.SESSIONS, sid);
-    }
+let oauthHandler = null;
 
-    return new Response(null, {
-        status: 302,
-        headers: {
-            'Location': env.FRONTEND_ORIGIN,
-            'Cache-Control': 'no-store',
+/**
+ * Initializes the OAuth handler on first use, when env bindings are
+ * available. Subsequent calls return the cached instance.
+ *
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {import('../../core/oauth.js').OAuthHandler}
+ */
+function getOAuthHandler(env) {
+    if (oauthHandler) return oauthHandler;
+
+    /** @type {string} Shared User-Agent for all upstream requests. */
+    const UA = `pdbfe-auth/1.0 (Cloudflare Worker; +${env.FRONTEND_ORIGIN})`;
+
+    oauthHandler = createOAuthHandler({
+        authorizeUrl: PDB_AUTHORIZE_URL,
+        tokenUrl:     PDB_TOKEN_URL,
+        profileUrl:   PDB_PROFILE_URL,
+        scopes:       OAUTH_SCOPES,
+        cookiePrefix: 'pdbfe_oauth',
+
+        // PeeringDB's WAF blocks Cloudflare Worker subrequests without an
+        // Authorization header. Inject the API key to satisfy it; the token
+        // endpoint reads OAuth credentials from the POST body independently.
+        tokenHeaders: {
+            'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`,
+            'User-Agent': UA,
         },
-    });
-}
 
-/**
- * Handles GET /auth/me.
- *
- * Returns the current session data as JSON, or a 401 if no valid
- * session exists. Used by the frontend to check login status.
- *
- * @param {Request} request - The inbound HTTP request.
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<Response>} JSON response with session data or 401.
- */
-async function handleMe(request, env) {
-    const headers = {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-        ...accountCorsHeaders(resolveAllowedOrigin(request, env)),
-    };
-
-    const sid = extractSessionId(request);
-    if (!sid) {
-        return new Response(
-            JSON.stringify({ authenticated: false }) + '\n',
-            { status: 401, headers }
-        );
-    }
-
-    const session = await resolveSession(env.SESSIONS, sid);
-    if (!session) {
-        return new Response(
-            JSON.stringify({ authenticated: false }) + '\n',
-            { status: 401, headers }
-        );
-    }
-
-    return new Response(
-        JSON.stringify({ authenticated: true, user: session }) + '\n',
-        { status: 200, headers }
-    );
-}
-
-
-// ── Internal helpers ─────────────────────────────────────────────────────────
-
-/**
- * Extracts a named cookie value from the request's Cookie header.
- *
- * @param {Request} request - The inbound HTTP request.
- * @param {string} name - Cookie name to extract.
- * @returns {string|null} The cookie value, or null if not found.
- */
-function extractCookie(request, name) {
-    const header = request.headers.get('Cookie');
-    if (!header) return null;
-    const re = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]+)`); // ap-ok: auth worker only, not API hot path
-    const match = re.exec(header);
-    return match ? match[1].trim() : null;
-}
-
-/**
- * Exchanges an OAuth2 authorization code for an access token by
- * POSTing to PeeringDB's token endpoint.
- *
- * @param {string} code - The authorization code from the callback.
- * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<{ok: boolean, access_token?: string, error?: string}>}
- */
-async function exchangeCode(code, env) {
-    const body = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: env.OAUTH_REDIRECT_URI,
-        client_id: env.OAUTH_CLIENT_ID,
-        client_secret: env.OAUTH_CLIENT_SECRET,
-    });
-
-    // PeeringDB's WAF blocks Cloudflare Worker subrequests that lack an
-    // Authorization header. We use a PeeringDB API key in the header to
-    // satisfy the WAF, while the token endpoint reads OAuth client
-    // credentials from the POST body.
-
-    try {
-        const response = await fetch(PDB_TOKEN_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`,
-                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
-            },
-            body: body.toString(),
-        });
-
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`Token exchange failed (${response.status}):`, text);
-            return { ok: false, error: `Token endpoint returned ${response.status}: ${text}` };
-        }
-
-        const data = /** @type {{access_token: string, token_type: string}} */ (await response.json());
-        if (!data.access_token) {
-            return { ok: false, error: 'No access_token in token response' };
-        }
-
-        return { ok: true, access_token: data.access_token };
-    } catch (err) {
-        console.error('Token exchange error:', err);
-        return { ok: false, error: 'Token exchange network error' };
-    }
-}
-
-/**
- * Fetches the authenticated user's profile from PeeringDB's
- * profile endpoint using a Bearer access token.
- *
- * @param {string} accessToken - The OAuth2 access token.
- * @returns {Promise<Record<string, any>|null>} The profile object, or null on failure.
- */
-async function fetchProfile(accessToken) {
-    try {
-        const response = await fetch(PDB_PROFILE_URL, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'User-Agent': 'pdbfe-auth/1.0 (Cloudflare Worker; +https://pdbfe-frontend.pages.dev)',
-            },
-        });
-
-        if (!response.ok) {
-            console.error(`Profile fetch failed (${response.status})`);
-            return null;
-        }
-
-        return /** @type {Record<string, any>} */ (await response.json());
-    } catch (err) {
-        console.error('Profile fetch error:', err);
-        return null;
-    }
-}
-
-/**
- * Builds a redirect response back to the frontend origin.
- * On success, appends the session ID as a query parameter (?sid=...).
- * On error, appends the error message as a query parameter (?auth_error=...).
- *
- * Query parameters survive Cloudflare Access redirect chains, while
- * URL fragments (#) are stripped by Access during its auth flow.
- *
- * @param {string} frontendOrigin - The frontend origin URL.
- * @param {string|null} sid - The session ID on success, or null.
- * @param {string|null} error - Error message on failure, or null.
- * @returns {Response} 302 redirect response.
- */
-function redirectToFrontend(frontendOrigin, sid, error) {
-    let location = frontendOrigin;
-    if (sid) {
-        location += `/?sid=${sid}`;
-    } else if (error) {
-        location += `/?auth_error=${encodeURIComponent(error)}`;
-    }
-
-    return new Response(null, {
-        status: 302,
-        headers: {
-            'Location': location,
-            'Cache-Control': 'no-store',
+        profileHeaders: {
+            'User-Agent': UA,
         },
+
+        getCorsHeaders: (request, env) => accountCorsHeaders(resolveAllowedOrigin(request, env)),
+
+        parseProfile: parsePeeringDbProfile,
     });
+
+    return oauthHandler;
+}
+
+// ── Endpoint Handlers ────────────────────────────────────────────────────────
+
+/**
+ * Dispatches /auth/* requests to the generic OAuth2 handler.
+ * Enforces GET-only and handles OPTIONS preflight.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {Promise<Response>|Response} The HTTP response.
+ */
+export function handleAuth(request, env) {
+    if (request.method === 'OPTIONS') return handlePreflight(request, env);
+    if (request.method !== 'GET') return methodNotAllowed('GET, OPTIONS');
+
+    return getOAuthHandler(env).handleOAuth(request, env, resolveReturnOrigin);
 }
