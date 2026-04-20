@@ -11,7 +11,7 @@ import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '
 import { expandDepth } from '../depth.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
-import { EMPTY_ENVELOPE } from '../../core/pipeline.js';
+import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
 import { parseJsonFields, countRows } from './shared.js';
 

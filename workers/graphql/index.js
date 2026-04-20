@@ -11,7 +11,7 @@
  *   - cache.js            — LRU cache, cache key generation, SWR wrapper
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
- *   - L2 cache via core/l2cache.js with SHA-256 hashed keys
+ *   - L2 cache via core/pipeline/ with SHA-256 hashed keys
  *
  * Route: graphql.pdbfe.dev/*
  */
@@ -20,7 +20,7 @@ import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
-import { initL2 } from '../core/l2cache.js';
+import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';

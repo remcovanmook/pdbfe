@@ -3,15 +3,14 @@
  *
  * Consolidates all cache-related concerns for the REST worker:
  *   - LRU cache instance and TTL constants
- *   - SWR wrapper (thin adapter over core/swr.js)
+ *   - SWR wrapper (thin adapter over core/pipeline/)
  *   - Cache stats and admin flush
  *
  * Dependencies are limited to core/ — no cross-worker imports.
  */
 
 import { LRUCache } from '../core/cache.js';
-import { withSWR } from '../core/swr.js';
-import { EMPTY_ENVELOPE } from '../core/pipeline.js';
+import { withSWR, EMPTY_ENVELOPE } from '../core/pipeline/index.js';
 
 /**
  * Cache TTL for REST responses (60 minutes).
@@ -65,7 +64,7 @@ export function purgeRestCache() {
  * Performs the full L1 read → SWR → cachedQuery miss flow for a REST
  * API endpoint.
  *
- * Delegates entirely to the generic withSWR() in core/swr.js, injecting
+ * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
  * the REST cache, EMPTY_ENVELOPE sentinel, and TTL values.
  *
  * @param {string} entityTag - Entity tag (e.g. "net"). Used as the

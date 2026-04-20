@@ -14,14 +14,14 @@
  *     are served immediately while a background refresh runs via
  *     ctx.waitUntil().
  *
- * cachedQuery() (pipeline.js) remains the internal miss-resolution engine
+ * cachedQuery() (query.js) remains the internal miss-resolution engine
  * — withSWR delegates to it for coalescing, L2 cache, and negative caching.
  *
  * Worker-specific modules (api/swr.js, graphql/swr.js) are thin wrappers
  * that call withSWR with pre-filled configuration.
  */
 
-import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './pipeline.js';
+import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
 
 /**
  * Performs the full L1 read → SWR → cachedQuery miss flow for a cache key.

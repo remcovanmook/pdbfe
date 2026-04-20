@@ -14,7 +14,7 @@
  *   - Query building via the shared api/query.js module
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
- *   - L2 cache via core/l2cache.js with /v1/ path keys
+ *   - L2 cache via core/pipeline/ with /v1/ path keys
  *
  * Route: rest.pdbfe.dev/*
  */
@@ -26,7 +26,7 @@ import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { H_API_AUTH, H_API_ANON } from '../api/http.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
-import { initL2 } from '../core/l2cache.js';
+import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getRestCacheStats, purgeRestCache } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';

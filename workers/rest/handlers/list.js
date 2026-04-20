@@ -10,7 +10,7 @@ import { expandDepth } from '../../api/depth.js';
 import { encodeJSON, encoder } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { serveJSON } from '../../api/http.js';
-import { EMPTY_ENVELOPE } from '../../core/pipeline.js';
+import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { withRestSWR } from '../cache.js';
 
 /**

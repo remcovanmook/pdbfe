@@ -20,7 +20,7 @@
  */
 
 import { getL2, putL2 } from './l2cache.js';
-import { encoder } from './http.js';
+import { encoder } from '../http.js';
 
 /**
  * Default sentinel value representing a cached 404 / empty result.

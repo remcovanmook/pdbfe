@@ -14,7 +14,7 @@ import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFi
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { resolveAuth } from '../core/auth.js';
-import { initL2 } from '../core/l2cache.js';
+import { initL2 } from '../core/pipeline/index.js';
 
 /**
  * Rate limiter for API requests.
