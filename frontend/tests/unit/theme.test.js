@@ -42,19 +42,19 @@ describe('getTheme', () => {
     beforeEach(() => setupMocks());
 
     it('returns "auto" when nothing is stored', async () => {
-        const { getTheme } = await import('../js/theme.js');
+        const { getTheme } = await import('../../js/theme.js');
         assert.equal(getTheme(), 'auto');
     });
 
     it('returns "dark" when "dark" is stored', async () => {
         store.set('pdbfe-theme', 'dark');
-        const { getTheme } = await import('../js/theme.js');
+        const { getTheme } = await import('../../js/theme.js');
         assert.equal(getTheme(), 'dark');
     });
 
     it('returns "light" when "light" is stored', async () => {
         store.set('pdbfe-theme', 'light');
-        const { getTheme } = await import('../js/theme.js');
+        const { getTheme } = await import('../../js/theme.js');
         assert.equal(getTheme(), 'light');
     });
 });
@@ -63,14 +63,14 @@ describe('setTheme', () => {
     beforeEach(() => setupMocks());
 
     it('persists "dark" and removes data-theme attribute', async () => {
-        const { setTheme } = await import('../js/theme.js');
+        const { setTheme } = await import('../../js/theme.js');
         setTheme('dark');
         assert.equal(store.get('pdbfe-theme'), 'dark');
         assert.equal(datasetTheme.theme, undefined, 'Dark mode should delete data-theme');
     });
 
     it('persists "light" and sets data-theme="light"', async () => {
-        const { setTheme } = await import('../js/theme.js');
+        const { setTheme } = await import('../../js/theme.js');
         setTheme('light');
         assert.equal(store.get('pdbfe-theme'), 'light');
         assert.equal(datasetTheme.theme, 'light');
@@ -78,13 +78,13 @@ describe('setTheme', () => {
 
     it('"auto" removes stored preference and uses OS theme', async () => {
         store.set('pdbfe-theme', 'light');
-        const { setTheme } = await import('../js/theme.js');
+        const { setTheme } = await import('../../js/theme.js');
         setTheme('auto');
         assert.equal(store.has('pdbfe-theme'), false, 'auto should remove stored key');
     });
 
     it('ignores invalid theme values', async () => {
-        const { setTheme } = await import('../js/theme.js');
+        const { setTheme } = await import('../../js/theme.js');
         setTheme('neon');
         assert.equal(store.has('pdbfe-theme'), false, 'Invalid theme should not be stored');
     });
@@ -94,7 +94,7 @@ describe('setTheme', () => {
             matches: query === '(prefers-color-scheme: light)',
             media: query,
         }));
-        const { setTheme } = await import('../js/theme.js');
+        const { setTheme } = await import('../../js/theme.js');
         setTheme('auto');
         assert.equal(datasetTheme.theme, 'light');
     });
@@ -105,20 +105,20 @@ describe('initTheme', () => {
 
     it('applies light when "light" is stored', async () => {
         store.set('pdbfe-theme', 'light');
-        const { initTheme } = await import('../js/theme.js');
+        const { initTheme } = await import('../../js/theme.js');
         initTheme();
         assert.equal(datasetTheme.theme, 'light');
     });
 
     it('applies dark when "dark" is stored', async () => {
         store.set('pdbfe-theme', 'dark');
-        const { initTheme } = await import('../js/theme.js');
+        const { initTheme } = await import('../../js/theme.js');
         initTheme();
         assert.equal(datasetTheme.theme, undefined, 'Dark mode removes data-theme');
     });
 
     it('follows OS preference when nothing is stored', async () => {
-        const { initTheme } = await import('../js/theme.js');
+        const { initTheme } = await import('../../js/theme.js');
         initTheme();
         // Default matchMedia returns false for light → dark mode
         assert.equal(datasetTheme.theme, undefined);

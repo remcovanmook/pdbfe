@@ -11,7 +11,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockDOM, mockElement } from './helpers/mock-dom.js';
+import { createMockDOM, mockElement } from '../helpers/mock-dom.js';
 import { setTimeout as wait } from 'node:timers/promises';
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ describe('attachTypeahead — minimum query length', () => {
         let searched = false;
 
         // Mock the api module before typeahead imports it
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
 
         const { input, listeners } = makeInput();
         attachTypeahead(input);
@@ -114,7 +114,7 @@ describe('attachTypeahead — debounce coalescing', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input);
 
@@ -146,7 +146,7 @@ describe('attachTypeahead — keyboard navigation', () => {
     });
 
     it('registers keydown and input event listeners', async () => {
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input);
 
@@ -156,7 +156,7 @@ describe('attachTypeahead — keyboard navigation', () => {
     });
 
     it('handles Escape key without throwing', async () => {
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input);
 
@@ -165,7 +165,7 @@ describe('attachTypeahead — keyboard navigation', () => {
     });
 
     it('handles ArrowDown key without throwing when dropdown is closed', async () => {
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input);
 
@@ -173,7 +173,7 @@ describe('attachTypeahead — keyboard navigation', () => {
     });
 
     it('handles ArrowUp key without throwing', async () => {
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input);
 
@@ -185,7 +185,7 @@ describe('attachTypeahead — keyboard navigation', () => {
         // Mock router navigate
         globalThis.__router = { navigate: () => { navigated = true; } };
 
-        const { attachTypeahead } = await import('../js/typeahead.js');
+        const { attachTypeahead } = await import('../../js/typeahead.js');
         const { input, listeners } = makeInput();
         attachTypeahead(input, { navigateOnEnter: false });
 

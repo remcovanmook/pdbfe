@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown } from '../js/markdown.js';
+import { renderMarkdown } from '../../js/markdown.js';
 
 describe("renderMarkdown", () => {
     it("should return empty string for null/undefined/empty input", () => {

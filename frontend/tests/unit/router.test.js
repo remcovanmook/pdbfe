@@ -91,7 +91,7 @@ describe('addRoute — pattern compilation', () => {
     beforeEach(() => setupMocks());
 
     it('matches a simple path without params', async () => {
-        const { addRoute } = await import('../js/router.js');
+        const { addRoute } = await import('../../js/router.js');
 
         let matched = false;
         addRoute('/', async () => { matched = true; });
@@ -106,7 +106,7 @@ describe('addRoute — pattern compilation', () => {
     });
 
     it('compiles :param placeholders into named capture groups', async () => {
-        const { addRoute } = await import('../js/router.js');
+        const { addRoute } = await import('../../js/router.js');
 
         // addRoute converts "/net/:id" → regex with named group
         // We test this by registering, then navigating, and capturing params.
@@ -124,7 +124,7 @@ describe('addRoute — pattern compilation', () => {
         globalThis.location.pathname = '/net/42';
         globalThis.location.search = '';
 
-        const { initRouter } = await import('../js/router.js');
+        const { initRouter } = await import('../../js/router.js');
         initRouter(container);
 
         // Wait for async dispatch
@@ -134,7 +134,7 @@ describe('addRoute — pattern compilation', () => {
     });
 
     it('passes query parameters to the handler', async () => {
-        const { addRoute, initRouter } = await import('../js/router.js');
+        const { addRoute, initRouter } = await import('../../js/router.js');
 
         /** @type {Record<string, string>|null} */
         let captured = null;
@@ -157,7 +157,7 @@ describe('addRoute — pattern compilation', () => {
     });
 
     it('handles trailing slashes', async () => {
-        const { addRoute, initRouter } = await import('../js/router.js');
+        const { addRoute, initRouter } = await import('../../js/router.js');
 
         /** @type {Record<string, string>|null} */
         let captured = null;

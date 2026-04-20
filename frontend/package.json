@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "/opt/homebrew/bin/node --test tests/*.test.js",
+    "test:unit": "/opt/homebrew/bin/node --test 'tests/unit/*.test.js' 'tests/unit/**/*.test.js'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "../workers/node_modules/.bin/tsc --noEmit"

@@ -32,7 +32,7 @@ setNavigatorLang('en');
 globalThis.fetch = async () => ({ ok: false });
 
 // Import after stubs are set up
-const { t, initI18n, setLanguage, getCurrentLang, LANGUAGES } = await import('../js/i18n.js');
+const { t, initI18n, setLanguage, getCurrentLang, LANGUAGES } = await import('../../js/i18n.js');
 
 // ── t() function ─────────────────────────────────────────────────────────────
 

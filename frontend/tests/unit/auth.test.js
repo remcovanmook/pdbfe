@@ -12,7 +12,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockDOM } from './helpers/mock-dom.js';
+import { createMockDOM } from '../helpers/mock-dom.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ describe('isFavorite', () => {
     beforeEach(setup);
 
     it('returns false for an entity not in favorites', async () => {
-        const { isFavorite, logout } = await import('../js/auth.js');
+        const { isFavorite, logout } = await import('../../js/auth.js');
         logout();
         assert.equal(isFavorite('net', 1), false);
     });
@@ -63,7 +63,7 @@ describe('addFavorite — anonymous path', () => {
     beforeEach(() => { ctx = setup(); });
 
     it('adds a valid entity and returns true', async () => {
-        const { addFavorite, isFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, isFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const ok = await addFavorite('net', 694, 'Cloudflare');
@@ -72,7 +72,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('writes the entry to localStorage', async () => {
-        const { addFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         await addFavorite('net', 694, 'Cloudflare');
@@ -85,7 +85,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('returns true and is idempotent for already-favorited entities', async () => {
-        const { addFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const first = await addFavorite('net', 694, 'Cloudflare');
@@ -101,7 +101,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('rejects invalid entity types', async () => {
-        const { addFavorite, isFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, isFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const ok = await addFavorite('invalidtype', 1, 'Test');
@@ -110,7 +110,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('rejects non-integer entity IDs', async () => {
-        const { addFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const ok1 = await addFavorite('net', -1, 'Test');
@@ -120,7 +120,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('truncates label to MAX_LABEL_LENGTH (200 chars)', async () => {
-        const { addFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const longLabel = 'x'.repeat(300);
@@ -131,7 +131,7 @@ describe('addFavorite — anonymous path', () => {
     });
 
     it('strips control characters from label', async () => {
-        const { addFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         await addFavorite('net', 101, 'Hello\x00World\x1f');
@@ -150,7 +150,7 @@ describe('removeFavorite — anonymous path', () => {
     beforeEach(() => { ctx = setup(); });
 
     it('removes an existing favorite and returns true', async () => {
-        const { addFavorite, removeFavorite, isFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, removeFavorite, isFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         await addFavorite('ix', 26, 'AMS-IX');
@@ -162,7 +162,7 @@ describe('removeFavorite — anonymous path', () => {
     });
 
     it('removes the entry from localStorage', async () => {
-        const { addFavorite, removeFavorite, logout } = await import('../js/auth.js');
+        const { addFavorite, removeFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         await addFavorite('fac', 1, 'Equinix');
@@ -175,7 +175,7 @@ describe('removeFavorite — anonymous path', () => {
     });
 
     it('returns true when entity is not in favorites (idempotent)', async () => {
-        const { removeFavorite, logout } = await import('../js/auth.js');
+        const { removeFavorite, logout } = await import('../../js/auth.js');
         logout();
 
         const ok = await removeFavorite('net', 9999);
@@ -191,7 +191,7 @@ describe('reorderFavorites — anonymous path', () => {
     beforeEach(() => { ctx = setup(); });
 
     it('reorders the in-memory list and persists to localStorage', async () => {
-        const { addFavorite, reorderFavorites, getFavorites, logout } = await import('../js/auth.js');
+        const { addFavorite, reorderFavorites, getFavorites, logout } = await import('../../js/auth.js');
         logout();
 
         await addFavorite('net', 1, 'A');
@@ -239,7 +239,7 @@ describe('initAuth — SID pattern validation', () => {
             ok: false, status: 401, json: async () => ({}),
         }));
 
-        const { initAuth } = await import('../js/auth.js');
+        const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
         // SID pattern was valid so it should have been written to localStorage
@@ -269,7 +269,7 @@ describe('initAuth — SID pattern validation', () => {
             ok: false, status: 401, json: async () => ({}),
         }));
 
-        const { initAuth } = await import('../js/auth.js');
+        const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
         assert.equal(store['pdbfe_sid'], undefined, 'Malformed SID should not be stored');
@@ -296,7 +296,7 @@ describe('initAuth — SID pattern validation', () => {
             ok: false, status: 401, json: async () => ({}),
         }));
 
-        const { initAuth } = await import('../js/auth.js');
+        const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
         assert.equal(store['pdbfe_sid'], undefined, 'Non-hex SID should not be stored');

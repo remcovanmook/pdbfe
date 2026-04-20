@@ -9,7 +9,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockDOM } from './helpers/mock-dom.js';
+import { createMockDOM } from '../helpers/mock-dom.js';
 
 // ── Setup ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ describe('buildURL — URL construction', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
         await fetchList('net', {});
 
@@ -51,7 +51,7 @@ describe('buildURL — URL construction', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
         await fetchList('net', { name: '', asn: undefined, limit: null });
 
@@ -69,7 +69,7 @@ describe('buildURL — URL construction', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
         await fetchList('net', { asn: 20940 });
 
@@ -89,7 +89,7 @@ describe('SWR cache — state machine', () => {
             return { ok: true, json: async () => ({ data: [{ id: 1 }], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
 
         await fetchList('ix', { limit: 1 });
@@ -110,7 +110,7 @@ describe('SWR cache — state machine', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
 
         // Fire 3 concurrent requests for the same uncached key
@@ -131,7 +131,7 @@ describe('SWR cache — state machine', () => {
             headers: new Map(),
         }));
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
 
         await assert.rejects(
@@ -153,7 +153,7 @@ describe('SWR cache — state machine', () => {
             if (e.type === 'pdbfe:ratelimit') eventFired = true;
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
 
         await assert.rejects(() => fetchList('carrier', {}));
@@ -179,7 +179,7 @@ describe('getCacheDiagnostics', () => {
             ]),
         }));
 
-        const { fetchList, clearCache, getCacheDiagnostics } = await import('../js/api.js');
+        const { fetchList, clearCache, getCacheDiagnostics } = await import('../../js/api.js');
         clearCache();
         await fetchList('net', { limit: 1 });
 
@@ -202,7 +202,7 @@ describe('getCacheDiagnostics', () => {
             headers: new Map(),
         }));
 
-        const { fetchList, clearCache, getCacheDiagnostics } = await import('../js/api.js');
+        const { fetchList, clearCache, getCacheDiagnostics } = await import('../../js/api.js');
         clearCache();
         await fetchList('net', {});
 
@@ -231,7 +231,7 @@ describe('searchWithAsn — ASN injection and deduplication', () => {
             return { ok: true, json: async () => ({ data: [otherNet], meta: {} }), headers: new Map() };
         });
 
-        const { searchWithAsn, clearCache } = await import('../js/api.js');
+        const { searchWithAsn, clearCache } = await import('../../js/api.js');
         clearCache();
 
         const results = await searchWithAsn('13335');
@@ -251,7 +251,7 @@ describe('searchWithAsn — ASN injection and deduplication', () => {
             return { ok: true, json: async () => ({ data: [exactNet, { id: 2, name: 'Other' }], meta: {} }), headers: new Map() };
         });
 
-        const { searchWithAsn, clearCache } = await import('../js/api.js');
+        const { searchWithAsn, clearCache } = await import('../../js/api.js');
         clearCache();
 
         const results = await searchWithAsn('13335');
@@ -270,7 +270,7 @@ describe('searchWithAsn — ASN injection and deduplication', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { searchWithAsn, clearCache } = await import('../js/api.js');
+        const { searchWithAsn, clearCache } = await import('../../js/api.js');
         clearCache();
 
         await searchWithAsn('cloudflare');
@@ -290,7 +290,7 @@ describe('clearCache', () => {
             return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
         });
 
-        const { fetchList, clearCache } = await import('../js/api.js');
+        const { fetchList, clearCache } = await import('../../js/api.js');
         clearCache();
         await fetchList('campus', {});
         clearCache();

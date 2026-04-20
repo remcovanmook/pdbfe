@@ -10,7 +10,7 @@
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { createMockDOM } from './helpers/mock-dom.js';
+import { createMockDOM } from '../../helpers/mock-dom.js';
 
 // ── Module load ───────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ before(async () => {
         },
     };
 
-    await import('../js/components/pdb-table.js');
+    await import('../../../js/components/pdb-table.js');
     PdbTableProto = capturedClass;
 });
 
