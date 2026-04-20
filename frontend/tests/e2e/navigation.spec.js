@@ -78,8 +78,9 @@ test('browser back button returns to previous page', async ({ page }) => {
     await page.goBack();
     // URL should return to the root
     await expect(page).toHaveURL(/localhost:8788\/?$/);
-    await expect(page.locator('h1')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('h1')).toContainText('The Interconnection Database');
+    // The SPA router handles popstate asynchronously — poll until the homepage
+    // h1 appears rather than checking visibility on the stale about-page h1.
+    await expect(page.locator('h1')).toContainText('The Interconnection Database', { timeout: 10_000 });
 });
 
 // ── Deep links ────────────────────────────────────────────────────────────────
