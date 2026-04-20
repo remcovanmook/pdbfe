@@ -27,6 +27,7 @@ import { LRUCache } from './cache.js';
  *
  * IPv4 addresses are returned unchanged.
  *
+ * @internal Exported for unit testing. Production callers use createRateLimiter().
  * @param {string} ip - Raw IP address from cf-connecting-ip.
  * @returns {string} Normalised rate limit key (IPv4 as-is, IPv6 /64 prefix).
  */

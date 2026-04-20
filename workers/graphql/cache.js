@@ -4,17 +4,17 @@
  * Consolidates all cache-related concerns for the GraphQL worker:
  *   - LRU cache instance and TTL constants
  *   - Cache key generation (SHA-256 hashing of query + variables)
- *   - SWR wrapper (thin adapter over core/swr.js)
+ *   - SWR wrapper (thin adapter over core/pipeline/)
  *   - Cache stats and admin flush
  *
  * The Cloudflare Cache API only supports GET requests. Since GraphQL
  * operations are POST-based, we hash the operation body to produce a
  * deterministic cache key (format: gql/{sha256-hex}), then rely on
- * core/pipeline.js for L2 get/put via caches.default.
+ * core/pipeline/ for L2 get/put via caches.default.
  */
 
 import { LRUCache } from '../core/cache.js';
-import { withSWR } from '../core/swr.js';
+import { withSWR } from '../core/pipeline/index.js';
 import { encoder } from '../core/http.js';
 
 /**
@@ -107,7 +107,7 @@ export async function graphqlCacheKey(query, variables) {
  * Performs the full L1 → SWR → coalesce → L2 → queryFn flow for a
  * GraphQL operation.
  *
- * Delegates entirely to the generic withSWR() in core/swr.js, injecting
+ * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
  * the GraphQL cache, sentinel, and TTL values. The caller only needs to
  * provide the cache key, execution context, and yoga query closure.
  *

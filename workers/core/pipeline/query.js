@@ -20,7 +20,7 @@
  */
 
 import { getL2, putL2 } from './l2cache.js';
-import { encoder } from './http.js';
+import { encoder } from '../http.js';
 
 /**
  * Default sentinel value representing a cached 404 / empty result.
@@ -37,6 +37,7 @@ export const EMPTY_ENVELOPE = encoder.encode('{"data":[],"meta":{}}');
  * object is stored), then byte-for-byte (needed for L2, which returns
  * a copy).
  *
+ * @internal Exported for unit testing. Production callers use cachedQuery().
  * @param {Uint8Array|ArrayBuffer} buf - Buffer to check.
  * @param {Uint8Array} [sentinel] - Sentinel to compare against.
  *        Defaults to EMPTY_ENVELOPE for backward compatibility.

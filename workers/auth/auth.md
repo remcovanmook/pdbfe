@@ -201,6 +201,30 @@ Preference validation is data-driven: `PUT /account/profile` checks each
 preference key/value pair against `preference_options` via D1 query.
 No hardcoded lists in the worker code.
 
+## Code Architecture: OAuth2 Handler
+
+The OAuth2 flow is split between a generic core factory and a PeeringDB-specific instantiation:
+
+```
+core/oauth.js                           auth/handlers/oauth.js
+───────────────────────────────         ──────────────────────────────────────
+createOAuthHandler(config) →            const strings: PDB_AUTHORIZE_URL etc.
+  handleLogin(req, env, origin?)        parsePeeringDbProfile(profile)
+  handleCallback(req, env)              resolveReturnOrigin(request, env)
+  handleLogout(req, env)                getOAuthHandler(env) → lazy singleton
+  handleMe(req, env)                    handleAuth(request, env) → 5 lines
+  handleOAuth(req, env, fn?)
+```
+
+`createOAuthHandler` accepts an `OAuthHandlerConfig` object:
+- `authorizeUrl`, `tokenUrl`, `profileUrl`, `scopes` — provider endpoints
+- `cookiePrefix` — names the CSRF cookies (e.g. `'pdbfe_oauth'` → `pdbfe_oauth_state`)
+- `tokenHeaders`, `profileHeaders` — extra request headers (WAF bypass, User-Agent)
+- `parseProfile(profile)` — returns `{ valid, sessionData }` or `{ valid: false, error }`
+- `getCorsHeaders(request, env)` — CORS headers for `/auth/me` responses
+
+The auth worker's `handleAuth` initialises the singleton on first call (when `env` is available), then reuses it for the isolate lifetime. `handleOAuth` extracts the pathname from `request.url` and dispatches accordingly, calling `resolveReturnOrigin(request, env)` (supplied by the auth worker) to determine the validated return origin for the login redirect.
+
 ## Security
 
 - **CSRF protection**: Double Submit Cookie pattern — state nonce is set as an `HttpOnly; Secure; SameSite=Lax` cookie during `/auth/login` and verified against the URL `state` parameter in `/auth/callback`. No server-side state storage needed. Cookie is cleared after use.
@@ -227,13 +251,14 @@ No hardcoded lists in the worker code.
 - `workers/auth/index.js` — Router: path prefix matching, delegates to handlers
 - `workers/auth/http.js` — Shared CORS, preflight, response helpers, session resolution, user record helpers
 - `workers/auth/handlers/index.js` — Barrel re-exports: handleAuth, handlePreferences, handleProfile, handleKeys, handleFavorites
-- `workers/auth/handlers/oauth.js` — handleAuth: login, callback, logout, me
+- `workers/auth/handlers/oauth.js` — PeeringDB-specific config (URLs, WAF headers, profile validation) + thin `handleAuth` router. Delegates all OAuth2 protocol logic to `core/oauth.js`.
 - `workers/auth/handlers/profile.js` — handlePreferences + handleProfile: preference options, profile GET/PUT
 - `workers/auth/handlers/keys.js` — handleKeys: API key list, create, revoke
 - `workers/auth/handlers/favorites.js` — handleFavorites: favorites list, add, replace, remove
 
 ### Shared Auth Module
 - `workers/core/auth.js` — Session resolution, API key verification (with in-memory cache), session lifecycle
+- `workers/core/oauth.js` — Generic OAuth2 Authorization Code flow factory (`createOAuthHandler`). Provider-agnostic — responsible for CSRF cookies, token exchange, profile fetch, session creation, and routing. Configured entirely via `OAuthHandlerConfig` injected at instantiation.
 
 ### API Worker
 - `workers/api/index.js` — Authentication block: tries API-Key, then session

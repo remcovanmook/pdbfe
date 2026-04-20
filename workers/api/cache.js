@@ -4,7 +4,7 @@
  * Consolidates all cache-related concerns for the API worker:
  *   - Per-entity LRU cache instances with tier-based sizing
  *   - TTL constants (list, detail, count, negative)
- *   - SWR wrapper (thin adapter over core/swr.js)
+ *   - SWR wrapper (thin adapter over core/pipeline/)
  *   - cachedQuery wrapper (injects API-specific defaults)
  *   - Cache stats and admin flush
  *
@@ -36,8 +36,7 @@
  */
 
 import { LRUCache } from '../core/cache.js';
-import { withSWR } from '../core/swr.js';
-import { cachedQuery as _cachedQuery, EMPTY_ENVELOPE } from '../core/pipeline.js';
+import { withSWR, cachedQuery as _cachedQuery } from '../core/pipeline/index.js';
 import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
 import { getEntityVersion } from './sync_state.js';
 
@@ -156,7 +155,7 @@ export function purgeAllCaches() {
 /**
  * Performs the full L1 read → SWR → cachedQuery miss flow for an API entity.
  *
- * Delegates entirely to the generic withSWR() in core/swr.js, injecting
+ * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
  * the API worker's entity cache, version tracker, sentinel, and negative
  * TTL. The caller only needs to provide the entity tag, cache key,
  * execution context, TTL, and query closure.
@@ -187,7 +186,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
         negativeTtlMs: NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-        emptySentinel: EMPTY_ENVELOPE,
+
         getVersion: getEntityVersion,
         staleMs,
     });
@@ -195,8 +194,8 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
 
 // ── cachedQuery wrapper ──────────────────────────────────────────────────────
 
-/** @typedef {import('../core/pipeline.js').CacheTier} CacheTier */
-/** @typedef {import('../core/pipeline.js').CachedResult} CachedResult */
+/** @typedef {import('../core/pipeline/query.js').CacheTier} CacheTier */
+/** @typedef {import('../core/pipeline/query.js').CachedResult} CachedResult */
 
 /**
  * API-worker cachedQuery wrapper. Pre-fills `getVersion` with the
@@ -214,7 +213,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
  * @param {number} opts.ttlMs - TTL for positive results in milliseconds.
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query closure.
  * @param {ExecutionContext} [opts.ctx] - Worker execution context.
- * @returns {Promise<import('../core/pipeline.js').CachedResult>}
+ * @returns {Promise<import('../core/pipeline/query.js').CachedResult>}
  */
 export async function cachedQuery(opts) {
     return _cachedQuery({
