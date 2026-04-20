@@ -42,35 +42,43 @@ test('homepage renders Most Recent Updates section', async ({ page }) => {
 test('clicking a data-link navigates without a full page reload', async ({ page }) => {
     await page.goto('/');
 
-    // Track whether a full navigation (new document) occurs
-    let fullNavigation = false;
-    page.on('framenavigated', (frame) => {
-        if (frame === page.mainFrame()) fullNavigation = true;
+    // Read the JS object identity of #app to detect if the DOM was fully torn down.
+    // In a true SPA navigation, the existing elements persist; a full reload
+    // would destroy and recreate them.
+    await page.evaluate(() => {
+        // Tag the app container so we can detect if it survived navigation
+        const app = document.getElementById('app');
+        if (app) app.dataset.spaMarker = 'alive';
     });
 
-    // Click the About link in the footer
+    // Navigate via data-link SPA routing
     const aboutLink = page.locator('a[href="/about"][data-link]').first();
     await aboutLink.click();
 
-    // URL should change to /about
+    // URL should have changed via pushState
     await expect(page).toHaveURL(/\/about/);
 
     // The About page content should render
     await expect(page.locator('body')).toContainText('About');
 
-    // A full page reload would have been preceded by a framenavigated event
-    // for the main frame going to a new URL. In SPA nav, only pushState fires.
-    // We check that no reload-style navigation happened.
-    expect(fullNavigation).toBe(false);
+    // The #app container should still carry our data-spa-marker attribute,
+    // proving it was not destroyed by a full page reload.
+    const survived = await page.evaluate(() =>
+        document.getElementById('app')?.dataset.spaMarker === 'alive'
+    );
+    expect(survived).toBe(true);
 });
 
 test('browser back button returns to previous page', async ({ page }) => {
     await page.goto('/');
-    await page.locator('a[href="/about"][data-link]').first().click();
+    const aboutLink = page.locator('a[href="/about"][data-link]').first();
+    await aboutLink.click();
     await expect(page).toHaveURL(/\/about/);
 
     await page.goBack();
-    await expect(page).toHaveURL(/\/$/);
+    // URL should return to the root
+    await expect(page).toHaveURL(/localhost:8788\/?$/);
+    await expect(page.locator('h1')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('h1')).toContainText('The Interconnection Database');
 });
 

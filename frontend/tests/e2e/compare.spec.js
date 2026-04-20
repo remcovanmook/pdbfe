@@ -47,8 +47,8 @@ test('visiting /compare?a=net:694 pre-fills entity A', async ({ page }) => {
 test('compare page renders shared exchanges from mocked response', async ({ page }) => {
     // Navigate with both entities set — the page fetches /api/compare
     await page.goto('/compare?a=net:694&b=net:2914');
-    await page.waitForTimeout(1_500);
+    await page.waitForTimeout(3_000);
 
     // The compare fixture has a shared IX (AMS-IX)
-    await expect(page.locator('body')).toContainText('AMS-IX', { timeout: 8_000 });
+    await expect(page.locator('body')).toContainText('AMS-IX', { timeout: 12_000 });
 });

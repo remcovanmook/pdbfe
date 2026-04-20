@@ -1,6 +1,10 @@
 /**
  * @fileoverview E2E tests for the header typeahead search.
  *
+ * All tests start on a non-home page (/net/694) because the homepage
+ * hides the header search wrapper via CSS (`body[data-page="home"] .search-wrapper
+ * { display: none }`). The search bar is only visible on interior pages.
+ *
  * Verifies:
  *   - No dropdown for < 2 chars
  *   - Dropdown appears with grouped results after debounce
@@ -14,13 +18,16 @@ import { mockApi } from './helpers/api-mock.js';
 
 test.beforeEach(async ({ page }) => {
     await mockApi(page);
-    await page.goto('/');
+    // Navigate to an interior page — the homepage hides the header search
+    await page.goto('/net/694');
+    await expect(page.locator('h1')).toContainText('Cloudflare', { timeout: 10_000 });
 });
 
 // ── Minimum length ────────────────────────────────────────────────────────────
 
 test('no dropdown appears for a single-character query', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('c');
     // Wait past debounce (250ms)
     await page.waitForTimeout(400);
@@ -31,6 +38,7 @@ test('no dropdown appears for a single-character query', async ({ page }) => {
 
 test('dropdown appears with results after typing 2+ chars', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('cl');
     // Wait past debounce
     await page.waitForTimeout(400);
@@ -42,7 +50,9 @@ test('dropdown appears with results after typing 2+ chars', async ({ page }) => 
 });
 
 test('dropdown shows entity type labels', async ({ page }) => {
-    await page.locator('#header-search').fill('cloud');
+    const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await input.fill('cloud');
     await page.waitForTimeout(400);
 
     const dropdown = page.locator('.search-dropdown');
@@ -55,6 +65,7 @@ test('dropdown shows entity type labels', async ({ page }) => {
 
 test('ArrowDown highlights the first dropdown item', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('cloud');
     await page.waitForTimeout(400);
 
@@ -66,6 +77,7 @@ test('ArrowDown highlights the first dropdown item', async ({ page }) => {
 
 test('Escape closes the dropdown', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('cloud');
     await page.waitForTimeout(400);
     await expect(page.locator('.search-dropdown')).toBeVisible();
@@ -76,6 +88,7 @@ test('Escape closes the dropdown', async ({ page }) => {
 
 test('Enter with no highlighted item navigates to /search', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('cloud');
     await page.waitForTimeout(400);
 
@@ -86,6 +99,7 @@ test('Enter with no highlighted item navigates to /search', async ({ page }) => 
 
 test('ArrowDown + Enter navigates to the highlighted item', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('Cloudflare');
     await page.waitForTimeout(400);
 
@@ -100,6 +114,7 @@ test('ArrowDown + Enter navigates to the highlighted item', async ({ page }) => 
 
 test('clicking a dropdown item navigates to the entity page', async ({ page }) => {
     const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
     await input.fill('Cloud');
     await page.waitForTimeout(400);
 
@@ -114,7 +129,9 @@ test('clicking a dropdown item navigates to the entity page', async ({ page }) =
 // ── Click-outside closes dropdown ─────────────────────────────────────────────
 
 test('clicking outside the search area closes the dropdown', async ({ page }) => {
-    await page.locator('#header-search').fill('cloud');
+    const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await input.fill('cloud');
     await page.waitForTimeout(400);
     await expect(page.locator('.search-dropdown.is-open')).toBeVisible();
 
