@@ -10,7 +10,7 @@
  */
 
 import { LRUCache } from '../core/cache.js';
-import { withSWR, EMPTY_ENVELOPE } from '../core/pipeline/index.js';
+import { withSWR } from '../core/pipeline/index.js';
 
 /**
  * Cache TTL for REST responses (60 minutes).
@@ -84,6 +84,6 @@ export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
         negativeTtlMs: REST_NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-        emptySentinel: EMPTY_ENVELOPE,
+
     });
 }

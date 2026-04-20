@@ -36,7 +36,7 @@
  */
 
 import { LRUCache } from '../core/cache.js';
-import { withSWR, cachedQuery as _cachedQuery, EMPTY_ENVELOPE } from '../core/pipeline/index.js';
+import { withSWR, cachedQuery as _cachedQuery } from '../core/pipeline/index.js';
 import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
 import { getEntityVersion } from './sync_state.js';
 
@@ -186,7 +186,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
         negativeTtlMs: NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-        emptySentinel: EMPTY_ENVELOPE,
+
         getVersion: getEntityVersion,
         staleMs,
     });
