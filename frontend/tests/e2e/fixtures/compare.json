@@ -1,0 +1,13 @@
+{
+  "shared_fac": [],
+  "shared_ix": [
+    {
+      "id": 26,
+      "name": "AMS-IX",
+      "net_a": {"id": 694, "name": "Cloudflare", "asn": 13335},
+      "net_b": {"id": 2914, "name": "NTT Communications", "asn": 2914}
+    }
+  ],
+  "only_a": [],
+  "only_b": []
+}

@@ -43,3 +43,7 @@ peeringdb-plus/
 scripts/__pycache__/
 scripts/tests/__pycache__/
 .vscode/settings.json
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
