@@ -135,7 +135,10 @@ test('clicking outside the search area closes the dropdown', async ({ page }) =>
     await page.waitForTimeout(400);
     await expect(page.locator('.search-dropdown.is-open')).toBeVisible();
 
-    // Click somewhere not in the search wrapper
-    await page.locator('h1').click();
+    // Click the footer which is reliably outside the sticky header/dropdown.
+    // The h1 is often covered by the dropdown overlay, causing pointer-event
+    // interception errors.
+    await page.locator('footer').click({ position: { x: 10, y: 10 } });
+    await page.waitForTimeout(200);
     await expect(page.locator('.search-dropdown.is-open')).not.toBeVisible();
 });

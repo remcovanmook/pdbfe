@@ -55,8 +55,12 @@ test('selecting Dark theme applies data-theme="dark" to <html>', async ({ page }
     await themeSelect.selectOption('dark');
     await page.waitForTimeout(300);
 
+    // theme.js applyTheme('dark') deletes the data-theme attribute.
+    // CSS convention: no attribute = dark, data-theme='light' = light.
     const theme = await page.locator('html').getAttribute('data-theme');
-    expect(theme).toBe('dark');
+    expect(theme).toBeNull();
+    const stored = await page.evaluate(() => localStorage.getItem('pdbfe-theme'));
+    expect(stored).toBe('dark');
 });
 
 test('selecting Light theme applies data-theme="light" to <html>', async ({ page }) => {
@@ -67,6 +71,7 @@ test('selecting Light theme applies data-theme="light" to <html>', async ({ page
     await themeSelect.selectOption('light');
     await page.waitForTimeout(300);
 
+    // light theme sets data-theme='light' on <html>
     const theme = await page.locator('html').getAttribute('data-theme');
     expect(theme).toBe('light');
 });
@@ -85,9 +90,12 @@ test('dark theme persists after SPA navigation to /about', async ({ page }) => {
     await expect(page).toHaveURL(/\/about/);
     await page.waitForTimeout(300);
 
-    // Theme should still be dark — no full page reload reset it
+    // Theme should still be dark — no full page reload reset it.
+    // Dark = null data-theme attribute (CSS convention: no attr = dark)
     const theme = await page.locator('html').getAttribute('data-theme');
-    expect(theme).toBe('dark');
+    expect(theme).toBeNull();
+    const stored = await page.evaluate(() => localStorage.getItem('pdbfe-theme'));
+    expect(stored).toBe('dark');
 });
 
 // ── localStorage persistence ──────────────────────────────────────────────────
