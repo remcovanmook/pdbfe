@@ -71,15 +71,26 @@ test('clicking a data-link navigates without a full page reload', async ({ page 
 
 test('browser back button returns to previous page', async ({ page }) => {
     await page.goto('/');
+
+    // The /about page fetches content/about.md asynchronously. If that fetch
+    // resolves after goBack() fires, its callback can overwrite the homepage.
+    // Mock the response so we control when the fetch settles.
+    await page.route('**/content/about.md', (route) =>
+        route.fulfill({
+            status: 200,
+            contentType: 'text/markdown',
+            body: '# About This Mirror\n\nTest content.',
+        })
+    );
+
     const aboutLink = page.locator('a[href="/about"][data-link]').first();
     await aboutLink.click();
     await expect(page).toHaveURL(/\/about/);
+    // Wait until /about is fully rendered (fetch settled) before going back
+    await expect(page.locator('h1')).toContainText('About', { timeout: 5_000 });
 
     await page.goBack();
-    // URL should return to the root
     await expect(page).toHaveURL(/localhost:8788\/?$/);
-    // The SPA router handles popstate asynchronously — poll until the homepage
-    // h1 appears rather than checking visibility on the stale about-page h1.
     await expect(page.locator('h1')).toContainText('The Interconnection Database', { timeout: 10_000 });
 });
 
