@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ENTITIES, ENTITY_TAGS, getLabel, ENTITY_SCHEMA } from '../js/entities.js';
+import { ENTITIES, ENTITY_TAGS, getLabel, ENTITY_SCHEMA } from '../../js/entities.js';
 
 /** The 13 PeeringDB entity types we sync and serve. */
 const ALL_TAGS = [

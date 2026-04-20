@@ -29,7 +29,7 @@ describe('getTimezone', () => {
     beforeEach(() => mockLocalStorage());
 
     it('returns the browser timezone when no preference is stored', async () => {
-        const { getTimezone } = await import('../js/timezone.js');
+        const { getTimezone } = await import('../../js/timezone.js');
         const tz = getTimezone();
         // Node.js has Intl support — result should be a valid IANA string.
         // CI runners may return 'UTC' (no slash), local machines return 'Region/City'.
@@ -39,7 +39,7 @@ describe('getTimezone', () => {
 
     it('returns the browser timezone when "auto" is stored', async () => {
         store.set('pdbfe-tz', 'auto');
-        const { getTimezone } = await import('../js/timezone.js');
+        const { getTimezone } = await import('../../js/timezone.js');
         const tz = getTimezone();
         assert.equal(typeof tz, 'string');
         assert.ok(tz.length > 0, 'auto should resolve to a valid timezone');
@@ -47,14 +47,14 @@ describe('getTimezone', () => {
 
     it('returns a valid stored timezone', async () => {
         store.set('pdbfe-tz', 'Europe/Amsterdam');
-        const { getTimezone } = await import('../js/timezone.js');
+        const { getTimezone } = await import('../../js/timezone.js');
         const tz = getTimezone();
         assert.equal(tz, 'Europe/Amsterdam');
     });
 
     it('purges and falls back if stored timezone is invalid', async () => {
         store.set('pdbfe-tz', 'Invalid/Garbage');
-        const { getTimezone } = await import('../js/timezone.js');
+        const { getTimezone } = await import('../../js/timezone.js');
         const tz = getTimezone();
         // Should have cleared the invalid entry
         assert.equal(store.has('pdbfe-tz'), false, 'Invalid timezone should be purged');
@@ -67,25 +67,25 @@ describe('getTimezonePreference', () => {
     beforeEach(() => mockLocalStorage());
 
     it('returns "auto" when nothing is stored', async () => {
-        const { getTimezonePreference } = await import('../js/timezone.js');
+        const { getTimezonePreference } = await import('../../js/timezone.js');
         assert.equal(getTimezonePreference(), 'auto');
     });
 
     it('returns "auto" when "auto" is stored', async () => {
         store.set('pdbfe-tz', 'auto');
-        const { getTimezonePreference } = await import('../js/timezone.js');
+        const { getTimezonePreference } = await import('../../js/timezone.js');
         assert.equal(getTimezonePreference(), 'auto');
     });
 
     it('returns the stored timezone when valid', async () => {
         store.set('pdbfe-tz', 'US/Eastern');
-        const { getTimezonePreference } = await import('../js/timezone.js');
+        const { getTimezonePreference } = await import('../../js/timezone.js');
         assert.equal(getTimezonePreference(), 'US/Eastern');
     });
 
     it('returns "auto" and purges when stored timezone is invalid', async () => {
         store.set('pdbfe-tz', 'Not/Real');
-        const { getTimezonePreference } = await import('../js/timezone.js');
+        const { getTimezonePreference } = await import('../../js/timezone.js');
         assert.equal(getTimezonePreference(), 'auto');
         assert.equal(store.has('pdbfe-tz'), false);
     });
@@ -95,27 +95,27 @@ describe('setTimezone', () => {
     beforeEach(() => mockLocalStorage());
 
     it('stores a valid IANA timezone', async () => {
-        const { setTimezone } = await import('../js/timezone.js');
+        const { setTimezone } = await import('../../js/timezone.js');
         setTimezone('Asia/Tokyo');
         assert.equal(store.get('pdbfe-tz'), 'Asia/Tokyo');
     });
 
     it('removes the key when set to "auto"', async () => {
         store.set('pdbfe-tz', 'Europe/London');
-        const { setTimezone } = await import('../js/timezone.js');
+        const { setTimezone } = await import('../../js/timezone.js');
         setTimezone('auto');
         assert.equal(store.has('pdbfe-tz'), false);
     });
 
     it('removes the key for empty/null input', async () => {
         store.set('pdbfe-tz', 'Europe/London');
-        const { setTimezone } = await import('../js/timezone.js');
+        const { setTimezone } = await import('../../js/timezone.js');
         setTimezone('');
         assert.equal(store.has('pdbfe-tz'), false);
     });
 
     it('ignores invalid timezone strings', async () => {
-        const { setTimezone } = await import('../js/timezone.js');
+        const { setTimezone } = await import('../../js/timezone.js');
         setTimezone('Fake/Zone');
         assert.equal(store.has('pdbfe-tz'), false, 'Invalid timezone should not be stored');
     });

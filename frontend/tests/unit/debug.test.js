@@ -88,7 +88,7 @@ describe('getCacheDiagnostics', () => {
     });
 
     it('should return empty array when cache has no entries', async () => {
-        const { getCacheDiagnostics } = await import('../js/api.js');
+        const { getCacheDiagnostics } = await import('../../js/api.js');
         // Fresh module import — cache should be empty
         const stats = getCacheDiagnostics();
         assert.ok(Array.isArray(stats));
@@ -97,11 +97,11 @@ describe('getCacheDiagnostics', () => {
     });
 
     it('should return entries with correct shape after a fetch', async () => {
-        const { getCacheDiagnostics, clearCache } = await import('../js/api.js');
+        const { getCacheDiagnostics, clearCache } = await import('../../js/api.js');
         clearCache();
 
         // Populate cache via fetchList
-        const { fetchList } = await import('../js/api.js');
+        const { fetchList } = await import('../../js/api.js');
         await fetchList('net', { limit: 1 });
 
         const stats = getCacheDiagnostics();
@@ -117,13 +117,13 @@ describe('getCacheDiagnostics', () => {
     });
 
     it('should filter out auth-prefixed cache keys', async () => {
-        const { getCacheDiagnostics, clearCache } = await import('../js/api.js');
+        const { getCacheDiagnostics, clearCache } = await import('../../js/api.js');
         clearCache();
 
         // Simulate authenticated fetch — key would start with auth:
         // We'll make a fetch that uses a session ID
         globalThis.document.cookie = '';
-        const { fetchList } = await import('../js/api.js');
+        const { fetchList } = await import('../../js/api.js');
         await fetchList('net', { limit: 1 });
 
         const stats = getCacheDiagnostics();
@@ -146,7 +146,7 @@ describe('initDebugger', () => {
     });
 
     it('should register a keydown listener', async () => {
-        const { initDebugger } = await import('../js/debug.js');
+        const { initDebugger } = await import('../../js/debug.js');
         const before = (dom.listeners['keydown'] || []).length;
         initDebugger();
         const after = (dom.listeners['keydown'] || []).length;
@@ -154,7 +154,7 @@ describe('initDebugger', () => {
     });
 
     it('should not trigger on plain D key', async () => {
-        const { initDebugger } = await import('../js/debug.js');
+        const { initDebugger } = await import('../../js/debug.js');
         initDebugger();
 
         const handler = dom.listeners['keydown']?.[dom.listeners['keydown'].length - 1];
@@ -174,7 +174,7 @@ describe('initDebugger', () => {
     });
 
     it('should not trigger when target is an INPUT', async () => {
-        const { initDebugger } = await import('../js/debug.js');
+        const { initDebugger } = await import('../../js/debug.js');
         initDebugger();
 
         const handler = dom.listeners['keydown']?.[dom.listeners['keydown'].length - 1];

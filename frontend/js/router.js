@@ -19,6 +19,16 @@ const _routes = [];
 let _appContainer = null;
 
 /**
+ * Monotonically-incrementing navigation counter.
+ * Each call to dispatch() captures the current value; any async work
+ * that resumes after an await compares against it to detect whether a
+ * newer navigation has superseded the current one.
+ *
+ * @type {number}
+ */
+let _navGen = 0;
+
+/**
  * Registers a route pattern and its handler.
  *
  * Pattern uses named groups: e.g. "/net/:id" becomes /^\/net\/(?<id>[^/]+)\/?$/
@@ -121,6 +131,8 @@ export function redispatch() {
 async function dispatch(fullPath) {
     if (!_appContainer) return;
 
+    const gen = ++_navGen;
+
     const [path, search] = fullPath.split('?');
 
     // Parse search params into a plain object
@@ -158,11 +170,16 @@ async function dispatch(fullPath) {
 
             try {
                 await route.handler(params);
+                // Bail out if a newer navigation fired while we were awaiting.
+                // Without this guard, a slow page fetch can resolve after the
+                // router has already rendered a different route and overwrite it.
+                if (gen !== _navGen) return;
                 // Cache the rendered page for preload on next visit
                 try {
                     sessionStorage.setItem(cacheKey, _appContainer.innerHTML);
                 } catch { /* quota exceeded or unavailable */ }
             } catch (err) {
+                if (gen !== _navGen) return;
                 _appContainer.replaceChildren(
                     createError(`Failed to load page: ${err.message}`)
                 );

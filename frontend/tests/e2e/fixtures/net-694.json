@@ -1,0 +1,46 @@
+{
+  "data": [
+    {
+      "id": 694,
+      "org_id": 1,
+      "org": {
+        "id": 1,
+        "name": "Cloudflare, Inc.",
+        "website": "https://www.cloudflare.com",
+        "notes": ""
+      },
+      "name": "Cloudflare",
+      "aka": "CF",
+      "website": "https://www.cloudflare.com",
+      "social_media": [],
+      "asn": 13335,
+      "info_type": "Content",
+      "info_prefixes4": 2000,
+      "info_prefixes6": 1000,
+      "policy_general": "Open",
+      "status": "ok",
+      "created": "2010-07-09T00:00:00Z",
+      "updated": "2024-01-01T00:00:00Z",
+      "notes": "Cloudflare is a global CDN and security company.",
+      "netfac_set": [],
+      "netixlan_set": [
+        {
+          "id": 1,
+          "name": "AMS-IX",
+          "ix_id": 26,
+          "net_id": 694,
+          "ipaddr4": "80.249.209.2",
+          "speed": 10000,
+          "is_rs_peer": true,
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "generated": 0,
+    "limit": 1,
+    "offset": 0,
+    "total": 1
+  }
+}

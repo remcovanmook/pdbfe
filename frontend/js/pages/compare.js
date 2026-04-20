@@ -399,7 +399,7 @@ async function renderResults(app, refA, refB) {
 
         const vs = document.createElement('span');
         vs.className = 'detail-header__subtitle';
-        vs.textContent = 'vs';
+        vs.textContent = t('vs');
         header.appendChild(vs);
 
         header.appendChild(createEntityBadge(data.b.tag, { header: true }));
@@ -688,17 +688,17 @@ function renderFacIxResults(wrap, data) {
 function createIxpTable(title, rows, showSpeeds) {
     /** @type {TableColumn[]} */
     const columns = [
-        { key: 'ix_name', label: 'Exchange' },
-        { key: 'country', label: 'Country', maxWidth: '100px' },
-        { key: 'city',    label: 'City', maxWidth: '150px' },
+        { key: 'ix_name', label: t('Exchange') },
+        { key: 'country', label: t('Country'), maxWidth: '100px' },
+        { key: 'city',    label: t('City'), maxWidth: '150px' },
     ];
 
     if (showSpeeds) {
         columns.push(
-            { key: 'speed_a', label: 'Speed A', class: 'td-right', width: '90px' },
-            { key: 'speed_b', label: 'Speed B', class: 'td-right', width: '90px' },
-            { key: 'ipv4_a',  label: 'IPv4 A', class: 'td-mono', width: '140px' },
-            { key: 'ipv4_b',  label: 'IPv4 B', class: 'td-mono', width: '140px' },
+            { key: 'speed_a', label: t('Speed A'), class: 'td-right', width: '90px' },
+            { key: 'speed_b', label: t('Speed B'), class: 'td-right', width: '90px' },
+            { key: 'ipv4_a',  label: t('IPv4 A'), class: 'td-mono', width: '140px' },
+            { key: 'ipv4_b',  label: t('IPv4 B'), class: 'td-mono', width: '140px' },
         );
     }
 
@@ -745,9 +745,9 @@ function createFacTable(title, rows) {
         filterable: rows.length > 10,
         filterPlaceholder: t('Filter facilities...'),
         columns: [
-            { key: 'fac_name', label: 'Facility' },
-            { key: 'country',  label: 'Country', maxWidth: '100px' },
-            { key: 'city',     label: 'City', maxWidth: '200px' },
+            { key: 'fac_name', label: t('Facility') },
+            { key: 'country',  label: t('Country'), maxWidth: '100px' },
+            { key: 'city',     label: t('City'), maxWidth: '200px' },
         ],
         rows,
         cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -775,8 +775,8 @@ function createNetTable(title, rows) {
         filterable: rows.length > 10,
         filterPlaceholder: t('Filter networks...'),
         columns: [
-            { key: 'net_name', label: 'Network' },
-            { key: 'asn',      label: 'ASN', width: '110px' },
+            { key: 'net_name', label: t('Network') },
+            { key: 'asn',      label: t('ASN'), width: '110px' },
         ],
         rows,
         cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {

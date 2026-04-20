@@ -1,0 +1,53 @@
+{
+  "data": [
+    {
+      "id": 26,
+      "org_id": 2,
+      "org": {
+        "id": 2,
+        "name": "AMS-IX",
+        "website": "https://www.ams-ix.net",
+        "notes": ""
+      },
+      "name": "AMS-IX",
+      "aka": "",
+      "name_long": "Amsterdam Internet Exchange",
+      "city": "Amsterdam",
+      "country": "NL",
+      "region_continent": "Europe",
+      "media": "Ethernet",
+      "notes": "AMS-IX is one of the world's largest internet exchanges.",
+      "tech_phone": "+31 20 514 1717",
+      "tech_email": "noc@ams-ix.net",
+      "policy_email": "sales@ams-ix.net",
+      "url_stats": "https://www.ams-ix.net/ams/exchange-point-info/statistics",
+      "proto_unicast": true,
+      "proto_multicast": false,
+      "proto_ipv6": true,
+      "website": "https://www.ams-ix.net",
+      "social_media": [],
+      "status": "ok",
+      "created": "2010-07-09T00:00:00Z",
+      "updated": "2024-01-01T00:00:00Z",
+      "ixlan_set": [
+        {
+          "id": 26,
+          "name": "AMS-IX",
+          "desc": "",
+          "dot1q_support": false,
+          "rs_asn": 6777,
+          "arp_sponge": null,
+          "mtu": 9000,
+          "status": "ok"
+        }
+      ],
+      "fac_set": []
+    }
+  ],
+  "meta": {
+    "generated": 0,
+    "limit": 1,
+    "offset": 0,
+    "total": 1
+  }
+}

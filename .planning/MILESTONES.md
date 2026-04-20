@@ -158,9 +158,9 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M10: Core Refactoring & Test Hardening (PRs #73)
+## M10: Core Refactoring, Test Hardening & i18n (PRs #73, #74)
 
-**Branches**: `chore/core-internal-tags`
+**Branches**: `chore/core-internal-tags`, `feat/frontend-tests`
 **Shipped**: 2026-04-20
 
 | Category | Work |
@@ -170,6 +170,14 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Auth | Extract generic OAuth2 Authorization Code flow factory (`core/oauth.js`) with typed `OAuthHandlerConfig` hooks |
 | Auth | Reduce `auth/handlers/oauth.js` to PeeringDB-specific config and thin router (~441 → ~175 lines) |
 | Auth | New `tests/unit/auth/oauth.test.js` — 30+ assertions covering CSRF flow, token exchange, profile parsing, session management, routing |
+| Infra | Comprehensive frontend unit test suite — 190 tests across api, auth, render, typeahead, pdb-table, router, pages, and utility modules |
+| Infra | Playwright E2E test suite — 54 tests covering navigation, search, accessibility, theme switching, and typeahead across all entity types |
+| Infra | Test layout reorganised into `tests/unit/<area>/` subdirectories; shared `mock-dom.js` helper |
+| Frontend | Router `_navGen` guard — monotonic counter prevents stale async renders from overwriting active page content (back-button race condition) |
+| i18n | Full `t()` audit across all frontend pages and components; 152 missing strings added to `strings.json` catalogue |
+| i18n | String wrapping applied to 13 page/component files (column labels, loading states, error messages, stat bar labels, UI controls) |
+| i18n | 148 PDBFE-specific translations added to all 13 locale override files via `scripts/patch_overrides.py` |
+| i18n | Coverage restored: 57% → 99% (340/343 strings) across cs, de, el, es, fr, it, ja, lt, pt, ro, ru, zh-cn, zh-tw |
 
 ---
 
@@ -179,6 +187,6 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 |----------|------|
 | Frontend | Mobile card layout for remaining detail page entity tables |
 | Backend | Semantic search (Vectorize integration — branch `feat-semantic-search` exists) |
-| Infra | E2E browser test suite |
 | Infra | Git tags and release versioning |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
+

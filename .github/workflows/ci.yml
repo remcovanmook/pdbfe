@@ -76,7 +76,7 @@ jobs:
         working-directory: frontend
 
       - name: Unit tests
-        run: npm test
+        run: npm run test:unit
         working-directory: frontend
 
   # ── Security: XSS static analysis ────────────────────────────────

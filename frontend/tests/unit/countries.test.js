@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { COUNTRIES } from '../js/countries.js';
+import { COUNTRIES } from '../../js/countries.js';
 
 describe('COUNTRIES — data integrity', () => {
     it('is a frozen non-empty array', () => {

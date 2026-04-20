@@ -25,13 +25,13 @@ export async function renderNet(params) {
     const id = params.id;
 
     document.title = `Network — PDBFE`;
-    app.replaceChildren(createLoading('Loading network'));
+    app.replaceChildren(createLoading(t('Loading network')));
 
     try {
         const net = await fetchEntity('net', id, 2);
 
         if (!net) {
-            app.replaceChildren(createError(`Network ${id} not found`));
+            app.replaceChildren(createError(t('Network {id} not found', { id })));
             return;
         }
 
@@ -158,11 +158,11 @@ function buildTables(net) {
             filterable: true,
             filterPlaceholder: t('Filter exchanges...'),
             columns: [
-                { key: 'name',    label: 'Exchange' },
-                { key: 'speed',   label: 'Speed', class: 'td-right', width: '90px' },
-                { key: 'ipaddr4', label: 'IPv4', class: 'td-mono', width: '140px' },
-                { key: 'ipaddr6', label: 'IPv6', class: 'td-mono', width: '240px' },
-                { key: 'is_rs_peer', label: 'RS', width: '70px' },
+                { key: 'name',    label: t('Exchange') },
+                { key: 'speed',   label: t('Speed'), class: 'td-right', width: '90px' },
+                { key: 'ipaddr4', label: t('IPv4'), class: 'td-mono', width: '140px' },
+                { key: 'ipaddr6', label: t('IPv6'), class: 'td-mono', width: '240px' },
+                { key: 'is_rs_peer', label: t('RS'), width: '70px' },
             ],
             rows: net.netixlan_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -193,9 +193,9 @@ function buildTables(net) {
             filterable: true,
             filterPlaceholder: t('Filter facilities...'),
             columns: [
-                { key: 'name',    label: 'Facility' },
-                { key: 'city',    label: 'City', maxWidth: '250px' },
-                { key: 'country', label: 'Country', maxWidth: '100px' },
+                { key: 'name',    label: t('Facility') },
+                { key: 'city',    label: t('City'), maxWidth: '250px' },
+                { key: 'country', label: t('Country'), maxWidth: '100px' },
             ],
             rows: net.netfac_set,
             cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
@@ -207,7 +207,7 @@ function buildTables(net) {
     }
 
     if (frag.children.length === 0) {
-        frag.appendChild(createEmptyState('No exchange points or facilities'));
+        frag.appendChild(createEmptyState(t('No exchange points or facilities')));
     }
 
     return frag;

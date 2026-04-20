@@ -1,0 +1,15 @@
+{
+  "sync": {
+    "last_modified_at": 1713600000,
+    "entities": {
+      "net":      {"last_sync": 1713600000, "row_count": 32000, "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "ix":       {"last_sync": 1713600000, "row_count": 1100,  "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "fac":      {"last_sync": 1713600000, "row_count": 3500,  "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "org":      {"last_sync": 1713600000, "row_count": 16000, "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "campus":   {"last_sync": 1713600000, "row_count": 80,    "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "carrier":  {"last_sync": 1713600000, "row_count": 22,    "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "netixlan": {"last_sync": 1713600000, "row_count": 92000, "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000},
+      "netfac":   {"last_sync": 1713600000, "row_count": 45000, "updated_at": "2024-04-20T10:00:00Z", "last_modified_at": 1713600000}
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "a": {
+    "tag": "net",
+    "id": 694,
+    "name": "Cloudflare",
+    "asn": 13335
+  },
+  "b": {
+    "tag": "net",
+    "id": 2914,
+    "name": "NTT Communications",
+    "asn": 2914
+  },
+  "shared_ixps": [
+    {
+      "ix_id": 26,
+      "ix_name": "AMS-IX",
+      "country": "NL",
+      "city": "Amsterdam",
+      "speed_a": 10000,
+      "speed_b": 10000,
+      "ipv4_a": "80.249.209.2",
+      "ipv4_b": "80.249.209.3"
+    }
+  ],
+  "shared_facilities": [],
+  "only_a_ixps": [],
+  "only_b_ixps": [],
+  "only_a_facilities": [],
+  "only_b_facilities": []
+}

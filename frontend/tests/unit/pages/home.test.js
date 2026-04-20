@@ -315,7 +315,7 @@ describe('renderHome', () => {
         });
 
         try {
-            const { renderHome } = await import('../js/pages/home.js');
+            const { renderHome } = await import('../../../js/pages/home.js');
             await renderHome({});
             assert.equal(document.title, 'PDBFE');
         } finally {
@@ -331,7 +331,7 @@ describe('renderHome', () => {
         });
 
         try {
-            const { renderHome } = await import('../js/pages/home.js');
+            const { renderHome } = await import('../../../js/pages/home.js');
             await renderHome({});
 
             const text = appEl.textContent;
@@ -354,7 +354,7 @@ describe('renderHome', () => {
         });
 
         try {
-            const { renderHome } = await import('../js/pages/home.js');
+            const { renderHome } = await import('../../../js/pages/home.js');
             await renderHome({});
 
             assert.ok(appEl.textContent.includes('Most Recent Updates'),
@@ -386,7 +386,7 @@ describe('renderAbout', () => {
         };
 
         try {
-            const { renderAbout } = await import('../js/pages/about.js');
+            const { renderAbout } = await import('../../../js/pages/about.js');
             await renderAbout({});
             assert.equal(document.title, 'About — PDBFE');
         } finally {
@@ -429,7 +429,7 @@ describe('renderAbout', () => {
         };
 
         try {
-            const { renderAbout } = await import('../js/pages/about.js');
+            const { renderAbout } = await import('../../../js/pages/about.js');
             await renderAbout({});
 
             // About page uses innerHTML on the article element after renderMarkdown,
@@ -467,7 +467,7 @@ describe('renderAbout', () => {
         };
 
         try {
-            const { renderAbout } = await import('../js/pages/about.js');
+            const { renderAbout } = await import('../../../js/pages/about.js');
             await renderAbout({});
 
             const text = appEl.textContent;
