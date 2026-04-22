@@ -245,11 +245,27 @@ def fetch_peeringdb_version():
     Fetch the PeeringDB server version from the Ctl/VERSION file.
 
     Tries each branch in PEERINGDB_BRANCHES to handle renames.
-    Returns a version string (e.g. '2.77.1').
+    Returns the raw version string (e.g. '2.77.1' or '2.78.0-beta').
     """
     return fetch_with_branch_fallback(
         PEERINGDB_REPO, PEERINGDB_BRANCHES, PEERINGDB_VERSION_PATH
     ).strip()
+
+
+def stable_version(version):
+    """
+    Strip any pre-release suffix from a version string.
+
+    Pre-release builds (beta, rc, alpha, etc.) are published to Ctl/VERSION
+    before the corresponding schema artifact is uploaded to peeringdb.com.
+    Stripping the suffix lets us fall back to the most recent stable schema.
+
+    Examples:
+        '2.78.0-beta'  -> '2.78.0'
+        '2.77.1-rc2'   -> '2.77.1'
+        '2.77.1'       -> '2.77.1'
+    """
+    return version.split("-")[0]
 
 
 # ── AST parsing helpers ──────────────────────────────────────────────────────
@@ -1564,9 +1580,23 @@ def main():
           f"{', '.join(sorted(model_entities.keys()))}")
 
     # ── Stage 2: OpenAPI spec ───────────────────────────────────────────
-    schema_url = API_SCHEMA_URL_TEMPLATE.format(version=peeringdb_version)
-    print(f"Fetching api-schema.yaml ({peeringdb_version})...")
-    spec_yaml = fetch_url(schema_url)
+    # Pre-release versions (e.g. 2.78.0-beta) don't have a published schema
+    # yet. Strip the suffix so we fetch the nearest stable schema instead.
+    schema_version = stable_version(peeringdb_version)
+    schema_url = API_SCHEMA_URL_TEMPLATE.format(version=schema_version)
+    label = peeringdb_version if schema_version == peeringdb_version else f"{peeringdb_version} (schema: {schema_version})"
+    print(f"Fetching api-schema.yaml ({label})...")
+    try:
+        spec_yaml = fetch_url(schema_url)
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            raise
+        raise SystemExit(
+            f"ERROR: api-schema.yaml not found for {schema_version}\n"
+            f"  URL: {schema_url}\n"
+            f"  The schema for this version may not be published yet.\n"
+            f"  Check: https://www.peeringdb.com/s/{schema_version}/api-schema.yaml"
+        ) from exc
     (src_dir / "api-schema.yaml").write_text(spec_yaml)
 
     print("Parsing OpenAPI spec...")
