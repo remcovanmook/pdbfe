@@ -95,7 +95,7 @@ fi
 if [[ -d "$REPO_ROOT/frontend/node_modules" ]] || [[ -d "$REPO_ROOT/workers/node_modules" ]]; then
     # Frontend logic typecheck (can pull from worker node_modules depending on setup)
     echo "  Validating frontend..."
-    (cd "$REPO_ROOT/frontend" && npm run typecheck && npm test) > /dev/null 2>&1 || fail "Frontend validation failed"
+    (cd "$REPO_ROOT/frontend" && npm run typecheck && npm run test:unit) > /dev/null 2>&1 || fail "Frontend validation failed"
 fi
 
 pass "All validation and integration tests passed"
