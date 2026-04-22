@@ -1581,23 +1581,34 @@ def main():
 
     # ── Stage 2: OpenAPI spec ───────────────────────────────────────────
     # Pre-release versions (e.g. 2.78.0-beta) don't have a published schema
-    # yet. Strip the suffix so we fetch the nearest stable schema instead.
+    # yet. Strip the suffix to try the nearest stable version first, then
+    # fall back to the committed schema in scripts/lib/ (always present)
+    # or the locally cached schema from the last successful run.
     schema_version = stable_version(peeringdb_version)
     schema_url = API_SCHEMA_URL_TEMPLATE.format(version=schema_version)
     label = peeringdb_version if schema_version == peeringdb_version else f"{peeringdb_version} (schema: {schema_version})"
     print(f"Fetching api-schema.yaml ({label})...")
+    cached_schema = src_dir / "api-schema.yaml"
+    committed_schema = Path(__file__).parent / "lib" / "api-schema.yaml"
     try:
         spec_yaml = fetch_url(schema_url)
+        cached_schema.write_text(spec_yaml)
+        # Keep the committed copy in sync when we successfully fetch a new schema
+        committed_schema.write_text(spec_yaml)
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
-        raise SystemExit(
-            f"ERROR: api-schema.yaml not found for {schema_version}\n"
-            f"  URL: {schema_url}\n"
-            f"  The schema for this version may not be published yet.\n"
-            f"  Check: https://www.peeringdb.com/s/{schema_version}/api-schema.yaml"
-        ) from exc
-    (src_dir / "api-schema.yaml").write_text(spec_yaml)
+        fallback = cached_schema if cached_schema.exists() else (committed_schema if committed_schema.exists() else None)
+        if fallback:
+            print(f"  WARNING: {schema_url} returned 404 — using fallback schema ({fallback.name})")
+            spec_yaml = fallback.read_text()
+        else:
+            raise SystemExit(
+                f"ERROR: api-schema.yaml not found for {schema_version} and no fallback exists.\n"
+                f"  URL: {schema_url}\n"
+                f"  Run this script once with a stable upstream version to seed the cache."
+            ) from exc
+
 
     print("Parsing OpenAPI spec...")
     spec = yaml.safe_load(spec_yaml)
