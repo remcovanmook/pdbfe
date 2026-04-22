@@ -1599,15 +1599,26 @@ def main():
     except urllib.error.HTTPError as exc:
         if exc.code != 404:
             raise
-        fallback = cached_schema if cached_schema.exists() else (committed_schema if committed_schema.exists() else None)
+        if cached_schema.exists():
+            fallback = cached_schema
+        elif committed_schema.exists():
+            fallback = committed_schema
+        else:
+            fallback = None
         if fallback:
             print(f"  WARNING: {schema_url} returned 404 — using fallback schema ({fallback.name})")
             spec_yaml = fallback.read_text()
-            # Use the stable version we derived (schema_version) as the stamp.
-            # The OpenAPI info.version field contains a static semantic API
-            # version that doesn't correspond to server releases.
-            used_api_version = schema_version
-            print(f"  Using schema version: {used_api_version}")
+            # Stamp with the version the fallback data actually belongs to.
+            # Read from the current entities.json if it exists; that records
+            # what was last successfully generated. Avoids stamping 2.77.1
+            # schema data as 2.78.0 just because the server version bumped.
+            try:
+                existing = json.loads(entities_path.read_text())
+                used_api_version = existing.get("versions", {}).get("api_schema", schema_version)
+            except (OSError, json.JSONDecodeError):
+                used_api_version = schema_version
+            print(f"  Using schema version: {used_api_version} (from previous run)")
+
         else:
             raise SystemExit(
                 f"ERROR: api-schema.yaml not found for {schema_version} and no fallback exists.\n"
