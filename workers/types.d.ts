@@ -217,6 +217,10 @@ interface PdbSyncEnv {
     LOGOS?: R2Bucket;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
+    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional — sync degrades to data-only without it. */
+    AI?: Ai;
+    /** Vectorize index for semantic search embedding upserts. Optional. */
+    VECTORIZE?: VectorizeIndex;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
 }

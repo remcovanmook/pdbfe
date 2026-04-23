@@ -1036,12 +1036,18 @@ _OMITEMPTY_FIELDS = {
 # Keyed by entity tag. These are injected after the standard fields during
 # worker entity generation so they survive schema regeneration.
 _LOCAL_FIELDS = {
-    "org":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
-    "net":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
-    "ix":      [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
-    "fac":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
-    "carrier": [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
-    "campus":  [{"name": "__logo_migrated", "type": "boolean", "queryable": False}],
+    "org":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
+    "net":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
+    "ix":      [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
+    "fac":     [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
+    "carrier": [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
+    "campus":  [{"name": "__logo_migrated", "type": "boolean", "queryable": False},
+                {"name": "__vector_embedded", "type": "boolean", "queryable": False}],
 }
 
 # Pre-built address field defs (mirrors Entity.address() — fixed order & queryable flags)

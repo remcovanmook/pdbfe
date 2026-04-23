@@ -19,7 +19,7 @@
  *   PDB_API_KEY - PeeringDB API key (secret)
  */
 
-import { ENTITIES } from './entities.js';
+import { ENTITIES, VECTOR_ENTITY_TAGS } from './entities.js';
 
 const API_BASE = 'https://www.peeringdb.com/api';
 
@@ -345,6 +345,87 @@ export async function syncLogos(db, logos, tag, table) {
 }
 
 /**
+ * Embeds unembedded entity rows into the Vectorize index.
+ *
+ * Queries up to VECTOR_BATCH_LIMIT rows per entity with __vector_embedded = 0,
+ * calls Workers AI to generate BGE-large-en-v1.5 embeddings in batches of
+ * EMBED_BATCH_SIZE, upserts into Vectorize, then sets __vector_embedded = 1.
+ *
+ * Vector ID scheme: '{entity}:{id}' (e.g. 'net:694') so the search worker
+ * can resolve entity type from Vectorize results without a D1 lookup.
+ *
+ * @param {D1Database} db - D1 database binding.
+ * @param {Ai} ai - Workers AI binding.
+ * @param {VectorizeIndex} vectorize - Vectorize index binding.
+ * @param {string} tag - Entity tag (e.g. 'net').
+ * @param {string} table - D1 table name.
+ * @param {string} primaryField - Field to embed (typically 'name').
+ * @returns {Promise<{ embedded: number, errors: number }>}
+ */
+export async function syncVectors(db, ai, vectorize, tag, table, primaryField) {
+    const result = { embedded: 0, errors: 0 };
+
+    /** Maximum rows processed per entity per cron invocation. */
+    const VECTOR_BATCH_LIMIT = 100;
+    /** Texts sent to Workers AI per embed call. */
+    const EMBED_BATCH_SIZE = 50;
+
+    // Fetch rows that haven't been embedded yet.
+    const rows = await db.prepare(
+        `SELECT id, "${primaryField}" AS name FROM "${table}" WHERE "__vector_embedded" = 0 LIMIT ?`
+    ).bind(VECTOR_BATCH_LIMIT).all();
+
+    if (!rows.results || rows.results.length === 0) return result;
+
+    const records = /** @type {{ id: number, name: string }[]} */ (rows.results);
+
+    // Process in EMBED_BATCH_SIZE chunks.
+    for (let i = 0; i < records.length; i += EMBED_BATCH_SIZE) {
+        const batch = records.slice(i, i + EMBED_BATCH_SIZE);
+        const texts = batch.map(r => String(r.name || ''));
+        const ids = batch.map(r => r.id);
+
+        try {
+            // Generate embeddings via Workers AI.
+            const aiResult = await ai.run('@cf/baai/bge-large-en-v1.5', { text: texts });
+            const embeddings = aiResult.data;
+
+            if (!embeddings || embeddings.length !== batch.length) {
+                console.error(`[sync-vectors] ${tag}: AI returned unexpected embedding count`);
+                result.errors += batch.length;
+                continue;
+            }
+
+            // Build Vectorize upsert payload.
+            /** @type {VectorizeVector[]} */
+            const vectors = [];
+            for (let j = 0; j < batch.length; j++) {
+                vectors.push({
+                    id: `${tag}:${batch[j].id}`,
+                    values: embeddings[j],
+                    metadata: { entity: tag, id: batch[j].id },
+                });
+            }
+
+            await vectorize.upsert(vectors);
+
+            // Mark rows as embedded.
+            const placeholders = ids.map(() => '?').join(',');
+            await db.prepare(
+                `UPDATE "${table}" SET "__vector_embedded" = 1 WHERE id IN (${placeholders})`
+            ).bind(...ids).run();
+
+            result.embedded += batch.length;
+        } catch (err) {
+            console.error(`[sync-vectors] ${tag} batch ${i}: ${/** @type {Error} */(err).message}`);
+            result.errors += batch.length;
+        }
+    }
+
+    return result;
+}
+
+/**
  * Validates a secret from the URL path against ADMIN_SECRET.
  * Uses constant-time comparison to prevent timing side-channels.
  *
@@ -397,13 +478,27 @@ export default {
             }
         }
 
+        // Embed unembedded rows into Vectorize (only when bindings are present)
+        /** @type {string[]} */
+        const vectorSummary = [];
+        if (env.AI && env.VECTORIZE) {
+            for (const [tag, meta] of Object.entries(ENTITIES)) {
+                if (!VECTOR_ENTITY_TAGS.has(tag)) continue;
+                const vr = await syncVectors(env.PDB, env.AI, env.VECTORIZE, tag, meta.table, 'name');
+                if (vr.embedded > 0 || vr.errors > 0) {
+                    vectorSummary.push(`${tag}:+${vr.embedded}e${vr.errors}`);
+                }
+            }
+        }
+
         const summary = results.map(r => {
             const errSuffix = r.error ? ` ERR:${r.error}` : '';
             return `${r.tag}: +${r.updated} -${r.deleted}${errSuffix}`;
         }).join(', ');
 
         const logoInfo = logoSummary.length > 0 ? ` | logos: ${logoSummary.join(', ')}` : '';
-        console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}`);
+        const vectorInfo = vectorSummary.length > 0 ? ` | vectors: ${vectorSummary.join(', ')}` : '';
+        console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}${vectorInfo}`);
     },
 
     /**

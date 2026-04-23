@@ -10,3 +10,12 @@
  */
 
 export { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
+
+/**
+ * Entity tags for which the sync worker maintains Vectorize embeddings.
+ * These are the six user-navigable entity types with a `name` field.
+ * Matches the searchable set in workers/search/handlers/query.js.
+ *
+ * @type {ReadonlySet<string>}
+ */
+export const VECTOR_ENTITY_TAGS = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
