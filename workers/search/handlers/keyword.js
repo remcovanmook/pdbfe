@@ -53,9 +53,8 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     // §3: build bind array in one shot instead of multiple push calls.
     const pattern = '%' + q + '%';
     /** @type {(string|number)[]} */
-    const binds = /** @type {(string|number)[]} */ (Array(fieldCount).fill(pattern));
-    binds.push(limit);
-    binds.push(skip);
+    const binds = /** @type {(string|number)[]} */ (new Array(fieldCount).fill(pattern));
+    binds.push(limit, skip);
 
     const sql =
         `SELECT id, ${primaryField} AS name, status FROM ${table}` +
@@ -66,18 +65,12 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
 
     if (!result.success || result.results.length === 0) return null;
 
-    // Accumulate result rows. §3: for-of, no intermediate array from .map().
-    const rows = result.results;
-    /** @type {{id: number, name: string, entity_type: string, score: number}[]} */
-    const data = [];
-    for (const row of rows) {
-        data.push({
-            id: /** @type {number} */ (row.id),
-            name: /** @type {string} */ (row.name) || '',
-            entity_type: entityTag,
-            score: 1,
-        });
-    }
+    const data = rows.map(row => ({
+        id: /** @type {number} */ (row.id),
+        name: /** @type {string} */ (row.name) || '',
+        entity_type: entityTag,
+        score: 1,
+    }));
 
     // §4: single serialisation at exit.
     return encoder.encode(JSON.stringify({

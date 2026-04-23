@@ -148,10 +148,7 @@ export async function buildSearchKey(q, entityList, mode, limit, skip, authentic
 
     const digest = await globalThis.crypto.subtle.digest('SHA-256', encoder.encode(paramStr));
     const arr = new Uint8Array(digest);
-    let hex = '';
-    for (const byte of arr) {
-        hex += byte.toString(16).padStart(2, '0');
-    }
+    const hex = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     const baseKey = `search/${hex}`;
 
     if (paramKeyCache.size >= PARAM_KEY_CACHE_LIMIT) {

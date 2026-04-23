@@ -200,11 +200,11 @@ export async function syncEntity(db, tag, meta, apiKey) {
         // use nullable TEXT in D1 and should store null to match upstream.
         /** @type {Set<string>} */
         const notNullStrings = new Set();
-        for (const field of meta.fields) {
+        meta.fields.forEach((/** @type {{type: string, name: string, nullable?: boolean}} */ field) => {
             if ((field.type === 'string' || field.type === 'datetime') && !field.nullable) {
                 notNullStrings.add(field.name);
             }
-        }
+        });
 
         // Separate active rows from deleted ones
         const activeRows = rows.filter(r => r.status !== 'deleted');
@@ -275,7 +275,9 @@ export async function syncLogos(db, logos, tag, table) {
 
     if (!rows.results || rows.results.length === 0) return result;
 
-    for (const row of /** @type {{id: number, logo: string}[]} */ (rows.results)) {
+    const logoRows = /** @type {{id: number, logo: string}[]} */ (rows.results);
+    for (let i = 0; i < logoRows.length; i++) {
+        const row = logoRows[i];
         const logoUrl = row.logo;
         if (!logoUrl.startsWith(S3_MEDIA_PREFIX)) {
             // Unknown URL format — skip but mark as migrated to avoid retrying

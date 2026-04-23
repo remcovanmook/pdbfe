@@ -9,8 +9,8 @@
  * Regenerate with: .venv/bin/python scripts/parse_django_models.py --force
  */
 
-import { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
-export { ENTITIES, ENTITY_TAGS };
+export { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
+
 
 /**
  * Entity tags for which the sync worker maintains Vectorize embeddings.
