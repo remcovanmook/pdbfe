@@ -14,10 +14,11 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 |-----------|-----------|---------|
 | Frontend SPA | Vanilla JS, CSS, Cloudflare Pages | Entity browsing, search, compare, account |
 | API Worker | Cloudflare Worker + D1 | PeeringDB-compatible REST API |
+| Search Worker | Cloudflare Worker + D1 + Vectorize + Workers AI | Keyword and semantic entity search |
 | GraphQL Worker | Cloudflare Worker + Yoga | GraphQL API endpoint |
 | REST Worker | Cloudflare Worker + Scalar | OpenAPI reference + REST pass-through |
 | Auth Worker | Cloudflare Worker + KV + D1 | OAuth2, sessions, user profiles, API keys |
-| Sync Worker | Cloudflare Cron Trigger + D1 | Incremental PeeringDB sync every 15 minutes |
+| Sync Worker | Cloudflare Cron Trigger + D1 + Vectorize | Incremental PeeringDB sync + vector embedding |
 | Pipeline | Node.js scripts | Schema extraction, entity codegen, D1 migrations |
 
 ## Constraints
@@ -43,19 +44,19 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 | D1 for user data (not KV) | ACID guarantees, eliminates race conditions in key management | #48 |
 | Entity codegen from upstream Django models | Auto-sync schema changes, reduce manual field mapping | #33 |
 | SWR + L2 Cache pipeline | Stale-while-revalidate with Cloudflare Cache API for multi-isolate sharing | #38 |
-| Semantic search via Vectorize | AI-powered entity discovery without exact-match requirements | feat-semantic-search |
+| Semantic search via Vectorize | AI-powered entity discovery without exact-match requirements | #77 |
 | Referer-based OAuth return origin | Clean redirect to Pages preview deployments without frontend changes | #70 |
 
 ## Current State
 
-~510 commits across 75 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites. Versioning established at `0.9.0` with semver bump tooling and CI enforcement.
+~525 commits across 77 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Semantic search live: `pdbfe-search` worker handles keyword and AI-powered (BGE-large) queries; ~74k entity vectors backfilled into Vectorize. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites. Versioning at `0.9.0`.
 
-**Active branch**: `main` — `feat/versioning` merged and deployed at `0.9.0`.
+**Active branch**: `feat/search-worker` — PR #77 pending merge.
 
 **Known tech debt**:
-- Mobile rendering of detail page tables needs card-based responsive layout
-- Worker test coverage enforced at 85/80/80; frontend coverage is 70.7% line / 77.1% branch with no floor — DOM-rendering modules deferred to E2E, but `auth.js` OAuth/session logic (61% line) is the highest-value gap for unit coverage in M11
+- Mobile rendering of detail page tables needs card-based responsive layout (M11 Part 2)
 - Production frontend gated behind Cloudflare Access (AUP approval pending)
+- `auth.js` OAuth/session logic (61% line coverage) is the highest-value gap for unit coverage
 
 ---
-*Last updated: 2026-04-23 — PR #76 pending, 75 PRs merged*
+*Last updated: 2026-04-23 — PR #77 open, 76 PRs merged*
