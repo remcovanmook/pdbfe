@@ -20,6 +20,8 @@
  * This must match whatever the ingestion pipeline writes to Vectorize.
  */
 
+import { tokenizeString } from '../../core/utils.js';
+
 /** @type {any|null} Workers AI binding, captured from env.AI */
 let _ai = null;
 
@@ -107,10 +109,12 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
     }
 
     // Step 3: extract entity IDs from vector match IDs.
-    // Format: "{entityTag}:{entityId}" — take the part after the first colon.
-    const parts = vecResults.matches
-        .map(m => m.id.split(':')[1])
-        .filter(Boolean);
+    // Format: "{entityTag}:{entityId}" — take p1 from tokenizeString with maxParts=2.
+    const parts = [];
+    for (const match of vecResults.matches) {
+        const tok = tokenizeString(match.id, ':', 2);
+        if (tok.p1 !== undefined) parts.push(tok.p1);
+    }
 
     return parts.length > 0 ? parts.join(',') : null;
 }
