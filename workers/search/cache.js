@@ -139,7 +139,7 @@ const PARAM_KEY_CACHE_LIMIT = 500;
 export async function buildSearchKey(q, entityList, mode, limit, skip, authenticated) {
     // Sort the entity list so [net,ix] and [ix,net] map to the same cache entry.
     // Canonical serialisation: fixed key order, no extra whitespace.
-    const entityKey = entityList.slice().sort().join(',');
+    const entityKey = entityList.slice().sort((a, b) => a.localeCompare(b)).join(',');
     const paramStr = `${entityKey}\x00${mode}\x00${limit}\x00${skip}\x00${q}`;
     const authPrefix = authenticated ? 'auth:' : 'anon:';
 
