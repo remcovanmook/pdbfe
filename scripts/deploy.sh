@@ -14,12 +14,13 @@
 # Deploy order:
 #   1. Validate generated artifacts
 #   2. Apply D1 migrations (if --apply-migrations)
-#   3. Deploy pdbfe-sync     (if changed or --force)
-#   4. Deploy pdbfe-api      (if changed or --force)
-#   5. Deploy pdbfe-auth     (if changed or --force)
-#   6. Deploy pdbfe-graphql  (if changed or --force)
-#   7. Deploy pdbfe-rest     (if changed or --force)
-#   8. Deploy frontend       (if --remote)
+#   3. Deploy pdbfe-search    (if changed or --force)
+#   4. Deploy pdbfe-sync      (if changed or --force)
+#   5. Deploy pdbfe-api       (if changed or --force)
+#   6. Deploy pdbfe-auth      (if changed or --force)
+#   7. Deploy pdbfe-graphql   (if changed or --force)
+#   8. Deploy pdbfe-rest      (if changed or --force)
+#   9. Deploy frontend        (if --remote)
 #
 
 set -euo pipefail
@@ -163,6 +164,7 @@ section "Workers"
 
 # Worker configs and their source directories
 declare -a WORKERS=(
+    "wrangler-search.toml:search"
     "wrangler-sync.toml:sync"
     "wrangler.toml:api"
     "wrangler-auth.toml:auth"

@@ -31,7 +31,7 @@ binding = "AI"
 # Create with: wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "pdbfe-vectors"
+index_name = "<your-vectorize-index-name>"
 
 [vars]
 PDBFE_VERSION = "<your-version>"

@@ -11,6 +11,7 @@
 #   D1_USERDB_ID           — Users D1 database ID (pdbfe-users)
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
 #   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev"), used for API, auth, and frontend origins
+#   VECTORIZE_INDEX_NAME   — Vectorize index name for semantic search (e.g. "pdbfe-vectors")
 
 name: Deploy
 
@@ -60,6 +61,7 @@ jobs:
           D1_USERDB_ID: ${{ secrets.D1_USERDB_ID }}
           KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
           API_DOMAIN: ${{ secrets.API_DOMAIN }}
+          VECTORIZE_INDEX_NAME: ${{ secrets.VECTORIZE_INDEX_NAME }}
         run: |
           PDBFE_VERSION="$(cat VERSION | tr -d '[:space:]')"
 
@@ -98,6 +100,15 @@ jobs:
             -e "s|<your-domain>|${API_DOMAIN}|g" \
             -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler-rest.toml.example > workers/wrangler-rest.toml
+
+          sed \
+            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
+            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
+            -e "s|<your-domain>|${API_DOMAIN}|g" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
+            -e "s|<your-vectorize-index-name>|${VECTORIZE_INDEX_NAME}|g" \
+            workers/wrangler-search.toml.example > workers/wrangler-search.toml
 
           # Frontend config (also gitignored) — all origins derive from API_DOMAIN
           sed \
