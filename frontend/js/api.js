@@ -219,8 +219,9 @@ function buildURL(path, params) {
         ? Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
         : [];
 
-    // Request pdbfe extension fields only when talking to our own API
-    if (IMAGES_ORIGIN) {
+    // Request pdbfe extension fields only for REST API paths.
+    // The search worker and other internal endpoints do not use this param.
+    if (IMAGES_ORIGIN && path.startsWith('/api/')) {
         entries.push(['__pdbfe', '1']);
     }
 
@@ -306,25 +307,14 @@ export async function searchAll(query, signal, types) {
  */
 export async function searchEntities(q, entity, opts = {}) {
     const { mode = 'auto', limit = 20, skip = 0, signal } = opts;
-    const sid = getSessionId();
 
     const isMulti = Array.isArray(entity);
-    const entityParam = isMulti
-        ? `entities=${encodeURIComponent(entity.join(','))}`
-        : `entity=${entity}`;
-
-    const qs = `q=${encodeURIComponent(q)}&${entityParam}&mode=${mode}&limit=${limit}&skip=${skip}`;
-    const url = `${API_ORIGIN}/search?${qs}`;
-
-    /** @type {RequestInit} */
-    const init = {};
-    if (sid) init.headers = { Authorization: `Bearer ${sid}` };
-    if (signal) init.signal = signal;
+    // Use entities= (plural CSV) for arrays, entity= (singular) for strings.
+    const entityParam = isMulti ? { entities: entity.join(',') } : { entity: String(entity) };
+    const params = { q, ...entityParam, mode, limit, skip };
 
     try {
-        const res = await fetch(url, init);
-        if (!res.ok) return null;
-        return res.json();
+        return await cachedFetch('/search', params, signal);
     } catch {
         return null;
     }
