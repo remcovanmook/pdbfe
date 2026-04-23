@@ -185,11 +185,32 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
+## M11: Semantic Search (PR #77)
+
+**Branch**: `feat/search-worker`
+**Shipped**: 2026-04-23
+
+| Category | Work |
+|----------|------|
+| Backend | New `pdbfe-search` worker — keyword (`LIKE`) and semantic (Workers AI + Vectorize) search with SWR cache |
+| Backend | Multi-entity fan-out: `entities=net,ix,fac` parallel D1 queries, grouped response with `meta.mode` |
+| Backend | `syncVectors()` in sync worker — incremental embedding (100 rows/entity/run) with `__vector_embedded` tracking column |
+| Database | Migration 005: `__vector_embedded` column on six entity tables (`ALTER TABLE`); tracked in `_migrations` |
+| Database | `_LOCAL_FIELDS` updated in `parse_django_models.py` so regenerated schemas include the column for fresh installs |
+| Frontend | Typeahead and search page wired to search worker; semantic mode badge in search heading |
+| Frontend | JSDoc types corrected for `searchWithAsn`/`searchAllViaWorker` grouped+meta return shape |
+| Infra | `scripts/backfill-vectors.mjs` — one-shot bulk embedder using Cloudflare REST APIs (D1 + AI + Vectorize), idempotent |
+| Infra | `deploy.sh --generate-configs` — all wrangler toml + `config.js` generation in one place; eliminates 60-line sed block from `deploy.yml` |
+| Infra | `.gitignore` updated with all generated toml files (`wrangler-graphql`, `wrangler-rest`, `wrangler-search`) |
+| Infra | `Ai`, `VectorizeIndex`, `VectorizeVector` type stubs added to `workers/types.d.ts` |
+
+---
+
 ## Backlog
 
 | Category | Item |
 |----------|------|
 | Frontend | Mobile card layout for remaining detail page entity tables |
-| Backend | Semantic search (Vectorize integration — branch `feat-semantic-search` exists) |
+| Backend | Vectorize index provisioning + backfill run against production D1 (pending infrastructure) |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
 
