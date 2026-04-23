@@ -54,7 +54,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 
 **Known tech debt**:
 - Mobile rendering of detail page tables needs card-based responsive layout
-- Worker test coverage is catch-up, not TDD
+- Worker test coverage enforced at 85/80/80; frontend coverage is 70.7% line / 77.1% branch with no floor — DOM-rendering modules deferred to E2E, but `auth.js` OAuth/session logic (61% line) is the highest-value gap for unit coverage in M11
 - Production frontend gated behind Cloudflare Access (AUP approval pending)
 
 ---

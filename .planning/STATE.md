@@ -29,14 +29,17 @@
 
 | Category | Tests | Suites | Scope |
 |----------|------:|-------:|-------|
-| Worker unit | 934 | 161 | API, auth, core, GraphQL, REST, sync |
+| Worker unit | 1008 | 175 | API, auth, core, GraphQL, REST, sync |
 | Frontend unit | 190 | 53 | Home, about, i18n, markdown, debug, formatSpeed, countries, entities, router, theme, timezone, typeahead, pdb-table, pages |
 | Compliance | 56 | 5 | Golden files, wire format, filter fuzz (subset of worker unit) |
-| **Total** | **1124** | **214** | |
+| **Total** | **1198** | **228** | |
+
+**Worker coverage**: 95.9% line / 87.0% branch / 90.3% functions. Enforced via `--test-coverage-lines=85 --test-coverage-branches=80 --test-coverage-functions=80` in `npm test`.
+
+**Frontend coverage**: 70.7% line / 77.1% branch / 52.2% functions. No threshold enforced — DOM-rendering modules (`render.js`, `pdb-table.js`, `home.js`) are covered by Playwright E2E instead. Known gap: `auth.js` at 61% line (OAuth callback / session management branches unreachable by mock-DOM harness).
 
 - CI runs: lint, typecheck, XSS scan, schema freshness, version-check, all unit tests
-- Compliance tests: structural diff against upstream JSON, golden file snapshots, filter fuzz
-- Frontend coverage: 33 modules, 190 unit tests
+- Worker tests blocked below 85/80/80 thresholds
 - Playwright E2E: 54 tests across navigation, search, accessibility, theme, typeahead
 
 ## Versioning
