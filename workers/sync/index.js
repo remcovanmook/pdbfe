@@ -390,7 +390,7 @@ export async function syncVectors(db, ai, vectorize, tag, table, primaryField) {
             const aiResult = await ai.run('@cf/baai/bge-large-en-v1.5', { text: texts });
             const embeddings = aiResult.data;
 
-            if (!embeddings || embeddings.length !== batch.length) {
+            if (embeddings?.length !== batch.length) {
                 console.error(`[sync-vectors] ${tag}: AI returned unexpected embedding count`);
                 result.errors += batch.length;
                 continue;
