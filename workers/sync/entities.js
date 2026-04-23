@@ -9,7 +9,8 @@
  * Regenerate with: .venv/bin/python scripts/parse_django_models.py --force
  */
 
-export { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
+import { ENTITIES, ENTITY_TAGS } from '../../extracted/entities-worker.js';
+export { ENTITIES, ENTITY_TAGS };
 
 
 /**

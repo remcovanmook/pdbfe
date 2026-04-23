@@ -276,8 +276,7 @@ export async function syncLogos(db, logos, tag, table) {
     if (!rows.results || rows.results.length === 0) return result;
 
     const logoRows = /** @type {{id: number, logo: string}[]} */ (rows.results);
-    for (let i = 0; i < logoRows.length; i++) {
-        const row = logoRows[i];
+    for (const row of logoRows) {
         const logoUrl = row.logo;
         if (!logoUrl.startsWith(S3_MEDIA_PREFIX)) {
             // Unknown URL format — skip but mark as migrated to avoid retrying
