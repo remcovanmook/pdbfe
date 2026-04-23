@@ -19,14 +19,6 @@ import { encoder } from '../../core/http.js';
 import { SEARCH_FIELDS, getPrimaryField } from '../entities.js';
 
 /**
- * Maximum number of LIKE clauses per query. Prevents unbounded SQL growth
- * for entity types with many searchable fields.
- *
- * @type {number}
- */
-const MAX_LIKE_FIELDS = 4;
-
-/**
  * Executes a keyword search against D1 for a single entity type.
  *
  * Builds a WHERE clause with LIKE predicates across the entity's primary
@@ -50,9 +42,8 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     const primaryField = getPrimaryField(entityTag);
 
     // Build WHERE clause: OR across each searchable field using LIKE.
-    // Cap at MAX_LIKE_FIELDS to keep SQL predictable.
-    // §2: string concatenation, no regex.
-    const fieldCount = fields.length < MAX_LIKE_FIELDS ? fields.length : MAX_LIKE_FIELDS;
+    // §2: string concatenation, no regex. Field count already capped by entities.js.
+    const fieldCount = fields.length;
     let where = '';
     for (let i = 0; i < fieldCount; i++) {
         if (i > 0) where += ' OR ';

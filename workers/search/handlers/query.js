@@ -18,7 +18,7 @@
  */
 
 import { tokenizeString } from '../../core/utils.js';
-import { encoder } from '../../core/http.js';
+import { encoder, jsonError, H_NOCACHE } from '../../core/http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL } from '../cache.js';
 import { SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
 import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
@@ -52,11 +52,9 @@ function parseSearchParams(queryString) {
     let limit = DEFAULT_LIMIT;
     let skip = 0;
 
-    // Outer split on '&' — unlimited parts.
+    // Outer split on '&' — unlimited parts. Iterate values with for-of.
     const pairs = tokenizeString(queryString, '&', -1);
-    const keys = Object.keys(pairs);
-    for (let i = 0; i < keys.length; i++) {
-        const pair = pairs[keys[i]];
+    for (const pair of Object.values(pairs)) {
         // Inner split on '=' — at most 2 parts so values containing '=' are preserved.
         const kv = tokenizeString(pair, '=', 2);
         const k = kv.p0;
@@ -155,22 +153,14 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
  */
 export async function handleSearch(request, queryString, db, ai, vectorize, ctx, authenticated) {
     const { q, entity, mode, limit, skip, error } = parseSearchParams(queryString);
-    if (error) {
-        return new Response(JSON.stringify({ error }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    }
+    if (error) return jsonError(400, error);
 
     // Resolve effective mode.
     const semanticAvailable = isSemanticEnabled();
     let effectiveMode = mode;
     if (mode === 'auto') effectiveMode = semanticAvailable ? 'semantic' : 'keyword';
     if (mode === 'semantic' && !semanticAvailable) {
-        return new Response(JSON.stringify({ error: 'Semantic search is not available on this deployment.' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError(503, 'Semantic search is not available on this deployment.');
     }
 
     const cacheKey = await buildSearchKey(q, entity, effectiveMode, limit, skip, authenticated);
