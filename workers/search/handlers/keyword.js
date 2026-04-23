@@ -73,17 +73,18 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}[]} */
     const data = [];
     for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
         /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}} */
         const row = {
-            id: /** @type {number} */ (rows[i].id),
-            name: /** @type {string} */ (rows[i].name) || '',
+            id: /** @type {number} */ (r.id),
+            name: /** @type {string} */ (r.name) || '',
             entity_type: entityTag,
             score: 1,
         };
         // Copy extra display fields (asn, city, country, etc.) if present.
         for (let j = 0; j < extraFields.length; j++) {
             const col = extraFields[j];
-            if (rows[i][col] != null) row[col] = rows[i][col];
+            if (r[col] != null) row[col] = r[col];
         }
         data.push(row);
     }
