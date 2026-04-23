@@ -130,6 +130,27 @@ describe('handleKeyword', () => {
         assert.equal(body.data[0].score, 1);
     });
 
+    it('includes asn in net results when the row carries an asn value', async () => {
+        const db = mockDB([{ id: 694, name: 'Cloudflare', asn: 13335, status: 'ok' }]);
+        const buf = await handleKeyword(db, 'net', 'cloud', 20, 0);
+        const body = JSON.parse(new TextDecoder().decode(buf));
+        assert.equal(body.data[0].asn, 13335);
+    });
+
+    it('omits asn from net results when the row has no asn (null)', async () => {
+        const db = mockDB([{ id: 1, name: 'NoASN', asn: null, status: 'ok' }]);
+        const buf = await handleKeyword(db, 'net', 'noasn', 20, 0);
+        const body = JSON.parse(new TextDecoder().decode(buf));
+        assert.ok(!('asn' in body.data[0]));
+    });
+
+    it('includes city in ix results when the row carries a city value', async () => {
+        const db = mockDB([{ id: 1, name: 'AMSIX', city: 'Amsterdam', status: 'ok' }]);
+        const buf = await handleKeyword(db, 'ix', 'ams', 10, 0);
+        const body = JSON.parse(new TextDecoder().decode(buf));
+        assert.equal(body.data[0].city, 'Amsterdam');
+    });
+
     it('works for ix entity type', async () => {
         const db = mockDB([{ id: 1, name: 'AMSIX', status: 'ok' }]);
         const buf = await handleKeyword(db, 'ix', 'ams', 10, 0);

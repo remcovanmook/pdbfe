@@ -25,7 +25,7 @@
 import { tokenizeString } from '../../core/utils.js';
 import { encoder, jsonError, serveSearch } from '../http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL, SEARCH_MULTI_EMPTY_SENTINEL } from '../cache.js';
-import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
+import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField, getExtraFields } from '../entities.js';
 import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
 import { handleKeyword } from './keyword.js';
 
@@ -138,6 +138,8 @@ function parseSearchParams(queryString) {
 async function hydrateSemanticIds(db, entityTag, idList, limit) {
     const table = ENTITIES[entityTag].table;
     const primaryField = getPrimaryField(entityTag);
+    const extraFields = getExtraFields(entityTag);
+    const extraSelect = extraFields.length > 0 ? ', ' + extraFields.join(', ') : '';
 
     // Build CASE expression for relevance sort. §3: index-based for loop (i needed for THEN value).
     const ids = idList.split(',');
@@ -148,7 +150,7 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
     caseExpr += ' ELSE 999 END';
 
     const sql =
-        `SELECT id, ${primaryField} AS name, status FROM ${table}` +
+        `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
         ` WHERE id IN (${idList}) AND status != 'deleted'` +
         ` ORDER BY ${caseExpr} ASC LIMIT ?`;
 
@@ -156,16 +158,23 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
     if (!result.success || result.results.length === 0) return [];
 
     const rows = result.results;
-    /** @type {{id: number, name: string, entity_type: string, score: number}[]} */
+    /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}[]} */
     const data = [];
     for (let i = 0; i < rows.length; i++) {
         const score = 1 - i / rows.length;
-        data.push({
+        /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}} */
+        const row = {
             id: /** @type {number} */ (rows[i].id),
             name: /** @type {string} */ (rows[i].name) || '',
             entity_type: entityTag,
             score: Math.round(score * 100) / 100,
-        });
+        };
+        // Copy extra display fields (asn, city, country, etc.) if present.
+        for (let j = 0; j < extraFields.length; j++) {
+            const col = extraFields[j];
+            if (rows[i][col] != null) row[col] = rows[i][col];
+        }
+        data.push(row);
     }
     return data;
 }

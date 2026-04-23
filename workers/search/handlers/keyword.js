@@ -16,7 +16,7 @@
  */
 
 import { encoder } from '../http.js';
-import { ENTITIES, SEARCH_FIELDS, getPrimaryField } from '../entities.js';
+import { ENTITIES, SEARCH_FIELDS, getPrimaryField, getExtraFields } from '../entities.js';
 
 /**
  * Executes a keyword search against D1 for a single entity type.
@@ -56,8 +56,11 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     const binds = /** @type {(string|number)[]} */ (new Array(fieldCount).fill(pattern));
     binds.push(limit, skip);
 
+    const extraFields = getExtraFields(entityTag);
+    const extraSelect = extraFields.length > 0 ? ', ' + extraFields.join(', ') : '';
+
     const sql =
-        `SELECT id, ${primaryField} AS name, status FROM ${table}` +
+        `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
         ` WHERE (${where}) AND status != 'deleted'` +
         ` ORDER BY name ASC LIMIT ? OFFSET ?`;
 
@@ -65,12 +68,25 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
 
     if (!result.success || result.results.length === 0) return null;
 
-    const data = result.results.map(row => ({
-        id: /** @type {number} */ (row.id),
-        name: /** @type {string} */ (row.name) || '',
-        entity_type: entityTag,
-        score: 1,
-    }));
+    // §3: for loop instead of .map() to accumulate result rows.
+    const rows = result.results;
+    /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}[]} */
+    const data = [];
+    for (let i = 0; i < rows.length; i++) {
+        /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}} */
+        const row = {
+            id: /** @type {number} */ (rows[i].id),
+            name: /** @type {string} */ (rows[i].name) || '',
+            entity_type: entityTag,
+            score: 1,
+        };
+        // Copy extra display fields (asn, city, country, etc.) if present.
+        for (let j = 0; j < extraFields.length; j++) {
+            const col = extraFields[j];
+            if (rows[i][col] != null) row[col] = rows[i][col];
+        }
+        data.push(row);
+    }
 
     // §4: single serialisation at exit.
     return encoder.encode(JSON.stringify({
