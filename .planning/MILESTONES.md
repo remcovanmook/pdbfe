@@ -214,6 +214,7 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Infra | Deploy sync worker with `AI` + `VECTORIZE` bindings in production `wrangler-sync.toml` |
 | Backend | Run `scripts/backfill-vectors.mjs` against production D1 |
 | Backend | Validate semantic search results on production frontend (`meta.mode === 'semantic'`) |
+| Frontend | Mobile card layout for remaining detail page entity tables |
 
 ---
 
@@ -221,7 +222,6 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 | Category | Item |
 |----------|------|
-| Frontend | Mobile card layout for remaining detail page entity tables |
 | Backend | Vectorize index provisioning + backfill run against production D1 (pending infrastructure) |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
 
