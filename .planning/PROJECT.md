@@ -50,7 +50,7 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 
 ~510 commits across 75 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites. Versioning established at `0.9.0` with semver bump tooling and CI enforcement.
 
-**Active branch**: `feat/versioning` — semantic versioning (`VERSION` file, bump script, CI gate, deploy auto-tagging, `X-PDBFE-Version` header across all workers).
+**Active branch**: `main` — `feat/versioning` merged and deployed at `0.9.0`.
 
 **Known tech debt**:
 - Mobile rendering of detail page tables needs card-based responsive layout
