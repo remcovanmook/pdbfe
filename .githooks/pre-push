@@ -1,7 +1,11 @@
 #!/bin/bash
 #
-# Pre-commit hook: runs unit tests and TypeScript validation for both
-# workers and frontend. Rejects the commit if any check fails.
+# Pre-push hook: runs the full test suite including Playwright E2E tests.
+# Rejects the push if any check fails.
+#
+# This is intentionally separate from pre-commit — Playwright requires a
+# running wrangler pages dev server and is too slow for every commit.
+# Run the full suite here before any push to origin.
 #
 # Install: git config core.hooksPath .githooks
 #
@@ -21,7 +25,7 @@ pass() {
     echo -e "${GREEN}✔ $1${NC}"
 }
 
-echo "Running pre-commit checks..."
+echo "Running pre-push checks (full suite including E2E)..."
 
 # ── Workers ──────────────────────────────────────────────────────────
 
@@ -43,8 +47,6 @@ cd ..
 node scripts/lint_xss.js 2>&1 || fail "XSS linting failed"
 pass "XSS linting"
 
-
-
 # ── Frontend ─────────────────────────────────────────────────────────
 
 cd frontend
@@ -55,7 +57,12 @@ pass "frontend typecheck"
 npm run test:unit --silent 2>&1 || fail "frontend unit tests failed"
 pass "frontend unit tests"
 
+# Playwright E2E — requires wrangler pages dev running on :8788.
+# Start it if not already running, or rely on reuseExistingServer.
+npm run test:e2e --silent 2>&1 || fail "frontend E2E tests failed"
+pass "frontend E2E tests"
+
 cd ..
 
-echo -e "${GREEN}All pre-commit checks passed.${NC}"
+echo -e "${GREEN}All pre-push checks passed.${NC}"
 exit 0
