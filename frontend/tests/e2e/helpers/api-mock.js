@@ -116,8 +116,9 @@ export async function mockApi(page, overrides = {}) {
         }
 
         // /search — search worker endpoint (typeahead + search page API calls).
-        // Scoped to fetch/XHR to avoid intercepting the /search page navigation itself.
-        if (url.includes('/search') && route.request().resourceType() !== 'document') {
+        // Match only the exact /search path (with optional query string), not
+        // static assets that contain "search" in their path (/js/pages/search.js).
+        if (/\/search(\?|$)/.test(url) && route.request().resourceType() !== 'document') {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
