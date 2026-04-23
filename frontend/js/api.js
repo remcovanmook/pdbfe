@@ -16,7 +16,7 @@ import { ENTITIES, getLabel } from './entities.js';
  * @type {Record<string, (r: any) => string>}
  */
 const SUBTITLE_FORMATTERS = {
-    net:     /** @param {any} r */ (r) => `AS${r.asn}`,
+    net:     /** @param {any} r */ (r) => r.asn != null ? `AS${r.asn}` : '',
     ix:      /** @param {any} r */ (r) => r.city || '',
     fac:     /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
     org:     () => '',
@@ -453,20 +453,25 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * The exact ASN match is deduplicated and injected at the top of
  * the networks list.
  *
+ * ASN injection is only applied for keyword mode — semantic queries
+ * are intent-based and an exact ASN match would skew the ranked results.
+ *
  * @param {string} query - Search term.
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @param {string[]} [types] - Optional subset of entity type keys to search.
  *     When provided, only these types are queried and ASN injection only
  *     applies if 'net' is included in the filter.
+ * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
-export async function searchWithAsn(query, signal, types) {
+export async function searchWithAsn(query, signal, types, mode = 'keyword') {
     const includeNet = !types || types.includes('net');
-    const asnMatch = ASN_PATTERN.exec(query.trim());
+    // Only attempt ASN lookup for keyword mode — semantic is intent-based.
+    const asnMatch = (mode === 'keyword') ? ASN_PATTERN.exec(query.trim()) : null;
     const asnNum = (includeNet && asnMatch) ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
-        searchAllViaWorker(query, signal, types),
+        searchAllViaWorker(query, signal, types, mode),
         Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 

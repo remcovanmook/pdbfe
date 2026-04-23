@@ -6,7 +6,12 @@
  *
  * ASN-aware: if the query looks like an ASN (bare number or AS-prefixed),
  * an additional lookup by ASN is fired in parallel and the exact match
- * is surfaced at the top of the Networks section.
+ * is surfaced at the top of the Networks section. ASN injection is
+ * suppressed in semantic mode.
+ *
+ * Mode is controlled via the `mode` query parameter (?mode=semantic).
+ * A toggle link in the heading lets the user switch between keyword
+ * and semantic modes.
  *
  * Uses DOM-based rendering — all user data goes through textContent.
  */
@@ -49,13 +54,30 @@ function createModeBadge(mode) {
 }
 
 /**
+ * Builds the URL for the same search query in the opposite mode.
+ *
+ * @param {string} query - Current search query.
+ * @param {'keyword'|'semantic'} currentMode - The mode currently active.
+ * @returns {string} URL string for the alternate mode.
+ */
+function buildToggleUrl(query, currentMode) {
+    const nextMode = currentMode === 'semantic' ? 'keyword' : 'semantic';
+    return `/search?q=${encodeURIComponent(query)}&mode=${nextMode}`;
+}
+
+/**
  * Renders the search results page.
  *
- * @param {Record<string, string>} params - Route params, expects { q: string }.
+ * @param {Record<string, string>} params - Route params: { q: string, mode?: string }.
  */
 export async function renderSearch(params) {
     const app = /** @type {HTMLElement} */ (document.getElementById('app'));
     const query = params.q || '';
+    const rawMode = params.mode || 'keyword';
+    // Only accept recognised modes; fall back to keyword for unknown values.
+    const mode = /** @type {'keyword'|'semantic'|'auto'} */ (
+        (rawMode === 'semantic' || rawMode === 'auto') ? rawMode : 'keyword'
+    );
 
     document.title = `Search: ${query} — PDBFE`;
 
@@ -76,6 +98,16 @@ export async function renderSearch(params) {
     heading.appendChild(strong);
     wrapper.appendChild(heading);
 
+    // Mode toggle link — lets the user switch between keyword and semantic.
+    const toggleUrl = buildToggleUrl(query, mode === 'semantic' ? 'semantic' : 'keyword');
+    const toggleLabel = mode === 'semantic' ? t('Switch to keyword search') : t('Switch to semantic search');
+    const toggleLink = document.createElement('a');
+    toggleLink.href = toggleUrl;
+    toggleLink.className = 'search-results__mode-toggle';
+    toggleLink.textContent = toggleLabel;
+    toggleLink.dataset['link'] = 'internal';
+    wrapper.appendChild(toggleLink);
+
     const body = document.createElement('div');
     body.id = 'search-body';
     body.appendChild(createLoading(t('Searching')));
@@ -88,7 +120,7 @@ export async function renderSearch(params) {
     if (headerInput) headerInput.value = query;
 
     try {
-        const results = await searchWithAsn(query);
+        const results = await searchWithAsn(query, undefined, undefined, mode);
 
         // Surface search mode in the heading if non-keyword.
         const modeBadge = createModeBadge(results.meta?.mode ?? 'keyword');

@@ -1168,6 +1168,34 @@ body[data-page="home"] .site-logo {
     color: var(--text-muted);
 }
 
+.search-results__mode-toggle {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-decoration: none;
+    margin-top: calc(-1 * var(--space-sm));
+    transition: color var(--transition-fast);
+}
+
+.search-results__mode-toggle:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+.search-results__mode-badge {
+    display: inline-block;
+    margin-left: var(--space-sm);
+    padding: 2px var(--space-xs);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--accent-muted);
+    color: var(--accent);
+    border-radius: var(--radius-sm);
+    vertical-align: middle;
+}
+
 /* ── Footer ────────────────────────────────────────────────────── */
 
 .site-footer {

@@ -114,3 +114,37 @@ export function getPrimaryField(entityTag) {
     const fields = SEARCH_FIELDS[entityTag];
     return (fields && fields.length > 0) ? fields[0] : 'name';
 }
+
+/**
+ * Extra columns to SELECT per entity type for search result rows.
+ *
+ * These are not search fields (not used in WHERE LIKE predicates) but
+ * supplementary display fields the frontend subtitle formatters require.
+ * Kept separate from SEARCH_FIELDS so the LIKE clause stays narrow.
+ *
+ * - net: asn — displayed as "AS{asn}" below the network name
+ * - ix:  city — location hint below the exchange name
+ * - fac: city, country — location below the facility name
+ * - campus: city, country — location below the campus name
+ *
+ * @type {Record<string, string[]>}
+ */
+export const EXTRA_FIELDS = {
+    net:     ['asn'],
+    ix:      ['city'],
+    fac:     ['city', 'country'],
+    org:     [],
+    carrier: [],
+    campus:  ['city', 'country'],
+};
+
+/**
+ * Returns the list of extra display columns for a given entity type.
+ * Returns an empty array for entity types not present in EXTRA_FIELDS.
+ *
+ * @param {string} entityTag - Entity type tag (e.g. "net", "ix").
+ * @returns {string[]} Column names to include in the SELECT beyond id/name/status.
+ */
+export function getExtraFields(entityTag) {
+    return EXTRA_FIELDS[entityTag] || [];
+}

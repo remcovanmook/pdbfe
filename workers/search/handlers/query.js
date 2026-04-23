@@ -25,7 +25,7 @@
 import { tokenizeString } from '../../core/utils.js';
 import { encoder, jsonError, serveSearch } from '../http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL, SEARCH_MULTI_EMPTY_SENTINEL } from '../cache.js';
-import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
+import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField, getExtraFields } from '../entities.js';
 import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
 import { handleKeyword } from './keyword.js';
 
@@ -65,9 +65,12 @@ function parseSearchParams(queryString) {
     let limit = DEFAULT_LIMIT;
     let skip = 0;
 
-    // Outer split on '&' — unlimited parts. Iterate values with for-of.
+    // Outer split on '&' — unlimited parts. tokenizeString returns { p0, p1, ... };
+    // iterate numerically to avoid Object.values() allocation (§3).
     const pairs = tokenizeString(queryString, '&', -1);
-    for (const pair of Object.values(pairs)) {
+    for (let _pi = 0; ; _pi++) {
+        const pair = pairs['p' + _pi];
+        if (pair === undefined) break;
         // Inner split on '=' — at most 2 parts so values containing '=' are preserved.
         const kv = tokenizeString(pair, '=', 2);
         const k = kv.p0;
@@ -89,9 +92,12 @@ function parseSearchParams(queryString) {
 
     if (isMulti) {
         // Parse and validate the CSV list. §2: no regex — split on comma using tokenizeString.
+        // §3: iterate tokenizeString result numerically to avoid Object.values() allocation.
         const parts = tokenizeString(entitiesRaw, ',', -1);
         entityList = [];
-        for (const tag of Object.values(parts)) {
+        for (let _pi = 0; ; _pi++) {
+            const tag = parts['p' + _pi];
+            if (tag === undefined) break;
             const t = tag.trim();
             if (!SEARCH_ENTITY_TAGS.has(t)) {
                 return { q, entityList: [], isMulti, mode, limit, skip, error: `Unknown entity type: ${t}` };
@@ -138,6 +144,8 @@ function parseSearchParams(queryString) {
 async function hydrateSemanticIds(db, entityTag, idList, limit) {
     const table = ENTITIES[entityTag].table;
     const primaryField = getPrimaryField(entityTag);
+    const extraFields = getExtraFields(entityTag);
+    const extraSelect = extraFields.length > 0 ? ', ' + extraFields.join(', ') : '';
 
     // Build CASE expression for relevance sort. §3: index-based for loop (i needed for THEN value).
     const ids = idList.split(',');
@@ -148,7 +156,7 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
     caseExpr += ' ELSE 999 END';
 
     const sql =
-        `SELECT id, ${primaryField} AS name, status FROM ${table}` +
+        `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
         ` WHERE id IN (${idList}) AND status != 'deleted'` +
         ` ORDER BY ${caseExpr} ASC LIMIT ?`;
 
@@ -156,16 +164,23 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
     if (!result.success || result.results.length === 0) return [];
 
     const rows = result.results;
-    /** @type {{id: number, name: string, entity_type: string, score: number}[]} */
+    /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}[]} */
     const data = [];
     for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
         const score = 1 - i / rows.length;
-        data.push({
-            id: /** @type {number} */ (rows[i].id),
-            name: /** @type {string} */ (rows[i].name) || '',
+        /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}} */
+        const row = {
+            id: /** @type {number} */ (r.id),
+            name: /** @type {string} */ (r.name) || '',
             entity_type: entityTag,
             score: Math.round(score * 100) / 100,
-        });
+        };
+        // Copy extra display fields (asn, city, country, etc.) if present.
+        for (const col of extraFields) {
+            if (r[col] != null) row[col] = r[col];
+        }
+        data.push(row);
     }
     return data;
 }
@@ -250,10 +265,10 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
         // §9: all D1 and AI calls inside this queryFn closure.
 
         if (isMulti) {
-            // Fan out one search per entity type in parallel. §3: for-of to build promise array.
+            // Fan out one search per entity type in parallel. §3: index-based loop.
             const promises = [];
-            for (const tag of entityList) {
-                promises.push(runEntitySearch(db, ai, vectorize, tag, q, effectiveMode, limit, skip));
+            for (let i = 0; i < entityList.length; i++) {
+                promises.push(runEntitySearch(db, ai, vectorize, entityList[i], q, effectiveMode, limit, skip));
             }
             const rowSets = await Promise.all(promises);
 
