@@ -20,7 +20,7 @@
  * This must match whatever the ingestion pipeline writes to Vectorize.
  */
 
-import { tokenizeString } from '../../core/utils.js';
+
 
 /** @type {any|null} Workers AI binding, captured from env.AI */
 let _ai = null;
@@ -75,8 +75,11 @@ export function isSemanticEnabled() {
  * this context, short queries like "cloud" would match poorly against
  * dense multi-field records.
  *
- * The vector search is filtered by entity type metadata, so a search on
- * "net" won't return "fac" results even if the text is similar.
+ * Entity type filtering is done by ID prefix rather than a Vectorize metadata
+ * filter. This is more robust: it works regardless of whether the ingestion
+ * pipeline attached `entity` metadata to each vector, and avoids returning an
+ * empty result set when metadata is absent or uses a different key name.
+ * A larger topK compensates for the post-hoc prefix filtering.
  *
  * Only call this when isSemanticEnabled() returns true — the function
  * assumes _ai and _vectorize are set.
@@ -98,22 +101,26 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
         text: [contextualQuery]
     });
 
-    // Step 2: search Vectorize with entity-scoped metadata filter
-    const vecResults = await _vectorize.query(data[0], {
-        topK: limit,
-        filter: { entity: entityTag }
-    });
+    // Step 2: search Vectorize without a metadata filter.
+    // Fetch 4x limit (capped at 100, the Vectorize topK ceiling) so there
+    // are enough candidates after the prefix filter in step 3.
+    const fetchK = Math.min(limit * 4, 100);
+    const vecResults = await _vectorize.query(data[0], { topK: fetchK });
 
     if (!vecResults.matches || vecResults.matches.length === 0) {
         return null;
     }
 
-    // Step 3: extract entity IDs from vector match IDs.
-    // Format: "{entityTag}:{entityId}" — take p1 from tokenizeString with maxParts=2.
+    // Step 3: filter by entity ID prefix and extract the numeric entity ID.
+    // Vector ID format: "{entityTag}_{entityId}" (e.g. "net_694").
+    // Matches arrive ordered by cosine similarity; preserve that order.
+    const prefix = `${entityTag}_`;
     const parts = [];
     for (const match of vecResults.matches) {
-        const tok = tokenizeString(match.id, ':', 2);
-        if (tok.p1 !== undefined) parts.push(tok.p1);
+        if (!match.id.startsWith(prefix)) continue;
+        const id = match.id.slice(prefix.length);
+        if (id) parts.push(id);
+        if (parts.length >= limit) break;
     }
 
     return parts.length > 0 ? parts.join(',') : null;
