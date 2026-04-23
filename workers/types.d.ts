@@ -196,6 +196,8 @@ interface PdbApiEnv {
     USERDB: D1Database;
     SESSIONS: KVNamespace;
     ADMIN_SECRET?: string;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
 }
 
 /**
@@ -215,6 +217,8 @@ interface PdbSyncEnv {
     LOGOS?: R2Bucket;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
 }
 
 /**
@@ -229,6 +233,8 @@ interface PdbAuthEnv {
     OAUTH_REDIRECT_URI: string;
     FRONTEND_ORIGIN: string;
     PEERINGDB_API_KEY: string;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
 }
 
 /**

@@ -27,6 +27,10 @@ git config core.hooksPath .githooks
 # Copy config templates
 cp workers/wrangler.toml.example workers/wrangler.toml
 cp frontend/js/config.js.example frontend/js/config.js
+
+# Set the local version in the copied config (replace <your-version> with the
+# current version string — CI does this automatically from the VERSION file)
+PDBFE_VERSION="$(cat VERSION)" && sed -i '' "s|<your-version>|${PDBFE_VERSION}|g" workers/wrangler.toml
 ```
 
 ### Running tests
@@ -109,6 +113,50 @@ Use conventional commit prefixes:
 | New HTML interpolation | Wrap in `escapeHTML()` or annotate `/* safe */` |
 | New worker module | `workers/tsconfig.json` include paths |
 | New test file | Verify it runs in `npm test` glob |
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). The canonical
+version lives in the `VERSION` file at the repo root.
+
+### Bump rules
+
+| Commit type | Version bump | Example |
+|---|---|---|
+| `fix:` | Patch (`0.0.x`) | `fix: correct null handling in query builder` |
+| `feat:` | Minor (`0.x.0`) | `feat: add GraphQL subscription support` |
+| `feat!:` / `fix!:` / `BREAKING CHANGE:` footer | Major (`x.0.0`) | `feat!: remove deprecated /v1 endpoints` |
+| `ci:`, `docs:`, `refactor:`, `chore:`, `test:`, `style:` | No bump | `ci: add version-check job` |
+
+### How to bump
+
+Run the bump script before opening a PR for any functional change:
+
+```bash
+./scripts/bump_version.sh patch   # bug fix
+./scripts/bump_version.sh minor   # new feature
+./scripts/bump_version.sh major   # breaking change
+```
+
+Then commit the result:
+
+```bash
+git add VERSION
+git commit -m "chore: bump version to $(cat VERSION)"
+```
+
+### CI enforcement
+
+A `version-check` job runs on every PR to `main`. It reads commit messages in
+the PR and fails if it finds a `feat:` or `fix:` commit (or a `BREAKING CHANGE:`
+trailer) without a corresponding `VERSION` bump. Non-functional PRs
+(`ci:`, `docs:`, `refactor:`, `chore:`) pass without any bump.
+
+### Tagging
+
+The deploy workflow automatically creates and pushes an annotated git tag
+`v<VERSION>` after every successful deploy to production. You do not need to
+tag manually.
 
 ## Submitting a PR
 

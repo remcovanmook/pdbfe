@@ -6,6 +6,10 @@ workers_dev = true
 routes = [
   { pattern = "api.<your-domain>/*", zone_name = "<your-domain>" }
 ]
+
+[vars]
+PDBFE_VERSION = "<your-version>"
+
 [[d1_databases]]
 binding = "PDB"
 database_name = "peeringdb"
