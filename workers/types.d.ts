@@ -160,6 +160,42 @@ interface ScheduledController {
     noRetry(): void;
 }
 
+// ── Workers AI ────────────────────────────────────────────────────────────────
+
+/** Workers AI response envelope from ai.run(). */
+interface AiRunResponse {
+    /** Embedding vectors — present for embedding models. */
+    data?: number[][];
+    /** Text response — present for text-generation models. */
+    response?: string;
+}
+
+/**
+ * Workers AI binding.
+ * Only the run() method is used; full type is in @cloudflare/workers-types.
+ */
+interface Ai {
+    run(model: string, inputs: Record<string, unknown>): Promise<AiRunResponse>;
+}
+
+// ── Vectorize ─────────────────────────────────────────────────────────────────
+
+/** A single vector to upsert into a Vectorize index. */
+interface VectorizeVector {
+    id: string;
+    values: number[];
+    metadata?: Record<string, unknown>;
+}
+
+/** Vectorize index binding. */
+interface VectorizeIndex {
+    upsert(vectors: VectorizeVector[]): Promise<{ count: number }>;
+    query(vector: number[], options?: { topK?: number; returnMetadata?: boolean }): Promise<{
+        matches: Array<{ id: string; score: number; metadata?: Record<string, unknown> }>;
+    }>;
+    deleteByIds(ids: string[]): Promise<{ count: number }>;
+}
+
 // ── Request.cf Extension ─────────────────────────────────────────────────────
 // Cloudflare-specific properties on incoming Request objects.
 
