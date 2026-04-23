@@ -204,18 +204,22 @@ async function markEmbedded(table, ids) {
 async function backfillEntity(tag, table) {
     let embedded = 0;
     let errors = 0;
-    let offset = 0;
+    let consecutiveErrorPages = 0;
 
     console.log(`[backfill] ${tag}: starting`);
 
     while (true) {
-        // Fetch next page of unembedded rows.
+        // Always fetch from offset 0 — rows are marked embedded as they're
+        // processed, so the WHERE filter acts as the cursor. Using OFFSET
+        // with a shrinking set causes every other page to be skipped.
         const rows = await d1Query(
-            `SELECT id, name FROM "${table}" WHERE "__vector_embedded" = 0 LIMIT ? OFFSET ?`,
-            [PAGE_SIZE, offset]
+            `SELECT id, name FROM "${table}" WHERE "__vector_embedded" = 0 LIMIT ?`,
+            [PAGE_SIZE]
         );
 
         if (rows.length === 0) break;
+
+        let pageEmbedded = 0;
 
         // Process in EMBED_BATCH chunks.
         for (let i = 0; i < rows.length; i += EMBED_BATCH) {
@@ -241,6 +245,7 @@ async function backfillEntity(tag, table) {
                 await markEmbedded(table, ids);
 
                 embedded += batch.length;
+                pageEmbedded += batch.length;
                 process.stdout.write(`\r[backfill] ${tag}: ${embedded} embedded`);
             } catch (err) {
                 console.error(`\n[backfill] ${tag} batch error: ${err.message}`);
@@ -248,9 +253,17 @@ async function backfillEntity(tag, table) {
             }
         }
 
-        // If we got fewer rows than PAGE_SIZE we've reached the end.
-        if (rows.length < PAGE_SIZE) break;
-        offset += PAGE_SIZE;
+        // Guard against infinite loops when rows persistently fail to embed
+        // (they stay at __vector_embedded=0 and reappear each iteration).
+        if (pageEmbedded === 0) {
+            consecutiveErrorPages++;
+            if (consecutiveErrorPages >= 3) {
+                console.error(`\n[backfill] ${tag}: 3 consecutive pages with 0 successes, stopping`);
+                break;
+            }
+        } else {
+            consecutiveErrorPages = 0;
+        }
     }
 
     console.log(`\n[backfill] ${tag}: done — ${embedded} embedded, ${errors} errors`);
