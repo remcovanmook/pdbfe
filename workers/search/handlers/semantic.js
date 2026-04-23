@@ -107,12 +107,10 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
     }
 
     // Step 3: extract entity IDs from vector match IDs.
-    // Format: "{entityTag}:{entityId}" — we need everything after the first colon.
-    const parts = [];
-    for (const match of vecResults.matches) {
-        const colon = match.id.indexOf(':');
-        if (colon !== -1) parts.push(match.id.substring(colon + 1));
-    }
+    // Format: "{entityTag}:{entityId}" — take the part after the first colon.
+    const parts = vecResults.matches
+        .map(m => m.id.split(':')[1])
+        .filter(Boolean);
 
     return parts.length > 0 ? parts.join(',') : null;
 }
