@@ -2,33 +2,22 @@
 
 ## Milestones
 
-- ✅ **M1–M8** — shipped (see [MILESTONES.md](./MILESTONES.md))
-- 📦 **M9 — Account & Mobile** — PR #70 (branch `frontend/account-mystuff-mobile`)
+- ✅ **M1–M9** — shipped (see [MILESTONES.md](./MILESTONES.md))
+- ✅ **M10 — Core Refactoring, Test Hardening, i18n & Versioning** — PRs #73–#76
 
-## Current: M9 — Account & Mobile
+## Current: M10 — shipped
 
-<details>
-<summary>📦 M9 — Account & Mobile (PR #70)</summary>
+All M10 work is merged or in-flight for merge:
 
 | Category | Item | Status |
 |----------|------|--------|
-| Frontend | Account page reshuffle (profile left, right column) | ✅ |
-| Frontend | "My stuff" on homepage | ✅ |
-| Frontend | Compare with locked A-side | ✅ |
-| Frontend | Mobile table card layout (initial) | ✅ |
-| Frontend | PeeringDB profile link | ✅ |
-| Auth | Favorites drag-and-drop with server persistence | ✅ |
-| Auth | OAuth redirect to originating frontend (Referer-based) | ✅ |
-| Auth | Dynamic CORS for all account endpoints | ✅ |
-| Frontend | Mobile card layout for remaining detail page tables | ☐ |
-| Frontend | Unit tests (countries, entities, router, theme, timezone) | ✅ |
-| Infra | .planning docs (PROJECT, MILESTONES, ROADMAP, STATE) | ✅ |
+| Backend | `core/pipeline/` reorganisation | ✅ |
+| Auth | Generic OAuth2 factory (`core/oauth.js`) | ✅ |
+| Infra | Frontend + E2E test suite (190 unit, 54 Playwright) | ✅ |
+| i18n | Full string catalog coverage (57% → 99%) | ✅ |
+| Infra | Semantic versioning (`VERSION`, `bump_version.sh`, CI gate, auto-tagging) | ✅ |
 
-Archive: PR branch `frontend/account-mystuff-mobile`
-
-</details>
-
-## Next: M10 — Mobile & Responsive (planned)
+## Next: M11 — Mobile & Responsive (planned)
 
 | Category | Item |
 |----------|------|
@@ -42,6 +31,4 @@ Archive: PR branch `frontend/account-mystuff-mobile`
 | Category | Item |
 |----------|------|
 | Backend | Semantic search — Vectorize integration (branch `feat-semantic-search` exists) |
-| Infra | E2E browser test suite |
-| Infra | Git tags and release versioning |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |

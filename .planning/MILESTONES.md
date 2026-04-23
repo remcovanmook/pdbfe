@@ -158,10 +158,10 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M10: Core Refactoring, Test Hardening & i18n (PRs #73, #74)
+## M10: Core Refactoring, Test Hardening, i18n & Versioning (PRs #73–#76)
 
-**Branches**: `chore/core-internal-tags`, `feat/frontend-tests`
-**Shipped**: 2026-04-20
+**Branches**: `chore/core-internal-tags`, `feat/frontend-tests`, `feat/versioning`
+**Shipped**: 2026-04-23
 
 | Category | Work |
 |----------|------|
@@ -178,6 +178,10 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | i18n | String wrapping applied to 13 page/component files (column labels, loading states, error messages, stat bar labels, UI controls) |
 | i18n | 148 PDBFE-specific translations added to all 13 locale override files via `scripts/patch_overrides.py` |
 | i18n | Coverage restored: 57% → 99% (340/343 strings) across cs, de, el, es, fr, it, ja, lt, pt, ro, ru, zh-cn, zh-tw |
+| Infra | Semantic versioning (`VERSION` file at `0.9.0`, `scripts/bump_version.sh` for patch/minor/major bumps) |
+| Infra | CI `version-check` job — hard blocks PRs with functional commits (`feat:`, `fix:`) that lack a version bump; exempt for `ci:`, `docs:`, `refactor:`, `chore:` |
+| Infra | Deploy workflow creates and pushes annotated git tag `v{VERSION}` after each successful production deploy |
+| Infra | `X-PDBFE-Version` response header injected in `wrapHandler` across all five workers |
 
 ---
 
@@ -187,6 +191,5 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 |----------|------|
 | Frontend | Mobile card layout for remaining detail page entity tables |
 | Backend | Semantic search (Vectorize integration — branch `feat-semantic-search` exists) |
-| Infra | Git tags and release versioning |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
 
