@@ -52,6 +52,17 @@ export const SEARCH_NEGATIVE_TTL = 60_000;
 export const SEARCH_EMPTY_SENTINEL = encoder.encode('{"data":[],"meta":{"count":0,"mode":"none"}}');
 
 /**
+ * Sentinel value for a cached empty multi-entity search result.
+ *
+ * Uses the grouped response shape — {data: {}, meta: {mode, counts: {}}} —
+ * so clients can always parse the response with the same shape check
+ * regardless of whether results were found.
+ *
+ * @type {Uint8Array}
+ */
+export const SEARCH_MULTI_EMPTY_SENTINEL = encoder.encode('{"data":{},"meta":{"mode":"none","counts":{}}}');
+
+/**
  * Single LRU cache instance for all search operations.
  *
  * 1024 slots, 32 MB byte budget. Search responses are variable in size
@@ -117,16 +128,19 @@ const PARAM_KEY_CACHE_LIMIT = 500;
  * returns the previously computed hash without repeating the SHA-256 call.
  *
  * @param {string} q - The search query string.
- * @param {string} entity - The entity type (e.g. "net").
+ * @param {string[]} entityList - Entity type tags (e.g. ["net"] or ["net","ix","fac"]).
+ *   Sorted internally so [net,ix] and [ix,net] produce the same key.
  * @param {string} mode - Resolved mode ("keyword" or "semantic").
  * @param {number} limit - Result limit.
  * @param {number} skip - Pagination offset.
  * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<string>} Cache key in the form "anon:search/{hex}" or "auth:search/{hex}".
  */
-export async function buildSearchKey(q, entity, mode, limit, skip, authenticated) {
+export async function buildSearchKey(q, entityList, mode, limit, skip, authenticated) {
+    // Sort the entity list so [net,ix] and [ix,net] map to the same cache entry.
     // Canonical serialisation: fixed key order, no extra whitespace.
-    const paramStr = `${entity}\x00${mode}\x00${limit}\x00${skip}\x00${q}`;
+    const entityKey = entityList.slice().sort().join(',');
+    const paramStr = `${entityKey}\x00${mode}\x00${limit}\x00${skip}\x00${q}`;
     const authPrefix = authenticated ? 'auth:' : 'anon:';
 
     const cached = paramKeyCache.get(paramStr);

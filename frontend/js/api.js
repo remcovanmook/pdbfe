@@ -6,7 +6,7 @@
  */
 
 import { getSessionId } from './auth.js';
-import { API_ORIGIN, IMAGES_ORIGIN } from './config.js';
+import { API_ORIGIN, SEARCH_ORIGIN, IMAGES_ORIGIN } from './config.js';
 import { ENTITIES, getLabel } from './entities.js';
 
 /**
@@ -282,6 +282,91 @@ export async function searchAll(query, signal, types) {
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const [i, e] of entities.entries()) { grouped[e.key] = results[i]; }
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
+}
+
+/**
+ * Calls the pdbfe-search worker for one or more entity types.
+ *
+ * When `entity` is a string array (or comma-separated string), the request
+ * uses `entities=` (plural) which triggers the server-side parallel path
+ * and returns a grouped response:
+ *   {data: {net: [...], ix: [...]}, meta: {mode, counts: {net: N, ix: N}}}
+ *
+ * When `entity` is a single string, `entity=` (singular) is used and the
+ * response is flat:
+ *   {data: [{id, name, entity_type, score}], meta: {count, mode}}
+ *
+ * Returns null on HTTP error so callers can treat it as an empty result.
+ *
+ * @param {string} q - Search query string.
+ * @param {string|string[]} entity - Entity type key or array of keys.
+ * @param {{mode?: 'keyword'|'semantic'|'auto', limit?: number, skip?: number, signal?: AbortSignal}} [opts]
+ * @returns {Promise<{data: any, meta: {count?: number, mode: string, counts?: Record<string,number>}}|null>}
+ */
+export async function searchEntities(q, entity, opts = {}) {
+    const { mode = 'auto', limit = 20, skip = 0, signal } = opts;
+    const sid = getSessionId();
+
+    const isMulti = Array.isArray(entity);
+    const entityParam = isMulti
+        ? `entities=${encodeURIComponent(entity.join(','))}`
+        : `entity=${entity}`;
+
+    const qs = `q=${encodeURIComponent(q)}&${entityParam}&mode=${mode}&limit=${limit}&skip=${skip}`;
+    const url = `${SEARCH_ORIGIN}/search?${qs}`;
+
+    /** @type {RequestInit} */
+    const init = {};
+    if (sid) init.headers = { Authorization: `Bearer ${sid}` };
+    if (signal) init.signal = signal;
+
+    try {
+        const res = await fetch(url, init);
+        if (!res.ok) return null;
+        return res.json();
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Searches across navigable entity types via the search worker in a
+ * single round-trip.
+ *
+ * Sends `entities=net,ix,fac,...` (plural CSV), letting the search worker
+ * run the per-entity D1 queries in parallel and return a single grouped
+ * response. This is one HTTP request regardless of how many entity types
+ * are searched.
+ *
+ * Returns results in the same shape as searchAll() so callers are
+ * interchangeable:
+ *   {net: [...], ix: [...], fac: [...], org: [...], carrier: [...], campus: [...]}
+ *
+ * Uses mode='keyword' by default — semantic mode is available on the search
+ * page but typeahead stays keyword-only to avoid AI embed calls on keystrokes.
+ *
+ * @param {string} query - Search term.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
+ * @param {string[]} [types] - Optional subset of entity type keys to search.
+ * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ */
+export async function searchAllViaWorker(query, signal, types, mode = 'keyword') {
+    const entities = types
+        ? SEARCH_ENTITIES.filter(e => types.includes(e.key))
+        : SEARCH_ENTITIES;
+
+    const entityKeys = entities.map(e => e.key);
+
+    const result = await searchEntities(query, entityKeys, { mode, signal, limit: 20 });
+
+    // Build the expected grouped shape, defaulting each key to [] on failure.
+    /** @type {Record<string, any[]>} */
+    const grouped = {};
+    for (const e of entities) {
+        grouped[e.key] = result?.data?.[e.key] ?? [];
+    }
     return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
 }
 

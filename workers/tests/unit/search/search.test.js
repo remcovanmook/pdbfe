@@ -75,30 +75,36 @@ const mockCtx = /** @type {ExecutionContext} */ ({
 
 describe('buildSearchKey', () => {
     it('prefixes anon: for unauthenticated callers', async () => {
-        const key = await buildSearchKey('test', 'net', 'keyword', 20, 0, false);
+        const key = await buildSearchKey('test', ['net'], 'keyword', 20, 0, false);
         assert.ok(key.startsWith('anon:search/'));
     });
 
     it('prefixes auth: for authenticated callers', async () => {
-        const key = await buildSearchKey('test', 'net', 'keyword', 20, 0, true);
+        const key = await buildSearchKey('test', ['net'], 'keyword', 20, 0, true);
         assert.ok(key.startsWith('auth:search/'));
     });
 
-    it('returns different keys for different entity types', async () => {
-        const k1 = await buildSearchKey('test', 'net', 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('test', 'ix', 'keyword', 20, 0, false);
+    it('returns different keys for different entity lists', async () => {
+        const k1 = await buildSearchKey('test', ['net'], 'keyword', 20, 0, false);
+        const k2 = await buildSearchKey('test', ['ix'], 'keyword', 20, 0, false);
         assert.notEqual(k1, k2);
     });
 
     it('returns different keys for different queries', async () => {
-        const k1 = await buildSearchKey('cloudflare', 'net', 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('fastly', 'net', 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('cloudflare', ['net'], 'keyword', 20, 0, false);
+        const k2 = await buildSearchKey('fastly', ['net'], 'keyword', 20, 0, false);
         assert.notEqual(k1, k2);
     });
 
     it('returns same key for identical params (fast-path cache)', async () => {
-        const k1 = await buildSearchKey('repeat', 'net', 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('repeat', 'net', 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0, false);
+        const k2 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0, false);
+        assert.equal(k1, k2);
+    });
+
+    it('returns same key regardless of entity list order', async () => {
+        const k1 = await buildSearchKey('cloud', ['net', 'ix', 'fac'], 'keyword', 20, 0, false);
+        const k2 = await buildSearchKey('cloud', ['fac', 'net', 'ix'], 'keyword', 20, 0, false);
         assert.equal(k1, k2);
     });
 });
@@ -237,6 +243,67 @@ describe('GET /search — admin endpoints', () => {
         const req = new Request('https://api.pdbfe.dev/health');
         const res = await worker.fetch(req, mockEnv(), mockCtx);
         assert.ok([200, 204].includes(res.status));
+    });
+});
+
+describe('GET /search — multi-entity (entities= plural)', () => {
+    before(() => purgeSearchCache());
+
+    it('returns grouped response shape for entities=net,ix', async () => {
+        const env = mockEnv({ rows: [{ id: 1, name: 'TestNet', status: 'ok' }] });
+        const req = new Request(
+            'https://api.pdbfe.dev/search?q=test&entities=net,ix&mode=keyword',
+            { headers: { 'cf-connecting-ip': '10.1.0.1' } }
+        );
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        // Grouped shape: data is an object keyed by entity type.
+        assert.ok(typeof body.data === 'object' && !Array.isArray(body.data));
+        assert.ok('net' in body.data);
+        assert.ok('ix' in body.data);
+        assert.ok(typeof body.meta.counts === 'object');
+        assert.equal(body.meta.mode, 'keyword');
+    });
+
+    it('returns same response for entities in different order (cache canonical)', async () => {
+        const env = mockEnv({ rows: [{ id: 2, name: 'AnotherNet', status: 'ok' }] });
+        const r1 = new Request(
+            'https://api.pdbfe.dev/search?q=another&entities=net,ix&mode=keyword',
+            { headers: { 'cf-connecting-ip': '10.1.0.2' } }
+        );
+        const r2 = new Request(
+            'https://api.pdbfe.dev/search?q=another&entities=ix,net&mode=keyword',
+            { headers: { 'cf-connecting-ip': '10.1.0.2' } }
+        );
+        const res1 = await worker.fetch(r1, env, mockCtx);
+        const res2 = await worker.fetch(r2, env, mockCtx);
+        // Both should be 200 and carry the same cache key (second should be an L1 hit).
+        assert.equal(res1.status, 200);
+        assert.equal(res2.status, 200);
+        assert.equal(res2.headers.get('X-Cache'), 'L1');
+    });
+
+    it('returns 400 for unknown entity in entities list', async () => {
+        const env = mockEnv();
+        const req = new Request(
+            'https://api.pdbfe.dev/search?q=test&entities=net,bogus&mode=keyword',
+            { headers: { 'cf-connecting-ip': '10.1.0.3' } }
+        );
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 400);
+        const body = await res.json();
+        assert.ok(body.error.includes('Unknown entity type'));
+    });
+
+    it('returns 400 when neither entity nor entities is provided', async () => {
+        const env = mockEnv();
+        const req = new Request(
+            'https://api.pdbfe.dev/search?q=test&mode=keyword',
+            { headers: { 'cf-connecting-ip': '10.1.0.4' } }
+        );
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 400);
     });
 });
 
