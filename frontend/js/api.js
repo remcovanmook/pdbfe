@@ -283,7 +283,7 @@ export async function searchAll(query, signal, types) {
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const [i, e] of entities.entries()) { grouped[e.key] = results[i]; }
-    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (/** @type {unknown} */ (grouped));
 }
 
 /**
@@ -351,14 +351,16 @@ export async function searchAllViaWorker(query, signal, types, mode = 'keyword')
 
     const result = await searchEntities(query, entityKeys, { mode, signal, limit: 20 });
 
-    // Build the expected grouped shape, defaulting each key to [] on failure.
+    // Build the grouped result, defaulting each entity key to [] on failure.
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const e of entities) {
         grouped[e.key] = result?.data?.[e.key] ?? [];
     }
-    grouped.meta = result?.meta ?? { mode: "keyword" };
-    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}} */ (grouped);
+
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}} */ (
+        /** @type {unknown} */ (Object.assign(grouped, { meta: result?.meta ?? { mode: 'keyword' } }))
+    );
 }
 
 /**
@@ -456,7 +458,7 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * @param {string[]} [types] - Optional subset of entity type keys to search.
  *     When provided, only these types are queried and ASN injection only
  *     applies if 'net' is included in the filter.
- * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
 export async function searchWithAsn(query, signal, types) {
     const includeNet = !types || types.includes('net');
