@@ -87,6 +87,14 @@ for (const tag of ENTITY_TAGS) {
 export const SEARCH_FIELDS = _searchFields;
 
 /**
+ * Re-exported for consumers that need the full entity registry.
+ * Avoids coupling handlers directly to api/entities.js.
+ *
+ * @type {typeof import('../../api/entities.js').ENTITIES}
+ */
+export { ENTITIES };
+
+/**
  * Set of valid entity tags for O(1) membership checks in parameter validation.
  * Re-exported from api/entities.js for single-source consistency.
  *

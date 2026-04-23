@@ -25,7 +25,7 @@
 import { tokenizeString } from '../../core/utils.js';
 import { encoder, jsonError, serveSearch } from '../http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL, SEARCH_MULTI_EMPTY_SENTINEL } from '../cache.js';
-import { SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
+import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
 import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
 import { handleKeyword } from './keyword.js';
 
@@ -136,7 +136,7 @@ function parseSearchParams(queryString) {
  *   Hydrated result rows (empty array if no matches).
  */
 async function hydrateSemanticIds(db, entityTag, idList, limit) {
-    const table = `peeringdb_${entityTag}`;
+    const table = ENTITIES[entityTag].table;
     const primaryField = getPrimaryField(entityTag);
 
     // Build CASE expression for relevance sort. §3: index-based for loop (i needed for THEN value).
