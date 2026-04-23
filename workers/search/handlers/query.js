@@ -58,12 +58,12 @@ function parseSearchParams(queryString) {
         // Inner split on '=' — at most 2 parts so values containing '=' are preserved.
         const kv = tokenizeString(pair, '=', 2);
         const k = kv.p0;
-        const v = kv.p1 !== undefined ? decodeURIComponent(kv.p1.replace(/\+/g, ' ')) : '';
+        const v = kv.p1 === undefined ? '' : decodeURIComponent(kv.p1.replaceAll('+', ' '));
         if (k === 'q')      q = v;
         else if (k === 'entity') entity = v;
         else if (k === 'mode')   mode = v;
-        else if (k === 'limit')  { const n = parseInt(v, 10); if (!isNaN(n)) limit = n; }
-        else if (k === 'skip')   { const n = parseInt(v, 10); if (!isNaN(n)) skip = n; }
+        else if (k === 'limit')  { const n = Number.parseInt(v, 10); if (!Number.isNaN(n)) limit = n; }
+        else if (k === 'skip')   { const n = Number.parseInt(v, 10); if (!Number.isNaN(n)) skip = n; }
     }
 
     if (!q)                                return { q, entity, mode, limit, skip, error: 'Missing required parameter: q' };

@@ -50,13 +50,10 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
         where += fields[i] + ' LIKE ?';
     }
 
-    // Build bind parameter list: same wildcard pattern for each LIKE clause,
-    // followed by LIMIT and OFFSET.
-    // §3: explicit loop, no .map() or spread.
+    // §3: build bind array in one shot instead of multiple push calls.
     const pattern = '%' + q + '%';
     /** @type {(string|number)[]} */
-    const binds = [];
-    for (let i = 0; i < fieldCount; i++) binds.push(pattern);
+    const binds = /** @type {(string|number)[]} */ (Array(fieldCount).fill(pattern));
     binds.push(limit);
     binds.push(skip);
 
@@ -69,16 +66,16 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
 
     if (!result.success || result.results.length === 0) return null;
 
-    // Accumulate result rows. §3: for loop, no intermediate array from .map().
+    // Accumulate result rows. §3: for-of, no intermediate array from .map().
     const rows = result.results;
     /** @type {{id: number, name: string, entity_type: string, score: number}[]} */
     const data = [];
-    for (let i = 0; i < rows.length; i++) {
+    for (const row of rows) {
         data.push({
-            id: /** @type {number} */ (rows[i].id),
-            name: /** @type {string} */ (rows[i].name) || '',
+            id: /** @type {number} */ (row.id),
+            name: /** @type {string} */ (row.name) || '',
             entity_type: entityTag,
-            score: 1.0,
+            score: 1,
         });
     }
 
