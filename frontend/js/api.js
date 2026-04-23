@@ -16,7 +16,7 @@ import { ENTITIES, getLabel } from './entities.js';
  * @type {Record<string, (r: any) => string>}
  */
 const SUBTITLE_FORMATTERS = {
-    net:     /** @param {any} r */ (r) => `AS${r.asn}`,
+    net:     /** @param {any} r */ (r) => r.asn != null ? `AS${r.asn}` : '',
     ix:      /** @param {any} r */ (r) => r.city || '',
     fac:     /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
     org:     () => '',
