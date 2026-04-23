@@ -340,7 +340,7 @@ export async function searchEntities(q, entity, opts = {}) {
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @param {string[]} [types] - Optional subset of entity type keys to search.
  * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
- * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
 export async function searchAllViaWorker(query, signal, types, mode = 'keyword') {
     const entities = types
@@ -357,7 +357,8 @@ export async function searchAllViaWorker(query, signal, types, mode = 'keyword')
     for (const e of entities) {
         grouped[e.key] = result?.data?.[e.key] ?? [];
     }
-    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
+    grouped.meta = result?.meta ?? { mode: "keyword" };
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}} */ (grouped);
 }
 
 /**
@@ -463,7 +464,7 @@ export async function searchWithAsn(query, signal, types) {
     const asnNum = (includeNet && asnMatch) ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
-        searchAll(query, signal, types),
+        searchAllViaWorker(query, signal, types),
         Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 
