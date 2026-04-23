@@ -16,7 +16,7 @@
 
 import { LRUCache } from '../core/cache.js';
 import { withSWR } from '../core/pipeline/index.js';
-import { encoder } from '../core/http.js';
+import { encoder } from './http.js';
 
 /**
  * Cache TTL for search results (30 minutes).

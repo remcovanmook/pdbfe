@@ -20,7 +20,7 @@
 
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
-import { handlePreflight, jsonError } from '../core/http.js';
+import { handlePreflight, jsonError } from './http.js';
 import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';

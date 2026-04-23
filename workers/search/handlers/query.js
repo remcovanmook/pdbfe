@@ -18,7 +18,7 @@
  */
 
 import { tokenizeString } from '../../core/utils.js';
-import { encoder, jsonError, H_NOCACHE } from '../../core/http.js';
+import { encoder, jsonError, serveSearch } from '../http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL } from '../cache.js';
 import { SEARCH_ENTITY_TAGS, getPrimaryField } from '../entities.js';
 import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
@@ -176,24 +176,8 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
     });
 
     if (!buf) {
-        return new Response(SEARCH_EMPTY_SENTINEL, {
-            status: 200,
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*',
-                'X-Cache': 'MISS',
-                'X-Cache-Hits': '0',
-            },
-        });
+        return serveSearch(SEARCH_EMPTY_SENTINEL, 'MISS', 0);
     }
 
-    return new Response(buf, {
-        status: 200,
-        headers: {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-            'X-Cache': tier,
-            'X-Cache-Hits': hits.toString(),
-        },
-    });
+    return serveSearch(buf, tier, hits);
 }

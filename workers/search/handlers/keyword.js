@@ -15,7 +15,7 @@
  *          it does not manage the cache lifecycle itself.
  */
 
-import { encoder } from '../../core/http.js';
+import { encoder } from '../http.js';
 import { SEARCH_FIELDS, getPrimaryField } from '../entities.js';
 
 /**
