@@ -65,7 +65,7 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
 
     if (!result.success || result.results.length === 0) return null;
 
-    const data = rows.map(row => ({
+    const data = result.results.map(row => ({
         id: /** @type {number} */ (row.id),
         name: /** @type {string} */ (row.name) || '',
         entity_type: entityTag,
