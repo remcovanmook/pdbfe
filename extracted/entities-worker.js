@@ -47,7 +47,8 @@ const _entity_org = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: undefined,
     relationships: [
@@ -57,12 +58,12 @@ const _entity_org = {
         { field: "ix_set", table: "peeringdb_ix", fk: "org_id" },
         { field: "carrier_set", table: "peeringdb_carrier", fk: "org_id" }
     ],
-    _columns: ["id", "name", "aka", "name_long", "website", "social_media", "notes", "logo", "address1", "address2", "city", "country", "state", "zipcode", "floor", "suite", "latitude", "longitude", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "name", "aka", "name_long", "website", "social_media", "notes", "logo", "address1", "address2", "city", "country", "state", "zipcode", "floor", "suite", "latitude", "longitude", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["social_media"]),
-    _boolColumns: new Set(["__logo_migrated"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded"]),
     _nullableColumns: new Set(["logo"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "address1", "address2", "aka", "city", "country", "created", "floor", "id", "latitude", "logo", "longitude", "name", "name_long", "notes", "social_media", "state", "status", "suite", "updated", "website", "zipcode"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "address1", "address2", "aka", "city", "country", "created", "floor", "id", "latitude", "logo", "longitude", "name", "name_long", "notes", "social_media", "state", "status", "suite", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["city", "string"], ["country", "string"], ["state", "string"], ["zipcode", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -91,18 +92,19 @@ const _entity_campus = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: undefined,
     relationships: [
         { field: "fac_set", table: "peeringdb_facility", fk: "campus_id" }
     ],
-    _columns: ["id", "name", "name_long", "aka", "website", "social_media", "notes", "org_id", "org_name", "country", "city", "zipcode", "state", "logo", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "name", "name_long", "aka", "website", "social_media", "notes", "org_id", "org_name", "country", "city", "zipcode", "state", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["social_media"]),
-    _boolColumns: new Set(["__logo_migrated"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded"]),
     _nullableColumns: new Set(["aka", "logo", "name_long"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "aka", "city", "country", "created", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "state", "status", "updated", "website", "zipcode"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "city", "country", "created", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "state", "status", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["name_long", "string"], ["aka", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -153,7 +155,8 @@ const _entity_fac = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: undefined,
     relationships: [
@@ -163,12 +166,12 @@ const _entity_fac = {
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_side_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] },
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "ix_side_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] }
     ],
-    _columns: ["id", "name", "website", "social_media", "aka", "name_long", "clli", "rencode", "npanxx", "tech_email", "tech_phone", "sales_email", "sales_phone", "property", "diverse_serving_substations", "available_voltage_services", "notes", "region_continent", "status_dashboard", "org_id", "campus_id", "org_name", "net_count", "ix_count", "carrier_count", "logo", "address1", "address2", "city", "country", "state", "zipcode", "floor", "suite", "latitude", "longitude", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "name", "website", "social_media", "aka", "name_long", "clli", "rencode", "npanxx", "tech_email", "tech_phone", "sales_email", "sales_phone", "property", "diverse_serving_substations", "available_voltage_services", "notes", "region_continent", "status_dashboard", "org_id", "campus_id", "org_name", "net_count", "ix_count", "carrier_count", "logo", "address1", "address2", "city", "country", "state", "zipcode", "floor", "suite", "latitude", "longitude", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["available_voltage_services", "social_media"]),
-    _boolColumns: new Set(["__logo_migrated", "diverse_serving_substations"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded", "diverse_serving_substations"]),
     _nullableColumns: new Set(["campus_id", "diverse_serving_substations", "logo", "property", "region_continent", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "address1", "address2", "aka", "available_voltage_services", "campus_id", "carrier_count", "city", "clli", "country", "created", "diverse_serving_substations", "floor", "id", "ix_count", "latitude", "logo", "longitude", "name", "name_long", "net_count", "notes", "npanxx", "org_id", "org_name", "property", "region_continent", "rencode", "sales_email", "sales_phone", "social_media", "state", "status", "status_dashboard", "suite", "tech_email", "tech_phone", "updated", "website", "zipcode"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "address1", "address2", "aka", "available_voltage_services", "campus_id", "carrier_count", "city", "clli", "country", "created", "diverse_serving_substations", "floor", "id", "ix_count", "latitude", "logo", "longitude", "name", "name_long", "net_count", "notes", "npanxx", "org_id", "org_name", "property", "region_continent", "rencode", "sales_email", "sales_phone", "social_media", "state", "status", "status_dashboard", "suite", "tech_email", "tech_phone", "updated", "website", "zipcode"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["website", "string"], ["aka", "string"], ["name_long", "string"], ["clli", "string"], ["rencode", "string"], ["npanxx", "string"], ["tech_email", "string"], ["tech_phone", "string"], ["sales_email", "string"], ["sales_phone", "string"], ["property", "string"], ["diverse_serving_substations", "boolean"], ["notes", "string"], ["region_continent", "string"], ["status_dashboard", "string"], ["org_id", "number"], ["campus_id", "number"], ["net_count", "number"], ["ix_count", "number"], ["carrier_count", "number"], ["city", "string"], ["country", "string"], ["state", "string"], ["zipcode", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -222,7 +225,8 @@ const _entity_net = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: [{ table: "peeringdb_organization", localFk: "org_id", columns: { "name": "org_name" } }],
     relationships: [
@@ -230,12 +234,12 @@ const _entity_net = {
         { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" }
     ],
-    _columns: ["id", "asn", "name", "aka", "name_long", "irr_as_set", "website", "social_media", "looking_glass", "route_server", "notes", "notes_private", "info_traffic", "info_ratio", "info_scope", "info_types", "info_prefixes4", "info_prefixes6", "info_unicast", "info_multicast", "info_ipv6", "info_never_via_route_servers", "policy_url", "policy_general", "policy_locations", "policy_ratio", "policy_contracts", "status_dashboard", "rir_status", "rir_status_updated", "org_id", "info_type", "ix_count", "fac_count", "netixlan_updated", "netfac_updated", "poc_updated", "allow_ixp_update", "logo", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "asn", "name", "aka", "name_long", "irr_as_set", "website", "social_media", "looking_glass", "route_server", "notes", "notes_private", "info_traffic", "info_ratio", "info_scope", "info_types", "info_prefixes4", "info_prefixes6", "info_unicast", "info_multicast", "info_ipv6", "info_never_via_route_servers", "policy_url", "policy_general", "policy_locations", "policy_ratio", "policy_contracts", "status_dashboard", "rir_status", "rir_status_updated", "org_id", "info_type", "ix_count", "fac_count", "netixlan_updated", "netfac_updated", "poc_updated", "allow_ixp_update", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["info_types", "social_media"]),
-    _boolColumns: new Set(["__logo_migrated", "allow_ixp_update", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_unicast", "policy_ratio"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded", "allow_ixp_update", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_unicast", "policy_ratio"]),
     _nullableColumns: new Set(["info_prefixes4", "info_prefixes6", "logo", "rir_status", "rir_status_updated", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "rir_status", "rir_status_updated", "route_server", "social_media", "status", "status_dashboard", "updated", "website"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "rir_status", "rir_status_updated", "route_server", "social_media", "status", "status_dashboard", "updated", "website"]),
     _filterTypes: new Map([["id", "number"], ["asn", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["irr_as_set", "string"], ["website", "string"], ["looking_glass", "string"], ["route_server", "string"], ["notes", "string"], ["notes_private", "string"], ["info_traffic", "string"], ["info_ratio", "string"], ["info_scope", "string"], ["info_prefixes4", "number"], ["info_prefixes6", "number"], ["info_unicast", "boolean"], ["info_multicast", "boolean"], ["info_ipv6", "boolean"], ["info_never_via_route_servers", "boolean"], ["policy_url", "string"], ["policy_general", "string"], ["policy_locations", "string"], ["policy_ratio", "boolean"], ["policy_contracts", "string"], ["status_dashboard", "string"], ["rir_status", "string"], ["rir_status_updated", "datetime"], ["org_id", "number"], ["ix_count", "number"], ["fac_count", "number"], ["netixlan_updated", "datetime"], ["netfac_updated", "datetime"], ["poc_updated", "datetime"], ["allow_ixp_update", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -282,19 +286,20 @@ const _entity_ix = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: [{ table: "peeringdb_organization", localFk: "org_id", columns: { "name": "org_name" } }],
     relationships: [
         { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" }
     ],
-    _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["social_media"]),
-    _boolColumns: new Set(["__logo_migrated", "proto_ipv6", "proto_multicast", "proto_unicast"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded", "proto_ipv6", "proto_multicast", "proto_unicast"]),
     _nullableColumns: new Set(["ixf_last_import", "logo", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "aka", "city", "country", "created", "fac_count", "id", "ixf_import_request", "ixf_import_request_status", "ixf_last_import", "ixf_net_count", "logo", "media", "name", "name_long", "net_count", "notes", "org_id", "policy_email", "policy_phone", "proto_ipv6", "proto_multicast", "proto_unicast", "region_continent", "sales_email", "sales_phone", "service_level", "social_media", "status", "status_dashboard", "tech_email", "tech_phone", "terms", "updated", "url_stats", "website"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "city", "country", "created", "fac_count", "id", "ixf_import_request", "ixf_import_request_status", "ixf_last_import", "ixf_net_count", "logo", "media", "name", "name_long", "net_count", "notes", "org_id", "policy_email", "policy_phone", "proto_ipv6", "proto_multicast", "proto_unicast", "region_continent", "sales_email", "sales_phone", "service_level", "social_media", "status", "status_dashboard", "tech_email", "tech_phone", "terms", "updated", "url_stats", "website"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["city", "string"], ["country", "string"], ["notes", "string"], ["region_continent", "string"], ["media", "string"], ["proto_unicast", "boolean"], ["proto_multicast", "boolean"], ["proto_ipv6", "boolean"], ["website", "string"], ["url_stats", "string"], ["tech_email", "string"], ["tech_phone", "string"], ["policy_email", "string"], ["policy_phone", "string"], ["sales_email", "string"], ["sales_phone", "string"], ["ixf_net_count", "number"], ["ixf_last_import", "datetime"], ["service_level", "string"], ["terms", "string"], ["status_dashboard", "string"], ["org_id", "number"], ["net_count", "number"], ["fac_count", "number"], ["ixf_import_request", "datetime"], ["ixf_import_request_status", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -320,18 +325,19 @@ const _entity_carrier = {
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
-        { name: "__logo_migrated", type: "boolean", queryable: false }
+        { name: "__logo_migrated", type: "boolean", queryable: false },
+        { name: "__vector_embedded", type: "boolean", queryable: false }
     ],
     joinColumns: undefined,
     relationships: [
         { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "carrier_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] }
     ],
-    _columns: ["id", "name", "aka", "name_long", "website", "social_media", "notes", "org_id", "org_name", "fac_count", "logo", "created", "updated", "status", "__logo_migrated"],
+    _columns: ["id", "name", "aka", "name_long", "website", "social_media", "notes", "org_id", "org_name", "fac_count", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["social_media"]),
-    _boolColumns: new Set(["__logo_migrated"]),
+    _boolColumns: new Set(["__logo_migrated", "__vector_embedded"]),
     _nullableColumns: new Set(["logo"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "aka", "created", "fac_count", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "status", "updated", "website"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "created", "fac_count", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "status", "updated", "website"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
