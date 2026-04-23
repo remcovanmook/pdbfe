@@ -219,8 +219,9 @@ function buildURL(path, params) {
         ? Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
         : [];
 
-    // Request pdbfe extension fields only when talking to our own API
-    if (IMAGES_ORIGIN) {
+    // Request pdbfe extension fields only for REST API paths.
+    // The search worker and other internal endpoints do not use this param.
+    if (IMAGES_ORIGIN && path.startsWith('/api/')) {
         entries.push(['__pdbfe', '1']);
     }
 
@@ -282,7 +283,84 @@ export async function searchAll(query, signal, types) {
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const [i, e] of entities.entries()) { grouped[e.key] = results[i]; }
-    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (grouped);
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}} */ (/** @type {unknown} */ (grouped));
+}
+
+/**
+ * Calls the pdbfe-search worker for one or more entity types.
+ *
+ * When `entity` is a string array (or comma-separated string), the request
+ * uses `entities=` (plural) which triggers the server-side parallel path
+ * and returns a grouped response:
+ *   {data: {net: [...], ix: [...]}, meta: {mode, counts: {net: N, ix: N}}}
+ *
+ * When `entity` is a single string, `entity=` (singular) is used and the
+ * response is flat:
+ *   {data: [{id, name, entity_type, score}], meta: {count, mode}}
+ *
+ * Returns null on HTTP error so callers can treat it as an empty result.
+ *
+ * @param {string} q - Search query string.
+ * @param {string|string[]} entity - Entity type key or array of keys.
+ * @param {{mode?: 'keyword'|'semantic'|'auto', limit?: number, skip?: number, signal?: AbortSignal}} [opts]
+ * @returns {Promise<{data: any, meta: {count?: number, mode: string, counts?: Record<string,number>}}|null>}
+ */
+export async function searchEntities(q, entity, opts = {}) {
+    const { mode = 'auto', limit = 20, skip = 0, signal } = opts;
+
+    const isMulti = Array.isArray(entity);
+    // Use entities= (plural CSV) for arrays, entity= (singular) for strings.
+    const entityParam = isMulti ? { entities: entity.join(',') } : { entity: String(entity) };
+    const params = { q, ...entityParam, mode, limit, skip };
+
+    try {
+        return await cachedFetch('/search', params, signal);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Searches across navigable entity types via the search worker in a
+ * single round-trip.
+ *
+ * Sends `entities=net,ix,fac,...` (plural CSV), letting the search worker
+ * run the per-entity D1 queries in parallel and return a single grouped
+ * response. This is one HTTP request regardless of how many entity types
+ * are searched.
+ *
+ * Returns results in the same shape as searchAll() so callers are
+ * interchangeable:
+ *   {net: [...], ix: [...], fac: [...], org: [...], carrier: [...], campus: [...]}
+ *
+ * Uses mode='keyword' by default — semantic mode is available on the search
+ * page but typeahead stays keyword-only to avoid AI embed calls on keystrokes.
+ *
+ * @param {string} query - Search term.
+ * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
+ * @param {string[]} [types] - Optional subset of entity type keys to search.
+ * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
+ */
+export async function searchAllViaWorker(query, signal, types, mode = 'keyword') {
+    const entities = types
+        ? SEARCH_ENTITIES.filter(e => types.includes(e.key))
+        : SEARCH_ENTITIES;
+
+    const entityKeys = entities.map(e => e.key);
+
+    const result = await searchEntities(query, entityKeys, { mode, signal, limit: 20 });
+
+    // Build the grouped result, defaulting each entity key to [] on failure.
+    /** @type {Record<string, any[]>} */
+    const grouped = {};
+    for (const e of entities) {
+        grouped[e.key] = result?.data?.[e.key] ?? [];
+    }
+
+    return /** @type {{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}} */ (
+        /** @type {unknown} */ (Object.assign(grouped, { meta: result?.meta ?? { mode: 'keyword' } }))
+    );
 }
 
 /**
@@ -380,7 +458,7 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * @param {string[]} [types] - Optional subset of entity type keys to search.
  *     When provided, only these types are queried and ASN injection only
  *     applies if 'net' is included in the filter.
- * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[]}>}
+ * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
 export async function searchWithAsn(query, signal, types) {
     const includeNet = !types || types.includes('net');
@@ -388,7 +466,7 @@ export async function searchWithAsn(query, signal, types) {
     const asnNum = (includeNet && asnMatch) ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
     const [results, asnNet] = await Promise.all([
-        searchAll(query, signal, types),
+        searchAllViaWorker(query, signal, types),
         Number.isNaN(asnNum) ? Promise.resolve(null) : fetchByAsn(asnNum)
     ]);
 

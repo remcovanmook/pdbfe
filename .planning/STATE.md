@@ -1,7 +1,7 @@
 # Current State
 
 **Last updated**: 2026-04-23
-**Active branch**: `feat/versioning`
+**Active branch**: `main` — `feat/versioning` merged and deployed at `0.9.0`
 **Production**: `pdbfe.dev` (Cloudflare Pages + Workers) — gated behind Cloudflare Access pending AUP approval
 **Preview**: `*.pdbfe-frontend.pages.dev`
 
@@ -52,26 +52,17 @@
 
 ## Statistics
 
-- **Commits**: ~510+ on main
-- **Merged PRs**: 75 (PR #76 pending)
+- **Commits**: ~516+ on main
+- **Merged PRs**: 76
 - **Entity types**: 13 (net, ix, fac, org, carrier, campus, poc, ixfac, ixlan, ixpfx, netfac, netixlan, as_set)
 - **Frontend JS**: ~15 page modules, ~8 shared modules
 - **Workers**: 5 (api, auth, graphql, rest, sync)
-- **Test files**: 47 (37 worker, 10 frontend)
+- **Test files**: 49 (39 worker, 10 frontend)
 - **CI**: GitHub Actions (lint, typecheck, XSS scan, schema, version-check, unit tests)
 
 ## In-Flight Work
 
-Branch `feat/versioning` — **PR #76** (pending merge), 1 commit:
-
-| Category | Item | Status |
-|----------|------|--------|
-| Infra | `VERSION` file (`0.9.0`), `scripts/bump_version.sh` | ✅ |
-| Infra | CI `version-check` job (hard block for functional PRs) | ✅ |
-| Infra | Deploy auto-tagging (`v{VERSION}`) | ✅ |
-| Infra | `PDBFE_VERSION` wrangler var + `X-PDBFE-Version` header | ✅ |
-| Infra | `types.d.ts` env interface updates | ✅ |
-| Docs | CONTRIBUTING.md versioning section, PR template checklist item | ✅ |
+No active branches. Main is at `0.9.0`.
 
 ## Blockers
 

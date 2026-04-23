@@ -1,7 +1,8 @@
 /**
  * @fileoverview Search results page renderer.
- * Queries the six navigable entity types in parallel and groups
- * results by type with count badges and click-through links.
+ * Queries the six navigable entity types via the search worker in a
+ * single round-trip and groups results by type with count badges and
+ * click-through links.
  *
  * ASN-aware: if the query looks like an ASN (bare number or AS-prefixed),
  * an additional lookup by ASN is fired in parallel and the exact match
@@ -13,6 +14,39 @@
 import { searchWithAsn, SEARCH_ENTITIES } from '../api.js';
 import { createLink, createLoading, createEmptyState } from '../render.js';
 import { t } from '../i18n.js';
+
+/**
+ * Mode labels for the search mode indicator badge.
+ * Shown next to the results heading when the search worker returns a
+ * non-keyword mode (e.g. semantic).
+ *
+ * @type {Record<string, string>}
+ */
+const MODE_LABELS = {
+    keyword:  '',               // Default — no badge
+    semantic: 'Semantic',
+    auto:     '',
+    none:     '',
+};
+
+/**
+ * Creates a mode indicator badge element.
+ *
+ * Returns null when the mode is 'keyword' or 'none', since those are the
+ * default/fallback and don't need a visual label.
+ *
+ * @param {string} mode - Search mode string from meta.mode.
+ * @returns {HTMLElement|null}
+ */
+function createModeBadge(mode) {
+    const label = MODE_LABELS[mode];
+    if (!label) return null;
+
+    const badge = document.createElement('span');
+    badge.className = 'search-results__mode-badge';
+    badge.textContent = label;
+    return badge;
+}
 
 /**
  * Renders the search results page.
@@ -55,6 +89,10 @@ export async function renderSearch(params) {
 
     try {
         const results = await searchWithAsn(query);
+
+        // Surface search mode in the heading if non-keyword.
+        const modeBadge = createModeBadge(results.meta?.mode ?? 'keyword');
+        if (modeBadge) heading.appendChild(modeBadge);
 
         const /** @type {Record<string, any[]>} */ res = /** @type {any} */ (results);
         const sections = SEARCH_ENTITIES.map(e => ({

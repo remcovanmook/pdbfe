@@ -21,3 +21,14 @@ PDBFE_VERSION = "<your-version>"
 [[r2_buckets]]
 binding = "LOGOS"
 bucket_name = "pdbfe-logos"
+
+# Workers AI — required for vector embedding (syncVectors).
+# Without this binding, the sync worker skips vector embedding entirely.
+[ai]
+binding = "AI"
+
+# Vectorize index — required for vector embedding.
+# Create with: wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "pdbfe-vectors"

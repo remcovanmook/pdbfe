@@ -1,0 +1,37 @@
+# Template for pdbfe-search worker. Copy to wrangler-search.toml and fill in IDs.
+name = "pdbfe-search"
+main = "search/index.js"
+compatibility_date = "2026-03-18"
+workers_dev = true
+
+routes = [
+  { pattern = "api.<your-domain>/search*", zone_name = "<your-domain>" }
+]
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "<your-d1-database-id>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<your-sessions-kv-namespace-id>"
+
+[[d1_databases]]
+binding = "USERDB"
+database_name = "pdbfe-users"
+database_id = "<your-users-d1-database-id>"
+
+# Workers AI — required for semantic search (mode=semantic or mode=auto).
+# Without this binding, the worker operates in keyword-only mode.
+[ai]
+binding = "AI"
+
+# Vectorize index — required for semantic search.
+# Create with: wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "<your-vectorize-index-name>"
+
+[vars]
+PDBFE_VERSION = "<your-version>"

@@ -311,7 +311,7 @@ function createEntityInput(label, prefix, initialRef) {
  * type, each item prefixed with an entity badge.
  *
  * @param {HTMLElement} dropdown - Dropdown container.
- * @param {Record<string, any[]>} results - Search results grouped by type.
+ * @param {{[key: string]: any}} results - Search results grouped by type (may include a meta property).
  * @param {(tag: string, id: number, name: string) => void} onSelect - Selection callback.
  */
 function renderDropdown(dropdown, results, onSelect) {

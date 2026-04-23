@@ -160,6 +160,42 @@ interface ScheduledController {
     noRetry(): void;
 }
 
+// ── Workers AI ────────────────────────────────────────────────────────────────
+
+/** Workers AI response envelope from ai.run(). */
+interface AiRunResponse {
+    /** Embedding vectors — present for embedding models. */
+    data?: number[][];
+    /** Text response — present for text-generation models. */
+    response?: string;
+}
+
+/**
+ * Workers AI binding.
+ * Only the run() method is used; full type is in @cloudflare/workers-types.
+ */
+interface Ai {
+    run(model: string, inputs: Record<string, unknown>): Promise<AiRunResponse>;
+}
+
+// ── Vectorize ─────────────────────────────────────────────────────────────────
+
+/** A single vector to upsert into a Vectorize index. */
+interface VectorizeVector {
+    id: string;
+    values: number[];
+    metadata?: Record<string, unknown>;
+}
+
+/** Vectorize index binding. */
+interface VectorizeIndex {
+    upsert(vectors: VectorizeVector[]): Promise<{ count: number }>;
+    query(vector: number[], options?: { topK?: number; returnMetadata?: boolean }): Promise<{
+        matches: Array<{ id: string; score: number; metadata?: Record<string, unknown> }>;
+    }>;
+    deleteByIds(ids: string[]): Promise<{ count: number }>;
+}
+
 // ── Request.cf Extension ─────────────────────────────────────────────────────
 // Cloudflare-specific properties on incoming Request objects.
 
@@ -217,8 +253,36 @@ interface PdbSyncEnv {
     LOGOS?: R2Bucket;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
+    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional — sync degrades to data-only without it. */
+    AI?: Ai;
+    /** Vectorize index for semantic search embedding upserts. Optional. */
+    VECTORIZE?: VectorizeIndex;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
+}
+
+/**
+ * Environment bindings for the search worker (pdbfe-search).
+ * Matches workers/wrangler-search.toml d1_databases, kv_namespaces, ai, vectorize, and vars.
+ *
+ * AI and VECTORIZE are optional — the worker degrades gracefully to keyword-only
+ * mode when either binding is absent.
+ */
+interface PdbSearchEnv {
+    /** PeeringDB mirror D1 database (read-only for search). */
+    PDB: D1Database;
+    /** OAuth session KV namespace — required by resolveAuth(). */
+    SESSIONS: KVNamespace;
+    /** Users D1 database — required by resolveAuth() for API key verification. */
+    USERDB: D1Database;
+    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional. */
+    AI?: Ai;
+    /** Vectorize index for semantic search. Optional. */
+    VECTORIZE?: VectorizeIndex;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
+    /** Admin secret for /_admin/* endpoints. */
+    ADMIN_SECRET?: string;
 }
 
 /**
