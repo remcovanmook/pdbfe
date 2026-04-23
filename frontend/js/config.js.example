@@ -4,14 +4,6 @@ export const AUTH_ORIGIN = 'https://auth.<your-domain>';
 /** Origin of the pdbfe-api worker (no trailing slash). */
 export const API_ORIGIN = 'https://api.<your-domain>';
 
-/**
- * Origin of the pdbfe-search worker (no trailing slash).
- * The search worker is routed at api.<domain>/search, so this
- * is the same as API_ORIGIN. Exposed separately so it can be
- * overridden for local development without affecting the REST worker.
- */
-export const SEARCH_ORIGIN = API_ORIGIN;
-
 /** Public R2 bucket origin for mirrored entity logos (no trailing slash). Empty to use upstream logos. */
 export const IMAGES_ORIGIN = '';
 

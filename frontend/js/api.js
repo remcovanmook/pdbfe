@@ -6,7 +6,7 @@
  */
 
 import { getSessionId } from './auth.js';
-import { API_ORIGIN, SEARCH_ORIGIN, IMAGES_ORIGIN } from './config.js';
+import { API_ORIGIN, IMAGES_ORIGIN } from './config.js';
 import { ENTITIES, getLabel } from './entities.js';
 
 /**
@@ -314,7 +314,7 @@ export async function searchEntities(q, entity, opts = {}) {
         : `entity=${entity}`;
 
     const qs = `q=${encodeURIComponent(q)}&${entityParam}&mode=${mode}&limit=${limit}&skip=${skip}`;
-    const url = `${SEARCH_ORIGIN}/search?${qs}`;
+    const url = `${API_ORIGIN}/search?${qs}`;
 
     /** @type {RequestInit} */
     const init = {};
