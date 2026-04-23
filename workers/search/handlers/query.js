@@ -65,9 +65,12 @@ function parseSearchParams(queryString) {
     let limit = DEFAULT_LIMIT;
     let skip = 0;
 
-    // Outer split on '&' — unlimited parts. Iterate values with for-of.
+    // Outer split on '&' — unlimited parts. tokenizeString returns { p0, p1, ... };
+    // iterate numerically to avoid Object.values() allocation (§3).
     const pairs = tokenizeString(queryString, '&', -1);
-    for (const pair of Object.values(pairs)) {
+    for (let _pi = 0; ; _pi++) {
+        const pair = pairs['p' + _pi];
+        if (pair === undefined) break;
         // Inner split on '=' — at most 2 parts so values containing '=' are preserved.
         const kv = tokenizeString(pair, '=', 2);
         const k = kv.p0;
@@ -89,9 +92,12 @@ function parseSearchParams(queryString) {
 
     if (isMulti) {
         // Parse and validate the CSV list. §2: no regex — split on comma using tokenizeString.
+        // §3: iterate tokenizeString result numerically to avoid Object.values() allocation.
         const parts = tokenizeString(entitiesRaw, ',', -1);
         entityList = [];
-        for (const tag of Object.values(parts)) {
+        for (let _pi = 0; ; _pi++) {
+            const tag = parts['p' + _pi];
+            if (tag === undefined) break;
             const t = tag.trim();
             if (!SEARCH_ENTITY_TAGS.has(t)) {
                 return { q, entityList: [], isMulti, mode, limit, skip, error: `Unknown entity type: ${t}` };
@@ -259,10 +265,10 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
         // §9: all D1 and AI calls inside this queryFn closure.
 
         if (isMulti) {
-            // Fan out one search per entity type in parallel. §3: for-of to build promise array.
+            // Fan out one search per entity type in parallel. §3: index-based loop.
             const promises = [];
-            for (const tag of entityList) {
-                promises.push(runEntitySearch(db, ai, vectorize, tag, q, effectiveMode, limit, skip));
+            for (let i = 0; i < entityList.length; i++) {
+                promises.push(runEntitySearch(db, ai, vectorize, entityList[i], q, effectiveMode, limit, skip));
             }
             const rowSets = await Promise.all(promises);
 
