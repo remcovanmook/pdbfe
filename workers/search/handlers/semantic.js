@@ -107,17 +107,12 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
     }
 
     // Step 3: extract entity IDs from vector match IDs.
-    // Format: "{entityTag}_{entityId}" — we need everything after the first underscore.
-    // Uses an O(N) string-building sweep to avoid intermediate array allocations.
-    let ids = '';
-    for (let i = 0; i < vecResults.matches.length; i++) {
-        const matchId = vecResults.matches[i].id;
-        const dash = matchId.indexOf('_');
-        if (dash !== -1) {
-            if (ids.length > 0) ids += ',';
-            ids += matchId.substring(dash + 1);
-        }
+    // Format: "{entityTag}:{entityId}" — we need everything after the first colon.
+    const parts = [];
+    for (const match of vecResults.matches) {
+        const colon = match.id.indexOf(':');
+        if (colon !== -1) parts.push(match.id.substring(colon + 1));
     }
 
-    return ids.length > 0 ? ids : null;
+    return parts.length > 0 ? parts.join(',') : null;
 }
