@@ -222,6 +222,30 @@ interface PdbSyncEnv {
 }
 
 /**
+ * Environment bindings for the search worker (pdbfe-search).
+ * Matches workers/wrangler-search.toml d1_databases, kv_namespaces, ai, vectorize, and vars.
+ *
+ * AI and VECTORIZE are optional — the worker degrades gracefully to keyword-only
+ * mode when either binding is absent.
+ */
+interface PdbSearchEnv {
+    /** PeeringDB mirror D1 database (read-only for search). */
+    PDB: D1Database;
+    /** OAuth session KV namespace — required by resolveAuth(). */
+    SESSIONS: KVNamespace;
+    /** Users D1 database — required by resolveAuth() for API key verification. */
+    USERDB: D1Database;
+    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional. */
+    AI?: Ai;
+    /** Vectorize index for semantic search. Optional. */
+    VECTORIZE?: VectorizeIndex;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
+    /** Admin secret for /_admin/* endpoints. */
+    ADMIN_SECRET?: string;
+}
+
+/**
  * Environment bindings for the auth worker (pdbfe-auth).
  * Matches workers/wrangler-auth.toml d1_databases, kv_namespaces, vars, and secrets.
  */
