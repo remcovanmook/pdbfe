@@ -185,10 +185,12 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 ---
 
-## M11: Semantic Search (PR #77)
+## M11: Semantic Search
 
 **Branch**: `feat/search-worker`
-**Shipped**: 2026-04-23
+**Status**: In progress
+
+### Part 1 — Search worker + vector pipeline (PR #77, shipped 2026-04-23)
 
 | Category | Work |
 |----------|------|
@@ -203,6 +205,15 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Infra | `deploy.sh --generate-configs` — all wrangler toml + `config.js` generation in one place; eliminates 60-line sed block from `deploy.yml` |
 | Infra | `.gitignore` updated with all generated toml files (`wrangler-graphql`, `wrangler-rest`, `wrangler-search`) |
 | Infra | `Ai`, `VectorizeIndex`, `VectorizeVector` type stubs added to `workers/types.d.ts` |
+
+### Part 2 — Infrastructure provisioning (pending)
+
+| Category | Item |
+|----------|------|
+| Infra | `wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine` |
+| Infra | Deploy sync worker with `AI` + `VECTORIZE` bindings in production `wrangler-sync.toml` |
+| Backend | Run `scripts/backfill-vectors.mjs` against production D1 |
+| Backend | Validate semantic search results on production frontend (`meta.mode === 'semantic'`) |
 
 ---
 
