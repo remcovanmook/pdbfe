@@ -365,10 +365,11 @@ export async function syncLogos(db, logos, tag, table) {
 export async function syncVectors(db, ai, vectorize, tag, table, primaryField) {
     const result = { embedded: 0, errors: 0 };
 
-    /** Maximum rows processed per entity per cron invocation. */
-    const VECTOR_BATCH_LIMIT = 100;
+    /** Maximum rows processed per entity per cron invocation.
+     *  Kept low to limit CPU time — the backfill script handles bulk data. */
+    const VECTOR_BATCH_LIMIT = 20;
     /** Texts sent to Workers AI per embed call. */
-    const EMBED_BATCH_SIZE = 50;
+    const EMBED_BATCH_SIZE = 20;
 
     // Fetch rows that haven't been embedded yet.
     const rows = await db.prepare(
