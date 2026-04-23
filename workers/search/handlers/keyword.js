@@ -16,7 +16,7 @@
  */
 
 import { encoder } from '../http.js';
-import { SEARCH_FIELDS, getPrimaryField } from '../entities.js';
+import { ENTITIES, SEARCH_FIELDS, getPrimaryField } from '../entities.js';
 
 /**
  * Executes a keyword search against D1 for a single entity type.
@@ -38,7 +38,7 @@ import { SEARCH_FIELDS, getPrimaryField } from '../entities.js';
  */
 export async function handleKeyword(db, entityTag, q, limit, skip) {
     const fields = SEARCH_FIELDS[entityTag];
-    const table = `peeringdb_${entityTag}`;
+    const table = ENTITIES[entityTag].table;
     const primaryField = getPrimaryField(entityTag);
 
     // Build WHERE clause: OR across each searchable field using LIKE.

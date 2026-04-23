@@ -115,6 +115,18 @@ export async function mockApi(page, overrides = {}) {
             return;
         }
 
+        // /search — search worker endpoint (typeahead + search page API calls).
+        // Match only the exact /search path (with optional query string), not
+        // static assets that contain "search" in their path (/js/pages/search.js).
+        if (/\/search(\?|$)/.test(url) && route.request().resourceType() !== 'document') {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify(fixture('search-multi.json')),
+            });
+            return;
+        }
+
         // Catch-all: empty list for all other /api/* requests
         if (url.includes('/api/')) {
             await route.fulfill({
