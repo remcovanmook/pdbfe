@@ -210,11 +210,12 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 | Category | Item |
 |----------|------|
-| Infra | `wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine` |
-| Infra | Deploy sync worker with `AI` + `VECTORIZE` bindings in production `wrangler-sync.toml` |
-| Backend | Run `scripts/backfill-vectors.mjs` against production D1 |
+| Infra | ~~`wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine`~~ ✓ |
+| Infra | ~~Deploy sync worker with `AI` + `VECTORIZE` bindings in production~~ ✓ |
+| Backend | Run `scripts/backfill-vectors.mjs` against production D1 — run 1: ~38k, run 2: in progress |
 | Backend | Validate semantic search results on production frontend (`meta.mode === 'semantic'`) |
 | Frontend | Mobile card layout for remaining detail page entity tables |
+
 
 ---
 
