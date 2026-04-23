@@ -242,8 +242,8 @@ describe('syncEntity pagination', () => {
     it('appends limit=0 and depth=0 to the PeeringDB API URL', async () => {
         let capturedUrl = '';
         const origFetch = globalThis.fetch;
-        globalThis.fetch = async (url) => {
-            capturedUrl = String(url);
+        globalThis.fetch = async (/** @type {string | URL | Request} */ url) => {
+            capturedUrl = url instanceof Request ? url.url : String(url);
             return new Response(JSON.stringify({ data: [] }), { status: 200 });
         };
         try {
