@@ -121,7 +121,7 @@ describe('handleKeyword', () => {
         assert.equal(body.data.length, 1);
         assert.equal(body.data[0].id, 694);
         assert.equal(body.data[0].entity_type, 'net');
-        assert.equal(body.data[0].score, 1.0);
+        assert.equal(body.data[0].score, 1);
     });
 
     it('works for ix entity type', async () => {
