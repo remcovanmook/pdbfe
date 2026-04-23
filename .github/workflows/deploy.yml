@@ -1,8 +1,8 @@
 # Deploy workflow — triggered on push to main (after PR merge).
 #
-# Runs the deploy script to apply pending D1 migrations and deploy
-# all workers + frontend to Cloudflare. Uses --force since we can't
-# persist hash files between CI runs.
+# Calls deploy.sh for all orchestration (config generation, migrations,
+# worker deploys, frontend). No inline shell scripts — deploy.sh is the
+# single source of truth for the deploy sequence.
 #
 # Required secrets:
 #   CLOUDFLARE_API_TOKEN   — Wrangler API token with Workers + D1 + Pages permissions
@@ -52,68 +52,17 @@ jobs:
           pip install pyyaml
           npm ci --prefix workers --ignore-scripts
 
-      # Generate wrangler configs from examples + secrets.
+      # Generate wrangler toml configs and frontend config.js from .example templates.
       # The real configs are gitignored (contain deployment-specific IDs).
-      # Secrets are passed via env: to avoid shell injection from ${{ }} expansion.
-      - name: Generate wrangler configs
+      # All generation logic lives in deploy.sh --generate-configs.
+      - name: Generate configs
+        run: ./scripts/deploy.sh --generate-configs
         env:
           D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
           D1_USERDB_ID: ${{ secrets.D1_USERDB_ID }}
           KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
           API_DOMAIN: ${{ secrets.API_DOMAIN }}
           VECTORIZE_INDEX_NAME: ${{ secrets.VECTORIZE_INDEX_NAME }}
-        run: |
-          PDBFE_VERSION="$(cat VERSION | tr -d '[:space:]')"
-
-          sed \
-            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
-            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
-            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            workers/wrangler.toml.example > workers/wrangler.toml
-
-          sed \
-            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            workers/wrangler-sync.toml.example > workers/wrangler-sync.toml
-
-          sed \
-            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
-            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
-
-          sed \
-            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
-            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
-            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            workers/wrangler-graphql.toml.example > workers/wrangler-graphql.toml
-
-          sed \
-            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
-            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
-            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            workers/wrangler-rest.toml.example > workers/wrangler-rest.toml
-
-          sed \
-            -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
-            -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
-            -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            -e "s|<your-version>|${PDBFE_VERSION}|g" \
-            -e "s|<your-vectorize-index-name>|${VECTORIZE_INDEX_NAME}|g" \
-            workers/wrangler-search.toml.example > workers/wrangler-search.toml
-
-          # Frontend config (also gitignored) — all origins derive from API_DOMAIN
-          sed \
-            -e "s|<your-domain>|${API_DOMAIN}|g" \
-            frontend/js/config.js.example > frontend/js/config.js
 
       - name: Deploy
         run: ./scripts/deploy.sh --remote --apply-migrations --force

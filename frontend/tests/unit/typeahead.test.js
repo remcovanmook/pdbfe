@@ -104,14 +104,15 @@ describe('attachTypeahead — debounce coalescing', () => {
     });
 
     it('fires search only for the final value after rapid inputs', async () => {
-        /** @type {Set<string>} Distinct name__contains values seen across all fetches */
+        /** @type {Set<string>} Distinct q= values seen across all fetch calls to /search */
         const queriesSeen = new Set();
 
         globalThis.fetch = /** @type {any} */ (async (url) => {
             const u = String(url);
-            const match = u.match(/name__contains=([^&]+)/);
+            // Typeahead routes through searchWithAsn → searchEntities → /search?q=...
+            const match = u.match(/[?&]q=([^&]+)/);
             if (match) queriesSeen.add(decodeURIComponent(match[1]));
-            return { ok: true, json: async () => ({ data: [], meta: {} }), headers: new Map() };
+            return { ok: true, json: async () => ({ data: {}, meta: { mode: 'keyword' } }), headers: new Map() };
         });
 
         const { attachTypeahead } = await import('../../js/typeahead.js');
