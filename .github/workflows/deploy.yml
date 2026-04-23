@@ -5,7 +5,10 @@
 # single source of truth for the deploy sequence.
 #
 # Required secrets:
-#   CLOUDFLARE_API_TOKEN   — Wrangler API token with Workers + D1 + Pages permissions
+#   CLOUDFLARE_API_TOKEN   — Wrangler API token. Required permissions:
+#                             Workers Scripts:Edit, D1:Edit, Pages:Edit,
+#                             Vectorize:Edit, Workers AI:Run,
+#                             Account Settings:Read (for account ID resolution)
 #   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID (optional if token is single-account)
 #   D1_DATABASE_ID         — PeeringDB D1 database ID
 #   D1_USERDB_ID           — Users D1 database ID (pdbfe-users)

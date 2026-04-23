@@ -23,14 +23,51 @@
  */
 
 import { env } from 'node:process';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ACCOUNT_ID     = env.CLOUDFLARE_ACCOUNT_ID;
-const API_TOKEN      = env.CLOUDFLARE_API_TOKEN;
-const D1_DB_ID       = env.D1_DATABASE_ID;
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Parses a KEY=VALUE env file into process.env.
+ * Strips leading `export `, skips comments and blank lines.
+ * Existing env vars take precedence (explicit env wins over file).
+ *
+ * @param {string} path - Absolute path to the env file.
+ */
+function loadEnvFile(path) {
+    let content;
+    try { content = readFileSync(path, 'utf8'); } catch { return; }
+    for (const line of content.split('\n')) {
+        const stripped = line.replace(/^\s*export\s+/, '').trim();
+        if (!stripped || stripped.startsWith('#')) continue;
+        const eq = stripped.indexOf('=');
+        if (eq === -1) continue;
+        const key = stripped.slice(0, eq).trim();
+        const val = stripped.slice(eq + 1).trim();
+        if (!(key in env)) env[key] = val;
+    }
+}
+
+// Load local env files when running outside CI.
+// .env carries runtime secrets; .env.deploy carries infra IDs.
+loadEnvFile(`${REPO_ROOT}/.env`);
+loadEnvFile(`${REPO_ROOT}/.env.deploy`);
+
+const ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID;
+const API_TOKEN = env.CLOUDFLARE_API_TOKEN;
+const D1_DB_ID = env.D1_DATABASE_ID;
 const VECTORIZE_NAME = env.VECTORIZE_INDEX_NAME ?? 'pdbfe-vectors';
 
-if (!ACCOUNT_ID || !API_TOKEN || !D1_DB_ID) {
-    console.error('Missing required env: CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, D1_DATABASE_ID');
+const missing = [
+    !ACCOUNT_ID && 'CLOUDFLARE_ACCOUNT_ID',
+    !API_TOKEN  && 'CLOUDFLARE_API_TOKEN',
+    !D1_DB_ID   && 'D1_DATABASE_ID',
+].filter(Boolean);
+
+if (missing.length > 0) {
+    console.error(`Missing required env: ${missing.join(', ')}`);
     process.exit(1);
 }
 
@@ -48,12 +85,12 @@ const AUTH_HEADERS = {
  * @type {Array<{tag: string, table: string}>}
  */
 const ENTITIES = [
-    { tag: 'org',     table: 'peeringdb_organization' },
-    { tag: 'net',     table: 'peeringdb_network' },
-    { tag: 'ix',      table: 'peeringdb_ix' },
-    { tag: 'fac',     table: 'peeringdb_facility' },
+    { tag: 'org', table: 'peeringdb_organization' },
+    { tag: 'net', table: 'peeringdb_network' },
+    { tag: 'ix', table: 'peeringdb_ix' },
+    { tag: 'fac', table: 'peeringdb_facility' },
     { tag: 'carrier', table: 'peeringdb_carrier' },
-    { tag: 'campus',  table: 'peeringdb_campus' },
+    { tag: 'campus', table: 'peeringdb_campus' },
 ];
 
 /** Rows fetched from D1 per page. */
@@ -184,7 +221,7 @@ async function backfillEntity(tag, table) {
         for (let i = 0; i < rows.length; i += EMBED_BATCH) {
             const batch = rows.slice(i, i + EMBED_BATCH);
             const texts = batch.map(r => String(r.name || ''));
-            const ids   = batch.map(r => r.id);
+            const ids = batch.map(r => r.id);
 
             try {
                 const embeddings = await embed(texts);

@@ -24,12 +24,23 @@
 #   8. Deploy pdbfe-rest      (if changed or --force)
 #   9. Deploy frontend        (if --remote)
 #
+#
 # Config generation (--generate-configs) reads from environment:
 #   D1_DATABASE_ID         — D1 database ID for the peeringdb database
 #   D1_USERDB_ID           — D1 database ID for the users database
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
 #   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev")
 #   VECTORIZE_INDEX_NAME   — Vectorize index name (e.g. "pdbfe-vectors")
+#
+# For local use, put infra IDs in .env.deploy (gitignored). Format:
+#   D1_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+#   D1_USERDB_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+#   KV_SESSIONS_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   API_DOMAIN=pdbfe.dev
+#   VECTORIZE_INDEX_NAME=pdbfe-vectors
+#
+# In CI, these come from the step env: block (GitHub secrets).
+# .env (runtime secrets) is sourced first, then .env.deploy (infra IDs).
 
 set -euo pipefail
 
@@ -71,6 +82,21 @@ done
 
 if [[ -n "$GENERATE_CONFIGS" ]]; then
     section "Generate Configs"
+
+    # Source .env from repo root if present (runtime secrets).
+    # Then source .env.deploy if present (infra IDs: D1, KV, domain).
+    # In CI the values come from the step's env: block instead.
+    for envfile in "$REPO_ROOT/.env" "$REPO_ROOT/.env.deploy"; do
+        if [[ -f "$envfile" ]]; then
+            set -o allexport
+            # shellcheck source=/dev/null
+            source "$envfile"
+            set +o allexport
+        fi
+    done
+
+    # Allow WORKERS_DOMAIN as an alias for API_DOMAIN (matches local .env convention)
+    API_DOMAIN="${API_DOMAIN:-${WORKERS_DOMAIN:-}}"
 
     # Validate required env vars
     for var in D1_DATABASE_ID D1_USERDB_ID KV_SESSIONS_ID API_DOMAIN; do
