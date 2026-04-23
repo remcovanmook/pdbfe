@@ -112,15 +112,24 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
     }
 
     // Step 3: filter by entity ID prefix and extract the numeric entity ID.
-    // Vector ID format: "{entityTag}_{entityId}" (e.g. "net_694").
+    // The ingestion pipeline may use either '_' or ':' as the separator;
+    // try both so the worker is robust to either format.
+    // e.g. "net_694" or "net:694" → entity ID "694".
     // Matches arrive ordered by cosine similarity; preserve that order.
-    const prefix = `${entityTag}_`;
+    const prefixUnderscore = `${entityTag}_`;
+    const prefixColon = `${entityTag}:`;
     const parts = [];
     for (const match of vecResults.matches) {
-        if (!match.id.startsWith(prefix)) continue;
-        const id = match.id.slice(prefix.length);
-        if (id) parts.push(id);
-        if (parts.length >= limit) break;
+        let entityId = null;
+        if (match.id.startsWith(prefixUnderscore)) {
+            entityId = match.id.slice(prefixUnderscore.length);
+        } else if (match.id.startsWith(prefixColon)) {
+            entityId = match.id.slice(prefixColon.length);
+        }
+        if (entityId) {
+            parts.push(entityId);
+            if (parts.length >= limit) break;
+        }
     }
 
     return parts.length > 0 ? parts.join(',') : null;
