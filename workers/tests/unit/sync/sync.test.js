@@ -14,8 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncEntity, buildUpsert, ensureColumns, syncLogos } from '../../../sync/index.js';
-import worker from '../../../sync/index.js';
+import worker, { syncEntity, buildUpsert, ensureColumns, syncLogos } from '../../../sync/index.js';
 
 // ── Runtime polyfills ─────────────────────────────────────────────────────────
 // Node.js crypto.subtle does not implement timingSafeEqual (a Cloudflare
@@ -58,9 +57,9 @@ function mockD1({ lastSync = null, existingColumns = [], capturedAlters = [], ca
                 bind(/** @type {...any} */ ...params) { this._params = params; return this; },
                 first() {
                     if (sql.includes('_sync_meta') && sql.includes('SELECT')) {
-                        return lastSync !== null
-                            ? Promise.resolve({ last_sync: lastSync })
-                            : Promise.resolve(null);
+                        return lastSync === null
+                            ? Promise.resolve(null)
+                            : Promise.resolve({ last_sync: lastSync });
                     }
                     if (sql.includes('COUNT(*)')) {
                         return Promise.resolve({ cnt: 0 });
@@ -197,7 +196,7 @@ describe('ensureColumns', () => {
             return origPrepare(sql);
         };
         await ensureColumns(db, 'peeringdb_network', ['valid_col', 'bad-col!', '1invalid']);
-        const alteredCols = alters.map(s => (s.match(/"(\w+)"\s+TEXT/) || [])[1]);
+        const alteredCols = alters.map(s => (/"(\w+)"\s+TEXT/.exec(s) || [])[1]);
         assert.ok(alteredCols.includes('valid_col'), 'valid_col should be added');
         assert.ok(!alteredCols.some(c => c === undefined || c?.includes('bad')), 'invalid names must not be added');
     });

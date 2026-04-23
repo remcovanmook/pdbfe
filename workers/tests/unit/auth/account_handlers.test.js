@@ -9,7 +9,7 @@
  * header and mocked KV namespace.
  */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { handlePreferences, handleProfile } from '../../../auth/handlers/profile.js';
 import { handleKeys } from '../../../auth/handlers/keys.js';

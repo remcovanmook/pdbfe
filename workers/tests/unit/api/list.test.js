@@ -12,12 +12,11 @@
  * functions that are hard to reach from the outside.
  */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleList } from '../../../api/handlers/list.js';
 import { getEntityCache } from '../../../api/cache.js';
-import { LRUCache, normaliseCacheKey } from '../../../core/cache.js';
-import { EMPTY_ENVELOPE } from '../../../core/pipeline/index.js';
+import { normaliseCacheKey } from '../../../core/cache.js';
 
 // ── Minimal mock factories ────────────────────────────────────────────────────
 
