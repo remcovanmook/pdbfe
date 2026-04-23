@@ -177,8 +177,7 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
             score: Math.round(score * 100) / 100,
         };
         // Copy extra display fields (asn, city, country, etc.) if present.
-        for (let j = 0; j < extraFields.length; j++) {
-            const col = extraFields[j];
+        for (const col of extraFields) {
             if (r[col] != null) row[col] = r[col];
         }
         data.push(row);

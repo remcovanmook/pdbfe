@@ -72,8 +72,7 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     const rows = result.results;
     /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}[]} */
     const data = [];
-    for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
+    for (const r of rows) {
         /** @type {{id: number, name: string, entity_type: string, score: number, [key: string]: any}} */
         const row = {
             id: /** @type {number} */ (r.id),
@@ -82,8 +81,7 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
             score: 1,
         };
         // Copy extra display fields (asn, city, country, etc.) if present.
-        for (let j = 0; j < extraFields.length; j++) {
-            const col = extraFields[j];
+        for (const col of extraFields) {
             if (r[col] != null) row[col] = r[col];
         }
         data.push(row);

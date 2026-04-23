@@ -119,9 +119,7 @@ export async function resolveSemanticIds(entityTag, field, queryStr, limit = 25)
     const prefixUnderscore = `${entityTag}_`;
     const prefixColon = `${entityTag}:`;
     const parts = [];
-    const matches = vecResults.matches;
-    for (let i = 0; i < matches.length; i++) {
-        const match = matches[i];
+    for (const match of vecResults.matches) {
         let entityId = null;
         if (match.id.startsWith(prefixUnderscore)) {
             entityId = match.id.slice(prefixUnderscore.length);
