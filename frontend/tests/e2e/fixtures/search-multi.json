@@ -1,0 +1,13 @@
+{
+    "data": {
+        "net": [
+            { "id": 694, "name": "Cloudflare", "entity_type": "net", "score": 1 }
+        ],
+        "ix": [],
+        "fac": [],
+        "org": [],
+        "carrier": [],
+        "campus": []
+    },
+    "meta": { "total": 1, "mode": "keyword" }
+}
