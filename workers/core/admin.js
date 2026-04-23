@@ -262,6 +262,14 @@ export function wrapHandler(handler, serviceName) {
             h.set("X-Served-By", `cache-${request.cf?.colo ?? "UNKNOWN"}-${serviceName}`);
             h.set("X-Isolate-ID", ISOLATE_ID);
 
+            // Inject the deployed release version when available.
+            // PDBFE_VERSION is set as a wrangler [vars] entry at deploy time
+            // from the VERSION file, so this is a zero-cost string read.
+            const pdbfeVersion = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (env))?.PDBFE_VERSION;
+            if (typeof pdbfeVersion === "string" && pdbfeVersion) {
+                h.set("X-PDBFE-Version", pdbfeVersion);
+            }
+
             // Default X-Auth-Status for responses produced before auth resolution
             // (405, preflight, path traversal). The main handler sets it after
             // resolving auth; wrapHandler ensures it's always present.

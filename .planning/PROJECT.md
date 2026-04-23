@@ -48,16 +48,14 @@ Fast, modern, alternative PeeringDB interface with infrastructure comparison too
 
 ## Current State
 
-479 commits across 69 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites.
+~510 commits across 75 PRs. Production frontend at `pdbfe.dev` is currently gated behind Cloudflare Access pending AUP approval. Branch previews deploy to `*.pdbfe-frontend.pages.dev`. All 13 PeeringDB entity types synced and served. D1 database and R2 logo store are fully backfilled and current. Frontend covers entity detail, search, advanced search, comparison, favorites, and account management. Auth via PeeringDB OAuth2 with user profiles, preferences, API keys, and server-persisted favorites. Versioning established at `0.9.0` with semver bump tooling and CI enforcement.
 
-**Active branch**: `frontend/account-mystuff-mobile` — account page reshuffle, mobile table cards, "my stuff" on homepage, compare with locked A-side, OAuth return-to-origin.
+**Active branch**: `feat/versioning` — semantic versioning (`VERSION` file, bump script, CI gate, deploy auto-tagging, `X-PDBFE-Version` header across all workers).
 
 **Known tech debt**:
 - Mobile rendering of detail page tables needs card-based responsive layout
-- No tags/releases — version tracking via PR numbers only
-- Worker test coverage is catch-up, not TDD
-- No automated E2E browser tests
+- Worker test coverage enforced at 85/80/80; frontend coverage is 70.7% line / 77.1% branch with no floor — DOM-rendering modules deferred to E2E, but `auth.js` OAuth/session logic (61% line) is the highest-value gap for unit coverage in M11
 - Production frontend gated behind Cloudflare Access (AUP approval pending)
 
 ---
-*Last updated: 2026-04-19 — PR #70 pending, 69 PRs merged*
+*Last updated: 2026-04-23 — PR #76 pending, 75 PRs merged*

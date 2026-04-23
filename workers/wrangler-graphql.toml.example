@@ -27,3 +27,6 @@ id = "<your-sessions-kv-namespace-id>"
 binding = "USERDB"
 database_name = "pdbfe-users"
 database_id = "<your-users-d1-database-id>"
+
+[vars]
+PDBFE_VERSION = "<your-version>"

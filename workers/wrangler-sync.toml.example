@@ -15,6 +15,9 @@ crons = ["*/15 * * * *"]
 # [vars]
 # PEERINGDB_API_KEY = ""
 
+[vars]
+PDBFE_VERSION = "<your-version>"
+
 [[r2_buckets]]
 binding = "LOGOS"
 bucket_name = "pdbfe-logos"

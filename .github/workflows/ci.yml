@@ -2,6 +2,11 @@
 # every push and PR, regardless of whether the contributor has the
 # local git hooks configured.
 #
+# The version-check job enforces that any PR containing functional
+# commits (feat:, fix:, or BREAKING CHANGE) must bump VERSION before
+# merging to main. Non-functional PRs (ci:, docs:, refactor:, chore:)
+# are exempt.
+#
 # Jobs are split by component (workers, frontend, security, integrity)
 # and run in parallel. Each job fails independently so you can see
 # exactly which layer broke.
@@ -173,3 +178,86 @@ jobs:
             exit 1
           fi
 
+  # ── Version: enforce bump for functional PRs ──────────────────────
+  #
+  # Runs only on pull_request events (not on push to main). Reads
+  # VERSION from both the PR branch and origin/main, then inspects
+  # the commit messages introduced by the PR. If at least one commit
+  # is a functional change (feat:, fix:, or BREAKING CHANGE) the
+  # VERSION must differ from main — otherwise the job fails.
+  #
+  # Exempted commit types (no bump required):
+  #   ci:, docs:, refactor:, chore:, test:, style:, perf:, build:
+  version-check:
+    name: Version Bump
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can compare against origin/main
+          fetch-depth: 0
+
+      - name: Check version bump
+        run: |
+          PR_VERSION="$(cat VERSION | tr -d '[:space:]')"
+          MAIN_VERSION="$(git show origin/main:VERSION 2>/dev/null | tr -d '[:space:]' || echo '')"
+
+          echo "VERSION on this branch : ${PR_VERSION}"
+          echo "VERSION on main        : ${MAIN_VERSION}"
+
+          # Collect all commit subjects introduced by this PR (commits
+          # reachable from HEAD but not from origin/main).
+          COMMITS="$(git log origin/main..HEAD --format='%s' 2>/dev/null || true)"
+
+          if [[ -z "${COMMITS}" ]]; then
+            echo "No commits found relative to origin/main — skipping check."
+            exit 0
+          fi
+
+          echo ""
+          echo "Commits in this PR:"
+          echo "${COMMITS}"
+          echo ""
+
+          # Detect functional commits: feat, fix, or any type with a !
+          # (breaking change shorthand), or a commit body with BREAKING CHANGE:.
+          FUNCTIONAL=0
+          while IFS= read -r subject; do
+            # feat: / feat!: / feat(scope):  etc.
+            if echo "${subject}" | grep -qE '^(feat|fix)(\([^)]*\))?!?:'; then
+              FUNCTIONAL=1
+              break
+            fi
+            # Any type with ! suffix signals a breaking change
+            if echo "${subject}" | grep -qE '^[a-z]+(\([^)]*\))?!:'; then
+              FUNCTIONAL=1
+              break
+            fi
+          done <<< "${COMMITS}"
+
+          # Also scan full commit bodies for BREAKING CHANGE trailers
+          if [[ "${FUNCTIONAL}" -eq 0 ]]; then
+            BODIES="$(git log origin/main..HEAD --format='%b' 2>/dev/null || true)"
+            if echo "${BODIES}" | grep -qE '^BREAKING CHANGE:'; then
+              FUNCTIONAL=1
+            fi
+          fi
+
+          if [[ "${FUNCTIONAL}" -eq 0 ]]; then
+            echo "No functional commits detected (only ci:/docs:/refactor:/chore: etc.)."
+            echo "Version bump not required."
+            exit 0
+          fi
+
+          echo "Functional commits detected."
+
+          if [[ "${PR_VERSION}" == "${MAIN_VERSION}" ]]; then
+            echo ""
+            echo "::error::VERSION (${PR_VERSION}) has not been bumped relative to main."
+            echo "::error::Run: ./scripts/bump_version.sh <patch|minor|major>"
+            echo "::error::Then commit the updated VERSION file before merging."
+            exit 1
+          fi
+
+          echo "VERSION bumped: ${MAIN_VERSION} → ${PR_VERSION} ✓"

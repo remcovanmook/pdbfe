@@ -15,3 +15,4 @@
 - [ ] If new API field: updated `entities.js`, `schema.sql`, and added migration
 - [ ] If new UI string: added to `strings.json` and all locale files
 - [ ] Documentation updated (if behavior changed)
+- [ ] `VERSION` bumped via `./scripts/bump_version.sh <patch|minor|major>` (skip for `ci:` / `docs:` / `refactor:` / `chore:` PRs)

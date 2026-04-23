@@ -23,7 +23,7 @@ on:
       - 'LICENSE'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   deploy:
@@ -61,21 +61,26 @@ jobs:
           KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
           API_DOMAIN: ${{ secrets.API_DOMAIN }}
         run: |
+          PDBFE_VERSION="$(cat VERSION | tr -d '[:space:]')"
+
           sed \
             -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
             -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
             -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
             -e "s|<your-domain>|${API_DOMAIN}|g" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler.toml.example > workers/wrangler.toml
 
           sed \
             -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler-sync.toml.example > workers/wrangler-sync.toml
 
           sed \
             -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
             -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
             -e "s|<your-domain>|${API_DOMAIN}|g" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler-auth.toml.example > workers/wrangler-auth.toml
 
           sed \
@@ -83,6 +88,7 @@ jobs:
             -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
             -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
             -e "s|<your-domain>|${API_DOMAIN}|g" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler-graphql.toml.example > workers/wrangler-graphql.toml
 
           sed \
@@ -90,6 +96,7 @@ jobs:
             -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
             -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
             -e "s|<your-domain>|${API_DOMAIN}|g" \
+            -e "s|<your-version>|${PDBFE_VERSION}|g" \
             workers/wrangler-rest.toml.example > workers/wrangler-rest.toml
 
           # Frontend config (also gitignored) — all origins derive from API_DOMAIN
@@ -102,3 +109,20 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Create an annotated git tag for this release version.
+      # Skips gracefully if the tag already exists (e.g. a re-deploy of the
+      # same version after a deploy-script-only fix).
+      - name: Tag release
+        run: |
+          VERSION="$(cat VERSION | tr -d '[:space:]')"
+          TAG="v${VERSION}"
+          echo "Tagging release: ${TAG}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git tag -a "${TAG}" -m "Release ${TAG}" 2>/dev/null; then
+            git push origin "${TAG}"
+            echo "Tag ${TAG} created and pushed."
+          else
+            echo "Tag ${TAG} already exists — skipping."
+          fi

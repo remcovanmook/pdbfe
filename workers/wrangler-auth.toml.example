@@ -29,3 +29,4 @@ database_id = "<your-users-d1-database-id>"
 [vars]
 OAUTH_REDIRECT_URI = "https://auth.<your-domain>/auth/callback"
 FRONTEND_ORIGIN = "https://<your-domain>"
+PDBFE_VERSION = "<your-version>"
