@@ -793,3 +793,123 @@ describe('accountCorsHeaders + resolveAllowedOrigin (preflight)', () => {
         assert.equal(headers['Access-Control-Allow-Origin'], 'https://abc123.pdbfe-frontend.pages.dev');
     });
 });
+
+// ── handleFavorites (PUT — bulk replace) ─────────────────────────────────────
+
+describe('handleFavorites — PUT (bulk replace)', () => {
+    it('returns 401 without auth', async () => {
+        const env = mockEnv({ SESSIONS: mockKV(null) });
+        const req = new Request('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            body: '{}',
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 401);
+    });
+
+    it('returns 400 for invalid JSON body', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            body: 'not json',
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 400);
+    });
+
+    it('returns 400 when favorites is not an array', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: 'not-an-array' }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 400);
+        const body = await json(res);
+        assert.ok(body.error.includes('array'));
+    });
+
+    it('returns 400 when array exceeds maximum favorites', async () => {
+        const env = mockEnv();
+        const tooMany = Array.from({ length: 51 }, (_, i) => ({
+            entity_type: 'net', entity_id: i + 1
+        }));
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: tooMany }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 400);
+        const body = await json(res);
+        assert.ok(body.error.includes('Maximum'));
+    });
+
+    it('returns 400 for invalid entity_type in array entry', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [{ entity_type: 'invalid', entity_id: 1 }] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 400);
+        const body = await json(res);
+        assert.ok(body.error.includes('entity_type'));
+    });
+
+    it('returns 400 for invalid entity_id in array entry', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [{ entity_type: 'net', entity_id: -5 }] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 400);
+    });
+
+    it('replaces favorites list and returns 200 with count', async () => {
+        const env = mockEnv();
+        const favorites = [
+            { entity_type: 'net', entity_id: 1, label: 'First' },
+            { entity_type: 'ix',  entity_id: 2, label: 'Second' },
+        ];
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 200);
+        const body = await json(res);
+        assert.equal(body.replaced, 2);
+    });
+
+    it('accepts an empty array (clears all favorites)', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 200);
+        const body = await json(res);
+        assert.equal(body.replaced, 0);
+    });
+
+    it('truncates long labels in the array to 200 characters', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [{ entity_type: 'net', entity_id: 1, label: 'X'.repeat(300) }] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        // Response just returns replaced count — label truncation is internal.
+        // Confirm the request succeeds (label truncation must not cause a failure).
+        assert.equal(res.status, 200);
+    });
+});
