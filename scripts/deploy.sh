@@ -16,13 +16,14 @@
 # Deploy order:
 #   1. Validate generated artifacts
 #   2. Apply D1 migrations (if --apply-migrations)
-#   3. Deploy pdbfe-search    (if changed or --force)
-#   4. Deploy pdbfe-sync      (if changed or --force)
-#   5. Deploy pdbfe-api       (if changed or --force)
-#   6. Deploy pdbfe-auth      (if changed or --force)
-#   7. Deploy pdbfe-graphql   (if changed or --force)
-#   8. Deploy pdbfe-rest      (if changed or --force)
-#   9. Deploy frontend        (if --remote)
+#   3. Deploy pdbfe-async    (if changed or --force)  — consumer before producer
+#   4. Deploy pdbfe-search    (if changed or --force)
+#   5. Deploy pdbfe-sync      (if changed or --force)
+#   6. Deploy pdbfe-api       (if changed or --force)
+#   7. Deploy pdbfe-auth      (if changed or --force)
+#   8. Deploy pdbfe-graphql   (if changed or --force)
+#   9. Deploy pdbfe-rest      (if changed or --force)
+#  10. Deploy frontend        (if --remote)
 #
 #
 # Config generation (--generate-configs) reads from environment:
@@ -119,8 +120,13 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
     sed \
         -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
-        -e "s|<your-vectorize-index-name>|${VECTORIZE_INDEX_NAME}|g" \
         "$REPO_ROOT/workers/wrangler-sync.toml.example" > "$REPO_ROOT/workers/wrangler-sync.toml"
+
+    sed \
+        -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
+        -e "s|<your-vectorize-index-name>|${VECTORIZE_INDEX_NAME}|g" \
+        -e "s|<your-version>|${PDBFE_VERSION}|g" \
+        "$REPO_ROOT/workers/wrangler-async.toml.example" > "$REPO_ROOT/workers/wrangler-async.toml"
 
     sed \
         -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
@@ -177,10 +183,12 @@ fi
 
 section "Validation"
 
-# Use PYTHON from env, .venv if available, or system python
+# Use PYTHON from env, scripts/.venv if available, repo-root .venv, or system python
 PYTHON="${PYTHON:-}"
 if [[ -z "$PYTHON" ]]; then
-    if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+    if [[ -x "$SCRIPT_DIR/.venv/bin/python" ]]; then
+        PYTHON="$SCRIPT_DIR/.venv/bin/python"
+    elif [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
         PYTHON="$REPO_ROOT/.venv/bin/python"
     else
         PYTHON="python"
@@ -274,6 +282,7 @@ section "Workers"
 
 # Worker configs and their source directories
 declare -a WORKERS=(
+    "wrangler-async.toml:async"
     "wrangler-search.toml:search"
     "wrangler-sync.toml:sync"
     "wrangler.toml:api"

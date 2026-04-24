@@ -1,36 +1,54 @@
 # Deployment Guide
 
 How to deploy the pdbfe stack from scratch.
+For upgrading an existing deployment, see [Upgrading](#upgrading).
+
+---
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 22+ and `npx`
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/) (`npm install -g wrangler`)
 - A Cloudflare account (Workers Paid plan recommended for D1 row limits)
 - A PeeringDB account with an API key (https://www.peeringdb.com/apidocs/)
-- Python 3 (for database population scripts)
+- Python 3.12+ with venv:
+  ```bash
+  python3 -m venv scripts/.venv
+  scripts/.venv/bin/pip install -r scripts/requirements.txt
+  ```
+- `sqlite3` on PATH
+
+---
 
 ## 1. Cloudflare Resource Setup
 
-### Create D1 databases
+Provision once per account. Record every ID and name printed — you'll need them for `.env.deploy`.
 
 ```bash
-# PeeringDB mirror data
+# D1 — PeeringDB mirror data
 wrangler d1 create peeringdb
 
-# User profiles and API keys
+# D1 — user profiles, preferences, API keys
 wrangler d1 create pdbfe-users
-```
 
-Note both `database_id` values from the output — you'll need them for the wrangler configs.
-
-### Create a KV namespace
-
-```bash
+# KV — session token store
 wrangler kv namespace create SESSIONS
+
+# Vectorize — graph-structural embedding index (1024-dim node2vec, cosine)
+wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
+
+# Enable metadata filtering on entity type (required for graph search)
+wrangler vectorize create-metadata-index pdbfe-vectors \
+    --property-name=entity --type=string
+
+# Queue — async task bus between sync and async workers
+wrangler queues create pdbfe-tasks
+
+# R2 — logo mirror bucket
+wrangler r2 bucket create pdbfe-logos
 ```
 
-Note the namespace ID.
+---
 
 ## 2. PeeringDB OAuth Application
 
@@ -39,138 +57,135 @@ Register an OAuth application at https://auth.peeringdb.com:
 1. Log in to PeeringDB
 2. Navigate to your profile → OAuth Applications
 3. Create a new application:
-   - **Redirect URI**: `https://pdbfe-auth.<your-subdomain>.workers.dev/auth/callback`
+   - **Redirect URI**: `https://auth.<your-domain>/auth/callback`
    - **Grant type**: Authorization Code
 4. Note the **Client ID** and **Client Secret**
 
-You'll also need a PeeringDB API key for the sync worker and WAF bypass:
-1. Go to your PeeringDB profile → API Keys
-2. Generate a new key
+---
 
-## 3. Wrangler Configuration
+## 3. Configure Credentials
 
-Copy each `.example` file and fill in your resource IDs:
+### `.env.deploy` — Cloudflare infrastructure IDs
 
-```bash
-cd workers
-cp wrangler.toml.example wrangler.toml
-cp wrangler-sync.toml.example wrangler-sync.toml
-cp wrangler-auth.toml.example wrangler-auth.toml
-cp wrangler-graphql.toml.example wrangler-graphql.toml
-cp wrangler-rest.toml.example wrangler-rest.toml
+Copy `.env.deploy.example` to `.env.deploy` (gitignored) and fill in:
+
+```
+CLOUDFLARE_ACCOUNT_ID=<from wrangler whoami>
+D1_DATABASE_ID=<peeringdb database_id>
+D1_USERDB_ID=<pdbfe-users database_id>
+KV_SESSIONS_ID=<SESSIONS namespace_id>
+API_DOMAIN=<your custom domain, e.g. pdbfe.dev>
+VECTORIZE_INDEX_NAME=pdbfe-vectors
+PDBFE_VERSION=<current version>
 ```
 
-Edit each file and replace the placeholders:
-- `<your-d1-database-id>` → the ID from `wrangler d1 create peeringdb`
-- `<your-users-d1-database-id>` → the ID from `wrangler d1 create pdbfe-users`
-- `<your-sessions-kv-namespace-id>` → the SESSIONS namespace ID
-- `<your-subdomain>` → your Cloudflare Workers subdomain
-- `<your-pages-project>` → your Cloudflare Pages project name
+### `.env` — Runtime secrets
 
-## 4. Secrets
+Copy `.env.example` to `.env` (gitignored) and set:
 
-Set secrets for each worker. These are stored in Cloudflare and never committed to the repo.
-
-### Sync worker
-
-```bash
-wrangler secret put PEERINGDB_API_KEY --config wrangler-sync.toml
+```
+PEERINGDB_API_KEY=<your api key>
+OAUTH_CLIENT_ID=<from step 2>
+OAUTH_CLIENT_SECRET=<from step 2>
 ```
 
-### Auth worker
+---
+
+## 4. Generate Wrangler Configs
 
 ```bash
-wrangler secret put OAUTH_CLIENT_ID --config wrangler-auth.toml
-wrangler secret put OAUTH_CLIENT_SECRET --config wrangler-auth.toml
-wrangler secret put PEERINGDB_API_KEY --config wrangler-auth.toml
+./scripts/deploy.sh --generate-configs
 ```
 
-The `PEERINGDB_API_KEY` on the auth worker is used in the `Authorization` header during the OAuth token exchange to bypass PeeringDB's WAF, which blocks requests from Cloudflare Workers without an auth header.
+Reads `.env.deploy` and expands all `wrangler-*.toml.example` files into their
+corresponding `wrangler-*.toml` counterparts. Verify the output confirms
+the correct domain before proceeding.
 
-## 5. Local Environment
+---
 
-Copy the environment template and fill in your values:
+## 5. Worker Secrets
+
+Set runtime secrets for each worker. These are stored in Cloudflare and never committed.
 
 ```bash
-cp .env.example .env
-# Edit .env with your actual credentials
+# Sync worker — upstream API access for delta fetching
+wrangler secret put PEERINGDB_API_KEY --config workers/wrangler-sync.toml
+
+# Auth worker — OAuth credentials + WAF bypass
+wrangler secret put OAUTH_CLIENT_ID     --config workers/wrangler-auth.toml
+wrangler secret put OAUTH_CLIENT_SECRET --config workers/wrangler-auth.toml
+wrangler secret put PEERINGDB_API_KEY   --config workers/wrangler-auth.toml
 ```
 
-The `.env` file is sourced by `migrate-to-d1.sh` and used for local development. It is gitignored.
+> The `PEERINGDB_API_KEY` on the auth worker is required to bypass PeeringDB's
+> WAF during the OAuth token exchange — Cloudflare Workers IPs are blocked without it.
 
-## 6. Database Population
+---
 
-### Initial cold start
+## 6. Bootstrap D1
 
-Download entity JSON from the PeeringDB API and populate D1:
+Downloads public JSON dumps from `public.peeringdb.com`, builds a clean SQLite
+database locally, verifies referential integrity, and imports to D1.
 
 ```bash
-# Local dev database
-./scripts/migrate-to-d1.sh --fetch
-
-# Production D1
 ./scripts/migrate-to-d1.sh --fetch --remote
 ```
 
-This downloads all 13 entity types from the PeeringDB API, converts them to INSERT statements, and loads them into D1 in batches. The `--fetch` flag downloads fresh JSON; without it, the script expects pre-existing JSON files in `database/`.
+`schema.sql` (generated by the pipeline) already includes all current columns,
+so no separate migration step is required after a fresh bootstrap.
 
-#### POC Backfill (Critical)
-
-The public JSON dumps at `public.peeringdb.com` **only contain points of contact (POCs) with `visible=Public`**. To maintain functional parity for authenticated users, you must manually backfill `visible=Users` and `visible=Private` records directly from the authenticated API:
+### Bootstrap users database
 
 ```bash
-# Ensure PEERINGDB_API_KEY is in your environment
+npx wrangler d1 execute pdbfe-users \
+    --file=database/users/schema.sql --remote
+
+npx wrangler d1 execute pdbfe-users \
+    --file=database/users/0002_preference_options.sql --remote
+```
+
+### Backfill private POC records
+
+Public JSON dumps only contain `visible=Public` POC records. Backfill the rest:
+
+```bash
 source .env
-
-# Generate POC backfill script via upstream API
-python3 scripts/backfill_poc.py > /tmp/poc_backfill.sql
-
-# Apply manually to D1
-wrangler d1 execute peeringdb --remote --yes --file /tmp/poc_backfill.sql
+python3 scripts/backfill_poc.py | \
+    npx wrangler d1 execute peeringdb --remote --yes --file /dev/stdin
 ```
 
-After the initial load and POC backfill, the sync worker handles incremental updates every 15 minutes via the `since` parameter automatically.
+---
 
-### Users database schema
-
-Bootstrap the users database schema (required before any logins or API key creation):
+## 7. Deploy Workers
 
 ```bash
-# From the repo root
-npx wrangler d1 execute pdbfe-users --file=database/users/schema.sql --remote
-
-# Seed preference options (language, theme, timezone values)
-npx wrangler d1 execute pdbfe-users --file=database/users/0002_preference_options.sql --remote
+./scripts/deploy.sh --remote
 ```
 
-## 7. Worker Deployment
+Deploys all 8 workers in dependency order (async consumer before sync producer,
+search before API). The sync worker starts publishing to the `pdbfe-tasks` queue
+on its next cron tick (every 15 min). The async worker consumes those tasks.
 
-Deploy all five workers:
+---
+
+## 8. Compute Graph Embeddings
+
+Embeds all entities using the node2vec graph pipeline. Run without `--incremental`
+on a cold start to cover the full dataset.
 
 ```bash
-cd workers
-
-# API worker (PeeringDB Legacy mirror)
-npx wrangler deploy --config wrangler.toml
-
-# GraphQL worker
-npx wrangler deploy --config wrangler-graphql.toml
-
-# REST API worker
-npx wrangler deploy --config wrangler-rest.toml
-
-# Sync worker (cron-triggered)
-npx wrangler deploy --config wrangler-sync.toml
-
-# Auth worker (OAuth + account management)
-npx wrangler deploy --config wrangler-auth.toml
+source .env
+python3 scripts/compute-graph-embeddings.py
 ```
 
-## 8. Frontend Deployment
+This may take 30–60 minutes. After completion, the async worker handles ongoing
+re-embedding via the task queue automatically.
+
+---
+
+## 9. Frontend Deployment
 
 The frontend is a static SPA deployed to Cloudflare Pages.
-
-### Configure the frontend
 
 ```bash
 cd frontend
@@ -179,69 +194,76 @@ cp _headers.example _headers
 cp _redirects.example _redirects
 ```
 
-Edit each file and replace the `<your-subdomain>` placeholders with your actual hostnames.
-
-### Deploy to Pages
-
-Create a Cloudflare Pages project via the dashboard or CLI:
+Edit each file and replace the domain placeholders with your actual hostnames.
+Then deploy:
 
 ```bash
 npx wrangler pages project create <your-pages-project>
 npx wrangler pages deploy frontend/ --project-name <your-pages-project>
 ```
 
-The `_redirects` file proxies `/api/*` requests to the API worker, so the frontend can make same-origin API calls.
+The `_redirects` file proxies `/api/*` requests to the API worker.
 
-## 9. Verification
+---
 
-### Health check
-
-```bash
-curl https://pdbfe-api.<your-subdomain>.workers.dev/health
-```
-
-Should return `200 OK` with D1 connectivity status.
-
-### First API call
+## 10. Verification
 
 ```bash
-curl https://pdbfe-api.<your-subdomain>.workers.dev/api/net?limit=5
+# Health check
+curl https://api.<your-domain>/health
+
+# First API call
+curl https://api.<your-domain>/api/net?limit=5
+
+# Sync status
+curl https://pdbfe-sync.<subdomain>.workers.dev/sync/status
+
+# GraphQL introspection
+curl -X POST -H 'Content-Type: application/json' \
+    -d '{"query":"{ __schema { types { name } } }"}' \
+    https://graphql.<your-domain>/
+
+# OpenAPI spec
+curl https://rest.<your-domain>/openapi.json
 ```
 
-### Sync status
+---
+
+## Upgrading
+
+To apply pending `database/migrations/*.sql` to a live deployment without
+a full re-bootstrap:
 
 ```bash
-curl https://pdbfe-sync.<your-subdomain>.workers.dev/sync/status
+./scripts/deploy.sh --remote --apply-migrations
 ```
 
-Shows last sync timestamp and row counts per entity.
+The deploy script tracks applied migrations in a `_migrations` D1 table and
+skips any already applied.
 
-### GraphQL API
+---
 
-```bash
-curl -X POST -H 'Content-Type: application/json' -d '{"query":"{ __schema { types { name } } }"}' https://graphql.pdbfe.<your-subdomain>.workers.dev/
-```
+## Ongoing Operations
 
-### REST API
+| Task | Command |
+|---|---|
+| Upgrade DB schema | `./scripts/deploy.sh --remote --apply-migrations` |
+| Re-seed D1 from dumps | `./scripts/migrate-to-d1.sh --fetch --remote` |
+| Re-backfill private POCs | `python3 scripts/backfill_poc.py \| wrangler d1 execute ...` |
+| Purge contaminated vectors | `python3 scripts/cleanup-junk-vectors.py` |
+| Re-embed incrementally | `python3 scripts/compute-graph-embeddings.py --incremental` |
 
-```bash
-curl https://rest.pdbfe.<your-subdomain>.workers.dev/openapi.json
-```
-
-### Frontend
-
-Visit `https://<your-pages-project>.pages.dev` — you should see the PeeringDB mirror SPA.
+---
 
 ## Credential Summary
 
 | Credential | Where it lives | Used by |
 |---|---|---|
 | `PEERINGDB_API_KEY` | `.env` (local), wrangler secret (prod) | Sync worker, auth worker (WAF bypass), POC backfill |
-| `CLOUDFLARE_API_TOKEN` | `.env` (local only) | Wrangler CLI for deployments |
+| `CLOUDFLARE_API_TOKEN` | `.env` (local only) | Wrangler CLI |
 | `OAUTH_CLIENT_ID` | wrangler secret | Auth worker |
 | `OAUTH_CLIENT_SECRET` | wrangler secret | Auth worker |
-| `AUTH_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
-| `API_ORIGIN` | `frontend/js/config.js` | Frontend SPA |
-| D1 database ID (peeringdb) | `wrangler.toml`, `wrangler-sync.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | API, GraphQL, REST, + sync workers |
-| D1 database ID (pdbfe-users) | `wrangler.toml`, `wrangler-auth.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | All serving workers (API + Auth + GQL + REST) |
-| KV namespace ID (SESSIONS) | `wrangler.toml`, `wrangler-auth.toml`, `wrangler-graphql.toml`, `wrangler-rest.toml` | All serving workers (API + Auth + GQL + REST) |
+| D1 database ID (peeringdb) | `.env.deploy` → generated toml files | API, sync, async, search, graphql, rest |
+| D1 database ID (pdbfe-users) | `.env.deploy` → generated toml files | API, auth, graphql, rest |
+| KV namespace ID (SESSIONS) | `.env.deploy` → generated toml files | API, auth, search, graphql, rest |
+| Vectorize index name | `.env.deploy` → generated toml files | Async, search |

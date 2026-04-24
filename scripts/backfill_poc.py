@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-One-time POC backfill script.
+Cold-start POC backfill.
 
-The initial D1 bootstrap used public.peeringdb.com JSON dumps, which only
-contain POC records with visible=Public. This script fetches ALL poc records
-(including visible=Users and visible=Private) from the authenticated upstream
-API and generates SQL INSERT OR REPLACE statements to backfill D1.
+The public JSON dumps at public.peeringdb.com only contain POC records with
+visible=Public. This script fetches ALL poc records (including visible=Users
+and visible=Private) from the authenticated upstream API and writes SQL
+INSERT OR REPLACE statements to stdout, which are then applied to D1.
+
+Run this immediately after migrate-to-d1.sh as part of the cold-start
+bootstrap sequence. See docs/deployment.md for the full procedure.
 
 Usage:
-    source .env
-    python3 scripts/backfill_poc.py > /tmp/poc_backfill.sql
+    source .env   # provides PEERINGDB_API_KEY
+    python3 scripts/backfill_poc.py | \\
+        npx wrangler d1 execute peeringdb --remote --yes --file /dev/stdin
 
-Then apply:
-    wrangler d1 execute peeringdb --remote --yes --file /tmp/poc_backfill.sql
-
-Requires PEERINGDB_API_KEY in environment.
+Requires:
+    PEERINGDB_API_KEY in environment (read-only key is sufficient)
 """
 
 import json

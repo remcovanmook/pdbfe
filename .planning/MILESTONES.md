@@ -188,7 +188,7 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 ## M11: Semantic Search
 
 **Branch**: `feat/search-worker`
-**Status**: In progress
+**Status**: Shipped
 
 ### Part 1 — Search worker + vector pipeline (PR #77, shipped 2026-04-23)
 
@@ -206,16 +206,36 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Infra | `.gitignore` updated with all generated toml files (`wrangler-graphql`, `wrangler-rest`, `wrangler-search`) |
 | Infra | `Ai`, `VectorizeIndex`, `VectorizeVector` type stubs added to `workers/types.d.ts` |
 
-### Part 2 — Infrastructure provisioning (pending)
+### Part 2 — Infrastructure provisioning ✅
 
 | Category | Item |
 |----------|------|
 | Infra | ~~`wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine`~~ ✓ |
 | Infra | ~~Deploy sync worker with `AI` + `VECTORIZE` bindings in production~~ ✓ |
-| Backend | ~~Run `scripts/backfill-vectors.mjs` against production D1~~ ✓ (~74k vectors, 2 runs) |
-| Backend | Validate semantic search results on production frontend (`meta.mode === 'semantic'`) |
-| Frontend | Mobile card layout for remaining detail page entity tables |
+| Backend | ~~Run backfill against production D1~~ ✓ (74k vectors) |
+| Backend | ~~Validate semantic search results on production frontend~~ ✓ |
 
+### Part 3 — Async queue architecture & graph search (PR #78, pending merge)
+
+**Branch**: `feature/async-queue-worker`
+
+| Category | Work |
+|----------|------|
+| Backend | New `pdbfe-async` queue consumer worker — decouples embed/delete/logo side-effects from the sync hot path |
+| Backend | `embed` task: neighbour-vector averaging via ENTITIES FK registry (zero hardcoding) |
+| Backend | `delete` task: vectorize cleanup with re-creation guard |
+| Backend | `logo` task: S3→R2 pipeline with R2 HEAD dedup and permanent-failure marking |
+| Backend | `pdbfe-sync` refactored: publishes `embed`/`delete`/`logo` task messages to Queue, drops all Vectorize/R2/AI bindings |
+| Backend | Graph-structural search pipeline — `graph-search.js` + `query-parser.js` replacing BGE text embeddings with node2vec structural embeddings |
+| Backend | `query-parser.js`: rule-based NL decomposition — ASN, infoType, region, country, city, similarity, traversal intent |
+| Backend | `graph-search.js`: priority-ordered execution — ASN → similarity (Vectorize kNN) → traversal (D1 JOINs) → metadata → keyword |
+| Infra | `scripts/compute-graph-embeddings.py`: node2vec (1024-dim) graph training + Vectorize bulk upload |
+| Infra | `scripts/cleanup-junk-vectors.py`: removes contaminated vectors written before cutover |
+| Infra | `deploy.sh`: async worker config generation and correct deploy order (consumer before producer) |
+| Infra | `deploy.sh`: scripts venv Python resolution (checks `scripts/.venv` before system Python) |
+| Infra | `docs/deployment.md`: full rewrite for 8-worker architecture — Vectorize, Queue, R2 provisioning, graph embedding step |
+| Infra | `scripts/` cleanup: removed `backfill-vectors.mjs`, `viz_embeddings.py` |
+| Test | 66 new unit tests for `query-parser.js` and `graph-search.js` (14 suites) |
 
 ---
 
@@ -223,6 +243,22 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 
 | Category | Item |
 |----------|------|
-| Backend | Vectorize index provisioning + backfill run against production D1 (pending infrastructure) |
+| Frontend | Mobile card layout for remaining detail page entity tables |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
+
+---
+
+## M12 — Mobile, Responsive & Advanced Search (planned)
+
+**Branch**: TBD
+
+| Category | Work |
+|----------|------|
+| Frontend | Full mobile card layout for all entity detail page tables |
+| Frontend | Responsive header navigation breakpoints |
+| Frontend | Mobile-first compare page layout |
+| Frontend | Advanced search form UI — field-specific filter inputs per entity type (country, ASN range, info_type, policy, speed tier) |
+| Backend | Search worker: accept explicit structured URL filter params (e.g. `?country=DE&info_type=content`) alongside `q`, bypassing NL parsing for form-driven requests |
+| Backend | `entities.js`: expose per-entity filterable field metadata (type, operator, valid values) to drive form generation |
+| Test | Unit tests for structured filter parameter parsing and query builder |
 

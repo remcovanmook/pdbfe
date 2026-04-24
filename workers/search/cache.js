@@ -8,8 +8,8 @@
  *   - Cache stats and admin flush
  *
  * Mirrors the structure of graphql/cache.js. The Cloudflare Cache API only
- * supports GET requests; since keyword vs semantic dispatch is determined by
- * query parameters that cannot be safely keyed by URL alone, we hash the
+ * supports GET requests; since keyword vs graph-search dispatch is determined
+ * by query parameters that cannot be safely keyed by URL alone, we hash the
  * normalised parameter set to produce a deterministic key (format:
  * search/{sha256-hex}:{anon|auth}).
  */
@@ -21,10 +21,10 @@ import { encoder } from './http.js';
 /**
  * Cache TTL for search results (30 minutes).
  *
- * Semantic queries are expensive (AI embed + Vectorize round-trip) and
- * results change only when the underlying entity data changes (every 15 min
- * sync). 30 minutes matches the GraphQL worker's TTL, which faces the same
- * multi-entity staleness challenge.
+ * Graph-structural queries require a Vectorize round-trip for similarity
+ * searches but no AI embed call. Results change only when the underlying
+ * entity data changes (every 15 min sync). 30 minutes matches the GraphQL
+ * worker's TTL, which faces the same multi-entity staleness challenge.
  *
  * @type {number}
  */
@@ -66,7 +66,7 @@ export const SEARCH_MULTI_EMPTY_SENTINEL = encoder.encode('{"data":{},"meta":{"m
  * Single LRU cache instance for all search operations.
  *
  * 1024 slots, 32 MB byte budget. Search responses are variable in size
- * (semantic results include multiple fields per entity), similar to GraphQL.
+ * (graph results include multiple fields per entity), similar to GraphQL.
  *
  * @type {LocalCache}
  */
@@ -130,7 +130,7 @@ const PARAM_KEY_CACHE_LIMIT = 500;
  * @param {string} q - The search query string.
  * @param {string[]} entityList - Entity type tags (e.g. ["net"] or ["net","ix","fac"]).
  *   Sorted internally so [net,ix] and [ix,net] produce the same key.
- * @param {string} mode - Resolved mode ("keyword" or "semantic").
+ * @param {string} mode - Resolved mode ("keyword" or "graph").
  * @param {number} limit - Result limit.
  * @param {number} skip - Pagination offset.
  * @param {boolean} authenticated - Whether the caller is authenticated.
@@ -176,7 +176,7 @@ export async function buildSearchKey(q, entityList, mode, limit, skip, authentic
  * @param {string} cacheKey - Deterministic key from buildSearchKey().
  * @param {ExecutionContext} ctx - Worker execution context for waitUntil().
  * @param {() => Promise<Uint8Array|null>} queryFn - Closure that executes
- *        the keyword or semantic search and returns a serialised Uint8Array,
+ *        the keyword or graph-structural search and returns a serialised Uint8Array,
  *        or null on error.
  * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'L2'|'MISS', hits: number}>}
  */

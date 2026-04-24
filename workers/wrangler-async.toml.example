@@ -1,0 +1,31 @@
+# Template for pdbfe-async worker. Copy to wrangler-async.toml and fill in IDs.
+# Generated automatically by: ./scripts/deploy.sh --generate-configs
+name = "pdbfe-async"
+main = "async/index.js"
+compatibility_date = "2026-03-18"
+
+[[d1_databases]]
+binding = "PDB"
+database_name = "peeringdb"
+database_id = "<your-d1-database-id>"
+
+[[r2_buckets]]
+binding = "LOGOS"
+bucket_name = "pdbfe-logos"
+
+# Vectorize index for graph-structural embeddings.
+# Create with: wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "<your-vectorize-index-name>"
+
+# Queue consumer — processes embed, delete, and logo tasks from pdbfe-sync.
+# Create with: wrangler queues create pdbfe-tasks
+[[queues.consumers]]
+queue = "pdbfe-tasks"
+max_batch_size    = 10
+max_batch_timeout = 5
+max_retries       = 3
+
+[vars]
+PDBFE_VERSION = "<your-version>"

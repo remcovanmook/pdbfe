@@ -2,16 +2,16 @@
  * @fileoverview pdbfe-search worker entry point.
  *
  * Serves a search API over the PeeringDB dataset at api.pdbfe.dev/search.
- * Supports keyword (D1 LIKE) and semantic (Workers AI + Vectorize) modes.
+ * Supports keyword (D1 LIKE) and graph-structural (Vectorize) modes.
  *
  * Architecture:
  *   - handlers/query.js  — dispatch, parameter parsing, SWR caching
  *   - handlers/keyword.js — D1 LIKE search across primary display fields
- *   - handlers/semantic.js — Vectorize + AI embedding resolver
+ *   - handlers/graph.js  — Vectorize + graph-search resolver
  *   - cache.js           — LRU cache, SHA-256 key generation, withSearchSWR()
  *   - entities.js        — field map for keyword search per entity type
  *   - Auth via core/auth.js (API keys + session cookies)
- *   - Rate limiting via core/ratelimit.js factory (lower limits than API worker)
+ *   - Rate limiting via core/ratelimit.js factory
  *
  * Route: api.pdbfe.dev/search*
  *
@@ -25,15 +25,15 @@ import { parseURL } from '../core/utils.js';
 import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getSearchCacheStats, purgeSearchCache } from './cache.js';
-import { initSemantic } from './handlers/semantic.js';
+import { initGraphSearch } from './handlers/graph.js';
 import { handleSearch } from './handlers/query.js';
 
 /**
  * Rate limiter for search requests.
  *
- * Lower throughput than the API worker — semantic queries involve an AI
- * embedding call and a Vectorize round-trip, making them significantly
- * heavier than a D1 entity list query.
+ * Graph-structural queries require a Vectorize round-trip for similarity
+ * searches, but no Workers AI embedding call — significantly cheaper than
+ * the previous BGE-based approach.
  *
  * Anonymous: 10 req/min, Authenticated: 100 req/min.
  */
@@ -66,8 +66,8 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  */
 async function handleRequest(request, env, ctx) {
     initL2(request.url);
-    // Probe AI/VECTORIZE bindings once per isolate. Subsequent calls are no-ops.
-    initSemantic(/** @type {any} */ (env));
+    // Probe VECTORIZE binding once per isolate. Subsequent calls are no-ops.
+    initGraphSearch(/** @type {any} */ (env));
 
     const { rawPath, queryString } = parseURL(request); // §1: no new URL()
 
@@ -101,7 +101,7 @@ async function handleRequest(request, env, ctx) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
-    return handleSearch(request, queryString, db, env.AI ?? null, env.VECTORIZE ?? null, ctx, authenticated);
+    return handleSearch(request, queryString, db, env.VECTORIZE ?? null, ctx, authenticated);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-search');
