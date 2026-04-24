@@ -25,6 +25,8 @@ const EXCLUDED_FIELDS = new Set([
     'status', 'rir_status', 'logo', 'info_type', 'policy_general',
     'policy_locations', 'policy_contracts', 'info_traffic', 'info_ratio',
     'info_scope', 'status_dashboard', 'notes_private',
+    // PII — excluded as defence-in-depth even though poc is not in SEARCH_ENTITY_TAGS.
+    'email', 'phone',
 ]);
 
 /**
@@ -95,12 +97,19 @@ export const SEARCH_FIELDS = _searchFields;
 export { ENTITIES };
 
 /**
- * Set of valid entity tags for O(1) membership checks in parameter validation.
- * Re-exported from api/entities.js for single-source consistency.
+ * The six primary navigational entity types exposed through search.
+ *
+ * Deliberately restricted — does NOT include:
+ *   - poc  (peeringdb_network_contact): contains phone, email, and name fields
+ *     subject to a visibility gate (_anonFilter) that the search worker does
+ *     not apply. Exposing poc through search would leak non-Public contacts to
+ *     anonymous callers.
+ *   - Junction / relation tables (netfac, netixlan, carrierfac, ixfac, ixlan,
+ *     ixpfx, carrierfac): no meaningful name field; not useful for discovery.
  *
  * @type {Set<string>}
  */
-export const SEARCH_ENTITY_TAGS = new Set(ENTITY_TAGS);
+export const SEARCH_ENTITY_TAGS = new Set(['net', 'ix', 'fac', 'org', 'carrier', 'campus']);
 
 /**
  * Returns the primary display field name for a given entity type.

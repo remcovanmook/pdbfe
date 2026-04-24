@@ -190,6 +190,24 @@ describe('GET /search — parameter validation', () => {
         const res = await worker.fetch(req, mockEnv(), mockCtx);
         assert.equal(res.status, 400);
     });
+
+    it('returns 400 for entity=poc (contact PII not exposed through search)', async () => {
+        // poc is excluded from SEARCH_ENTITY_TAGS: it contains phone and email
+        // fields that are visibility-gated in the API worker but not in search.
+        const req = new Request('https://api.pdbfe.dev/search?q=john&entity=poc', {
+            headers: { 'cf-connecting-ip': '10.250.0.1' },
+        });
+        const res = await worker.fetch(req, mockEnv(), mockCtx);
+        assert.equal(res.status, 400);
+    });
+
+    it('returns 400 for entity=netfac (junction tables not exposed through search)', async () => {
+        const req = new Request('https://api.pdbfe.dev/search?q=test&entity=netfac', {
+            headers: { 'cf-connecting-ip': '10.250.0.2' },
+        });
+        const res = await worker.fetch(req, mockEnv(), mockCtx);
+        assert.equal(res.status, 400);
+    });
 });
 
 describe('GET /search — keyword path', () => {
