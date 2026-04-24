@@ -14,7 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { syncEntity, buildUpsert, ensureColumns, syncLogos, pruneDeletedVectors } from '../../../sync/index.js';
+import worker, { syncEntity, buildUpsert, ensureColumns } from '../../../sync/index.js';
 
 // ── Runtime polyfills ─────────────────────────────────────────────────────────
 // Node.js crypto.subtle does not implement timingSafeEqual (a Cloudflare
@@ -349,11 +349,12 @@ describe('syncEntity data flow', () => {
             globalThis.fetch = origFetch;
         }
     });
+
     it('exposes deletedIds array with IDs of deleted rows', async () => {
         const origFetch = globalThis.fetch;
         const rows = [
-            { id: 10, name: 'KeepMe', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' },
-            { id: 20, name: 'DropMe', info_type: 'ISP', notes: null, created: '2024-01-02', status: 'deleted' },
+            { id: 10, name: 'KeepMe',   info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' },
+            { id: 20, name: 'DropMe',   info_type: 'ISP', notes: null, created: '2024-01-02', status: 'deleted' },
             { id: 30, name: 'AlsoGone', info_type: 'CDN', notes: null, created: '2024-01-03', status: 'deleted' },
         ];
         globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
@@ -368,9 +369,7 @@ describe('syncEntity data flow', () => {
 
     it('returns empty deletedIds when no rows are deleted', async () => {
         const origFetch = globalThis.fetch;
-        const rows = [
-            { id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' },
-        ];
+        const rows = [{ id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' }];
         globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
         try {
             const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
@@ -382,152 +381,74 @@ describe('syncEntity data flow', () => {
     });
 });
 
-// ── pruneDeletedVectors ───────────────────────────────────────────────────────
+// ── syncEntity — queue publishing ─────────────────────────────────────────────
 
-describe('pruneDeletedVectors', () => {
-    it('calls vectorize.deleteByIds with correctly formatted vector IDs', async () => {
-        const deleted = /** @type {string[]} */ ([]);
-        const vectorize = /** @type {any} */ ({
-            deleteByIds(ids) { deleted.push(...ids); return Promise.resolve(); },
+describe('syncEntity queue publishing', () => {
+    /** Minimal mock Queue that captures sent messages. */
+    function mockQueue() {
+        const sent = /** @type {any[]} */ ([]);
+        return /** @type {any} */ ({
+            sent,
+            sendBatch(msgs) { sent.push(...msgs.map(m => m.body)); return Promise.resolve(); },
         });
-        await pruneDeletedVectors(vectorize, 'net', [694, 12, 387]);
-        assert.deepEqual(deleted, ['net:694', 'net:12', 'net:387']);
-    });
+    }
 
-    it('is a no-op when deletedIds is empty', async () => {
-        let called = false;
-        const vectorize = /** @type {any} */ ({
-            deleteByIds() { called = true; return Promise.resolve(); },
-        });
-        await pruneDeletedVectors(vectorize, 'fac', []);
-        assert.equal(called, false);
-    });
-
-    it('does not throw when vectorize.deleteByIds rejects', async () => {
-        const vectorize = /** @type {any} */ ({
-            deleteByIds() { return Promise.reject(new Error('API error')); },
-        });
-        // Should resolve without throwing.
-        await assert.doesNotReject(() => pruneDeletedVectors(vectorize, 'ix', [1]));
-    });
-
-    it('formats IDs for different entity types correctly', async () => {
-        const deleted = /** @type {string[]} */ ([]);
-        const vectorize = /** @type {any} */ ({
-            deleteByIds(ids) { deleted.push(...ids); return Promise.resolve(); },
-        });
-        await pruneDeletedVectors(vectorize, 'campus', [99]);
-        assert.equal(deleted[0], 'campus:99');
-    });
-});
-
-
-const S3_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
-
-/**
- * Minimal mock R2 bucket for syncLogos tests.
- *
- * @param {object} [opts]
- * @param {boolean} [opts.existsInR2] - Whether head() returns an object.
- * @param {string[]} [opts.capturedPuts] - Receives R2 keys that were put.
- * @returns {R2Bucket}
- */
-function mockR2({ existsInR2 = false, capturedPuts = [] } = {}) {
-    return /** @type {any} */ ({
-        head(/** @type {string} */ _key) { return Promise.resolve(existsInR2 ? { key: _key } : null); },
-        put(/** @type {string} */ key) { capturedPuts.push(key); return Promise.resolve({ key }); },
-    });
-}
-
-/**
- * Creates a D1 mock that returns a single logo row from the unmigrated query.
- *
- * @param {string} logo - Logo URL to return.
- * @returns {D1Database}
- */
-function mockD1WithLogo(logo) {
-    let allCalled = false;
-    return /** @type {any} */ ({
-        prepare(/** @type {string} */ sql) {
-            return {
-                bind() { return this; },
-                all() {
-                    if (!allCalled && sql.includes('__logo_migrated')) {
-                        allCalled = true;
-                        return Promise.resolve({ success: true, results: [{ id: 1, logo }], meta: {} });
-                    }
-                    return Promise.resolve({ success: true, results: [], meta: {} });
-                },
-                run() { return Promise.resolve({ success: true, meta: {}, results: [] }); },
-                first() { return Promise.resolve(null); },
-            };
-        },
-        batch() { return Promise.resolve([]); },
-    });
-}
-
-describe('syncLogos', () => {
-    it('returns immediately when logos binding is undefined', async () => {
-        const { db } = mockD1();
-        const result = await syncLogos(db, undefined, 'org', 'peeringdb_organization');
-        assert.deepEqual(result, { fetched: 0, errors: 0 });
-    });
-
-    it('returns 0/0 when no unmigrated logos exist', async () => {
-        const { db } = mockD1();
-        const result = await syncLogos(db, mockR2(), 'org', 'peeringdb_organization');
-        assert.deepEqual(result, { fetched: 0, errors: 0 });
-    });
-
-    it('marks unknown URL format as migrated without incrementing fetched', async () => {
-        const db = mockD1WithLogo('https://unknown.example.com/img.png');
-        const result = await syncLogos(db, mockR2(), 'org', 'peeringdb_organization');
-        assert.equal(result.fetched, 0);
-        assert.equal(result.errors, 0);
-    });
-
-    it('counts already-in-R2 logos as fetched without re-uploading', async () => {
-        const db = mockD1WithLogo(`${S3_PREFIX}logos/net/1.png`);
-        const puts = /** @type {string[]} */ ([]);
-        const result = await syncLogos(db, mockR2({ existsInR2: true, capturedPuts: puts }), 'org', 'peeringdb_organization');
-        assert.equal(result.fetched, 1);
-        assert.equal(result.errors, 0);
-        assert.equal(puts.length, 0, 'Should not re-upload logos already in R2');
-    });
-
-    it('records errors for non-404/403 S3 responses', async () => {
+    it('publishes embed and logo messages for active rows of embeddable entities', async () => {
         const origFetch = globalThis.fetch;
-        globalThis.fetch = async () => new Response('', { status: 500 });
+        const rows = [
+            { id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok', logo: 'https://peeringdb-media-prod.s3.amazonaws.com/media/logos/1.png' },
+        ];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
         try {
-            const db = mockD1WithLogo(`${S3_PREFIX}logos/net/1.png`);
-            const result = await syncLogos(db, mockR2(), 'org', 'peeringdb_organization');
-            assert.equal(result.errors, 1);
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const queue  = mockQueue();
+            await syncEntity(db, 'net', TEST_META, '', queue);
+            const actions = queue.sent.map(m => m.action);
+            assert.ok(actions.includes('embed'), 'should push embed message');
+            assert.ok(actions.includes('logo'),  'should push logo message for row with logo');
         } finally {
             globalThis.fetch = origFetch;
         }
     });
 
-    it('marks S3 404 as migrated (logo deleted upstream)', async () => {
+    it('publishes delete messages for removed rows', async () => {
         const origFetch = globalThis.fetch;
-        globalThis.fetch = async () => new Response('', { status: 404 });
+        const rows = [{ id: 20, name: 'Gone', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'deleted' }];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
         try {
-            const db = mockD1WithLogo(`${S3_PREFIX}logos/net/1.png`);
-            const result = await syncLogos(db, mockR2(), 'org', 'peeringdb_organization');
-            assert.equal(result.fetched, 1);
-            assert.equal(result.errors, 0);
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const queue  = mockQueue();
+            await syncEntity(db, 'net', TEST_META, '', queue);
+            const deletes = queue.sent.filter(m => m.action === 'delete');
+            assert.equal(deletes.length, 1);
+            assert.equal(deletes[0].id, 20);
+            assert.equal(deletes[0].tag, 'net');
         } finally {
             globalThis.fetch = origFetch;
         }
     });
 
-    it('marks S3 403 as migrated', async () => {
+    it('does not throw when no queue binding is provided', async () => {
         const origFetch = globalThis.fetch;
-        globalThis.fetch = async () => new Response('', { status: 403 });
+        const rows = [{ id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok', logo: '' }];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
         try {
-            const db = mockD1WithLogo(`${S3_PREFIX}logos/net/1.png`);
-            const result = await syncLogos(db, mockR2(), 'org', 'peeringdb_organization');
-            assert.equal(result.fetched, 1);
-            assert.equal(result.errors, 0);
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            await assert.doesNotReject(() => syncEntity(db, 'net', TEST_META, '', undefined));
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+    });
+
+    it('does not push logo message for rows with empty logo field', async () => {
+        const origFetch = globalThis.fetch;
+        const rows = [{ id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok', logo: '' }];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+        try {
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const queue  = mockQueue();
+            await syncEntity(db, 'net', TEST_META, '', queue);
+            assert.equal(queue.sent.filter(m => m.action === 'logo').length, 0);
         } finally {
             globalThis.fetch = origFetch;
         }

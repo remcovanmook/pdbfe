@@ -22,11 +22,6 @@ binding = "USERDB"
 database_name = "pdbfe-users"
 database_id = "<your-users-d1-database-id>"
 
-# Workers AI — required for semantic search (mode=semantic or mode=auto).
-# Without this binding, the worker operates in keyword-only mode.
-[ai]
-binding = "AI"
-
 # Vectorize index — required for semantic search.
 # Create with: wrangler vectorize create pdbfe-vectors --dimensions=1024 --metric=cosine
 [[vectorize]]

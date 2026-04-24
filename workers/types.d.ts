@@ -194,6 +194,55 @@ interface VectorizeIndex {
         matches: Array<{ id: string; score: number; metadata?: Record<string, unknown> }>;
     }>;
     deleteByIds(ids: string[]): Promise<{ count: number }>;
+    getByIds(ids: string[]): Promise<VectorizeVector[]>;
+}
+
+// ── Cloudflare Queues ─────────────────────────────────────────────────────────
+
+/**
+ * Outbound message shape for Queue.sendBatch().
+ * @template T Body type.
+ */
+interface QueueSendRequest<T = unknown> {
+    body: T;
+    contentType?: 'json' | 'text' | 'bytes';
+}
+
+/**
+ * Queue producer binding.
+ * Bound to the sending worker via [[queues.producers]] in wrangler.toml.
+ * @template T Message body type.
+ */
+interface Queue<T = unknown> {
+    send(message: T, options?: { contentType?: string }): Promise<void>;
+    sendBatch(messages: QueueSendRequest<T>[]): Promise<void>;
+}
+
+/**
+ * A single inbound message in a Queue consumer batch.
+ * @template T Body type.
+ */
+interface Message<T = unknown> {
+    readonly id: string;
+    readonly timestamp: Date;
+    readonly body: T;
+    /** Acknowledge successful processing. Prevents redelivery. */
+    ack(): void;
+    /** Signal processing failure. Message will be redelivered. */
+    retry(): void;
+}
+
+/**
+ * The batch delivered to the queue() handler.
+ * @template T Body type.
+ */
+interface MessageBatch<T = unknown> {
+    readonly queue: string;
+    readonly messages: Message<T>[];
+    /** Acknowledge all messages in the batch. */
+    ackAll(): void;
+    /** Retry all messages in the batch. */
+    retryAll(): void;
 }
 
 // ── Request.cf Extension ─────────────────────────────────────────────────────
@@ -245,28 +294,24 @@ interface PdbApiEnv {
 type D1Session = D1Database | D1DatabaseSession;
 
 /**
- * Environment bindings for the sync worker.
- * Matches workers/wrangler-sync.toml d1_databases and vars.
+ * Environment bindings for the sync worker (pdbfe-sync).
+ * Matches workers/wrangler-sync.toml d1_databases, queues, and vars.
+ * The sync worker has zero Vectorize, R2, or AI touch points — all
+ * side-effect operations are delegated to pdbfe-async via pdbfe-tasks Queue.
  */
 interface PdbSyncEnv {
     PDB: D1Database;
-    LOGOS?: R2Bucket;
+    /** pdbfe-tasks Queue producer binding. Optional — sync operates without it (no async tasks pushed). */
+    QUEUE?: Queue<AsyncTaskMessage>;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
-    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional — sync degrades to data-only without it. */
-    AI?: Ai;
-    /** Vectorize index for semantic search embedding upserts. Optional. */
-    VECTORIZE?: VectorizeIndex;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
 }
 
 /**
  * Environment bindings for the search worker (pdbfe-search).
- * Matches workers/wrangler-search.toml d1_databases, kv_namespaces, ai, vectorize, and vars.
- *
- * AI and VECTORIZE are optional — the worker degrades gracefully to keyword-only
- * mode when either binding is absent.
+ * Matches workers/wrangler-search.toml d1_databases, kv_namespaces, vectorize, and vars.
  */
 interface PdbSearchEnv {
     /** PeeringDB mirror D1 database (read-only for search). */
@@ -275,14 +320,46 @@ interface PdbSearchEnv {
     SESSIONS: KVNamespace;
     /** Users D1 database — required by resolveAuth() for API key verification. */
     USERDB: D1Database;
-    /** Workers AI binding for BGE-large-en-v1.5 embedding. Optional. */
-    AI?: Ai;
-    /** Vectorize index for semantic search. Optional. */
+    /** Vectorize index for graph-structural kNN search. Optional — degrades to keyword-only without it. */
     VECTORIZE?: VectorizeIndex;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
     /** Admin secret for /_admin/* endpoints. */
     ADMIN_SECRET?: string;
+}
+
+/**
+ * Environment bindings for the async task worker (pdbfe-async).
+ * Matches workers/wrangler-async.toml d1_databases, vectorize, r2_buckets, and vars.
+ * Consumes the pdbfe-tasks Queue — processes embed, delete, and logo tasks.
+ */
+interface PdbAsyncEnv {
+    /** PeeringDB mirror D1 database. */
+    PDB: D1Database;
+    /** Vectorize index for graph-structural embeddings. */
+    VECTORIZE: VectorizeIndex;
+    /** R2 bucket for logo storage. */
+    LOGOS: R2Bucket;
+    /** Release version string injected at deploy time from the VERSION file. */
+    PDBFE_VERSION?: string;
+}
+
+/**
+ * Message body pushed to the pdbfe-tasks Queue by the sync worker.
+ * Consumed by pdbfe-async.
+ */
+interface AsyncTaskMessage {
+    /**
+     * Task type:
+     * - embed:  compute a neighbor-averaged graph embedding for a new/updated entity.
+     * - delete: remove a deleted entity's vector from the Vectorize index.
+     * - logo:   fetch an entity's logo from S3 and store it in R2.
+     */
+    action: 'embed' | 'delete' | 'logo';
+    /** Entity type tag (e.g. 'net', 'ix', 'fac'). */
+    tag: string;
+    /** Numeric entity ID. */
+    id: number;
 }
 
 /**

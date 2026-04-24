@@ -23,6 +23,7 @@ workers/wrangler-auth.toml
 workers/wrangler-graphql.toml
 workers/wrangler-rest.toml
 workers/wrangler-search.toml
+workers/wrangler-async.toml
 
 # Frontend deploy configs (use .example files as templates)
 frontend/js/config.js
