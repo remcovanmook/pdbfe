@@ -183,10 +183,12 @@ fi
 
 section "Validation"
 
-# Use PYTHON from env, .venv if available, or system python
+# Use PYTHON from env, scripts/.venv if available, repo-root .venv, or system python
 PYTHON="${PYTHON:-}"
 if [[ -z "$PYTHON" ]]; then
-    if [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
+    if [[ -x "$SCRIPT_DIR/.venv/bin/python" ]]; then
+        PYTHON="$SCRIPT_DIR/.venv/bin/python"
+    elif [[ -x "$REPO_ROOT/.venv/bin/python" ]]; then
         PYTHON="$REPO_ROOT/.venv/bin/python"
     else
         PYTHON="python"
