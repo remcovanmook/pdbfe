@@ -22,6 +22,7 @@
 | Frontend | Responsive breakpoints for header navigation |
 | Frontend | Touch-friendly interactions for drag-and-drop |
 | Frontend | Mobile-first compare page layout |
+| Backend | Advanced search UI → search worker integration |
 
 ## Backlog
 

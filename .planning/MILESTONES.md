@@ -246,3 +246,21 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Frontend | Mobile card layout for remaining detail page entity tables |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
 
+---
+
+## M12 — Mobile, Responsive & Advanced Search (planned)
+
+**Branch**: TBD
+
+| Category | Work |
+|----------|------|
+| Frontend | Full mobile card layout for all entity detail page tables |
+| Frontend | Responsive header navigation breakpoints |
+| Frontend | Mobile-first compare page layout |
+| Frontend | Advanced search form UI — field-specific filter inputs per entity type |
+| Backend | Search worker: structured filter parameters beyond `q` (country, ASN range, info_type, policy, speed tier) |
+| Backend | `keyword.js` extension: translate structured filters into typed D1 WHERE clauses alongside the existing LIKE path |
+| Backend | `auto` mode: detect structured filter params in the request and route to the filter path without requiring `mode=graph` |
+| Backend | `entities.js`: expose per-entity filterable field metadata (type, operator, valid values) for form generation |
+| Test | Unit tests for structured filter parameter parsing and D1 WHERE clause generation |
+
