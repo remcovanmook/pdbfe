@@ -8,8 +8,8 @@
  *   - Cache stats and admin flush
  *
  * Mirrors the structure of graphql/cache.js. The Cloudflare Cache API only
- * supports GET requests; since keyword vs semantic dispatch is determined by
- * query parameters that cannot be safely keyed by URL alone, we hash the
+ * supports GET requests; since keyword vs graph-search dispatch is determined
+ * by query parameters that cannot be safely keyed by URL alone, we hash the
  * normalised parameter set to produce a deterministic key (format:
  * search/{sha256-hex}:{anon|auth}).
  */
@@ -21,10 +21,10 @@ import { encoder } from './http.js';
 /**
  * Cache TTL for search results (30 minutes).
  *
- * Semantic queries are expensive (AI embed + Vectorize round-trip) and
- * results change only when the underlying entity data changes (every 15 min
- * sync). 30 minutes matches the GraphQL worker's TTL, which faces the same
- * multi-entity staleness challenge.
+ * Graph-structural queries require a Vectorize round-trip for similarity
+ * searches but no AI embed call. Results change only when the underlying
+ * entity data changes (every 15 min sync). 30 minutes matches the GraphQL
+ * worker's TTL, which faces the same multi-entity staleness challenge.
  *
  * @type {number}
  */

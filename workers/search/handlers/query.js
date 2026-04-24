@@ -28,10 +28,33 @@ import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL, SEARCH_MULTI_EMPT
 import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField, getExtraFields } from '../entities.js';
 import { isGraphSearchEnabled, resolveGraphIds } from './graph.js';
 import { handleKeyword } from './keyword.js';
+import { parseQuery } from './query-parser.js';
 
 /** Default and maximum result limits. */
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+
+/**
+ * Returns true if a parsed query contains any predicate that benefits from
+ * graph-structural search.
+ *
+ * Pure name / partial-string queries (typeahead, single-word lookups) have
+ * no structural intent and are better served by a fast D1 LIKE search.
+ * Any recognised predicate — ASN, country, city, region, info_type,
+ * similarity, or traversal — warrants a graph-search path.
+ *
+ * @param {import('./query-parser.js').ParsedQuery} parsed - Decomposed query.
+ * @returns {boolean} True if the query has graph-structural intent.
+ */
+function hasGraphIntent(parsed) {
+    return parsed.asn !== null
+        || parsed.country !== null
+        || parsed.city !== null
+        || parsed.regionContinent !== null
+        || parsed.infoType !== null
+        || parsed.similarToName !== null
+        || parsed.traversalIntent !== null;
+}
 
 /**
  * Parses and validates search query parameters from a raw query string.
@@ -117,7 +140,7 @@ function parseSearchParams(queryString) {
         entityList = [entitySingular];
     }
 
-    if (mode !== 'keyword' && mode !== 'semantic' && mode !== 'auto') {
+    if (mode !== 'keyword' && mode !== 'graph' && mode !== 'auto') {
         return { q, entityList, isMulti, mode, limit, skip, error: `Invalid mode: ${mode}` };
     }
     if (limit < 1 || limit > MAX_LIMIT) limit = DEFAULT_LIMIT;
@@ -130,7 +153,7 @@ function parseSearchParams(queryString) {
  * Builds a D1 query that hydrates entities by ID list while preserving
  * vector-distance ranking via a SQL CASE expression.
  *
- * The id list comes from resolveSemanticIds() as a comma-separated string
+ * The id list comes from resolveGraphIds() as a comma-separated string
  * (e.g. "694,12,387"). The CASE expression assigns each id its ordinal
  * position in the list so ORDER BY relevance_rank ASC matches vector rank.
  *
@@ -141,7 +164,7 @@ function parseSearchParams(queryString) {
  * @returns {Promise<{id: number, name: string, entity_type: string, score: number}[]>}
  *   Hydrated result rows (empty array if no matches).
  */
-async function hydrateSemanticIds(db, entityTag, idList, limit) {
+async function hydrateGraphIds(db, entityTag, idList, limit) {
     const table = ENTITIES[entityTag].table;
     const primaryField = getPrimaryField(entityTag);
     const extraFields = getExtraFields(entityTag);
@@ -199,16 +222,16 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
  * @param {any|null} vectorize - Vectorize binding, or null.
  * @param {string} entityTag - Entity type to search.
  * @param {string} q - Search query string.
- * @param {string} effectiveMode - 'keyword' or 'semantic'.
+ * @param {string} effectiveMode - 'keyword' or 'graph'.
  * @param {number} limit - Result limit.
  * @param {number} skip - Pagination offset (keyword only).
  * @returns {Promise<{id: number, name: string, entity_type: string, score: number}[]>}
  */
 async function runEntitySearch(db, vectorize, entityTag, q, effectiveMode, limit, skip) {
-    if (effectiveMode === 'semantic') {
+    if (effectiveMode === 'graph') {
         const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
         if (!idList) return [];
-        return hydrateSemanticIds(db, entityTag, idList, limit);
+        return hydrateGraphIds(db, entityTag, idList, limit);
     }
     // Keyword: decode the Uint8Array from handleKeyword back to an object array.
     const buf = await handleKeyword(db, entityTag, q, limit, skip);
@@ -251,9 +274,15 @@ export async function handleSearch(request, queryString, db, vectorize, ctx, aut
     // Resolve effective mode.
     const graphSearchAvailable = isGraphSearchEnabled();
     let effectiveMode = mode;
-    if (mode === 'auto') effectiveMode = graphSearchAvailable ? 'semantic' : 'keyword';
-    if (mode === 'semantic' && !graphSearchAvailable) {
-        return jsonError(503, 'Semantic search is not available on this deployment.');
+    if (mode === 'auto') {
+        if (graphSearchAvailable && hasGraphIntent(parseQuery(q))) {
+            effectiveMode = 'graph';
+        } else {
+            effectiveMode = 'keyword';
+        }
+    }
+    if (mode === 'graph' && !graphSearchAvailable) {
+        return jsonError(503, 'Graph-structural search is not available on this deployment.');
     }
 
     // Cache key: buildSearchKey sorts entityList internally for canonical ordering.
@@ -291,13 +320,13 @@ export async function handleSearch(request, queryString, db, vectorize, ctx, aut
 
         // Single-entity path.
         const [entityTag] = entityList;
-        if (effectiveMode === 'semantic') {
+        if (effectiveMode === 'graph') {
             const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
             if (!idList) return null;
-            return hydrateSemanticIds(db, entityTag, idList, limit).then(rows =>
+            return hydrateGraphIds(db, entityTag, idList, limit).then(rows =>
                 rows.length === 0 ? null : encoder.encode(JSON.stringify({
                     data: rows,
-                    meta: { count: rows.length, mode: 'semantic' },
+                    meta: { count: rows.length, mode: 'graph' },
                 }))
             );
         }

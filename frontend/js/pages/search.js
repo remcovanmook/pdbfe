@@ -7,11 +7,11 @@
  * ASN-aware: if the query looks like an ASN (bare number or AS-prefixed),
  * an additional lookup by ASN is fired in parallel and the exact match
  * is surfaced at the top of the Networks section. ASN injection is
- * suppressed in semantic mode.
+ * suppressed in graph mode.
  *
- * Mode is controlled via the `mode` query parameter (?mode=semantic).
+ * Mode is controlled via the `mode` query parameter (?mode=graph).
  * A toggle link in the heading lets the user switch between keyword
- * and semantic modes.
+ * and graph-structural modes.
  *
  * Uses DOM-based rendering — all user data goes through textContent.
  */
@@ -23,13 +23,13 @@ import { t } from '../i18n.js';
 /**
  * Mode labels for the search mode indicator badge.
  * Shown next to the results heading when the search worker returns a
- * non-keyword mode (e.g. semantic).
+ * non-keyword mode (e.g. graph-structural).
  *
  * @type {Record<string, string>}
  */
 const MODE_LABELS = {
     keyword:  '',               // Default — no badge
-    semantic: 'Semantic',
+    graph: 'Graph search',
     auto:     '',
     none:     '',
 };
@@ -57,11 +57,11 @@ function createModeBadge(mode) {
  * Builds the URL for the same search query in the opposite mode.
  *
  * @param {string} query - Current search query.
- * @param {'keyword'|'semantic'} currentMode - The mode currently active.
+ * @param {'keyword'|'graph'} currentMode - The mode currently active.
  * @returns {string} URL string for the alternate mode.
  */
 function buildToggleUrl(query, currentMode) {
-    const nextMode = currentMode === 'semantic' ? 'keyword' : 'semantic';
+    const nextMode = currentMode === 'graph' ? 'keyword' : 'graph';
     return `/search?q=${encodeURIComponent(query)}&mode=${nextMode}`;
 }
 
@@ -75,8 +75,8 @@ export async function renderSearch(params) {
     const query = params.q || '';
     const rawMode = params.mode || 'keyword';
     // Only accept recognised modes; fall back to keyword for unknown values.
-    const mode = /** @type {'keyword'|'semantic'|'auto'} */ (
-        (rawMode === 'semantic' || rawMode === 'auto') ? rawMode : 'keyword'
+    const mode = /** @type {'keyword'|'graph'|'auto'} */ (
+        (rawMode === 'graph' || rawMode === 'auto') ? rawMode : 'keyword'
     );
 
     document.title = `Search: ${query} — PDBFE`;
@@ -98,9 +98,9 @@ export async function renderSearch(params) {
     heading.appendChild(strong);
     wrapper.appendChild(heading);
 
-    // Mode toggle link — lets the user switch between keyword and semantic.
-    const toggleUrl = buildToggleUrl(query, mode === 'semantic' ? 'semantic' : 'keyword');
-    const toggleLabel = mode === 'semantic' ? t('Switch to keyword search') : t('Switch to semantic search');
+    // Mode toggle link — lets the user switch between keyword and graph-structural search.
+    const toggleUrl = buildToggleUrl(query, mode === 'graph' ? 'graph' : 'keyword');
+    const toggleLabel = mode === 'graph' ? t('Switch to keyword search') : t('Switch to graph search');
     const toggleLink = document.createElement('a');
     toggleLink.href = toggleUrl;
     toggleLink.className = 'search-results__mode-toggle';

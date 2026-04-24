@@ -2,9 +2,9 @@
  * @fileoverview Graph-structural search resolver.
  *
  * Wraps executeGraphSearch() behind the public interface used by query.js.
- * The search worker exposes `mode=semantic` on its external API; internally
- * this module always runs graph-structural search — the mode name is kept for
- * API backwards-compatibility.
+ * The search worker's graph-structural search mode is exposed as `mode=graph`
+ * on the external API; internally this module always runs graph-structural
+ * search — the old `mode=semantic` parameter name has been retired.
  *
  * ## Why BGE was dropped
  *
@@ -82,7 +82,7 @@ export function initGraphSearch(env) {
 
 /**
  * Returns whether graph-structural search is available on this isolate.
- * Used by query.js to gate the 'semantic' mode before dispatch.
+ * Used by query.js to gate the 'graph' mode before dispatch.
  *
  * @returns {boolean} True if the Vectorize binding is present.
  */

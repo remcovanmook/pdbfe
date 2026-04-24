@@ -19,10 +19,11 @@ Client → wrapHandler (core/admin.js)
            → buildSearchKey             — SHA-256, auth-scoped
            → withSearchSWR (cache.js)
                → L1 LRU read
+               → coalesce (cache.pending — §7 stampede prevention)
                → L2 Cache API read
                → queryFn:
-                   semantic → resolveGraphIds → executeGraphSearch → hydrateSemanticIds (D1 CASE sort)
-                   keyword  → handleKeyword (D1 LIKE)  §3: for loops, §4: single encode
+                   graph-search → resolveGraphIds → executeGraphSearch → hydrateGraphIds (D1 CASE sort)
+                   keyword      → handleKeyword (D1 LIKE)  §3: for loops, §4: single encode
 ```
 
 ## Module Layout
@@ -96,12 +97,22 @@ A node2vec graph embedding pipeline (`scripts/compute-graph-embeddings.py`) trai
    - Similarity ("similar to X") → Vectorize kNN from anchor vector
    - Traversal ("at Y", "peers of Y") → D1 multi-table edge JOINs
    - Fallback → D1 LIKE keyword
-5. `hydrateSemanticIds(db, entity, idList, limit)` retrieves matching rows from D1, preserving rank via a SQL CASE expression.
+5. `hydrateGraphIds(db, entity, idList, limit)` retrieves matching rows from D1, preserving rank via a SQL CASE expression.
+
+### Mode selection in `auto`
+
+`mode=auto` (the default) routes each query based on its content, not just on binding availability:
+
+1. The query is decomposed by `parseQuery()` (query-parser.js) into typed predicates.
+2. If any structural predicate is found (ASN, country, city, region, info_type, similarity, traversal) **and** Vectorize is available → graph-search.
+3. Otherwise → keyword (D1 LIKE). This covers typeahead-style partial-name queries, single words, and any query where graph-search adds no value over a fast lexical match.
+
+This means a plain name search like "Cogent" or "AMS-IX" will always use keyword mode (fastest path), while "networks in DE" or "similar to AS3356" will use graph-search when available.
 
 ### Degradation
 
-- `mode=auto` (default): uses graph search if Vectorize binding is present, falls back to keyword silently.
-- `mode=semantic` without Vectorize: returns 503 with a clear error message.
+- `mode=auto` (default): see Mode selection above.
+- `mode=graph` without Vectorize: returns 503 with a clear error message.
 - Vectorize unavailable at runtime: `resolveGraphIds` returns null → queryFn returns null → negative cache entry → 60 s before retry.
 
 ## Rate Limiting
@@ -123,7 +134,7 @@ Graph-structural queries require a Vectorize round-trip for similarity searches 
 | §2 No regex on hot path | `tokenizeString(qs, '&', -1)` + `tokenizeString(pair, '=', 2)` for parameter parsing |
 | §3 No `.map()` on hot path | `for` loops for row accumulation and LIKE bind params |
 | §4 No JSON round-trip | Single `encoder.encode(JSON.stringify(...))` at exit |
-| §7 No stampede | `withSearchSWR` → `withSWR` coalesces concurrent misses |
+| §7 No stampede | `withSearchSWR` → `withSWR` → `cachedQuery` coalesces concurrent misses via `cache.pending` |
 | §9 No raw D1 outside pipeline | All D1/Vectorize calls inside `queryFn` closures |
 | §11 No holding LRU results | Fields extracted synchronously before any further `get()` call |
 | §12 No manual L1 boilerplate | `withSearchSWR` owns the full L1 → SWR → L2 flow |

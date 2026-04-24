@@ -302,7 +302,7 @@ export async function searchAll(query, signal, types) {
  *
  * @param {string} q - Search query string.
  * @param {string|string[]} entity - Entity type key or array of keys.
- * @param {{mode?: 'keyword'|'semantic'|'auto', limit?: number, skip?: number, signal?: AbortSignal}} [opts]
+ * @param {{mode?: 'keyword'|'graph'|'auto', limit?: number, skip?: number, signal?: AbortSignal}} [opts]
  * @returns {Promise<{data: any, meta: {count?: number, mode: string, counts?: Record<string,number>}}|null>}
  */
 export async function searchEntities(q, entity, opts = {}) {
@@ -333,13 +333,13 @@ export async function searchEntities(q, entity, opts = {}) {
  * interchangeable:
  *   {net: [...], ix: [...], fac: [...], org: [...], carrier: [...], campus: [...]}
  *
- * Uses mode='keyword' by default — semantic mode is available on the search
+ * Uses mode='keyword' by default — graph-structural mode is available on the search
  * page but typeahead stays keyword-only to avoid AI embed calls on keystrokes.
  *
  * @param {string} query - Search term.
  * @param {AbortSignal} [signal] - Optional abort signal for cancellation.
  * @param {string[]} [types] - Optional subset of entity type keys to search.
- * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
+ * @param {'keyword'|'graph'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
 export async function searchAllViaWorker(query, signal, types, mode = 'keyword') {
@@ -453,7 +453,7 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * The exact ASN match is deduplicated and injected at the top of
  * the networks list.
  *
- * ASN injection is only applied for keyword mode — semantic queries
+ * ASN injection is only applied for keyword mode — graph queries
  * are intent-based and an exact ASN match would skew the ranked results.
  *
  * @param {string} query - Search term.
@@ -461,12 +461,12 @@ const ASN_PATTERN = /^(?:as)?(\d+)$/i;
  * @param {string[]} [types] - Optional subset of entity type keys to search.
  *     When provided, only these types are queried and ASN injection only
  *     applies if 'net' is included in the filter.
- * @param {'keyword'|'semantic'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
+ * @param {'keyword'|'graph'|'auto'} [mode] - Search mode. Defaults to 'keyword'.
  * @returns {Promise<{net: any[], ix: any[], fac: any[], org: any[], carrier: any[], campus: any[], meta: {mode: string}}>}
  */
 export async function searchWithAsn(query, signal, types, mode = 'keyword') {
     const includeNet = !types || types.includes('net');
-    // Only attempt ASN lookup for keyword mode — semantic is intent-based.
+    // Only attempt ASN lookup for keyword mode — graph-search is intent-based.
     const asnMatch = (mode === 'keyword') ? ASN_PATTERN.exec(query.trim()) : null;
     const asnNum = (includeNet && asnMatch) ? Number.parseInt(asnMatch[1], 10) : Number.NaN;
 
