@@ -229,7 +229,7 @@ async function hydrateGraphIds(db, entityTag, idList, limit) {
  */
 async function runEntitySearch(db, vectorize, entityTag, q, effectiveMode, limit, skip) {
     if (effectiveMode === 'graph') {
-        const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
+        const idList = await resolveGraphIds(entityTag, 'name', q, db, limit);
         if (!idList) return [];
         return hydrateGraphIds(db, entityTag, idList, limit);
     }
@@ -321,7 +321,7 @@ export async function handleSearch(request, queryString, db, vectorize, ctx, aut
         // Single-entity path.
         const [entityTag] = entityList;
         if (effectiveMode === 'graph') {
-            const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
+            const idList = await resolveGraphIds(entityTag, 'name', q, db, limit);
             if (!idList) return null;
             return hydrateGraphIds(db, entityTag, idList, limit).then(rows =>
                 rows.length === 0 ? null : encoder.encode(JSON.stringify({

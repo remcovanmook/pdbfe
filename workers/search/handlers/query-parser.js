@@ -245,7 +245,7 @@ function extractCity(original) {
         let city = '';
         for (const word of words) {
             // Stop at lower-case connectors: 'and', 'or', 'with', prepositions.
-            if (word.length > 0 && word[0] === word[0].toUpperCase() && /^[A-Za-z]/.test(word)) {
+            if (/^[A-Z]/.test(word)) {
                 city += (city ? ' ' : '') + word;
                 if (city.split(' ').length >= 2) break;
             } else {
@@ -318,7 +318,7 @@ export function parseQuery(q) {
     // 1. ASN — most specific; short-circuits most other extraction.
     const asnMatch = ASN_RE.exec(q);
     if (asnMatch) {
-        result.asn = parseInt(asnMatch[1], 10);
+        result.asn = Number.parseInt(asnMatch[1], 10);
         return result; // ASN lookup is always exact; nothing else needed.
     }
 

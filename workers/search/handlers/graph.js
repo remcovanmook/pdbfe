@@ -115,11 +115,11 @@ export function isGraphSearchEnabled() {
  * @param {string} entityTag - Target entity type (e.g. 'net', 'ix').
  * @param {string} _field - Ignored. Kept for API compatibility with query.js.
  * @param {string} queryStr - Raw user query text.
- * @param {number} [limit=25] - Maximum number of results.
  * @param {D1Database} db - D1 session (withSession already applied).
+ * @param {number} [limit=25] - Maximum number of results.
  * @returns {Promise<string|null>} Comma-separated entity IDs in relevance
  *     order, or null if no results were found.
  */
-export async function resolveGraphIds(entityTag, _field, queryStr, limit = 25, db) {
+export async function resolveGraphIds(entityTag, _field, queryStr, db, limit = 25) {
     return executeGraphSearch(queryStr, entityTag, db, _vectorize, limit);
 }
