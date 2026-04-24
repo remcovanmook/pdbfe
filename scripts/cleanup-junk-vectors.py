@@ -134,18 +134,26 @@ def d1_query(sql: str, params: list | None = None) -> list[dict]:
 
 def vectorize_delete(vector_ids: list[str]) -> None:
     """
-    Deletes vectors from the Vectorize index by ID.
+    Deletes vectors from the Vectorize index by ID using the wrangler CLI.
+
+    Uses wrangler rather than the REST API because the v2 REST delete-by-ids
+    endpoint 404s on indexes provisioned with v1 tooling. Wrangler handles
+    v1/v2 versioning transparently.
 
     :param vector_ids: List of vector ID strings (e.g. ['net:694', 'ix:26']).
-    :raises requests.HTTPError: On API error.
+    :raises subprocess.CalledProcessError: If wrangler exits non-zero.
     """
-    resp = requests.post(
-        f"{CF_BASE}/vectorize/v2/indexes/{VECTORIZE_NAME}/delete-by-ids",
-        headers=AUTH_HEADERS,
-        json={"ids": vector_ids},
-        timeout=30,
-    )
-    resp.raise_for_status()
+    import subprocess
+    cmd = [
+        "npx", "--yes", "wrangler",
+        "vectorize", "delete-vectors", VECTORIZE_NAME,
+        "--ids", *vector_ids,
+        "--force",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT / "workers")
+    if result.returncode != 0:
+        print(result.stderr, file=sys.stderr)
+        raise RuntimeError(f"wrangler vectorize delete-vectors failed (exit {result.returncode})")
 
 
 # ---------------------------------------------------------------------------
