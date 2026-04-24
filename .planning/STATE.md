@@ -66,7 +66,7 @@
 
 ## In-Flight Work
 
-`feature/async-queue-worker` — PR open, see `.planning/MILESTONES.md` M12.
+`feature/async-queue-worker` — PR #78 open (M11 Part 3), pending merge.
 
 ## Blockers
 

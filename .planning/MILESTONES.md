@@ -215,17 +215,14 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Backend | ~~Run backfill against production D1~~ ✓ (74k vectors) |
 | Backend | ~~Validate semantic search results on production frontend~~ ✓ |
 
----
-
-## M12: Async Queue Architecture & Graph Search (PR #78)
+### Part 3 — Async queue architecture & graph search (PR #78, pending merge)
 
 **Branch**: `feature/async-queue-worker`
-**Status**: Ready for merge (deployed at `0.10.2`)
 
 | Category | Work |
 |----------|------|
 | Backend | New `pdbfe-async` queue consumer worker — decouples embed/delete/logo side-effects from the sync hot path |
-| Backend | `embed` task: neighbor-vector averaging via ENTITIES FK registry (zero hardcoding) |
+| Backend | `embed` task: neighbour-vector averaging via ENTITIES FK registry (zero hardcoding) |
 | Backend | `delete` task: vectorize cleanup with re-creation guard |
 | Backend | `logo` task: S3→R2 pipeline with R2 HEAD dedup and permanent-failure marking |
 | Backend | `pdbfe-sync` refactored: publishes `embed`/`delete`/`logo` task messages to Queue, drops all Vectorize/R2/AI bindings |
