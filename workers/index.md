@@ -41,6 +41,7 @@ graph BT
     AUTH_W["auth/<br/>account, oauth"] --> CORE
     SYNC["sync/<br/>delta sync worker"] --> CORE
     SYNC --> API_ENT["api/entities.js"]
+    ASYNC["async/<br/>queue consumer"] --> API_ENT
     REST["rest/<br/>openapi, scalar, v1 handlers"] --> CORE
     REST --> API_ENT
     REST --> API_Q["api/query.js<br/>api/utils.js<br/>api/depth.js"]
@@ -48,6 +49,8 @@ graph BT
     GQL["graphql/<br/>yoga, resolvers, cache"] --> CORE
     GQL --> API_ENT
     GQL --> API_Q
+    QUEUE[("pdbfe-tasks<br/>Queue")] -.->|publishes| SYNC
+    QUEUE -.->|consumes| ASYNC
 ```
 
 `core/` has zero imports from `api/`, `auth/`, or `sync/`.
@@ -89,10 +92,19 @@ The primary traffic handler serving read-only PeeringDB API responses.
 - **`sync_state.js`**: Background D1 polling for granular cache invalidation and zero-allocation `/status` serving. Polls `_sync_meta` every 15s via `ctx.waitUntil()`. Compares `last_modified_at` per entity — if changed, purges only that entity's L1 cache. Exports `ensureSyncFreshness(db, ctx, now)` (O(1) hot-path hook), `handleStatus()` (pre-encoded `/status` response), and `getEntityVersion(tag)` (L2 version tagging).
 
 ## 3. Sync Domain (`workers/sync/`)
-Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min).
+Scheduled worker running delta sync from upstream PeeringDB via Cron Trigger (every 15 min). This worker has a single responsibility: write API delta rows to D1 and publish task messages to the `pdbfe-tasks` Queue. It has **zero** bindings to Vectorize, R2, or Workers AI.
 
-- **`index.js`**: Exports `{ scheduled, fetch }` handlers. Cron reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>&depth=0` per entity, UPSERTs active rows via `INSERT OR REPLACE`, deletes rows with `status='deleted'`. Batches in groups of 50 to stay within D1 limits. HTTP endpoints for manual control (`GET /sync/status`, `POST /sync/trigger`).
-- **`entities.js`**: Re-exports entity definitions from `api/entities.js` (no duplication).
+- **`index.js`**: Exports `{ scheduled, fetch }` handlers. Cron reads last sync timestamp from `_sync_meta`, fetches `?since=<epoch>&depth=0` per entity, UPSERTs active rows via `INSERT OR REPLACE`, deletes rows with `status='deleted'`. After D1 writes and before advancing `lastSync`, publishes `embed`, `delete`, and `logo` task messages to the Queue (at-least-once guarantee). HTTP endpoints for manual control (`GET /sync/status`, `POST /sync/trigger`).
+- **`entities.js`**: Re-exports entity definitions and `VECTOR_ENTITY_TAGS` from `api/entities.js` (no duplication). `VECTOR_ENTITY_TAGS` is derived from entities whose field list includes `__logo_migrated` — the six user-navigable types.
+
+## 3a. Async Domain (`workers/async/`)
+Queue consumer worker processing side-effect tasks off the hot sync path. Bound to the `pdbfe-tasks` Cloudflare Queue as a consumer. Has bindings to D1, Vectorize, and R2 — none of these exist in the sync worker.
+
+- **`index.js`**: Exports `{ queue, fetch }` handlers. The `queue` handler processes batches of `AsyncTaskMessage` items. Each message is acked on success or retried on error.
+  - **`embed`**: D1 pre-check (entity exists, `__vector_embedded = 0`). Derives neighbor vector IDs from the ENTITIES registry (`TABLE_TO_TAG` reverse lookup + FK fields + junction `joinColumns`), fetches neighbor vectors via `vectorize.getByIds()`, averages them element-wise, upserts the result, and sets `__vector_embedded = 1`.
+  - **`delete`**: D1 pre-check (entity must be absent — confirms deletion, not re-creation). Calls `vectorize.deleteByIds()`.
+  - **`logo`**: D1 pre-check (entity exists, `logo` non-empty, `__logo_migrated = 0`). Checks R2 HEAD first, fetches from S3, stores in R2, marks `__logo_migrated = 1`. Treats S3 404/403 as permanent (marks done to stop retrying).
+- **`entities.js`**: Re-exports entity definitions and `VECTOR_ENTITY_TAGS` from `api/entities.js`.
 
 ## 4. GraphQL Domain (`workers/graphql/`)
 Provides a complete GraphQL API surfacing the PeeringDB dataset.
@@ -116,11 +128,13 @@ The GraphQL schemas and REST API specifications are not manually written. They a
 
 Unit tests are organised into subdirectories mirroring the source layout:
 
-- **`tests/unit/core/`**: `auth.test.js` (API key, session, resolveAuth), `cache.test.js` (LRU), `utils.test.js` (tokenizeString, parseURL), `branding.test.js` (UI layout presence checks)
+- **`tests/unit/core/`**: `auth.test.js`, `cache.test.js`, `utils.test.js`, `branding.test.js`
 - **`tests/unit/api/`**: `query.test.js`, `depth.test.js`, `pipeline.test.js`, `swr.test.js`, `ratelimit.test.js`, `headers.test.js`, `status.test.js`, `sync_state.test.js`, `sync.test.js`, `visibility.test.js`, `compare.test.js`
+- **`tests/unit/sync/`**: `sync.test.js` — `buildUpsert`, `ensureColumns`, `syncEntity` (epoch guard, pagination, HTTP errors, data flow, queue publishing)
+- **`tests/unit/async/`**: `async.test.js` — `embed` (D1 pre-checks, neighbor averaging, success), `delete` (re-creation guard, success), `logo` (pre-checks, R2 hit, S3 errors, success), queue handler edge cases
 - **`tests/unit/graphql/`**: `graphql.test.js`
 - **`tests/unit/rest/`**: `rest.test.js`
-- **`tests/unit/auth/`**: `account.test.js` (API key CRUD)
+- **`tests/unit/auth/`**: `account.test.js`
 - **`tests/unit/antipatterns.test.js`**: Cross-cutting check for banned patterns in source files
 - **`tests/test_api.js`**: Integration — full router with mock D1, admin endpoints, CORS, 501s, scanner blocking
 - **`tests/test_conformance.js`**: Envelope, schema, query parameter, data type, cross-endpoint, and error handling conformance against live upstream PeeringDB

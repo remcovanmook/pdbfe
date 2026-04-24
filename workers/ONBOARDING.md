@@ -6,12 +6,13 @@ Read this document and [`ANTI_PATTERNS.md`](./ANTI_PATTERNS.md) before modifying
 
 ## 1. Project Layout
 
-This repository contains **three independent Cloudflare Workers**, each with its own `wrangler.toml`, bindings, and env type:
+This repository contains **four independent Cloudflare Workers**, each with its own `wrangler.toml`, bindings, and env type:
 
 | Worker | Directory | Env Type | Wrangler Config | Purpose |
 |---|---|---|---|---|
 | pdbfe-api | `workers/api/` | `PdbApiEnv` | `wrangler.toml` | Read-only PeeringDB API mirror |
-| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | Cron delta sync from upstream PeeringDB |
+| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | Cron delta sync from upstream PeeringDB; publishes to pdbfe-tasks Queue |
+| pdbfe-async | `workers/async/` | `PdbAsyncEnv` | `wrangler-async.toml` | Queue consumer: graph embeddings, logo migration, vector deletion |
 | pdbfe-auth | `workers/auth/` | `PdbAuthEnv` | `wrangler-auth.toml` | PeeringDB OAuth login + API key management |
 
 Shared code lives in `workers/core/` — the generic cache, HTTP, auth, and routing library with no domain knowledge. Type contracts for all env interfaces live in `workers/types.d.ts`.
@@ -148,7 +149,7 @@ Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix
 
 ## 9. Testing
 
-### Unit tests (`npm test`) — 264 tests across 15 files
+### Unit tests (`npm test`) — 865 tests
 
 Run locally with mock D1 bindings. No real database needed.
 
@@ -159,6 +160,8 @@ Run locally with mock D1 bindings. No real database needed.
 | `cache.test.js` | 26 | LRU cache: eviction, TTL expiry, byte limits, stats, purge, shared return object |
 | `headers.test.js` | 24 | HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers, pre-cooked auth header sets |
 | `ratelimit.test.js` | 22 | Rate limiter: per-IP/per-identity limits, window expiry, IPv6 /64 normalisation, stats, purge |
+| `sync.test.js` (sync/) | 34 | buildUpsert, ensureColumns, syncEntity (epoch guard, pagination, HTTP errors, data flow, queue publishing) |
+| `async.test.js` | 17 | embed (D1 pre-checks, neighbor averaging), delete (re-creation guard), logo (R2 hit, S3 errors), handler edge cases |
 | `pipeline.test.js` | 16 | cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation |
 | `auth.test.js` | 14 | API key extraction/verification (SHA-256), session resolution, key hashing |
 | `antipatterns.test.js` | 11 | Anti-pattern detection: validates code samples from ANTI_PATTERNS.md |
@@ -168,7 +171,6 @@ Run locally with mock D1 bindings. No real database needed.
 | `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
 | `sync_state.test.js` | 5 | sync_state.js: getEntityVersion, L2 version tagging, ensureSyncFreshness |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
-| `sync.test.js` | 4 | Auto-schema evolution: ensureColumns, ALTER TABLE for missing fields |
 
 ### Integration tests (`npm run test:integration`) — 24 tests
 
@@ -210,23 +212,29 @@ Side-by-side comparison of mirror responses against upstream PeeringDB for a set
 # 1. Copy example configs and fill in your resource IDs
 cp wrangler.toml.example wrangler.toml
 cp wrangler-sync.toml.example wrangler-sync.toml
+cp wrangler-async.toml.example wrangler-async.toml
 cp wrangler-auth.toml.example wrangler-auth.toml
 
-# 2. Populate local D1 (PeeringDB mirror)
+# 2. Provision the pdbfe-tasks Queue (one-time, skip if already created)
+npx wrangler queues create pdbfe-tasks
+
+# 3. Populate local D1 (PeeringDB mirror)
 cd .. && ./scripts/migrate-to-d1.sh --fetch && cd workers
 
-# 3. Bootstrap local users database schema
+# 4. Bootstrap local users database schema
 npx wrangler d1 execute pdbfe-users --file=../database/users/schema.sql
 
-# 4. Run API worker locally (XDG overrides keep wrangler state in-tree)
+# 5. Run API worker locally (XDG overrides keep wrangler state in-tree)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev
 
-# 5. Run auth worker locally (separate terminal, different port)
+# 6. Run auth worker locally (separate terminal, different port)
 XDG_CONFIG_HOME=.wrangler-home XDG_DATA_HOME=.wrangler-home npx wrangler dev --config wrangler-auth.toml --port 8788
 
-# 6. Type check
+# 7. Type check
 npm run typecheck
 
-# 7. Unit tests
+# 8. Unit tests
 npm test
 ```
+
+The async worker (`pdbfe-async`) does not need a local dev session — it only activates when the Queue delivers messages. In production it runs automatically once `pdbfe-sync` publishes to `pdbfe-tasks`.
