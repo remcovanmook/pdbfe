@@ -257,10 +257,8 @@ Categories: **Backend** (workers, API, sync), **Frontend** (SPA, UI, UX),
 | Frontend | Full mobile card layout for all entity detail page tables |
 | Frontend | Responsive header navigation breakpoints |
 | Frontend | Mobile-first compare page layout |
-| Frontend | Advanced search form UI — field-specific filter inputs per entity type |
-| Backend | Search worker: structured filter parameters beyond `q` (country, ASN range, info_type, policy, speed tier) |
-| Backend | `keyword.js` extension: translate structured filters into typed D1 WHERE clauses alongside the existing LIKE path |
-| Backend | `auto` mode: detect structured filter params in the request and route to the filter path without requiring `mode=graph` |
-| Backend | `entities.js`: expose per-entity filterable field metadata (type, operator, valid values) for form generation |
-| Test | Unit tests for structured filter parameter parsing and D1 WHERE clause generation |
+| Frontend | Advanced search form UI — field-specific filter inputs per entity type (country, ASN range, info_type, policy, speed tier) |
+| Backend | Search worker: accept explicit structured URL filter params (e.g. `?country=DE&info_type=content`) alongside `q`, bypassing NL parsing for form-driven requests |
+| Backend | `entities.js`: expose per-entity filterable field metadata (type, operator, valid values) to drive form generation |
+| Test | Unit tests for structured filter parameter parsing and query builder |
 

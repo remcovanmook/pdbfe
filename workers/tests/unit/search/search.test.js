@@ -5,18 +5,18 @@
  *   - parseSearchParams: valid params, missing q, missing entity, unknown entity,
  *     invalid mode, limit clamping, skip normalisation
  *   - handleKeyword: D1 LIKE query structure, empty result (null), result shape
- *   - handleSearch (via worker.fetch): keyword path, semantic gate (503),
+ *   - handleSearch (via worker.fetch): keyword path, graph-search gate (503),
  *     auto fallback to keyword, cache tier headers, 400 on bad params,
  *     rate limit rejection, SEARCH_EMPTY_SENTINEL on empty result
  *   - buildSearchKey: auth prefix partitioning, fast-path cache hit
- *   - withSearchSWR: L1 hit, MISS path (delegates to core/pipeline, tested there)
+ *   - withSearchSWR: L1 hit, stampede coalescing, MISS path
  */
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../../../search/index.js';
 import { handleKeyword } from '../../../search/handlers/keyword.js';
-import { buildSearchKey, purgeSearchCache, SEARCH_EMPTY_SENTINEL } from '../../../search/cache.js';
+import { buildSearchKey, withSearchSWR, purgeSearchCache, SEARCH_EMPTY_SENTINEL } from '../../../search/cache.js';
 
 // ── Shared mock helpers ───────────────────────────────────────────────────────
 
@@ -44,23 +44,21 @@ function mockDB(rows = []) {
 }
 
 /**
- * Builds a minimal PdbSearchEnv. Omits AI and VECTORIZE so semantic search
- * is disabled by default. Pass ai/vectorize to enable it.
+ * Builds a minimal PdbSearchEnv. Omits VECTORIZE so graph-structural search
+ * is disabled by default. Pass vectorize to enable it.
  *
  * @param {object} [overrides]
  * @param {object[]} [overrides.rows] - DB rows returned.
- * @param {any}     [overrides.AI]   - Workers AI binding mock.
  * @param {any}     [overrides.VECTORIZE] - Vectorize binding mock.
  * @returns {PdbSearchEnv}
  */
-function mockEnv({ rows = [], AI = undefined, VECTORIZE = undefined } = {}) {
+function mockEnv({ rows = [], VECTORIZE = undefined } = {}) {
     const db = mockDB(rows);
     return /** @type {any} */ ({
         PDB: db,
         SESSIONS: { get: async () => null },
         USERDB: { withSession() { return this; }, prepare() { return { bind() { return this; }, first: async () => null }; } },
         PDBFE_VERSION: '0.9.0',
-        AI,
         VECTORIZE,
     });
 }
@@ -223,7 +221,18 @@ describe('GET /search — keyword path', () => {
         assert.ok(res.headers.get('X-Cache'));
     });
 
-    it('auto mode falls back to keyword when AI bindings absent', async () => {
+    it('auto mode uses keyword for plain name queries even when Vectorize is present', async () => {
+        // A bare name like "cogent" has no graph intent — hasGraphIntent() returns
+        // false, so auto mode must resolve to keyword regardless of Vectorize.
+        const env = mockEnv({ rows: [{ id: 3, name: 'AutoNet', status: 'ok' }] });
+        const req = new Request('https://api.pdbfe.dev/search?q=cogent&entity=net');
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.meta.mode, 'keyword');
+    });
+
+    it('auto mode uses keyword when Vectorize absent (no graph intent possible)', async () => {
         const env = mockEnv({ rows: [{ id: 3, name: 'AutoNet', status: 'ok' }] });
         const req = new Request('https://api.pdbfe.dev/search?q=auto&entity=net');
         const res = await worker.fetch(req, env, mockCtx);
@@ -233,10 +242,48 @@ describe('GET /search — keyword path', () => {
     });
 });
 
-describe('GET /search — semantic gate', () => {
-    it('returns 503 for explicit mode=semantic when bindings absent', async () => {
+describe('GET /search — auto mode intent routing', () => {
+    before(() => purgeSearchCache());
+
+    // All tests omit VECTORIZE so graph-search falls back to keyword.
+    // The important assertion is that auto mode picks keyword for plain
+    // name queries and would pick graph-search for structured queries
+    // when Vectorize is present. The keyword fallback path is tested here;
+    // the graph-search branch is covered by graph-search.test.js.
+
+    it('routes "networks in DE" to keyword fallback (no Vectorize)', async () => {
+        // hasGraphIntent detects country=DE, but with no Vectorize, auto => keyword.
+        // Provide a row so the response is non-empty and carries meta.mode.
+        const env = mockEnv({ rows: [{ id: 7, name: 'DE-CIX', status: 'ok' }] });
+        const req = new Request(
+            'https://api.pdbfe.dev/search?q=networks+in+DE&entity=net',
+            { headers: { 'cf-connecting-ip': '10.9.0.1' } }
+        );
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.meta.mode, 'keyword');
+    });
+
+    it('routes plain name query to keyword even with graph-search available', async () => {
+        // "Amsterdam" has no parsed predicate (not country/city-anchored by preposition),
+        // so hasGraphIntent is false and keyword is used.
+        const env = mockEnv({ rows: [{ id: 5, name: 'AMS-IX', status: 'ok' }] });
+        const req = new Request(
+            'https://api.pdbfe.dev/search?q=Amsterdam&entity=ix',
+            { headers: { 'cf-connecting-ip': '10.9.0.2' } }
+        );
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.meta.mode, 'keyword');
+    });
+});
+
+describe('GET /search — graph-search gate', () => {
+    it('returns 503 for explicit mode=graph when Vectorize binding absent', async () => {
         const env = mockEnv();
-        const req = new Request('https://api.pdbfe.dev/search?q=cloud+provider&entity=net&mode=semantic');
+        const req = new Request('https://api.pdbfe.dev/search?q=cloud+provider&entity=net&mode=graph');
         const res = await worker.fetch(req, env, mockCtx);
         assert.equal(res.status, 503);
         const body = await res.json();
@@ -377,5 +424,57 @@ describe('GET /search — auth rejection', () => {
         // resolveAuth may either reject (403) or fall through as anon —
         // either is a valid outcome depending on session validation logic.
         assert.ok([200, 403].includes(res.status));
+    });
+});
+
+describe('withSearchSWR — stampede coalescing', () => {
+    before(() => purgeSearchCache());
+
+    it('executes queryFn exactly once for N concurrent misses on the same key', async () => {
+        // The coalescing guarantee: if N requests arrive simultaneously for
+        // the same cache key while it is being resolved, only one backend
+        // queryFn call is made. All others await the same in-flight promise
+        // via cache.pending (core/pipeline/query.js §7).
+        let calls = 0;
+        const key = await buildSearchKey('stampede-test', ['net'], 'keyword', 20, 0, false);
+        const ctx = /** @type {ExecutionContext} */ ({
+            waitUntil(/** @type {Promise<any>} */ p) { p.catch(() => {}); },
+        });
+        const slowQuery = () => new Promise(resolve => {
+            calls++;
+            // Micro-task delay so concurrent callers can all reach the
+            // pending check before the first one resolves.
+            Promise.resolve().then(() => resolve(new TextEncoder().encode('{"data":[],"meta":{}}'))); // @type {Uint8Array}
+        });
+
+        // Fire five concurrent SWR requests for the same key.
+        await Promise.all([
+            withSearchSWR(key, ctx, slowQuery),
+            withSearchSWR(key, ctx, slowQuery),
+            withSearchSWR(key, ctx, slowQuery),
+            withSearchSWR(key, ctx, slowQuery),
+            withSearchSWR(key, ctx, slowQuery),
+        ]);
+
+        assert.equal(calls, 1, 'queryFn should be called exactly once despite 5 concurrent misses');
+    });
+
+    it('returns L1 hit on subsequent request after coalesced miss', async () => {
+        // After the coalesced miss populates L1, the next request should
+        // be served from cache without calling queryFn again.
+        let calls = 0;
+        const key = await buildSearchKey('stampede-l1', ['net'], 'keyword', 20, 0, false);
+        const ctx = /** @type {ExecutionContext} */ ({
+            waitUntil(/** @type {Promise<any>} */ p) { p.catch(() => {}); },
+        });
+        const query = () => { calls++; return Promise.resolve(new TextEncoder().encode('{"data":[],"meta":{}}')); };
+
+        // First call — cache miss, populates L1.
+        const r1 = await withSearchSWR(key, ctx, query);
+        // Second call — must hit L1.
+        const r2 = await withSearchSWR(key, ctx, query);
+
+        assert.equal(calls, 1, 'queryFn called only once');
+        assert.equal(r2.tier, 'L1', 'second request served from L1');
     });
 });

@@ -1,0 +1,13 @@
+# Python dependencies for scripts/ tooling.
+#
+# TWO VENVS — do not mix them:
+#
+#   .venv/               Python 3.14 — existing tooling (parse_django_models.py etc.)
+#                        Install: .venv/bin/pip install -r scripts/requirements.txt
+#
+#   scripts/.venv/       Python 3.11 or 3.12 — ML/embedding pipeline
+#                        Create:  /opt/homebrew/bin/python3.12 -m venv scripts/.venv
+#                        Install: scripts/.venv/bin/pip install -r scripts/requirements-embedding.txt
+
+# Existing main-venv packages
+polib==1.2.0

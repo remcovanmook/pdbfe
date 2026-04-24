@@ -1,0 +1,15 @@
+# ML/embedding pipeline dependencies.
+# Requires Python 3.11 or 3.12 — gensim and umap-learn have no Python 3.14 wheels.
+#
+# Setup:
+#   /opt/homebrew/bin/python3.12 -m venv scripts/.venv
+#   scripts/.venv/bin/pip install -r scripts/requirements-embedding.txt
+#
+# Run:
+#   scripts/.venv/bin/python3 scripts/compute-graph-embeddings.py
+
+gensim>=4.3.3           # word2vec training over random walk sequences
+networkx>=3.0           # graph construction and graph utilities
+umap-learn>=0.5.7       # 2D projection for Nomic Atlas and the frontend explorer
+numpy>=1.24             # array operations
+requests>=2.28          # Cloudflare REST API calls (Vectorize upsert)
