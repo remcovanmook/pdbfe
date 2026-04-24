@@ -58,8 +58,8 @@ function tableFor(tag) {
 function idsFromResult(result) {
     if (!result.success || !result.results.length) return null;
     const ids = [];
-    for (let i = 0; i < result.results.length; i++) {
-        ids.push(result.results[i].id);
+    for (const row of result.results) {
+        ids.push(row.id);
     }
     return ids.join(',');
 }
@@ -246,7 +246,7 @@ async function similaritySearch(db, vectorize, anchorName, entityTag, limit) {
 
     // Step 2: retrieve the anchor's stored graph embedding.
     const stored = await vectorize.getByIds([vectorId]);
-    if (!stored || !stored.length || !stored[0].values) return null;
+    if (!stored?.[0]?.values) return null;
 
     // Step 3: kNN query filtered by target entity type.
     // Fetch extra candidates to account for any post-filter dropping.
@@ -298,6 +298,22 @@ async function keywordFallback(db, entityTag, raw, limit) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolves the named anchor for a traversal query and executes the edge JOIN.
+ * Extracted from executeGraphSearch to reduce cognitive complexity.
+ *
+ * @param {D1Database} db - D1 session.
+ * @param {import('./query-parser.js').ParsedQuery} parsed - Parsed query with anchorName and traversalIntent set.
+ * @param {string} entityTag - Target entity type.
+ * @param {number} limit - Maximum results.
+ * @returns {Promise<string|null>} CSV ID string, or null if anchor not found or no edges.
+ */
+async function resolveTraversal(db, parsed, entityTag, limit) {
+    const anchor = await resolveNameToId(db, parsed.anchorName, null);
+    if (!anchor) return null;
+    return traverseFromAnchor(db, anchor.id, anchor.tag, entityTag, parsed.traversalIntent, limit);
+}
+
+/**
  * Executes a parsed PeeringDB graph search query and returns entity IDs.
  *
  * Routes each predicate to the optimal backend (D1 or Vectorize) in
@@ -325,17 +341,10 @@ export async function executeGraphSearch(rawQuery, entityTag, db, vectorize, lim
         if (ids) return ids;
     }
 
-    // 3. Named anchor + traversal — resolve anchor, then JOIN.
+    // 3. Named anchor + traversal — resolve anchor entity, then edge JOIN.
     if (parsed.anchorName && parsed.traversalIntent) {
-        // Resolve anchor: prefer IX/fac for "at" queries, net for "peers of" queries.
-        const preferTag = parsed.traversalIntent === 'networks_at' || parsed.traversalIntent === 'members_of'
-            ? null
-            : null; // let resolveNameToId try all types in priority order
-        const anchor = await resolveNameToId(db, parsed.anchorName, preferTag);
-        if (anchor) {
-            const ids = await traverseFromAnchor(db, anchor.id, anchor.tag, entityTag, parsed.traversalIntent, limit);
-            if (ids) return ids;
-        }
+        const ids = await resolveTraversal(db, parsed, entityTag, limit);
+        if (ids) return ids;
     }
 
     // 4. Metadata-only predicates → D1 filter.
