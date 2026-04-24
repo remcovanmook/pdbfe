@@ -27,4 +27,5 @@
 
 | Category | Item |
 |----------|------|
+| Frontend | Mobile card layout for remaining detail page entity tables |
 | Infra | AUP approval → remove Cloudflare Access gate on production frontend |
