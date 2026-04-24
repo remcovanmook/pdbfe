@@ -254,7 +254,7 @@ async function runEntitySearch(db, vectorize, entityTag, q, effectiveMode, limit
  *
  * Flow:
  *   1. Parse and validate query parameters (tokenizeString, §1, §2).
- *   2. Resolve effective mode (auto → semantic if Vectorize present, else keyword).
+ *   2. Resolve effective mode: auto → graph if Vectorize present and query has graph intent, else keyword.
  *   3. Build SHA-256 cache key (sorted entity list for canonicality).
  *   4. withSearchSWR → L1 → coalesce → L2 → queryFn (§9: D1 inside closure).
  *   5. Return serialised response with cache tier headers.

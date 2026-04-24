@@ -4,7 +4,7 @@
  * Executes a D1 LIKE query across the primary display fields of a single
  * entity type and returns results in the search envelope format.
  *
- * This is the fallback path when semantic search is disabled or when the
+ * This is the fallback path when graph-structural search is disabled or when the
  * caller explicitly requests mode=keyword. Results are ordered by name
  * and carry score=1.0 (uniform relevance — no ranking).
  *

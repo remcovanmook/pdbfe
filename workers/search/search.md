@@ -44,6 +44,20 @@ search/
 
 Dependencies flow downward: handlers → cache.js / entities.js → core/. No imports from api/, auth/, or sync/.
 
+## API Modes
+
+The `mode` query parameter controls how the search query is executed. Three values are accepted:
+
+| Mode | Description |
+|---|---|
+| `keyword` | D1 LIKE search across primary display fields. Fast, lexical, no Vectorize. |
+| `graph` | Graph-structural search via Vectorize kNN and D1 traversal. Requires Vectorize binding. |
+| `auto` | Smart dispatch: routes to `graph` if Vectorize is present and `parseQuery()` finds structural intent (ASN, country, city, region, info_type, similarity, traversal). Falls back to `keyword` otherwise. |
+
+Any other value returns `400 Invalid mode`. When omitted the worker defaults to `auto`.
+
+`mode=keyword` is the correct choice for typeahead — it bypasses `parseQuery()` entirely and hits D1 directly.
+
 ## Caching Strategy
 
 Search requests carry parameters that cannot be keyed by URL path alone, so results are keyed by a SHA-256 hash of the normalised parameter set.

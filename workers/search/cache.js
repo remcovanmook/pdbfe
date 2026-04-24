@@ -66,7 +66,7 @@ export const SEARCH_MULTI_EMPTY_SENTINEL = encoder.encode('{"data":{},"meta":{"m
  * Single LRU cache instance for all search operations.
  *
  * 1024 slots, 32 MB byte budget. Search responses are variable in size
- * (semantic results include multiple fields per entity), similar to GraphQL.
+ * (graph results include multiple fields per entity), similar to GraphQL.
  *
  * @type {LocalCache}
  */
@@ -130,7 +130,7 @@ const PARAM_KEY_CACHE_LIMIT = 500;
  * @param {string} q - The search query string.
  * @param {string[]} entityList - Entity type tags (e.g. ["net"] or ["net","ix","fac"]).
  *   Sorted internally so [net,ix] and [ix,net] produce the same key.
- * @param {string} mode - Resolved mode ("keyword" or "semantic").
+ * @param {string} mode - Resolved mode ("keyword" or "graph").
  * @param {number} limit - Result limit.
  * @param {number} skip - Pagination offset.
  * @param {boolean} authenticated - Whether the caller is authenticated.
@@ -176,7 +176,7 @@ export async function buildSearchKey(q, entityList, mode, limit, skip, authentic
  * @param {string} cacheKey - Deterministic key from buildSearchKey().
  * @param {ExecutionContext} ctx - Worker execution context for waitUntil().
  * @param {() => Promise<Uint8Array|null>} queryFn - Closure that executes
- *        the keyword or semantic search and returns a serialised Uint8Array,
+ *        the keyword or graph-structural search and returns a serialised Uint8Array,
  *        or null on error.
  * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'L2'|'MISS', hits: number}>}
  */
