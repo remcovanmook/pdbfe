@@ -14,7 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { syncEntity, buildUpsert, ensureColumns, syncLogos } from '../../../sync/index.js';
+import worker, { syncEntity, buildUpsert, ensureColumns, syncLogos, pruneDeletedVectors } from '../../../sync/index.js';
 
 // ── Runtime polyfills ─────────────────────────────────────────────────────────
 // Node.js crypto.subtle does not implement timingSafeEqual (a Cloudflare
@@ -349,9 +349,78 @@ describe('syncEntity data flow', () => {
             globalThis.fetch = origFetch;
         }
     });
+    it('exposes deletedIds array with IDs of deleted rows', async () => {
+        const origFetch = globalThis.fetch;
+        const rows = [
+            { id: 10, name: 'KeepMe', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' },
+            { id: 20, name: 'DropMe', info_type: 'ISP', notes: null, created: '2024-01-02', status: 'deleted' },
+            { id: 30, name: 'AlsoGone', info_type: 'CDN', notes: null, created: '2024-01-03', status: 'deleted' },
+        ];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+        try {
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const result = await syncEntity(db, 'net', TEST_META, '');
+            assert.deepEqual(result.deletedIds.sort(), [20, 30]);
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+    });
+
+    it('returns empty deletedIds when no rows are deleted', async () => {
+        const origFetch = globalThis.fetch;
+        const rows = [
+            { id: 1, name: 'Alpha', info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok' },
+        ];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+        try {
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const result = await syncEntity(db, 'net', TEST_META, '');
+            assert.deepEqual(result.deletedIds, []);
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+    });
 });
 
-// ── syncLogos ─────────────────────────────────────────────────────────────────
+// ── pruneDeletedVectors ───────────────────────────────────────────────────────
+
+describe('pruneDeletedVectors', () => {
+    it('calls vectorize.deleteByIds with correctly formatted vector IDs', async () => {
+        const deleted = /** @type {string[]} */ ([]);
+        const vectorize = /** @type {any} */ ({
+            deleteByIds(ids) { deleted.push(...ids); return Promise.resolve(); },
+        });
+        await pruneDeletedVectors(vectorize, 'net', [694, 12, 387]);
+        assert.deepEqual(deleted, ['net:694', 'net:12', 'net:387']);
+    });
+
+    it('is a no-op when deletedIds is empty', async () => {
+        let called = false;
+        const vectorize = /** @type {any} */ ({
+            deleteByIds() { called = true; return Promise.resolve(); },
+        });
+        await pruneDeletedVectors(vectorize, 'fac', []);
+        assert.equal(called, false);
+    });
+
+    it('does not throw when vectorize.deleteByIds rejects', async () => {
+        const vectorize = /** @type {any} */ ({
+            deleteByIds() { return Promise.reject(new Error('API error')); },
+        });
+        // Should resolve without throwing.
+        await assert.doesNotReject(() => pruneDeletedVectors(vectorize, 'ix', [1]));
+    });
+
+    it('formats IDs for different entity types correctly', async () => {
+        const deleted = /** @type {string[]} */ ([]);
+        const vectorize = /** @type {any} */ ({
+            deleteByIds(ids) { deleted.push(...ids); return Promise.resolve(); },
+        });
+        await pruneDeletedVectors(vectorize, 'campus', [99]);
+        assert.equal(deleted[0], 'campus:99');
+    });
+});
+
 
 const S3_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
 

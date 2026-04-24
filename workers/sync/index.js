@@ -126,10 +126,10 @@ export async function ensureColumns(db, table, apiColumns) {
  * @param {string} tag - Entity tag (e.g. "net").
  * @param {Pick<EntityMeta, 'table' | 'fields'>} meta - Entity metadata (table, fields).
  * @param {string} apiKey - PeeringDB API key.
- * @returns {Promise<{ tag: string, updated: number, deleted: number, error: string }>}
+ * @returns {Promise<{ tag: string, updated: number, deleted: number, deletedIds: number[], error: string }>}
  */
 export async function syncEntity(db, tag, meta, apiKey) {
-    const result = { tag, updated: 0, deleted: 0, error: '' };
+    const result = { tag, updated: 0, deleted: 0, deletedIds: /** @type {number[]} */ ([]), error: '' };
 
     try {
         // Get last sync time from _sync_meta
@@ -222,13 +222,14 @@ export async function syncEntity(db, tag, meta, apiKey) {
         }
         result.updated = activeRows.length;
 
-        // Delete removed rows
+        // Delete removed rows from D1 and record their IDs for Vectorize pruning.
         if (deletedRows.length > 0) {
             const deleteStmts = deletedRows.map(row =>
                 db.prepare(`DELETE FROM "${meta.table}" WHERE id = ?`).bind(row.id)
             );
             await db.batch(deleteStmts);
             result.deleted = deletedRows.length;
+            result.deletedIds = deletedRows.map(row => row.id);
         }
 
         // Update sync metadata
@@ -346,21 +347,17 @@ export async function syncLogos(db, logos, tag, table) {
 }
 
 /**
- * Embeds unembedded entity rows into the Vectorize index.
+ * @deprecated The graph-structural embedding pipeline (compute-graph-embeddings.py)
+ * now owns Vectorize writes for active entities. syncVectors used the BGE-large-en-v1.5
+ * text embedding approach which is incompatible with the current 1024-dim node2vec index.
+ * Retained for reference; not called from the scheduled handler.
  *
- * Queries up to VECTOR_BATCH_LIMIT rows per entity with __vector_embedded = 0,
- * calls Workers AI to generate BGE-large-en-v1.5 embeddings in batches of
- * EMBED_BATCH_SIZE, upserts into Vectorize, then sets __vector_embedded = 1.
- *
- * Vector ID scheme: '{entity}:{id}' (e.g. 'net:694') so the search worker
- * can resolve entity type from Vectorize results without a D1 lookup.
- *
- * @param {D1Database} db - D1 database binding.
- * @param {Ai} ai - Workers AI binding.
- * @param {VectorizeIndex} vectorize - Vectorize index binding.
- * @param {string} tag - Entity tag (e.g. 'net').
- * @param {string} table - D1 table name.
- * @param {string} primaryField - Field to embed (typically 'name').
+ * @param {D1Database} db
+ * @param {Ai} ai
+ * @param {VectorizeIndex} vectorize
+ * @param {string} tag
+ * @param {string} table
+ * @param {string} primaryField
  * @returns {Promise<{ embedded: number, errors: number }>}
  */
 export async function syncVectors(db, ai, vectorize, tag, table, primaryField) {
@@ -426,6 +423,31 @@ export async function syncVectors(db, ai, vectorize, tag, table, primaryField) {
 
     return result;
 }
+/**
+ * Removes stale graph embedding vectors from the Vectorize index for entities
+ * that were deleted from D1 during the current sync run.
+ *
+ * Called per-entity after syncEntity reports deletions. Uses the same
+ * '{tag}:{id}' ID scheme written by compute-graph-embeddings.py.
+ *
+ * Failures are logged but do not propagate — a stale vector in Vectorize
+ * is preferable to aborting the data sync for the remaining entities.
+ *
+ * @param {VectorizeIndex} vectorize - Vectorize index binding.
+ * @param {string} tag - Entity tag (e.g. 'net').
+ * @param {number[]} deletedIds - Numeric entity IDs deleted from D1.
+ * @returns {Promise<void>}
+ */
+export async function pruneDeletedVectors(vectorize, tag, deletedIds) {
+    if (!deletedIds.length) return;
+    const vectorIds = deletedIds.map(id => `${tag}:${id}`);
+    try {
+        await vectorize.deleteByIds(vectorIds);
+        console.log(`[sync-vectors] pruned ${vectorIds.length} stale vector(s) for ${tag}`);
+    } catch (err) {
+        console.error(`[sync-vectors] failed to prune ${tag} vectors: ${/** @type {Error} */(err).message}`);
+    }
+}
 
 /**
  * Validates a secret from the URL path against ADMIN_SECRET.
@@ -480,15 +502,11 @@ export default {
             }
         }
 
-        // Embed unembedded rows into Vectorize (only when bindings are present)
-        /** @type {string[]} */
-        const vectorSummary = [];
-        if (env.AI && env.VECTORIZE) {
-            for (const [tag, meta] of Object.entries(ENTITIES)) {
-                if (!VECTOR_ENTITY_TAGS.has(tag)) continue;
-                const vr = await syncVectors(env.PDB, env.AI, env.VECTORIZE, tag, meta.table, 'name');
-                if (vr.embedded > 0 || vr.errors > 0) {
-                    vectorSummary.push(`${tag}:+${vr.embedded}e${vr.errors}`);
+        // Prune stale Vectorize vectors for entities deleted during this sync run.
+        if (env.VECTORIZE) {
+            for (const syncResult of results) {
+                if (syncResult.deletedIds && syncResult.deletedIds.length > 0) {
+                    await pruneDeletedVectors(env.VECTORIZE, syncResult.tag, syncResult.deletedIds);
                 }
             }
         }
@@ -499,8 +517,7 @@ export default {
         }).join(', ');
 
         const logoInfo = logoSummary.length > 0 ? ` | logos: ${logoSummary.join(', ')}` : '';
-        const vectorInfo = vectorSummary.length > 0 ? ` | vectors: ${vectorSummary.join(', ')}` : '';
-        console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}${vectorInfo}`);
+        console.log(`[sync] ${new Date().toISOString()} ${summary}${logoInfo}`);
     },
 
     /**

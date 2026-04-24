@@ -32,6 +32,7 @@ frontend/_redirects
 # Database artifacts
 database/*.sqlite
 database/*.json
+database/*.db
 *.sqlite
 
 # Extracted upstream sources (fetched by the pipeline)

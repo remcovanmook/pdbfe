@@ -207,7 +207,7 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
  */
 async function runEntitySearch(db, ai, vectorize, entityTag, q, effectiveMode, limit, skip) {
     if (effectiveMode === 'semantic') {
-        const idList = await resolveSemanticIds(entityTag, 'name', q, limit);
+        const idList = await resolveSemanticIds(entityTag, 'name', q, limit, db);
         if (!idList) return [];
         return hydrateSemanticIds(db, entityTag, idList, limit);
     }
@@ -294,7 +294,7 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
         // Single-entity path.
         const [entityTag] = entityList;
         if (effectiveMode === 'semantic') {
-            const idList = await resolveSemanticIds(entityTag, 'name', q, limit);
+            const idList = await resolveSemanticIds(entityTag, 'name', q, limit, db);
             if (!idList) return null;
             return hydrateSemanticIds(db, entityTag, idList, limit).then(rows =>
                 rows.length === 0 ? null : encoder.encode(JSON.stringify({
