@@ -8,7 +8,7 @@ and visible=Private) from the authenticated upstream API and writes SQL
 INSERT OR REPLACE statements to stdout, which are then applied to D1.
 
 Run this immediately after migrate-to-d1.sh as part of the cold-start
-bootstrap sequence. See scripts/BOOTSTRAP.md for the full procedure.
+bootstrap sequence. See docs/bootstrap.md for the full procedure.
 
 Usage:
     source .env   # provides PEERINGDB_API_KEY
