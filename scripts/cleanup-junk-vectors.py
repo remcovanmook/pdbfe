@@ -148,7 +148,6 @@ def vectorize_delete(vector_ids: list[str]) -> None:
         "npx", "--yes", "wrangler",
         "vectorize", "delete-vectors", VECTORIZE_NAME,
         "--ids", *vector_ids,
-        "--force",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT / "workers")
     if result.returncode != 0:
