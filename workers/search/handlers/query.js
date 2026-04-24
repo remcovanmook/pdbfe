@@ -26,7 +26,7 @@ import { tokenizeString } from '../../core/utils.js';
 import { encoder, jsonError, serveSearch } from '../http.js';
 import { buildSearchKey, withSearchSWR, SEARCH_EMPTY_SENTINEL, SEARCH_MULTI_EMPTY_SENTINEL } from '../cache.js';
 import { ENTITIES, SEARCH_ENTITY_TAGS, getPrimaryField, getExtraFields } from '../entities.js';
-import { isSemanticEnabled, resolveSemanticIds } from './semantic.js';
+import { isGraphSearchEnabled, resolveGraphIds } from './graph.js';
 import { handleKeyword } from './keyword.js';
 
 /** Default and maximum result limits. */
@@ -186,7 +186,7 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
 }
 
 /**
- * Runs a keyword or semantic search for a single entity type.
+ * Runs a keyword or graph-structural search for a single entity type.
  *
  * Returns a flat result array. Used by both the single-entity path
  * (where the array is encoded directly) and the multi-entity path
@@ -196,7 +196,6 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
  * can assemble the grouped object without null checks per entry.
  *
  * @param {D1Database} db - D1 session.
- * @param {any|null} ai - Workers AI binding, or null.
  * @param {any|null} vectorize - Vectorize binding, or null.
  * @param {string} entityTag - Entity type to search.
  * @param {string} q - Search query string.
@@ -205,9 +204,9 @@ async function hydrateSemanticIds(db, entityTag, idList, limit) {
  * @param {number} skip - Pagination offset (keyword only).
  * @returns {Promise<{id: number, name: string, entity_type: string, score: number}[]>}
  */
-async function runEntitySearch(db, ai, vectorize, entityTag, q, effectiveMode, limit, skip) {
+async function runEntitySearch(db, vectorize, entityTag, q, effectiveMode, limit, skip) {
     if (effectiveMode === 'semantic') {
-        const idList = await resolveSemanticIds(entityTag, 'name', q, limit, db);
+        const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
         if (!idList) return [];
         return hydrateSemanticIds(db, entityTag, idList, limit);
     }
@@ -232,7 +231,7 @@ async function runEntitySearch(db, ai, vectorize, entityTag, q, effectiveMode, l
  *
  * Flow:
  *   1. Parse and validate query parameters (tokenizeString, §1, §2).
- *   2. Resolve effective mode (auto → semantic if enabled, else keyword).
+ *   2. Resolve effective mode (auto → semantic if Vectorize present, else keyword).
  *   3. Build SHA-256 cache key (sorted entity list for canonicality).
  *   4. withSearchSWR → L1 → coalesce → L2 → queryFn (§9: D1 inside closure).
  *   5. Return serialised response with cache tier headers.
@@ -240,21 +239,20 @@ async function runEntitySearch(db, ai, vectorize, entityTag, q, effectiveMode, l
  * @param {Request} request - Inbound HTTP request.
  * @param {string} queryString - Raw query string from parseURL().
  * @param {D1Database} db - D1 session (withSession already applied).
- * @param {any|null} ai - Workers AI binding, or null if absent.
  * @param {any|null} vectorize - Vectorize binding, or null if absent.
  * @param {ExecutionContext} ctx - Worker execution context.
  * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<Response>} Search results or error response.
  */
-export async function handleSearch(request, queryString, db, ai, vectorize, ctx, authenticated) {
+export async function handleSearch(request, queryString, db, vectorize, ctx, authenticated) {
     const { q, entityList, isMulti, mode, limit, skip, error } = parseSearchParams(queryString);
     if (error) return jsonError(400, error);
 
     // Resolve effective mode.
-    const semanticAvailable = isSemanticEnabled();
+    const graphSearchAvailable = isGraphSearchEnabled();
     let effectiveMode = mode;
-    if (mode === 'auto') effectiveMode = semanticAvailable ? 'semantic' : 'keyword';
-    if (mode === 'semantic' && !semanticAvailable) {
+    if (mode === 'auto') effectiveMode = graphSearchAvailable ? 'semantic' : 'keyword';
+    if (mode === 'semantic' && !graphSearchAvailable) {
         return jsonError(503, 'Semantic search is not available on this deployment.');
     }
 
@@ -262,13 +260,13 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
     const cacheKey = await buildSearchKey(q, entityList, effectiveMode, limit, skip, authenticated);
 
     const { buf, tier, hits } = await withSearchSWR(cacheKey, ctx, async () => {
-        // §9: all D1 and AI calls inside this queryFn closure.
+        // §9: all D1 and Vectorize calls inside this queryFn closure.
 
         if (isMulti) {
             // Fan out one search per entity type in parallel. §3: index-based loop.
             const promises = [];
             for (let i = 0; i < entityList.length; i++) {
-                promises.push(runEntitySearch(db, ai, vectorize, entityList[i], q, effectiveMode, limit, skip));
+                promises.push(runEntitySearch(db, vectorize, entityList[i], q, effectiveMode, limit, skip));
             }
             const rowSets = await Promise.all(promises);
 
@@ -294,7 +292,7 @@ export async function handleSearch(request, queryString, db, ai, vectorize, ctx,
         // Single-entity path.
         const [entityTag] = entityList;
         if (effectiveMode === 'semantic') {
-            const idList = await resolveSemanticIds(entityTag, 'name', q, limit, db);
+            const idList = await resolveGraphIds(entityTag, 'name', q, limit, db);
             if (!idList) return null;
             return hydrateSemanticIds(db, entityTag, idList, limit).then(rows =>
                 rows.length === 0 ? null : encoder.encode(JSON.stringify({

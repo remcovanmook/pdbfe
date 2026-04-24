@@ -24,7 +24,7 @@
  * Returns null when no results are found.
  *
  * @see query-parser.js for predicate structure.
- * @see handlers/semantic.js for the public resolveSemanticIds() wrapper.
+ * @see handlers/graph.js for the public resolveGraphIds() wrapper.
  */
 
 import { ENTITIES } from '../entities.js';
