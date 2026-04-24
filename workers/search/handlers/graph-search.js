@@ -298,22 +298,6 @@ async function keywordFallback(db, entityTag, raw, limit) {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolves the named anchor for a traversal query and executes the edge JOIN.
- * Extracted from executeGraphSearch to reduce cognitive complexity.
- *
- * @param {D1Database} db - D1 session.
- * @param {import('./query-parser.js').ParsedQuery} parsed - Parsed query with anchorName and traversalIntent set.
- * @param {string} entityTag - Target entity type.
- * @param {number} limit - Maximum results.
- * @returns {Promise<string|null>} CSV ID string, or null if anchor not found or no edges.
- */
-async function resolveTraversal(db, parsed, entityTag, limit) {
-    const anchor = await resolveNameToId(db, parsed.anchorName, null);
-    if (!anchor) return null;
-    return traverseFromAnchor(db, anchor.id, anchor.tag, entityTag, parsed.traversalIntent, limit);
-}
-
-/**
  * Executes a parsed PeeringDB graph search query and returns entity IDs.
  *
  * Routes each predicate to the optimal backend (D1 or Vectorize) in
@@ -343,8 +327,11 @@ export async function executeGraphSearch(rawQuery, entityTag, db, vectorize, lim
 
     // 3. Named anchor + traversal — resolve anchor entity, then edge JOIN.
     if (parsed.anchorName && parsed.traversalIntent) {
-        const ids = await resolveTraversal(db, parsed, entityTag, limit);
-        if (ids) return ids;
+        const anchor = await resolveNameToId(db, parsed.anchorName, null);
+        if (anchor) {
+            const ids = await traverseFromAnchor(db, anchor.id, anchor.tag, entityTag, parsed.traversalIntent, limit);
+            if (ids) return ids;
+        }
     }
 
     // 4. Metadata-only predicates → D1 filter.
