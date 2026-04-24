@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # migrate-to-d1.sh — Build a clean PeeringDB database and import into Cloudflare D1.
 #
-# Part of the cold-start bootstrap sequence. See docs/bootstrap.md for the
+# Part of the cold-start bootstrap sequence. See docs/deployment.md for the
 # full procedure including resource provisioning and post-import steps.
 #
 # Pipeline:
