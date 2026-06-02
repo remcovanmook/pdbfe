@@ -590,7 +590,8 @@ def _extract_properties(schema, spec):
     Handles:
       - Direct properties: { type: object, properties: {...} }
       - $ref: '#/components/schemas/SomeName'
-      - Wrapped in results array: { properties: { results: { items: { $ref } } } }
+      - Old envelope: { properties: { results: { items: { $ref } } } }
+      - New envelope (2.79.0+): { properties: { data: { items: { $ref } }, meta: {...} } }
     """
     if "$ref" in schema:
         resolved = _resolve_ref(spec, schema["$ref"])
@@ -600,14 +601,16 @@ def _extract_properties(schema, spec):
 
     properties = schema.get("properties", {})
 
-    # Paginated list response: { count, next, previous, results: [items] }
-    if "results" in properties:
-        items = properties["results"].get("items", {})
-        if "$ref" in items:
-            resolved = _resolve_ref(spec, items["$ref"])
-            if resolved:
-                return resolved.get("properties", {})
-        return items.get("properties", {})
+    # Try to unwrap the response envelope. PeeringDB used "results"
+    # pre-2.79.0 and switched to "data" in 2.79.0+.
+    for envelope_key in ("data", "results"):
+        if envelope_key in properties:
+            items = properties[envelope_key].get("items", {})
+            if "$ref" in items:
+                resolved = _resolve_ref(spec, items["$ref"])
+                if resolved:
+                    return resolved.get("properties", {})
+            return items.get("properties", {})
 
     return properties
 
@@ -771,8 +774,9 @@ def merge_models_and_spec(model_entities, spec_entities):
                 continue
             if field_name.endswith("_set"):
                 continue
-            # Skip meta/computed fields not stored in D1
-            if field_name in ("id", "status", "created", "updated", "suggest"):
+            # Skip meta/computed fields not stored in D1.
+            # 'data' and 'meta' are response envelope keys, not entity fields.
+            if field_name in ("id", "status", "created", "updated", "suggest", "data", "meta"):
                 continue
             # Skip virtual aggregation fields (computed by serializer, not
             # stored as columns). e.g. ix.prefix is aggregated from ixlan/ixpfx.

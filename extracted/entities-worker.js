@@ -15,7 +15,7 @@
  */
 export const VERSIONS = Object.freeze({
     django_peeringdb: "3.7.0",
-    api_schema: "2.77.1",
+    api_schema: "2.79.0",
 });
 
 /** @type {EntityMeta} */
@@ -278,6 +278,7 @@ const _entity_ix = {
         { name: "terms", type: "string" },
         { name: "status_dashboard", type: "string", nullable: true },
         { name: "org_id", type: "number", foreignKey: "org", resolve: { "name": "org_name" } },
+        { name: "ixf_ixp_member_list_url", type: "string", queryable: false, nullable: true },
         { name: "net_count", type: "number" },
         { name: "fac_count", type: "number" },
         { name: "ixf_import_request", type: "datetime" },
@@ -294,12 +295,12 @@ const _entity_ix = {
         { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" }
     ],
-    _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
+    _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "ixf_ixp_member_list_url", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["social_media"]),
     _boolColumns: new Set(["__logo_migrated", "__vector_embedded", "proto_ipv6", "proto_multicast", "proto_unicast"]),
-    _nullableColumns: new Set(["ixf_last_import", "logo", "status_dashboard"]),
+    _nullableColumns: new Set(["ixf_ixp_member_list_url", "ixf_last_import", "logo", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "city", "country", "created", "fac_count", "id", "ixf_import_request", "ixf_import_request_status", "ixf_last_import", "ixf_net_count", "logo", "media", "name", "name_long", "net_count", "notes", "org_id", "policy_email", "policy_phone", "proto_ipv6", "proto_multicast", "proto_unicast", "region_continent", "sales_email", "sales_phone", "service_level", "social_media", "status", "status_dashboard", "tech_email", "tech_phone", "terms", "updated", "url_stats", "website"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "city", "country", "created", "fac_count", "id", "ixf_import_request", "ixf_import_request_status", "ixf_ixp_member_list_url", "ixf_last_import", "ixf_net_count", "logo", "media", "name", "name_long", "net_count", "notes", "org_id", "policy_email", "policy_phone", "proto_ipv6", "proto_multicast", "proto_unicast", "region_continent", "sales_email", "sales_phone", "service_level", "social_media", "status", "status_dashboard", "tech_email", "tech_phone", "terms", "updated", "url_stats", "website"]),
     _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["city", "string"], ["country", "string"], ["notes", "string"], ["region_continent", "string"], ["media", "string"], ["proto_unicast", "boolean"], ["proto_multicast", "boolean"], ["proto_ipv6", "boolean"], ["website", "string"], ["url_stats", "string"], ["tech_email", "string"], ["tech_phone", "string"], ["policy_email", "string"], ["policy_phone", "string"], ["sales_email", "string"], ["sales_phone", "string"], ["ixf_net_count", "number"], ["ixf_last_import", "datetime"], ["service_level", "string"], ["terms", "string"], ["status_dashboard", "string"], ["org_id", "number"], ["net_count", "number"], ["fac_count", "number"], ["ixf_import_request", "datetime"], ["ixf_import_request_status", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -512,7 +513,7 @@ const _entity_netfac = {
         { name: "name", type: "string" },
         { name: "city", type: "string" },
         { name: "country", type: "string" },
-        { name: "local_asn", type: "string", queryable: false },
+        { name: "local_asn", type: "number", queryable: false },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
