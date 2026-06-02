@@ -481,9 +481,14 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         }
     }
 
-    // Resolve effective limit: depth>0 caps at 250 (matching upstream).
+    // Resolve effective limit: depth>0 caps at 250 for entities with
+    // child-set relationships, which trigger expensive N+1 expansion
+    // in expandDepth(). Leaf entities (relationships=[]) only use
+    // depth for JOIN column resolution, which is part of the main
+    // SELECT query and doesn't need row-count protection.
     let effectiveLimit = Math.max(limit, 0);
-    if (opts.depth > 0 && (effectiveLimit === 0 || effectiveLimit > 250)) {
+    const hasExpansion = entity.relationships && entity.relationships.length > 0;
+    if (opts.depth > 0 && hasExpansion && (effectiveLimit === 0 || effectiveLimit > 250)) {
         effectiveLimit = 250;
     }
 
@@ -576,16 +581,18 @@ export function buildCountQuery(entity, filters, opts) {
  * query. Returns null if there is no next page to pre-fetch
  * (no limit set, or single-row fetch).
  *
+ * @param {EntityMeta} entity - Entity metadata (used to check relationships for depth cap).
  * @param {ParsedFilter[]} filters - The current query filters.
  * @param {QueryOpts} opts - Current pagination.
  * @param {number} resultCount - Number of rows returned by the current query.
  * @returns {{limit: number, skip: number}|null} Next-page pagination, or null.
  */
-export function nextPageParams(filters, opts, resultCount) {
+export function nextPageParams(entity, filters, opts, resultCount) {
+    const hasExpansion = entity.relationships && entity.relationships.length > 0;
     let effectiveLimit = 0;
     if (opts.limit > 0) {
         effectiveLimit = opts.limit;
-    } else if (opts.depth > 0) {
+    } else if (opts.depth > 0 && hasExpansion) {
         effectiveLimit = 250;
     }
     if (effectiveLimit === 0) return null;

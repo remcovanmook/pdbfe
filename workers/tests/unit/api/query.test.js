@@ -43,6 +43,19 @@ const NET_ENTITY = {
     relationships: []
 };
 
+/**
+ * Mock entity with child-set relationships for testing the depth>0 limit cap.
+ * The cap only applies to entities with relationships (N+1 expansion risk).
+ * @type {EntityMeta}
+ */
+const NET_WITH_RELS_ENTITY = {
+    ...NET_ENTITY,
+    relationships: [
+        { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id" },
+        { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" }
+    ]
+};
+
 /** @type {EntityMeta} */
 const NETIXLAN_ENTITY = {
     tag: "netixlan",
@@ -164,16 +177,28 @@ describe("buildRowQuery", () => {
         assert.ok(result.params.includes(20));
     });
 
-    it("should cap limit at 250 when depth > 0", () => {
-        const result = buildRowQuery(NET_ENTITY, [], { depth: 1, limit: 500, skip: 0, since: 0 });
+    it("should cap limit at 250 when depth > 0 for entities with relationships", () => {
+        const result = buildRowQuery(NET_WITH_RELS_ENTITY, [], { depth: 1, limit: 500, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIMIT ?"));
         assert.ok(result.params.includes(250));
     });
 
-    it("should default limit to 250 when depth > 0 and no limit specified", () => {
-        const result = buildRowQuery(NET_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
+    it("should default limit to 250 when depth > 0 and no limit specified for entities with relationships", () => {
+        const result = buildRowQuery(NET_WITH_RELS_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes("LIMIT ?"));
         assert.ok(result.params.includes(250));
+    });
+
+    it("should NOT cap limit for leaf entities (no relationships) at depth > 0", () => {
+        const result = buildRowQuery(NETIXLAN_ENTITY, [], { depth: 1, limit: 5000, skip: 0, since: 0 });
+        assert.ok(result.sql.includes("LIMIT ?"));
+        assert.ok(result.params.includes(5000), 'leaf entity should pass through the requested limit');
+    });
+
+    it("should not inject a default limit for leaf entities at depth > 0", () => {
+        const result = buildRowQuery(NETIXLAN_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
+        // No LIMIT clause at all — unlimited result set
+        assert.ok(!result.sql.includes("LIMIT"), 'leaf entity with limit=0 at depth>0 should have no LIMIT clause');
     });
 
     it("should combine explicit status filter with other filters", () => {
@@ -213,28 +238,33 @@ describe("buildRowQuery", () => {
 
 describe("nextPageParams", () => {
     it("should return null when no limit is set", () => {
-        const result = nextPageParams([], { depth: 0, limit: 0, skip: 0, since: 0 }, 100);
+        const result = nextPageParams(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 }, 100);
         assert.equal(result, null);
     });
 
     it("should return null when result count is less than limit (last page)", () => {
-        const result = nextPageParams([], { depth: 0, limit: 50, skip: 0, since: 0 }, 30);
+        const result = nextPageParams(NET_ENTITY, [], { depth: 0, limit: 50, skip: 0, since: 0 }, 30);
         assert.equal(result, null);
     });
 
     it("should return next page params when result fills the limit", () => {
-        const result = nextPageParams([], { depth: 0, limit: 50, skip: 0, since: 0 }, 50);
+        const result = nextPageParams(NET_ENTITY, [], { depth: 0, limit: 50, skip: 0, since: 0 }, 50);
         assert.deepEqual(result, { limit: 50, skip: 50 });
     });
 
     it("should accumulate skip for subsequent pages", () => {
-        const result = nextPageParams([], { depth: 0, limit: 50, skip: 100, since: 0 }, 50);
+        const result = nextPageParams(NET_ENTITY, [], { depth: 0, limit: 50, skip: 100, since: 0 }, 50);
         assert.deepEqual(result, { limit: 50, skip: 150 });
     });
 
-    it("should use 250 as effective limit when depth > 0 and no explicit limit", () => {
-        const result = nextPageParams([], { depth: 1, limit: 0, skip: 0, since: 0 }, 250);
+    it("should use 250 as effective limit when depth > 0 and entity has relationships", () => {
+        const result = nextPageParams(NET_WITH_RELS_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 }, 250);
         assert.deepEqual(result, { limit: 250, skip: 250 });
+    });
+
+    it("should return null for leaf entities at depth > 0 with no explicit limit", () => {
+        const result = nextPageParams(NETIXLAN_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 }, 250);
+        assert.equal(result, null, 'leaf entity with no explicit limit should not assume 250-row pages');
     });
 });
 
