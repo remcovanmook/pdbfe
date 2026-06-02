@@ -912,6 +912,7 @@ type Exchange {
   status_dashboard: String
   org_id: Int!
   org: Organization
+  ixf_ixp_member_list_url: String
   net_count: Int!
   fac_count: Int!
   ixf_import_request: String!
@@ -1560,7 +1561,7 @@ type NetworkFacility {
   name: String!
   city: String!
   country: String!
-  local_asn: String!
+  local_asn: Int!
 }
 
 input NetworkFacilityWhere {
@@ -1635,7 +1636,7 @@ type NetworkExchangeLan {
   net_side: Facility
   ix_side_id: Int
   ix_side: Facility
-  ix_id: String!
+  ix_id: Int!
   name: String!
 }
 
