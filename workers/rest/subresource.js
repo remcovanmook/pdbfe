@@ -214,9 +214,14 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
         { field: def.fkField, op: 'eq', value: String(parentId) },
         ...extraFilters, // ap-ok: sub-resource cold path, filter merge
     ];
+    // Leaf entities (no child-set relationships) don't need the 250-row
+    // safety cap because the reverse edge query is a flat SELECT with
+    // no N+1 expansion. Allow larger results for entities like netixlan.
+    const hasExpansion = targetEntity.relationships && targetEntity.relationships.length > 0;
+    const maxLimit = hasExpansion ? 250 : 5000;
     const opts = {
         depth: 0,
-        limit: limit > 0 ? Math.min(limit, 250) : 250,
+        limit: limit > 0 ? Math.min(limit, maxLimit) : maxLimit,
         skip: Math.max(skip, 0),
         since: 0,
         sort: '',

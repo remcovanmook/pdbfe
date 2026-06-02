@@ -44,7 +44,7 @@ export async function handleList(hc) {
     const cache = getEntityCache(entityTag);
     const rowCount = countRows(new TextDecoder().decode(effectiveBuf));
     if (rowCount > 0) {
-        const nextPage = nextPageParams(filters, opts, rowCount);
+        const nextPage = nextPageParams(entity, filters, opts, rowCount);
         if (nextPage) {
             const nextOpts = { ...opts, limit: nextPage.limit, skip: nextPage.skip };
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
