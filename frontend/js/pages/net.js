@@ -160,8 +160,7 @@ function buildTables(net) {
             columns: [
                 { key: 'name',    label: t('Exchange') },
                 { key: 'speed',   label: t('Speed'), class: 'td-right', width: '90px' },
-                { key: 'ipaddr4', label: t('IPv4'), class: 'td-mono', width: '140px' },
-                { key: 'ipaddr6', label: t('IPv6'), class: 'td-mono', width: '240px' },
+                { key: 'ip',      label: t('IP Address'), class: 'td-mono' },
                 { key: 'is_rs_peer', label: t('RS'), width: '70px' },
             ],
             rows: net.netixlan_set,
@@ -171,10 +170,24 @@ function buildTables(net) {
                         return createLink('ix', row.ix_id, row.name || `IX ${row.ix_id}`);
                     case 'speed':
                         return { node: document.createTextNode(formatSpeed(row.speed)), sortValue: row.speed || 0 };
-                    case 'ipaddr4':
-                        return document.createTextNode(row.ipaddr4 || '—');
-                    case 'ipaddr6':
-                        return document.createTextNode(row.ipaddr6 || '—');
+                    case 'ip': {
+                        const wrap = document.createElement('span');
+                        wrap.className = 'ip-stack';
+                        if (row.ipaddr4) {
+                            const v4 = document.createElement('span');
+                            v4.textContent = row.ipaddr4;
+                            wrap.appendChild(v4);
+                        }
+                        if (row.ipaddr6) {
+                            const v6 = document.createElement('span');
+                            v6.textContent = row.ipaddr6;
+                            wrap.appendChild(v6);
+                        }
+                        if (!row.ipaddr4 && !row.ipaddr6) {
+                            wrap.textContent = '—';
+                        }
+                        return wrap;
+                    }
                     case 'is_rs_peer':
                         return createBool(row.is_rs_peer);
                     default:
