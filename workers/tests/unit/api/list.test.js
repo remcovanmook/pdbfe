@@ -69,7 +69,7 @@ function makeHC(overrides = {}) {
         queryString: '',
         authenticated: false,
         entityVersionMs: 0,
-        userId: 0,
+        userId: null,
         ...overrides,
     });
 }

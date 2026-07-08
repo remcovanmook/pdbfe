@@ -11,6 +11,8 @@
 
 import { LRUCache } from '../core/cache.js';
 import { withSWR } from '../core/pipeline/index.js';
+import { createSyncState } from '../core/sync_state.js';
+import { ENTITY_TAGS } from '../api/entities.js';
 
 /**
  * Cache TTL for REST responses (60 minutes).
@@ -58,6 +60,26 @@ export function purgeRestCache() {
     restCache.purge();
 }
 
+// ── Sync-state (background L1 invalidation + L2 version tagging) ──────────────
+
+/**
+ * REST binding of the generic sync-state tracker. The REST worker uses a
+ * single shared LRU (not per-entity caches), so on-change invalidation is
+ * coarse: any entity change purges the whole cache. At most one purge per
+ * ingest cadence (~15 min); SWR refills. getEntityVersion() feeds the L2
+ * version-tagged keys so per-PoP L2 entries orphan on data change.
+ *
+ * The REST worker does not serve the sync /status endpoint (its /status
+ * comes from core/admin.js), so no statusHeaders are injected.
+ */
+const _sync = createSyncState({
+    entityTags: ENTITY_TAGS,
+    onEntityChange: () => restCache.purge(),
+});
+
+export const ensureSyncFreshness = _sync.ensureSyncFreshness;
+export const getEntityVersion = _sync.getEntityVersion;
+
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 
 /**
@@ -84,6 +106,6 @@ export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
         negativeTtlMs: REST_NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-
+        getVersion: getEntityVersion,
     });
 }

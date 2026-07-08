@@ -28,7 +28,7 @@ import { H_API_AUTH, H_API_ANON } from '../api/http.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
-import { getRestCacheStats, purgeRestCache } from './cache.js';
+import { getRestCacheStats, purgeRestCache, ensureSyncFreshness } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';
 import { handleDetail } from './handlers/detail.js';
 import { handleListRequest } from './handlers/list.js';
@@ -95,9 +95,14 @@ async function handleRequest(request, env, ctx) {
 
     const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
     const callerKey = identity || clientIP;
-    if (isRateLimited(callerKey, authenticated, Date.now())) {
+    const now = Date.now();
+    if (isRateLimited(callerKey, authenticated, now)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
+
+    // Gate the background _sync_meta poll to entity routes (admin/static
+    // already returned above). O(1) unless the 15s interval has elapsed.
+    ensureSyncFreshness(db, ctx, now);
 
     return routeApiRequest(request, { db, ctx, rawPath, queryString, authenticated });
 }
