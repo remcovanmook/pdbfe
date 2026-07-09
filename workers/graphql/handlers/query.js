@@ -17,6 +17,7 @@ import { typeDefs } from '../../../extracted/graphql-typedefs.js';
 import { resolvers } from '../../../extracted/graphql-resolvers.js';
 import { encoder } from '../../core/http.js';
 import { graphqlCacheKey, withGqlSWR } from '../cache.js';
+import { complexityPlugin } from '../security.js';
 
 /**
  * Lazily initialised graphql-yoga instance.
@@ -40,6 +41,9 @@ function getYoga() {
             graphiql: false,
             landingPage: false,
             graphqlEndpoint: '*',
+            // Bound query depth + field count so an anonymous caller can't
+            // fan out expensive FK-traversal resolvers (see security.js).
+            plugins: [complexityPlugin],
         });
     }
     return _yoga;
