@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams } from '../../../api/query.js';
+import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams, MAX_PAGE_LIMIT } from '../../../api/query.js';
 import { validateQuery, MAX_IN_VALUES, ENTITIES, resolveImplicitFilters } from '../../../api/entities.js';
 import { parseQueryFilters } from '../../../api/utils.js';
 
@@ -111,7 +111,7 @@ describe("buildRowQuery", () => {
         assert.ok(result.sql.includes('SELECT "id", "name", "asn", "org_id", "status", "updated"'));
         assert.ok(result.sql.includes('WHERE "status" = ?'));
         assert.ok(result.sql.includes('ORDER BY "id" ASC'));
-        assert.deepEqual(result.params, ["ok"]);
+        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
     });
 
     it("should apply equality filter alongside default status", () => {
@@ -119,7 +119,7 @@ describe("buildRowQuery", () => {
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
         assert.ok(result.sql.includes('"status" = ?'));
-        assert.deepEqual(result.params, ["ok", 13335]);
+        assert.deepEqual(result.params, ["ok", 13335, MAX_PAGE_LIMIT]);
     });
 
     it("should not inject default status when explicit status filter is provided", () => {
@@ -129,7 +129,7 @@ describe("buildRowQuery", () => {
         const whereClause = result.sql.slice(result.sql.indexOf('WHERE'));
         const statusMatches = whereClause.match(/"status" = \?/g);
         assert.equal(statusMatches?.length, 1);
-        assert.deepEqual(result.params, ["deleted"]);
+        assert.deepEqual(result.params, ["deleted", MAX_PAGE_LIMIT]);
     });
 
     it("should apply numeric comparison filters", () => {
@@ -171,14 +171,14 @@ describe("buildRowQuery", () => {
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Still has the default status filter
         assert.ok(result.sql.includes('"status" = ?'));
-        assert.deepEqual(result.params, ["ok"]);
+        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
     });
 
     it("should ignore unknown operators", () => {
         const filters = [{ field: "name", op: "regex", value: ".*" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Only the default status filter
-        assert.deepEqual(result.params, ["ok"]);
+        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
     });
 
     it("should handle single ID fetch", () => {
@@ -219,10 +219,11 @@ describe("buildRowQuery", () => {
         assert.ok(result.params.includes(5000), 'leaf entity should pass through the requested limit');
     });
 
-    it("should not inject a default limit for leaf entities at depth > 0", () => {
+    it("caps leaf entities at depth > 0 to MAX_PAGE_LIMIT (never unbounded)", () => {
         const result = buildRowQuery(NETIXLAN_ENTITY, [], { depth: 1, limit: 0, skip: 0, since: 0 });
-        // No LIMIT clause at all — unlimited result set
-        assert.ok(!result.sql.includes("LIMIT"), 'leaf entity with limit=0 at depth>0 should have no LIMIT clause');
+        // Leaf entities have no N+1 expansion but must still be bounded.
+        assert.ok(result.sql.includes("LIMIT ?"), 'leaf entity with limit=0 must be capped, not unbounded');
+        assert.ok(result.params.includes(MAX_PAGE_LIMIT));
     });
 
     it("should combine explicit status filter with other filters", () => {
@@ -232,7 +233,7 @@ describe("buildRowQuery", () => {
         ];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"status" = ? COLLATE NOCASE AND "asn" > ?'));
-        assert.deepEqual(result.params, ["ok", 1000]);
+        assert.deepEqual(result.params, ["ok", 1000, MAX_PAGE_LIMIT]);
     });
 
     it("should coerce boolean filter values", () => {
@@ -248,9 +249,10 @@ describe("buildRowQuery", () => {
         assert.ok(result.params.includes(1));
     });
 
-    it("should handle skip without limit using LIMIT -1", () => {
+    it("caps skip-without-limit to MAX_PAGE_LIMIT (never unbounded LIMIT -1)", () => {
         const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 50, since: 0 });
-        assert.ok(result.sql.includes("LIMIT -1 OFFSET ?"));
+        assert.ok(result.sql.includes("LIMIT ? OFFSET ?"));
+        assert.ok(result.params.includes(MAX_PAGE_LIMIT));
         assert.ok(result.params.includes(50));
     });
 
