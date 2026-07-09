@@ -74,18 +74,22 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # Create an annotated git tag for this release version.
-      # Skips gracefully if the tag already exists (e.g. a re-deploy of the
-      # same version after a deploy-script-only fix).
+      # Skips gracefully if the tag already exists (e.g. a ci:/docs: merge
+      # that legitimately did not bump VERSION, or a re-deploy of the same
+      # version). The check queries the REMOTE — the checkout is shallow and
+      # has no local tags, so `git tag` alone always "succeeds" locally and
+      # the subsequent push is what the remote rejects.
       - name: Tag release
         run: |
           VERSION="$(cat VERSION | tr -d '[:space:]')"
           TAG="v${VERSION}"
-          echo "Tagging release: ${TAG}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git tag -a "${TAG}" -m "Release ${TAG}" 2>/dev/null; then
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on remote — skipping."
+          else
+            echo "Tagging release: ${TAG}"
+            git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "${TAG}"
             echo "Tag ${TAG} created and pushed."
-          else
-            echo "Tag ${TAG} already exists — skipping."
           fi
