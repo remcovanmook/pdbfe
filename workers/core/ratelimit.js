@@ -32,6 +32,10 @@ import { LRUCache } from './cache.js';
  * @returns {string} Normalised rate limit key (IPv4 as-is, IPv6 /64 prefix).
  */
 export function normaliseIP(ip) {
+    // Guard a missing/empty IP so the exported helper can't throw on
+    // `.includes` (cf-connecting-ip is absent for internal / service-binding /
+    // test requests).
+    if (!ip) return 'unknown';
     if (!ip.includes(':')) return ip;
 
     // Split on :: to handle compressed notation.
