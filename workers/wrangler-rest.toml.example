@@ -33,19 +33,18 @@ database_id = "<your-users-d1-database-id>"
 [vars]
 PDBFE_VERSION = "<your-version>"
 
-# Workers Cache. Default OFF so the first deploy ships the header split
-# (anon=public / auth=private) with caching inert, per the rollout plan.
-# Flip on per-env once verified.
+# Workers Cache — ON. deploy.sh runs `wrangler deploy` without --env, so only
+# this top-level [cache] block is ever applied; there is no separate production
+# environment to flip. The header split gates what is edge-cacheable:
+# anon responses are `public` (edge-stored), authenticated responses are
+# `private` (edge BYPASS).
 #
-# cross_version_cache is deliberately NOT set (defaults to false): the
-# Worker version stays part of the cache key, so each deploy starts from a
-# cold *edge* cache and never serves a prior version's responses. This keeps
-# gradual deployments safe (old/new versions have isolated caches) and avoids
-# pinning immutable/openapi.json responses across schema changes. Cost is
-# minimal — the L1 (60min) and L2 per-PoP tiers are not version-keyed and
-# stay warm, so a cold edge cache after deploy falls to a warm L1/L2, not D1.
+# cross_version_cache is deliberately NOT set (defaults to false): the Worker
+# version stays part of the cache key, so each deploy starts from a cold *edge*
+# cache and never serves a prior version's responses. This keeps gradual
+# deployments safe (old/new versions have isolated caches) and avoids pinning
+# immutable/openapi.json responses across schema changes. Cost is minimal — the
+# L1 (60min) and L2 per-PoP tiers are not version-keyed and stay warm, so a cold
+# edge cache after deploy falls to a warm L1/L2, not D1.
 [cache]
-enabled = false
-
-[env.production.cache]
 enabled = true
