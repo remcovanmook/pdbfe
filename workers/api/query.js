@@ -260,6 +260,35 @@ function buildJoinFragments(joinDefs) {
  * When the entity has joinColumns, the query uses table aliasing and
  * LEFT JOINs to resolve cross-entity names (e.g. network name on netixlan).
  *
+/**
+ * Resolves the column projection for a query.
+ *
+ * The authorised column set is `getColumns(entity, opts.pdbfe)` — the public
+ * columns, plus the pdbfe-extension columns (notes_private, __ fields) only
+ * when `__pdbfe=1`. An explicit `?fields=` list is intersected with that set,
+ * so `fields=` can never widen the projection past the gate (e.g. it cannot
+ * select notes_private without __pdbfe). If the caller requests only
+ * unauthorised fields, we fall back to the public projection rather than
+ * emitting an empty SELECT.
+ *
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {QueryOpts} opts - Query options (fields, pdbfe).
+ * @returns {string[]} Column names to select.
+ */
+function resolveColumns(entity, opts) {
+    const allowed = getColumns(entity, opts.pdbfe);
+    if (!opts.fields || opts.fields.length === 0) return allowed;
+    // Only runs when ?fields= is supplied (uncommon). Plain loop, not .filter,
+    // to stay off the hot-path allocation list (ANTI_PATTERNS §3).
+    /** @type {string[]} */
+    const filtered = [];
+    for (const fld of opts.fields) {
+        if (allowed.includes(fld)) filtered.push(fld);
+    }
+    return filtered.length > 0 ? filtered : allowed;
+}
+
+/**
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {QueryOpts} opts - Pagination.
@@ -267,7 +296,7 @@ function buildJoinFragments(joinDefs) {
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null) {
-    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity, opts.pdbfe);
+    const columns = resolveColumns(entity, opts);
     const jsonCols = getJsonColumns(entity);
     const boolCols = getBoolColumns(entity);
     const nullableCols = getNullableColumns(entity);
@@ -339,7 +368,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
  * @returns {BuiltQuery} Parameterised SQL and bind values.
  */
 export function buildRowQuery(entity, filters, opts, singleId = null) {
-    const columns = opts.fields && opts.fields.length > 0 ? opts.fields : getColumns(entity, opts.pdbfe);
+    const columns = resolveColumns(entity, opts);
     const hasJoins = entity.joinColumns && entity.joinColumns.length > 0;
     const tableAlias = hasJoins ? 't' : '';
     const { clauses, params, pagination, orderBy } = buildWherePagination(
@@ -410,8 +439,27 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         params.push('ok');
     }
 
+    // Restricted-entity visibility (e.g. poc). Anonymous callers may only ever
+    // see the allowed value (visible=Public). Enforced HERE — the single WHERE
+    // builder every query path goes through — so no handler can leak a
+    // restricted row by omitting the filter (detail/subresource-source bugs) or
+    // by passing ?visible=. A caller-supplied filter on the visibility field is
+    // ignored for anon (they cannot choose visibility). af.field/af.value come
+    // from the entity registry (fixed identifiers), not user input.
+    const anonFilter = (entity._restricted && entity._anonFilter && opts.authenticated !== true)
+        ? entity._anonFilter
+        : null;
+    if (anonFilter) {
+        clauses.push(`${pfx}"${anonFilter.field}" = ?`);
+        params.push(anonFilter.value);
+    }
+
     // Apply user-provided filters, validating against the entity's field definitions
     for (const f of filters) {
+
+        // Anonymous callers cannot filter a restricted entity's visibility
+        // field — it is force-pinned to the allowed value above.
+        if (anonFilter && f.field === anonFilter.field && !f.entity) continue;
 
         // Cross-entity filter: generate a subquery against the related table.
         // e.g. fac__state=NSW on ixfac → ixfac.fac_id IN (SELECT id FROM fac WHERE state = ?)

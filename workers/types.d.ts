@@ -648,6 +648,13 @@ interface QueryOpts {
     fields?: string[];
     /** When true, include pdbfe-local extension columns (e.g. __logo_migrated). */
     pdbfe?: boolean;
+    /**
+     * Whether the caller is authenticated. Threaded into the query builder so
+     * buildWherePagination can enforce restricted-entity visibility (e.g. an
+     * anonymous poc query is pinned to visible=Public). Absent/false is treated
+     * as unauthenticated (the safe default).
+     */
+    authenticated?: boolean;
 }
 
 /**

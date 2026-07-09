@@ -152,10 +152,10 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
     }
 
     if (def.direction === 'forward') {
-        return handleForwardFK(rc.db, sourceTag, sourceId, def, hResponse);
+        return handleForwardFK(rc.db, sourceTag, sourceId, def, hResponse, authenticated);
     }
 
-    return handleReverseEdge(rc.db, def, sourceId, filters, limit, skip, hResponse);
+    return handleReverseEdge(rc.db, def, sourceId, filters, hResponse, { limit, skip, authenticated });
 }
 
 /**
@@ -169,14 +169,18 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
  * @param {number} sourceId - Source entity ID.
  * @param {SubResourceDef} def - Relationship definition.
  * @param {Record<string, string>} hResponse - Response headers.
+ * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<Response>} JSON response with the parent entity.
  */
-async function handleForwardFK(db, sourceTag, sourceId, def, hResponse) {
+async function handleForwardFK(db, sourceTag, sourceId, def, hResponse, authenticated) {
     const sourceEntity = ENTITIES[sourceTag];
 
-    // Get the FK value from the source entity
+    // Get the FK value from the source entity. `authenticated` is threaded so
+    // buildRowQuery enforces the source's visibility gate — an anonymous caller
+    // must not read a restricted source (e.g. a non-Public poc) just to
+    // traverse to its parent.
     const srcFilters = [{ field: 'id', op: 'eq', value: String(sourceId) }];
-    const srcOpts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '', fields: [def.fkField] };
+    const srcOpts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '', fields: [def.fkField], authenticated };
     const { sql: srcSql, params: srcParams } = buildRowQuery(sourceEntity, srcFilters, srcOpts);
     const srcResult = await db.prepare(srcSql).bind(...srcParams).first();
 
@@ -188,7 +192,7 @@ async function handleForwardFK(db, sourceTag, sourceId, def, hResponse) {
     // Fetch the target entity
     const targetEntity = ENTITIES[def.targetTag];
     const tgtFilters = [{ field: 'id', op: 'eq', value: String(fkValue) }];
-    const tgtOpts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };
+    const tgtOpts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '', authenticated };
     const { sql: tgtSql, params: tgtParams } = buildRowQuery(targetEntity, tgtFilters, tgtOpts);
     const tgtResult = await db.prepare(tgtSql).bind(...tgtParams).all();
 
@@ -203,12 +207,11 @@ async function handleForwardFK(db, sourceTag, sourceId, def, hResponse) {
  * @param {SubResourceDef} def - Relationship definition.
  * @param {number} parentId - Parent entity ID.
  * @param {ParsedFilter[]} extraFilters - Additional filters from query string.
- * @param {number} limit - Maximum results.
- * @param {number} skip - Number of results to skip.
  * @param {Record<string, string>} hResponse - Response headers.
+ * @param {{limit: number, skip: number, authenticated: boolean}} paging - Pagination + auth state.
  * @returns {Promise<Response>} JSON response with child entities.
  */
-async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, hResponse) {
+async function handleReverseEdge(db, def, parentId, extraFilters, hResponse, { limit, skip, authenticated }) {
     const targetEntity = ENTITIES[def.targetTag];
     const filters = [
         { field: def.fkField, op: 'eq', value: String(parentId) },
@@ -225,6 +228,7 @@ async function handleReverseEdge(db, def, parentId, extraFilters, limit, skip, h
         skip: Math.max(skip, 0),
         since: 0,
         sort: '',
+        authenticated,
     };
 
     const { sql, params } = buildRowQuery(targetEntity, filters, opts);
