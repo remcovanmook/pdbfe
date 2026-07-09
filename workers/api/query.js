@@ -17,6 +17,23 @@
 import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmitEmptyColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 
 /**
+ * Row-count ceilings applied by buildWherePagination.
+ *
+ * DEPTH_EXPANSION_CAP — depth>0 queries with child-set relationships. This is
+ *   a real compute bound (expandDepth runs N+1 child queries per parent), kept
+ *   tight.
+ * MAX_PAGE_LIMIT — every other query (flat / depth=0 / leaf). This is a
+ *   *runaway backstop*, not a page size: PeeringDB queries legitimately return
+ *   whole tables and the entire dataset is ~60MB (largest table ~65k rows), so
+ *   a full-table json_group_array is only tens of MB — safe in the isolate.
+ *   The value is set ~15x above the largest table so it never clips a real
+ *   query; its only job is to stop a literally-unbounded (LIMIT -1) scan. If a
+ *   table ever approaches this, switch that path to streaming/pagination.
+ */
+const DEPTH_EXPANSION_CAP = 250;
+export const MAX_PAGE_LIMIT = 1_000_000;
+
+/**
  * Suffix operators that can appear after `__` in PeeringDB query parameters.
  * Derived from OPS keys, excluding `eq` which is the implicit default
  * (no suffix). Used by parseQueryFilters() to recognise operator suffixes.
@@ -536,8 +553,13 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
     // SELECT query and doesn't need row-count protection.
     let effectiveLimit = Math.max(limit, 0);
     const hasExpansion = entity.relationships && entity.relationships.length > 0;
-    if (opts.depth > 0 && hasExpansion && (effectiveLimit === 0 || effectiveLimit > 250)) {
-        effectiveLimit = 250;
+    if (opts.depth > 0 && hasExpansion) {
+        // N+1 expansion risk — tight cap.
+        if (effectiveLimit === 0 || effectiveLimit > DEPTH_EXPANSION_CAP) effectiveLimit = DEPTH_EXPANSION_CAP;
+    } else if (effectiveLimit === 0 || effectiveLimit > MAX_PAGE_LIMIT) {
+        // Flat / depth=0 / leaf query: never unbounded. `limit=0` (unset) and
+        // any oversized explicit limit clamp to MAX_PAGE_LIMIT.
+        effectiveLimit = MAX_PAGE_LIMIT;
     }
 
     const pagination = buildPagination(effectiveLimit, skip, params);
