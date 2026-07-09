@@ -156,14 +156,197 @@ def generate_migration(old_sql, new_sql, schema_version):
     return "\n".join(header + stmts) + "\n", "; ".join(descriptions)
 
 
+# ── Migration coverage check ─────────────────────────────────────────────────
+
+# Matches: ALTER TABLE "table" ADD COLUMN "col" ...
+ADD_COLUMN_RE = re.compile(
+    r'ALTER\s+TABLE\s+"([^"]+)"\s+ADD\s+COLUMN\s+"([^"]+)"',
+    re.IGNORECASE,
+)
+
+# Matches: CREATE TABLE ["IF NOT EXISTS"] "table"  (looser than TABLE_RE,
+# which requires IF NOT EXISTS — hand-written migrations may omit it).
+MIGRATION_CREATE_RE = re.compile(
+    r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"([^"]+)"',
+    re.IGNORECASE,
+)
+
+
+def parse_migration_additions(migration_texts):
+    """
+    Parse migration SQL for the schema additions they perform.
+
+    Args:
+        migration_texts: Iterable of migration file contents (SQL strings).
+
+    Returns:
+        Tuple of (created_tables: set[str], added_columns: set[(table, col)]).
+    """
+    created_tables = set()
+    added_columns = set()
+    for sql in migration_texts:
+        for m in MIGRATION_CREATE_RE.finditer(sql):
+            created_tables.add(m.group(1))
+        for m in ADD_COLUMN_RE.finditer(sql):
+            added_columns.add((m.group(1), m.group(2)))
+    return created_tables, added_columns
+
+
+def required_additions(old_sql, new_sql):
+    """
+    Compute the tables and columns present in new_sql but not old_sql.
+
+    Args:
+        old_sql: Baseline schema.sql content.
+        new_sql: Current schema.sql content.
+
+    Returns:
+        Tuple of (new_tables: set[str], new_columns: set[(table, col)]).
+    """
+    old_cols, _, _ = parse_schema(old_sql)
+    new_cols, _, _ = parse_schema(new_sql)
+
+    new_tables = set(new_cols) - set(old_cols)
+    new_columns = set()
+    for table, cols in new_cols.items():
+        if table in old_cols:
+            for col in cols:
+                if col not in old_cols[table]:
+                    new_columns.add((table, col))
+    return new_tables, new_columns
+
+
+def uncovered_additions(old_sql, new_sql, migration_texts):
+    """
+    Return the schema additions (new_sql vs old_sql) that are NOT covered
+    by any migration in migration_texts. These are the additions that would
+    500 an existing database ("no such column") on deploy.
+
+    A new table is covered if a migration creates it (its columns then live
+    in that CREATE and need no separate ADD COLUMN).
+
+    Args:
+        old_sql: Baseline schema.sql content.
+        new_sql: Current schema.sql content.
+        migration_texts: Iterable of migration file contents.
+
+    Returns:
+        Tuple of (missing_tables: set[str], missing_columns: set[(table, col)]).
+    """
+    new_tables, new_columns = required_additions(old_sql, new_sql)
+    created_tables, added_columns = parse_migration_additions(migration_texts)
+
+    missing_tables = new_tables - created_tables
+    missing_columns = {
+        (t, c) for (t, c) in new_columns
+        if t not in created_tables and (t, c) not in added_columns
+    }
+    return missing_tables, missing_columns
+
+
+def _flag_value(argv, name):
+    """Return the value following ``name`` in argv, or None."""
+    if name in argv:
+        i = argv.index(name)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return None
+
+
+# A git ref/sha only ever contains this charset. Validating before it reaches
+# subprocess keeps an untrusted --base value from being treated as anything
+# other than a single ref argument (defence in depth; calls use list form, not
+# a shell).
+_SAFE_REF_RE = re.compile(r'^[A-Za-z0-9_./+~^-]+$')
+
+
+def _resolve_base_schema(base_ref, project_root):
+    """
+    Return extracted/schema.sql content at base_ref, or None if unavailable.
+
+    If base_ref resolves to the same commit as HEAD (e.g. a push to the base
+    branch, where origin/main == HEAD), fall back to HEAD~1 so the diff still
+    reflects the change this commit introduced.
+    """
+    if not _SAFE_REF_RE.match(base_ref):
+        raise ValueError(f"unsafe git ref for --base: {base_ref!r}")
+
+    def rev(ref):
+        r = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", ref],
+            capture_output=True, text=True, cwd=project_root,
+        )
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    head = rev("HEAD")
+    base = rev(base_ref)
+    ref = "HEAD~1" if (base is None or base == head) else base_ref
+
+    r = subprocess.run(
+        ["git", "show", f"{ref}:extracted/schema.sql"],
+        capture_output=True, text=True, cwd=project_root,
+    )
+    return r.stdout if r.returncode == 0 else None
+
+
+def run_check(project_root, base_ref):
+    """
+    CI gate: fail if the current extracted/schema.sql adds columns/tables
+    (relative to base_ref) that no migration in database/migrations/ covers.
+
+    Returns a process exit code (0 = ok/skipped, 1 = uncovered additions).
+    """
+    schema_path = project_root / "extracted" / "schema.sql"
+    migrations_dir = project_root / "database" / "migrations"
+
+    if not schema_path.exists():
+        print("Schema drift check: no extracted/schema.sql; skipping.")
+        return 0
+
+    old_sql = _resolve_base_schema(base_ref, project_root)
+    if old_sql is None:
+        print(f"Schema drift check: no base schema.sql at '{base_ref}'; skipping.")
+        return 0
+
+    new_sql = schema_path.read_text()
+    migration_texts = [p.read_text() for p in sorted(migrations_dir.glob("*.sql"))]
+
+    missing_tables, missing_cols = uncovered_additions(old_sql, new_sql, migration_texts)
+
+    if not missing_tables and not missing_cols:
+        print("Schema drift check: OK — all schema additions are covered by migrations.")
+        return 0
+
+    print("::error::extracted/schema.sql adds columns/tables with no matching "
+          "migration in database/migrations/. Existing databases would 500 "
+          "(\"no such column\") on deploy. Missing:")
+    for t in sorted(missing_tables):
+        print(f"  - new table: {t}")
+    for t, c in sorted(missing_cols):
+        print(f"  - column: {t}.{c}")
+    print("\nGenerate the migration with:  .venv/bin/python scripts/diff_schema.py")
+    print("Review it in database/migrations/, commit it in this PR, and it will "
+          "be applied on the next deploy (--apply-migrations).")
+    return 1
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     """
     Compare current schema.sql against git HEAD and generate a migration
     file if there are differences.
+
+    With --check, instead runs the CI gate: fails (exit 1) if schema.sql
+    adds columns/tables not covered by a migration, comparing against the
+    ref given by --base (default origin/main).
     """
     project_root = Path(__file__).parent.parent
+
+    if "--check" in sys.argv:
+        base_ref = _flag_value(sys.argv, "--base") or "origin/main"
+        sys.exit(run_check(project_root, base_ref))
+
     schema_path = project_root / "extracted" / "schema.sql"
     entities_path = project_root / "extracted" / "entities.json"
     migrations_dir = project_root / "database" / "migrations"
