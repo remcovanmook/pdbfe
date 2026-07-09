@@ -144,6 +144,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the migration-coverage check can diff
+          # extracted/schema.sql against origin/main (and HEAD~1).
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -177,6 +181,15 @@ jobs:
             echo "::error::Generated files are stale. Run: .venv/bin/python scripts/parse_django_models.py --force"
             exit 1
           fi
+
+      # A regenerated schema.sql that adds columns/tables must ship with a
+      # matching migration, or existing databases 500 ("no such column") on
+      # deploy — the D1 outage on the 2.80.1 refresh. Fails if any addition
+      # (vs origin/main) is not covered by a database/migrations/ file.
+      - name: Check schema changes ship with a migration
+        run: |
+          git fetch --no-tags origin main
+          python scripts/diff_schema.py --check --base origin/main
 
   # ── Version: enforce bump for functional PRs ──────────────────────
   #
