@@ -123,17 +123,32 @@ async function getNeighborVectorIds(db, tag, id) {
 /**
  * Computes the element-wise mean of a set of vectors.
  *
- * @param {VectorizeVector[]} vectors - Source vectors; must all have the same dimensionality.
- * @returns {number[] | null} Averaged vector, or null if input is empty.
+ * Malformed neighbours (missing `values`, or a length that differs from the
+ * first vector's) are skipped rather than averaged in — otherwise an
+ * out-of-bounds / undefined read produces NaN, which silently poisons the whole
+ * embedding and corrupts the search index. Returns null if nothing usable
+ * remains or the result is non-finite.
+ *
+ * @param {VectorizeVector[]} vectors - Source vectors; should share dimensionality.
+ * @returns {number[] | null} Averaged vector, or null if there is no usable input.
  */
-function averageVectors(vectors) {
+export function averageVectors(vectors) {
     if (!vectors.length) return null;
-    const dim = vectors[0].values.length;
+    const first = vectors[0].values;
+    if (!first?.length) return null;
+    const dim = first.length;
     const avg = new Float32Array(dim);
+    let count = 0;
     for (const v of vectors) {
+        if (v.values?.length !== dim) continue;
         for (let i = 0; i < dim; i++) avg[i] += v.values[i];
+        count++;
     }
-    for (let i = 0; i < dim; i++) avg[i] /= vectors.length;
+    if (count === 0) return null;
+    for (let i = 0; i < dim; i++) avg[i] /= count;
+    // Guard against a NaN element that slipped through (a non-finite input
+    // value) — a poisoned embedding is worse than no update.
+    if (!Number.isFinite(avg[0])) return null;
     return Array.from(avg);
 }
 
