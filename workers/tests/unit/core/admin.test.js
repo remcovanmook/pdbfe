@@ -159,8 +159,12 @@ describe('wrapHandler', () => {
         const req = mockRequest('GET');
         const resp = await wrapped.fetch(req, {}, { waitUntil: () => {} });
         assert.equal(resp.status, 500);
-        const body = JSON.parse(await resp.text());
+        const text = await resp.text();
+        const body = JSON.parse(text);
         assert.equal(body.error, 'Internal Server Error');
+        // The stack trace / error message must never be exposed to the caller.
+        assert.equal(body.stack, undefined, 'stack trace must not leak in the response body');
+        assert.ok(!text.includes('boom'), 'error message must not leak either');
     });
 
     it('sets default X-Auth-Status when handler omits it', async () => {

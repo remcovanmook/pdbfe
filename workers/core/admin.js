@@ -242,9 +242,11 @@ export function wrapHandler(handler, serviceName) {
             try {
                 response = await handler(request, env, ctx);
             } catch (err) {
+                // Log the stack server-side only — never in the response body,
+                // which would leak file paths / internals to the caller.
                 console.error(err.stack || err);
                 response = new Response(
-                    JSON.stringify({ error: "Internal Server Error", stack: err.stack }) + "\n",
+                    JSON.stringify({ error: "Internal Server Error" }) + "\n",
                     {
                         status: 500,
                         headers: {

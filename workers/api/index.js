@@ -245,7 +245,7 @@ async function handleRequest(request, env, ctx) {
     const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
 
-    const opts = { depth, limit, skip, since, sort, fields, pdbfe };
+    const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
 
     // ── Handler dispatch ─────────────────────────────────────────────
     // entityVersionMs and userId are threaded into the context so that

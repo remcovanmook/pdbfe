@@ -158,7 +158,7 @@ async function routeApiRequest(request, rc) {
     const queryError = validateQuery(entity, filters, sort);
     if (queryError) return jsonError(400, queryError);
 
-    const opts = { depth, limit, skip, since, sort, fields, pdbfe };
+    const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
     /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} */
     const qc = { db, ctx, entityTag, authenticated, hResponse, queryString };
 

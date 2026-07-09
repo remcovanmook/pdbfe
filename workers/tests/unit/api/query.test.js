@@ -77,6 +77,30 @@ const NETIXLAN_ENTITY = {
     relationships: []
 };
 
+/**
+ * Restricted entity (mirrors poc): anonymous callers may only see
+ * visible=Public, and notes_private is a pdbfe-extension (non-public) column.
+ * @type {EntityMeta}
+ */
+const POC_RESTRICTED = {
+    tag: "poc",
+    table: "peeringdb_network_contact",
+    fields: [
+        f("id", "number"),
+        f("net_id", "number"),
+        f("name", "string"),
+        f("email", "string"),
+        f("visible", "string"),
+        f("notes_private", "string"),
+        f("__logo_migrated", "boolean"),
+        f("__vector_embedded", "boolean"),
+        f("status", "string"),
+    ],
+    relationships: [],
+    _restricted: true,
+    _anonFilter: { field: "visible", value: "Public" },
+};
+
 // Because the default status=ok filter is now injected, tests that previously
 // expected no WHERE clause will see one. Tests that provide an explicit
 // status filter will not get the default injected.
@@ -756,5 +780,74 @@ describe("parseQueryFilters new operators", () => {
         const result = parseQueryFilters("name__isnil=true");
         assert.equal(result.filters[0].op, "isnil");
         assert.equal(result.filters[0].value, "true");
+    });
+});
+
+// ── Restricted-entity visibility (chokepoint enforcement) ─────────────────────
+
+describe("restricted-entity visibility enforcement", () => {
+    const anon = { depth: 0, limit: 0, skip: 0, since: 0, authenticated: false };
+    const auth = { depth: 0, limit: 0, skip: 0, since: 0, authenticated: true };
+
+    for (const build of [buildRowQuery, buildJsonQuery]) {
+        it(`${build.name}: anon poc query is pinned to visible=Public`, () => {
+            const { sql, params } = build(POC_RESTRICTED, [], anon);
+            assert.ok(sql.includes('"visible" = ?'), 'must constrain visibility');
+            assert.ok(params.includes('Public'), 'must bind the allowed value');
+        });
+
+        it(`${build.name}: anon cannot override visibility via a filter`, () => {
+            // A caller-supplied visible=Private must be ignored, not honoured.
+            const { params } = build(POC_RESTRICTED, [{ field: 'visible', op: 'eq', value: 'Private' }], anon);
+            assert.ok(params.includes('Public'), 'forced to Public');
+            assert.ok(!params.includes('Private'), 'user visibility filter dropped for anon');
+        });
+
+        it(`${build.name}: authenticated poc query has no visibility pin`, () => {
+            const { sql } = build(POC_RESTRICTED, [], auth);
+            assert.ok(!sql.includes('"visible" = ?'), 'authenticated sees all visibility levels');
+        });
+
+        it(`${build.name}: bypass is impossible even with empty filters (detail path)`, () => {
+            // Regression for the REST detail leak: the handler passing [] must
+            // still get the visibility constraint from the builder.
+            const { params } = build(POC_RESTRICTED, [], anon, 5);
+            assert.ok(params.includes('Public'), 'visibility enforced on single-id fetch');
+        });
+    }
+});
+
+// ── Field projection gate (?fields= respects __pdbfe) ─────────────────────────
+
+describe("field projection gate", () => {
+    const base = { depth: 0, limit: 0, skip: 0, since: 0 };
+
+    it("fields=notes_private is stripped without __pdbfe", () => {
+        const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', 'notes_private'], pdbfe: false });
+        assert.ok(!sql.includes('notes_private'), 'private column not selectable via fields=');
+        assert.ok(sql.includes('"id"'), 'public field still selected');
+    });
+
+    it("fields=notes_private is stripped EVEN with __pdbfe=1 (not on the extension allowlist)", () => {
+        const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', 'notes_private'], pdbfe: true });
+        assert.ok(!sql.includes('notes_private'), 'notes_private is emitted by no route');
+    });
+
+    it("__logo_migrated (allowlisted) is selectable with __pdbfe=1 but not without", () => {
+        const withPdbfe = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__logo_migrated'], pdbfe: true });
+        assert.ok(withPdbfe.sql.includes('__logo_migrated'), 'allowlisted extension column selectable under __pdbfe');
+        const without = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__logo_migrated'], pdbfe: false });
+        assert.ok(!without.sql.includes('__logo_migrated'), 'extension column excluded by default');
+    });
+
+    it("__vector_embedded (internal) is stripped even with __pdbfe=1", () => {
+        const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__vector_embedded'], pdbfe: true });
+        assert.ok(!sql.includes('__vector_embedded'), 'internal bookkeeping column is emitted by no route');
+    });
+
+    it("requesting only an unauthorised field falls back to the public projection", () => {
+        const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['notes_private'], pdbfe: false });
+        assert.ok(!sql.includes('notes_private'), 'still excluded');
+        assert.ok(sql.includes('"email"') || sql.includes('"name"'), 'falls back to public columns');
     });
 });
