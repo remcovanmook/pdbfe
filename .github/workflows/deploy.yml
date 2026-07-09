@@ -1,37 +1,33 @@
-# Deploy workflow — triggered on push to main (after PR merge).
+# Release workflow — MANUAL trigger only (workflow_dispatch).
 #
-# Calls deploy.sh for all orchestration (config generation, migrations,
-# worker deploys, frontend). No inline shell scripts — deploy.sh is the
-# single source of truth for the deploy sequence.
+# Merges to main do NOT deploy. Cutting a release is a deliberate act: this
+# workflow derives the next version from the latest git tag (tags are the
+# source of truth — VERSION is never edited in PRs, so concurrent PRs never
+# conflict on it), then generates configs, applies migrations, deploys all
+# workers + frontend, and tags v<next>.
 #
-# Required secrets:
-#   CLOUDFLARE_API_TOKEN   — Wrangler API token. Required permissions:
-#                             Workers Scripts:Edit, D1:Edit, Pages:Edit,
-#                             Vectorize:Edit, Workers AI:Run,
-#                             Account Settings:Read (for account ID resolution)
-#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare account ID (optional if token is single-account)
-#   D1_DATABASE_ID         — PeeringDB D1 database ID
-#   D1_USERDB_ID           — Users D1 database ID (pdbfe-users)
-#   KV_SESSIONS_ID         — Sessions KV namespace ID
-#   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev"), used for API, auth, and frontend origins
-#   VECTORIZE_INDEX_NAME   — Vectorize index name for semantic search (e.g. "pdbfe-vectors")
+# deploy.sh remains the single source of truth for the deploy sequence.
+#
+# Required secrets: see the env blocks below (Cloudflare token/account, D1 ids,
+# KV id, API domain, Vectorize index name).
 
-name: Deploy
+name: Release
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump level (auto = derive from commits since last tag)'
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
 
 permissions:
   contents: write
 
 jobs:
-  deploy:
-    name: Deploy to Cloudflare
+  release:
+    name: Release + Deploy to Cloudflare
     runs-on: ubuntu-latest
     environment: deploy env
     concurrency:
@@ -39,6 +35,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history + tags for version derivation
 
       - uses: actions/setup-python@v5
         with:
@@ -55,9 +53,44 @@ jobs:
           pip install pyyaml
           npm ci --prefix workers --ignore-scripts
 
-      # Generate wrangler toml configs and frontend config.js from .example templates.
-      # The real configs are gitignored (contain deployment-specific IDs).
-      # All generation logic lives in deploy.sh --generate-configs.
+      # Next version = latest v* tag + bump. `auto` picks the level from
+      # conventional-commit prefixes in the commits since that tag
+      # (feat -> minor, `!` / BREAKING CHANGE -> major, else patch).
+      - name: Determine version
+        id: ver
+        run: |
+          git fetch --tags --quiet || true
+          LATEST="$(git tag --list 'v*' --sort=-v:refname | head -1)"
+          [ -z "$LATEST" ] && LATEST="v0.0.0"
+          BASE="${LATEST#v}"
+          IFS='.' read -r MAJ MIN PAT <<< "$BASE"
+
+          LEVEL="${{ inputs.bump }}"
+          if [ "$LEVEL" = "auto" ]; then
+            RANGE="${LATEST}..HEAD"
+            git rev-parse "$LATEST" >/dev/null 2>&1 || RANGE="HEAD"
+            LOG="$(git log $RANGE --format='%s%n%b' 2>/dev/null || true)"
+            if echo "$LOG" | grep -qE '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:'; then
+              LEVEL=major
+            elif echo "$LOG" | grep -qE '^feat(\([^)]*\))?:'; then
+              LEVEL=minor
+            else
+              LEVEL=patch
+            fi
+          fi
+
+          case "$LEVEL" in
+            major) MAJ=$((MAJ + 1)); MIN=0; PAT=0 ;;
+            minor) MIN=$((MIN + 1)); PAT=0 ;;
+            *)     PAT=$((PAT + 1)) ;;
+          esac
+          NEXT="${MAJ}.${MIN}.${PAT}"
+          echo "latest=${LATEST} level=${LEVEL} next=v${NEXT}"
+          echo "version=${NEXT}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${NEXT}" > VERSION
+
+      # Generate wrangler toml configs + frontend config.js from .example
+      # templates (real configs are gitignored). Reads the VERSION written above.
       - name: Generate configs
         run: ./scripts/deploy.sh --generate-configs
         env:
@@ -73,23 +106,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # Create an annotated git tag for this release version.
-      # Skips gracefully if the tag already exists (e.g. a ci:/docs: merge
-      # that legitimately did not bump VERSION, or a re-deploy of the same
-      # version). The check queries the REMOTE — the checkout is shallow and
-      # has no local tags, so `git tag` alone always "succeeds" locally and
-      # the subsequent push is what the remote rejects.
+      # Tag the release (source of truth). Also best-effort record VERSION back
+      # on main so the file reflects the last release; if branch protection
+      # blocks the push, the tag still stands.
       - name: Tag release
         run: |
-          VERSION="$(cat VERSION | tr -d '[:space:]')"
-          TAG="v${VERSION}"
+          TAG="v${{ steps.ver.outputs.version }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists on remote — skipping."
-          else
-            echo "Tagging release: ${TAG}"
-            git tag -a "${TAG}" -m "Release ${TAG}"
-            git push origin "${TAG}"
-            echo "Tag ${TAG} created and pushed."
-          fi
+          git add VERSION
+          git commit -m "chore(release): ${TAG} [skip ci]" || echo "VERSION unchanged"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+          echo "Tagged ${TAG}."
+          git push origin HEAD:main || echo "VERSION commit not pushed (branch protection) — tag is authoritative"
