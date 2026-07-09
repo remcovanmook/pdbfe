@@ -112,6 +112,14 @@ describe('H_API static headers', () => {
     it('includes Cache-Control', () => {
         assert.ok(H_API['Cache-Control']);
     });
+
+    it('sets Vary: Authorization so auth requests miss the anon cache variant', () => {
+        assert.equal(H_API['Vary'], 'Authorization');
+    });
+
+    it('H_API_ANON inherits Vary: Authorization', () => {
+        assert.equal(H_API_ANON['Vary'], 'Authorization');
+    });
 });
 
 // ── Access-Control-Expose-Headers ───────────────────────────────────────────
