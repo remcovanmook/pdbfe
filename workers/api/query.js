@@ -17,18 +17,21 @@
 import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmitEmptyColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
 
 /**
- * Row-count ceilings applied by buildWherePagination so no query can ever emit
- * an unbounded result set (previously a `limit`-unset depth=0 request built a
- * json_group_array over an entire, possibly million-row table).
+ * Row-count ceilings applied by buildWherePagination.
  *
- * DEPTH_EXPANSION_CAP — depth>0 queries with child-set relationships (N+1
- *   expansion risk in expandDepth). Tight.
- * MAX_PAGE_LIMIT — every other query (flat / depth=0 / leaf). Generous but
- *   finite; clients paginate (limit/skip, nextPageParams) for more. Matches the
- *   sub-resource leaf cap in rest/subresource.js.
+ * DEPTH_EXPANSION_CAP — depth>0 queries with child-set relationships. This is
+ *   a real compute bound (expandDepth runs N+1 child queries per parent), kept
+ *   tight.
+ * MAX_PAGE_LIMIT — every other query (flat / depth=0 / leaf). This is a
+ *   *runaway backstop*, not a page size: PeeringDB queries legitimately return
+ *   whole tables and the entire dataset is ~60MB (largest table ~65k rows), so
+ *   a full-table json_group_array is only tens of MB — safe in the isolate.
+ *   The value is set ~15x above the largest table so it never clips a real
+ *   query; its only job is to stop a literally-unbounded (LIMIT -1) scan. If a
+ *   table ever approaches this, switch that path to streaming/pagination.
  */
 const DEPTH_EXPANSION_CAP = 250;
-export const MAX_PAGE_LIMIT = 5000;
+export const MAX_PAGE_LIMIT = 1_000_000;
 
 /**
  * Suffix operators that can appear after `__` in PeeringDB query parameters.
