@@ -30,6 +30,14 @@ export { encoder, encodeJSON, jsonError, handlePreflight, generateETag, isNotMod
 export const H_API = Object.freeze({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "public, max-age=60, stale-while-revalidate=30",
+    // Vary on Authorization so the edge keys the anonymous (public) variant
+    // separately from any authenticated request. Without it, a request
+    // carrying Authorization is served the cached anon response on a HIT (the
+    // Worker never runs, so the `private` on H_API_AUTH never takes effect).
+    // With it, Authorization-bearing requests miss the anon variant and run
+    // the Worker, returning their own `private`, un-stored response. No
+    // hit-rate cost: authenticated responses are never edge-stored anyway.
+    "Vary": "Authorization",
     "Allow": "GET, HEAD, OPTIONS",
     "X-App-Version": VERSIONS.api_schema,
     ...H_CORS
