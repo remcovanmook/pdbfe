@@ -21,6 +21,11 @@ export { encoder, encodeJSON, jsonError, handlePreflight, generateETag, isNotMod
  * Standard cache headers for API responses.
  * Responses are public-cacheable for 60s with stale-while-revalidate.
  * Includes the API schema version from the entity registry.
+ *
+ * This set is the *anonymous* default: `public` makes it edge-cacheable
+ * (Workers Cache / shared caches). Authenticated responses must NOT be
+ * public — see H_API_AUTH. serveJSON() defaults baseHeaders to H_API, so
+ * any caller that omits baseHeaders emits an anonymous, public response.
  */
 export const H_API = Object.freeze({
     "Content-Type": "application/json; charset=utf-8",
@@ -34,8 +39,21 @@ export const H_API = Object.freeze({
  * Pre-cooked API header sets with X-Auth-Status baked in.
  * Handlers select the right one based on caller authentication,
  * avoiding per-request Response cloning.
+ *
+ * H_API_AUTH overrides Cache-Control to `private`: authenticated responses
+ * (API-key OR session) must never be stored in a shared/edge cache. `private`
+ * triggers edge BYPASS and removes the RFC 9111 §3.5 store-on-`public` path,
+ * while the browser keeps the same max-age/SWR/ETag behaviour. X-Auth-Id in a
+ * per-user private cache carries no replay risk.
+ *
+ * H_API_ANON stays `public` (inherited from H_API) — anonymous responses are
+ * edge-cacheable.
  */
-export const H_API_AUTH = Object.freeze({ ...H_API, "X-Auth-Status": "authenticated" });
+export const H_API_AUTH = Object.freeze({
+    ...H_API,
+    "Cache-Control": "private, max-age=60, stale-while-revalidate=30",
+    "X-Auth-Status": "authenticated",
+});
 export const H_API_ANON = Object.freeze({ ...H_API, "X-Auth-Status": "unauthenticated" });
 
 /**
@@ -71,7 +89,15 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
     /** @type {Record<string, string>} */
     const extra = {};
     if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
-    if (authId !== null) extra['X-Auth-Id'] = `u${authId}`;
+    if (authId !== null) {
+        // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
+        // Guard against a future call site pairing authId with a cacheable
+        // (public) header set, which would edge-store a per-user identifier.
+        if (baseHeaders !== H_API_AUTH) {
+            throw new Error('serveJSON: authId requires H_API_AUTH (private) headers');
+        }
+        extra['X-Auth-Id'] = `u${authId}`;
+    }
 
     if (isNotModified(request.headers, etag)) {
         return new Response(null, {

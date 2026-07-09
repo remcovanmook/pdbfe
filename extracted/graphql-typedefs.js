@@ -623,6 +623,10 @@ type Network {
   netfac_updated: String!
   poc_updated: String!
   allow_ixp_update: Boolean!
+  ixp_update_exclude: JSON!
+  ixp_update_exclude_speed: Boolean!
+  ixp_update_exclude_is_rs_peer: Boolean!
+  ixp_update_exclude_operational: Boolean!
   logo: String
   pointsOfContact(limit: Int, skip: Int): [PointOfContact!]!
   networkFacilities(limit: Int, skip: Int): [NetworkFacility!]!
