@@ -44,7 +44,9 @@ const API_BASE = 'https://www.peeringdb.com/api';
  * @returns {string|number|null} D1-compatible parameter value.
  */
 function coerceValue(col, v, notNullStrings) {
-    if (v === undefined || v === null) {
+    // Treat missing values AND non-finite numbers (NaN / Infinity, which D1's
+    // bind rejects and would throw, wedging the whole batch) as null.
+    if (v === undefined || v === null || (typeof v === 'number' && !Number.isFinite(v))) {
         return notNullStrings.has(col) ? '' : null;
     }
     if (typeof v === 'boolean') return v ? 1 : 0;
@@ -85,7 +87,10 @@ export function buildUpsert(table, columns, row, notNullStrings) {
  * @param {D1Database} db - D1 database binding.
  * @param {string} table - D1 table name.
  * @param {string[]} apiColumns - Column names from the API response.
- * @returns {Promise<void>}
+ * @returns {Promise<Set<string>>} The set of columns that exist in the table
+ *          afterwards (existing + newly added). Callers intersect the upsert
+ *          column list with this so a rejected (invalid-identifier) upstream
+ *          key is never emitted into an INSERT.
  */
 export async function ensureColumns(db, table, apiColumns) {
     const info = await db.prepare(`PRAGMA table_info("${table}")`).all();
@@ -103,7 +108,10 @@ export async function ensureColumns(db, table, apiColumns) {
 
         console.warn(`[sync] auto-adding column "${col}" to ${table}`);
         await db.prepare(`ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`).run();
+        existing.add(col);
     }
+
+    return existing;
 }
 
 /**
@@ -170,8 +178,28 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             return result;
         }
 
-        const columns = Object.keys(rows[0]);
-        await ensureColumns(db, meta.table, columns);
+        // Split active/deleted, dropping rows without a usable integer id — a
+        // malformed upstream record would otherwise INSERT a null primary key
+        // (a junk auto-rowid row) or DELETE/publish an `undefined` id.
+        const activeRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && r.status !== 'deleted');
+        const deletedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && r.status === 'deleted');
+        const skipped = rows.length - activeRows.length - deletedRows.length;
+        if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
+
+        // Column set = union of keys across ACTIVE rows (not rows[0], which may
+        // be a sparse `deleted` record that would truncate every upsert),
+        // intersected with columns that actually exist in the table after
+        // ensureColumns. That intersection drops any upstream key with an
+        // invalid SQL identifier — ensureColumns refuses to add those, and
+        // emitting them anyway made every INSERT reference a non-existent
+        // column and permanently wedge the entity.
+        const apiColumnSet = new Set();
+        for (const row of activeRows) {
+            for (const k of Object.keys(row)) apiColumnSet.add(k);
+        }
+        const apiColumns = [...apiColumnSet];
+        const existing = await ensureColumns(db, meta.table, apiColumns);
+        const columns = apiColumns.filter(c => existing.has(c));
 
         /** @type {Set<string>} */
         const notNullStrings = new Set();
@@ -180,9 +208,6 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
                 notNullStrings.add(field.name);
             }
         });
-
-        const activeRows  = rows.filter(r => r.status !== 'deleted');
-        const deletedRows = rows.filter(r => r.status === 'deleted');
 
         // Batch upsert active rows (D1 batch limit is 100 statements)
         const BATCH_SIZE = 50;

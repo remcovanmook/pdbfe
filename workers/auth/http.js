@@ -6,7 +6,7 @@
  * handler modules.
  */
 
-import { extractSessionId, resolveSession } from '../core/auth.js';
+import { extractSessionId, extractBearerToken, resolveSession } from '../core/auth.js';
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 
@@ -147,7 +147,14 @@ export function methodNotAllowed(allow) {
  */
 export async function requireSession(request, env) {
     const origin = resolveAllowedOrigin(request, env);
-    const sid = extractSessionId(request);
+    // State-changing requests must authenticate via Authorization: Bearer, never
+    // the pdbfe_sid cookie — the browser never auto-attaches a Bearer header, so
+    // a cross-site form POST cannot authenticate (CSRF defence). Reads accept
+    // either. (The frontend uses Bearer/localStorage for everything, so this is
+    // transparent; it closes the latent cookie-CSRF vector.)
+    const method = request.method;
+    const mutating = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+    const sid = mutating ? extractBearerToken(request) : extractSessionId(request);
     if (!sid) {
         return { session: null, origin, error: jsonResponse({ error: 'Authentication required' }, 401, origin) };
     }

@@ -546,3 +546,55 @@ describe('sync worker HTTP fetch handler', () => {
         assert.equal(res.status, 403);
     });
 });
+
+// ── PR6: input coverage (invalid-column wedge, sparse rows[0], NaN, id) ───────
+
+describe('sync input coverage', () => {
+    it('buildUpsert coerces NaN / Infinity to null (D1 rejects non-finite binds)', () => {
+        assert.equal(buildUpsert('t', ['n'], { n: NaN }, new Set()).params[0], null);
+        assert.equal(buildUpsert('t', ['n'], { n: Infinity }, new Set()).params[0], null);
+        assert.equal(buildUpsert('t', ['n'], { n: -Infinity }, new Set()).params[0], null);
+    });
+
+    it('ensureColumns returns the existing set (existing + added, minus invalid)', async () => {
+        const { db } = mockD1({ existingColumns: ['id', 'name'] });
+        const result = await ensureColumns(db, 'peeringdb_network', ['id', 'new_col', '2bad']);
+        assert.ok(result.has('id') && result.has('name'), 'existing columns present');
+        assert.ok(result.has('new_col'), 'valid new column added to the set');
+        assert.ok(!result.has('2bad'), 'invalid-identifier column excluded (would wedge INSERT)');
+    });
+
+    it('does not truncate columns when rows[0] is a sparse deleted record (B8)', async () => {
+        const origFetch = globalThis.fetch;
+        const rows = [
+            { id: 2, status: 'deleted' },                                   // sparse deleted first
+            { id: 1, name: 'Alpha', asn: 13335, status: 'ok' },             // full active row
+        ];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+        const capturedBatch = /** @type {string[]} */ ([]);
+        const { db } = mockD1({ lastSync: 1712000000, existingColumns: ['id', 'name', 'asn', 'status'], capturedBatch });
+        try {
+            const result = await syncEntity(db, 'net', TEST_META, '');
+            assert.equal(result.error, '');
+            assert.equal(result.updated, 1);
+            const inserts = capturedBatch.filter(s => s.includes('INSERT'));
+            assert.ok(inserts.some(s => s.includes('"name"') && s.includes('"asn"')),
+                'active row columns preserved despite a sparse deleted rows[0]');
+        } finally { globalThis.fetch = origFetch; }
+    });
+
+    it('skips rows with a missing/invalid id', async () => {
+        const origFetch = globalThis.fetch;
+        const rows = [
+            { name: 'NoId', status: 'ok' },                                 // missing id → dropped
+            { id: 5, name: 'Good', status: 'ok' },
+        ];
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+        const { db } = mockD1({ lastSync: 1712000000, existingColumns: ['id', 'name', 'status'] });
+        try {
+            const result = await syncEntity(db, 'net', TEST_META, '');
+            assert.equal(result.error, '');
+            assert.equal(result.updated, 1, 'only the row with a valid id is upserted');
+        } finally { globalThis.fetch = origFetch; }
+    });
+});

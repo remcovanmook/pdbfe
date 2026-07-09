@@ -148,15 +148,8 @@ const APIKEY_CACHE_MAX = 200;
  * @returns {string|null} The extracted session ID, or null.
  */
 export function extractSessionId(request) {
-    // Check Bearer token first
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader) {
-        const bearerPrefix = 'bearer ';
-        if (authHeader.toLowerCase().startsWith(bearerPrefix)) {
-            const sid = authHeader.slice(bearerPrefix.length).trim();
-            if (sid.length > 0) return sid;
-        }
-    }
+    const bearer = extractBearerToken(request);
+    if (bearer) return bearer;
 
     // Fall back to cookie
     const cookie = request.headers.get('Cookie');
@@ -166,6 +159,24 @@ export function extractSessionId(request) {
     }
 
     return null;
+}
+
+/**
+ * Extracts the session id ONLY from the `Authorization: Bearer <sid>` header,
+ * never a cookie. Used for state-changing requests so authentication cannot ride
+ * a browser-attached cookie — the browser never auto-sends a Bearer header, so
+ * a cross-site form POST cannot authenticate (CSRF defence).
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @returns {string|null} The bearer session ID, or null.
+ */
+export function extractBearerToken(request) {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return null;
+    const bearerPrefix = 'bearer ';
+    if (!authHeader.toLowerCase().startsWith(bearerPrefix)) return null;
+    const sid = authHeader.slice(bearerPrefix.length).trim();
+    return sid.length > 0 ? sid : null;
 }
 
 /**

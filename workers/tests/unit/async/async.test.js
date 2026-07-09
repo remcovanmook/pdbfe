@@ -12,7 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import worker from '../../../async/index.js';
+import worker, { averageVectors } from '../../../async/index.js';
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
@@ -322,5 +322,25 @@ describe('async worker — queue handler', () => {
     it('health fetch handler returns 200', async () => {
         const res = await worker.fetch(new Request('https://async.internal/health'), {}, {});
         assert.equal(res.status, 200);
+    });
+});
+
+// ── PR6: averageVectors NaN-poisoning guard ──────────────────────────────────
+
+describe('averageVectors', () => {
+    it('averages well-formed vectors element-wise', () => {
+        const avg = averageVectors([{ values: [0, 2, 4] }, { values: [2, 2, 8] }]);
+        assert.deepEqual(avg, [1, 2, 6]);
+    });
+
+    it('skips a neighbour whose values length differs (no NaN poisoning)', () => {
+        const avg = averageVectors([{ values: [2, 4] }, { values: [2] }]); // second is malformed
+        assert.deepEqual(avg, [2, 4]); // only the first vector counts
+    });
+
+    it('returns null when no usable vectors remain', () => {
+        assert.equal(averageVectors([{ values: undefined }]), null);
+        assert.equal(averageVectors([]), null);
+        assert.equal(averageVectors([{ values: [] }]), null);
     });
 });

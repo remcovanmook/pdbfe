@@ -992,3 +992,53 @@ describe('handleReplaceFavorites — order + dedup', () => {
         assert.equal(USERDB._captured.slice(1).length, 1, 'only one INSERT emitted');
     });
 });
+
+// ── PR8: Bearer-only mutations (CSRF) + wider key_id ─────────────────────────
+
+describe('mutation auth is Bearer-only (CSRF hardening)', () => {
+    it('rejects a cookie-authenticated mutation (no Bearer) with 401', async () => {
+        const env = mockEnv();
+        const req = new Request('https://auth.pdbfe.dev/account/favorites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Cookie': `pdbfe_sid=${TEST_SID}` },
+            body: JSON.stringify({ entity_type: 'net', entity_id: 1 }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 401);
+    });
+
+    it('accepts a Bearer-authenticated mutation', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entity_type: 'net', entity_id: 1 }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 201);
+    });
+
+    it('still accepts a cookie-authenticated READ (GET)', async () => {
+        const env = mockEnv();
+        const req = new Request('https://auth.pdbfe.dev/account/favorites', {
+            headers: { 'Cookie': `pdbfe_sid=${TEST_SID}` },
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 200);
+    });
+});
+
+describe('key_id is wide and hash-derived', () => {
+    it('returns a 16-hex-char key_id that is not a substring of the key', async () => {
+        const env = mockEnv({ USERDB: mockUserDB({ keyCount: 0 }) });
+        const req = authRequest('https://auth.pdbfe.dev/account/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: 'k' }),
+        });
+        const res = await handleKeys(req, env, '/');
+        const body = await json(res);
+        assert.match(body.key_id, /^[0-9a-f]{16}$/, 'key_id is 16 hex chars (64 bits)');
+        assert.ok(!body.key.includes(body.key_id), 'key_id derives from the hash, not the key prefix');
+    });
+});
