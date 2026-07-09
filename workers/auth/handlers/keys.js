@@ -34,15 +34,22 @@ export function generateApiKey() {
 }
 
 /**
- * Extracts the key ID from a full API key. The ID is the first 8 hex
- * characters after the prefix, used as the stable identifier in the
- * api_keys table.
+ * Derives the stable api_keys.key_id from the key's SHA-256 hash.
  *
- * @param {string} fullKey - The full API key (e.g. "pdbfe.a1b2c3d4e5f6...").
- * @returns {string} The 8-character key ID.
+ * 16 hex chars = 64 bits: collision is astronomically unlikely (the previous
+ * 8-char / 32-bit id was birthday-bound at ~2^16 keys, where an INSERT collision
+ * would surface as an unhandled 500). Deriving it from the HASH rather than the
+ * key's own prefix also means the public key_id leaks no key material.
+ *
+ * Backward compatible: key_id is a management identifier only (list / delete);
+ * verifyApiKey looks keys up by `hash`, so existing 8-char ids keep working and
+ * only new keys get the wider hash-derived id.
+ *
+ * @param {string} keyHash - Hex SHA-256 of the full key.
+ * @returns {string} The 16-character key ID.
  */
-function keyId(fullKey) {
-    return fullKey.slice(KEY_VISUAL_PREFIX.length, KEY_VISUAL_PREFIX.length + 8);
+function keyId(keyHash) {
+    return keyHash.slice(0, 16);
 }
 
 /**
@@ -160,7 +167,7 @@ async function handleCreateKey(request, env) {
     const fullKey = generateApiKey();
     const keyHash = await hashKey(fullKey);
     const now = new Date().toISOString();
-    const id = keyId(fullKey);
+    const id = keyId(keyHash);
     const prefix = keyPrefix(fullKey);
 
     // Atomic batch: insert key + update user timestamp.
