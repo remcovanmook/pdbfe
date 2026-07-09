@@ -27,6 +27,26 @@ export {
 // ── Search-specific helpers ───────────────────────────────────────────────────
 
 /**
+ * Escapes SQLite LIKE metacharacters (`%`, `_`, `\`) in a user-supplied term
+ * so it matches literally, then bind it and add `ESCAPE '\'` to the clause.
+ * Without this, a `q` of `%` or `_` turns every LIKE into a match-everything /
+ * arbitrary-pattern scan (parameter binding stops injection but not wildcard
+ * abuse). §2: character loop, not a regex.
+ *
+ * @param {string} s - Raw user term.
+ * @returns {string} Term with LIKE metacharacters backslash-escaped.
+ */
+export function escapeLike(s) {
+    let out = '';
+    for (const ch of s) {
+        if (ch === '\\' || ch === '%' || ch === '_') out += '\\';
+        out += ch;
+    }
+    return out;
+}
+
+
+/**
  * Returns a 200 JSON response for a search result buffer.
  *
  * Used for both cache hits (tier='L1'/'L2') and cache misses (tier='MISS').

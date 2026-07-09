@@ -29,6 +29,7 @@
 
 import { ENTITIES } from '../entities.js';
 import { parseQuery } from './query-parser.js';
+import { escapeLike } from '../http.js';
 
 // ---------------------------------------------------------------------------
 // D1 table name helpers
@@ -108,8 +109,8 @@ async function filterByMetadata(db, entityTag, predicates, limit) {
         bindings.push(predicates.country);
     }
     if (predicates.city) {
-        conditions.push('city LIKE ?');
-        bindings.push(`%${predicates.city}%`);
+        conditions.push(String.raw`city LIKE ? ESCAPE '\'`);
+        bindings.push(`%${escapeLike(predicates.city)}%`);
     }
     if (predicates.infoType && entityTag === 'net') {
         conditions.push('info_type = ?');
@@ -152,8 +153,8 @@ async function resolveNameToId(db, name, preferTag) {
         }
         // Prefix / substring match.
         result = await db.prepare(
-            `SELECT id FROM "${table}" WHERE name LIKE ? AND status = 'ok' LIMIT 1`
-        ).bind(`%${name}%`).all();
+            String.raw`SELECT id FROM "${table}" WHERE name LIKE ? ESCAPE '\' AND status = 'ok' LIMIT 1`
+        ).bind(`%${escapeLike(name)}%`).all();
         if (result.success && result.results.length > 0) {
             return { id: result.results[0].id, tag };
         }
@@ -284,10 +285,10 @@ async function similaritySearch(db, vectorize, anchorName, entityTag, limit) {
  */
 async function keywordFallback(db, entityTag, raw, limit) {
     const table = tableFor(entityTag);
-    const term = `%${raw}%`;
+    const term = `%${escapeLike(raw)}%`;
     const result = await db.prepare(
-        `SELECT id FROM "${table}"
-         WHERE status = 'ok' AND (name LIKE ? OR aka LIKE ?)
+        String.raw`SELECT id FROM "${table}"
+         WHERE status = 'ok' AND (name LIKE ? ESCAPE '\' OR aka LIKE ? ESCAPE '\')
          LIMIT ?`
     ).bind(term, term, limit).all();
     return idsFromResult(result);

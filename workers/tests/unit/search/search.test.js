@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import worker from '../../../search/index.js';
 import { handleKeyword } from '../../../search/handlers/keyword.js';
 import { buildSearchKey, withSearchSWR, purgeSearchCache, SEARCH_EMPTY_SENTINEL } from '../../../search/cache.js';
+import { escapeLike } from '../../../search/http.js';
 
 // ── Shared mock helpers ───────────────────────────────────────────────────────
 
@@ -183,6 +184,19 @@ describe('GET /search — parameter validation', () => {
         const req = new Request('https://api.pdbfe.dev/search?q=test&entity=badtype');
         const res = await worker.fetch(req, mockEnv(), mockCtx);
         assert.equal(res.status, 400);
+    });
+
+    it('returns 400 when q exceeds the length limit', async () => {
+        const longQ = 'a'.repeat(300);
+        // Distinct IP so this extra request uses its own rate-limit bucket and
+        // doesn't tip later tests (which share the default 'unknown' bucket).
+        const req = new Request(`https://api.pdbfe.dev/search?q=${longQ}&entity=net`, {
+            headers: { 'cf-connecting-ip': '203.0.113.201' },
+        });
+        const res = await worker.fetch(req, mockEnv(), mockCtx);
+        assert.equal(res.status, 400);
+        const body = await res.json();
+        assert.match(body.error, /too long/);
     });
 
     it('returns 400 for invalid mode', async () => {
@@ -494,5 +508,24 @@ describe('withSearchSWR — stampede coalescing', () => {
 
         assert.equal(calls, 1, 'queryFn called only once');
         assert.equal(r2.tier, 'L1', 'second request served from L1');
+    });
+});
+
+// ── escapeLike (LIKE wildcard hardening) ─────────────────────────────────────
+
+describe('escapeLike', () => {
+    it('escapes % _ and backslash so the term matches literally', () => {
+        assert.equal(escapeLike('50%_off'), '50\\%\\_off');
+        assert.equal(escapeLike('a\\b'), 'a\\\\b');
+    });
+
+    it('leaves ordinary text untouched', () => {
+        assert.equal(escapeLike('Cloudflare'), 'Cloudflare');
+        assert.equal(escapeLike(''), '');
+    });
+
+    it('neutralises a pure-wildcard match-everything query', () => {
+        // '%' alone would otherwise be LIKE '%%%' (matches all); escaped it is literal.
+        assert.equal(escapeLike('%'), '\\%');
     });
 });
