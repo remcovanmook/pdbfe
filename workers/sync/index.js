@@ -230,8 +230,12 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
                 messages.push({ body: { action: 'delete', tag, id } });
             }
 
-            // sendBatch accepts up to 250 messages; chunk if needed.
-            const QUEUE_BATCH = 200;
+            // Cloudflare Queues caps sendBatch at 100 messages per call;
+            // exceeding it throws "batch message count of N exceeds limit of
+            // 100" and (since this runs before _sync_meta advances) wedges the
+            // entity — high-churn tags (net, poc, netfac) re-fetch a growing
+            // backlog every cron and never recover. Chunk at 100.
+            const QUEUE_BATCH = 100;
             for (let i = 0; i < messages.length; i += QUEUE_BATCH) {
                 await queue.sendBatch(messages.slice(i, i + QUEUE_BATCH));
             }

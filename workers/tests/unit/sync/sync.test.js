@@ -453,6 +453,38 @@ describe('syncEntity queue publishing', () => {
             globalThis.fetch = origFetch;
         }
     });
+
+    it('chunks sendBatch at the 100-message Queues limit (never exceeds it)', async () => {
+        const origFetch = globalThis.fetch;
+        // 150 active rows of a vectorizable entity => 150 embed messages,
+        // which must be split into batches of <= 100. A single 200-wide chunk
+        // (the old bug) would hand sendBatch 150 at once and Cloudflare rejects it.
+        const rows = Array.from({ length: 150 }, (_, i) => ({
+            id: i + 1, name: `N${i}`, info_type: 'NSP', notes: null, created: '2024-01-01', status: 'ok',
+        }));
+        globalThis.fetch = async () => new Response(JSON.stringify({ data: rows }), { status: 200 });
+
+        const batchSizes = /** @type {number[]} */ ([]);
+        const queue = /** @type {any} */ ({
+            sendBatch(/** @type {any[]} */ msgs) {
+                // Mirror Cloudflare's real behaviour: reject an oversized batch.
+                if (msgs.length > 100) {
+                    return Promise.reject(new Error(`batch message count of ${msgs.length} exceeds limit of 100`));
+                }
+                batchSizes.push(msgs.length);
+                return Promise.resolve();
+            },
+        });
+        try {
+            const { db } = mockD1({ lastSync: 1712000000, existingColumns: Object.keys(rows[0]) });
+            const result = await syncEntity(db, 'net', TEST_META, '', queue);
+            assert.equal(result.error, '', 'sync must not error when >100 messages are produced');
+            assert.ok(batchSizes.every(n => n <= 100), `every batch <= 100, got ${JSON.stringify(batchSizes)}`);
+            assert.equal(batchSizes.reduce((a, b) => a + b, 0), 150, 'all 150 messages published');
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+    });
 });
 
 // ── HTTP fetch handler (also covers isValidSyncSecret) ───────────────────────
