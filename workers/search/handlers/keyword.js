@@ -15,7 +15,7 @@
  *          it does not manage the cache lifecycle itself.
  */
 
-import { encoder } from '../http.js';
+import { encoder, escapeLike } from '../http.js';
 import { ENTITIES, SEARCH_FIELDS, getPrimaryField, getExtraFields } from '../entities.js';
 
 /**
@@ -47,11 +47,12 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
     let where = '';
     for (let i = 0; i < fieldCount; i++) {
         if (i > 0) where += ' OR ';
-        where += fields[i] + ' LIKE ?';
+        where += fields[i] + String.raw` LIKE ? ESCAPE '\'`;
     }
 
     // §3: build bind array in one shot instead of multiple push calls.
-    const pattern = '%' + q + '%';
+    // Escape LIKE metacharacters so `q` matches literally (see escapeLike).
+    const pattern = '%' + escapeLike(q) + '%';
     /** @type {(string|number)[]} */
     const binds = /** @type {(string|number)[]} */ (new Array(fieldCount).fill(pattern));
     binds.push(limit, skip);

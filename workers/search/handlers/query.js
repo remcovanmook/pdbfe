@@ -35,6 +35,16 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 
 /**
+ * Maximum length of the user-supplied `q`. Search terms are short (names,
+ * ASNs, "peers of X"); anything longer is abuse. Bounds the work fed into the
+ * query parser, the SHA-256 cache key, and multi-field LIKE scans.
+ */
+const MAX_Q_LEN = 256;
+
+/** Maximum pagination offset — a huge OFFSET forces D1 to walk+discard rows. */
+const MAX_SKIP = 10_000;
+
+/**
  * Returns true if a parsed query contains any predicate that benefits from
  * graph-structural search.
  *
@@ -107,6 +117,7 @@ function parseSearchParams(queryString) {
     }
 
     if (!q) return { q, entityList: [], isMulti: false, mode, limit, skip, error: 'Missing required parameter: q' };
+    if (q.length > MAX_Q_LEN) return { q: '', entityList: [], isMulti: false, mode, limit, skip, error: `Query too long (max ${MAX_Q_LEN} characters)` };
 
     // Resolve entity list: `entities` (plural CSV) takes precedence over `entity` (singular).
     const isMulti = entitiesRaw !== '';
@@ -145,6 +156,7 @@ function parseSearchParams(queryString) {
     }
     if (limit < 1 || limit > MAX_LIMIT) limit = DEFAULT_LIMIT;
     if (skip < 0) skip = 0;
+    else if (skip > MAX_SKIP) skip = MAX_SKIP;
 
     return { q, entityList, isMulti, mode, limit, skip, error: null };
 }
@@ -170,17 +182,30 @@ async function hydrateGraphIds(db, entityTag, idList, limit) {
     const extraFields = getExtraFields(entityTag);
     const extraSelect = extraFields.length > 0 ? ', ' + extraFields.join(', ') : '';
 
-    // Build CASE expression for relevance sort. §3: index-based for loop (i needed for THEN value).
-    const ids = idList.split(',');
+    // Validate every id to a positive integer BEFORE interpolating into SQL.
+    // The list can originate from Vectorize vector ids (match.id.slice(prefix))
+    // which are otherwise-untrusted strings; integer-validating here is the
+    // single chokepoint that keeps them from becoming an injection vector.
+    // §3: index-based for loop (i needed for the CASE THEN value).
+    /** @type {number[]} */
+    const ids = [];
+    for (const rawId of idList.split(',')) {
+        const s = rawId.trim();
+        const n = Number.parseInt(s, 10);
+        if (Number.isInteger(n) && n > 0 && String(n) === s) ids.push(n);
+    }
+    if (ids.length === 0) return [];
+
     let caseExpr = 'CASE id';
     for (let i = 0; i < ids.length; i++) {
         caseExpr += ` WHEN ${ids[i]} THEN ${i}`;
     }
     caseExpr += ' ELSE 999 END';
 
+    const inList = ids.join(',');
     const sql =
         `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
-        ` WHERE id IN (${idList}) AND status != 'deleted'` +
+        ` WHERE id IN (${inList}) AND status != 'deleted'` +
         ` ORDER BY ${caseExpr} ASC LIMIT ?`;
 
     const result = await db.prepare(sql).bind(limit).all();
