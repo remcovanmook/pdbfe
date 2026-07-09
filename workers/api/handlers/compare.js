@@ -93,7 +93,20 @@ async function fetchEntityHeader(db, tag, id) {
     return { tag, ...row };
 }
 
+/**
+ * Backstop cap on each overlap result section. Real overlap sets are bounded by
+ * physical reality (a network is at hundreds of IXes/facilities at most), so
+ * this never clips genuine data — it just stops a pathological set from
+ * exceeding the compare cache tier's entry size and re-running every request.
+ */
+const COMPARE_ROW_LIMIT = 10000;
+
 // ── Overlap query implementations ────────────────────────────────────────────
+//
+// Within each function the only_a / only_b sections are the SAME SQL run with
+// the two ids swapped, so each is defined ONCE and executed twice with swapped
+// binds. All independent queries in a function run via Promise.all (no data
+// dependency between them) instead of sequentially.
 
 /**
  * Computes overlap between two networks.
@@ -107,7 +120,7 @@ async function fetchEntityHeader(db, tag, id) {
  */
 async function overlapNetNet(db, idA, idB) {
     // Shared IXPs: networks present at the same ixlan
-    const sharedIxps = await db.prepare(`
+    const sharedIxpsSql = `
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city,
                a.speed AS speed_a, b.speed AS speed_b,
                a.ipaddr4 AS ipv4_a, b.ipaddr4 AS ipv4_b,
@@ -120,11 +133,10 @@ async function overlapNetNet(db, idA, idB) {
         WHERE a.net_id = ? AND b.net_id = ?
           AND a.status = 'ok' AND b.status = 'ok'
           AND ix.status = 'ok'
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Shared facilities: networks present at the same facility
-    const sharedFacs = await db.prepare(`
+    const sharedFacsSql = `
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
                f.latitude, f.longitude
         FROM peeringdb_network_facility a
@@ -133,11 +145,11 @@ async function overlapNetNet(db, idA, idB) {
         WHERE a.net_id = ? AND b.net_id = ?
           AND a.status = 'ok' AND b.status = 'ok'
           AND f.status = 'ok'
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-A IXPs (where A is present but B is not)
-    const onlyAIxps = await db.prepare(`
+    // Only-side IXPs (present for the first bind but not the second). Run twice
+    // with the ids swapped for only_a / only_b.
+    const onlyIxpsSql = `
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
@@ -149,27 +161,10 @@ async function overlapNetNet(db, idA, idB) {
             JOIN peeringdb_ix ix2 ON ixlan2.ix_id = ix2.id
             WHERE b.net_id = ? AND b.status = 'ok'
           )
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-B IXPs
-    const onlyBIxps = await db.prepare(`
-        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
-        FROM peeringdb_network_ixlan a
-        JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
-        JOIN peeringdb_ix ix ON ixlan.ix_id = ix.id
-        WHERE a.net_id = ? AND a.status = 'ok' AND ix.status = 'ok'
-          AND ix.id NOT IN (
-            SELECT ix2.id FROM peeringdb_network_ixlan b
-            JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
-            JOIN peeringdb_ix ix2 ON ixlan2.ix_id = ix2.id
-            WHERE b.net_id = ? AND b.status = 'ok'
-          )
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idB, idA).all();
-
-    // Only-A facilities
-    const onlyAFacs = await db.prepare(`
+    // Only-side facilities.
+    const onlyFacsSql = `
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
                f.latitude, f.longitude
         FROM peeringdb_network_facility a
@@ -179,22 +174,16 @@ async function overlapNetNet(db, idA, idB) {
             SELECT b.fac_id FROM peeringdb_network_facility b
             WHERE b.net_id = ? AND b.status = 'ok'
           )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-B facilities
-    const onlyBFacs = await db.prepare(`
-        SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
-               f.latitude, f.longitude
-        FROM peeringdb_network_facility a
-        JOIN peeringdb_facility f ON a.fac_id = f.id
-        WHERE a.net_id = ? AND a.status = 'ok' AND f.status = 'ok'
-          AND f.id NOT IN (
-            SELECT b.fac_id FROM peeringdb_network_facility b
-            WHERE b.net_id = ? AND b.status = 'ok'
-          )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idB, idA).all();
+    const [sharedIxps, sharedFacs, onlyAIxps, onlyBIxps, onlyAFacs, onlyBFacs] = await Promise.all([
+        db.prepare(sharedIxpsSql).bind(idA, idB).all(),
+        db.prepare(sharedFacsSql).bind(idA, idB).all(),
+        db.prepare(onlyIxpsSql).bind(idA, idB).all(),
+        db.prepare(onlyIxpsSql).bind(idB, idA).all(),
+        db.prepare(onlyFacsSql).bind(idA, idB).all(),
+        db.prepare(onlyFacsSql).bind(idB, idA).all(),
+    ]);
 
     return {
         shared_ixps: sharedIxps.results || [],
@@ -218,7 +207,7 @@ async function overlapNetNet(db, idA, idB) {
  */
 async function overlapIxIx(db, idA, idB) {
     // Shared facilities
-    const sharedFacs = await db.prepare(`
+    const sharedFacsSql = `
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
                f.latitude, f.longitude
         FROM peeringdb_ix_facility a
@@ -227,11 +216,10 @@ async function overlapIxIx(db, idA, idB) {
         WHERE a.ix_id = ? AND b.ix_id = ?
           AND a.status = 'ok' AND b.status = 'ok'
           AND f.status = 'ok'
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Shared member networks (present on both IXes via netixlan → ixlan → ix)
-    const sharedNets = await db.prepare(`
+    const sharedNetsSql = `
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlanA ON a.ixlan_id = ixlanA.id
@@ -241,11 +229,10 @@ async function overlapIxIx(db, idA, idB) {
         WHERE ixlanA.ix_id = ? AND ixlanB.ix_id = ?
           AND a.status = 'ok' AND b.status = 'ok'
           AND n.status = 'ok'
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-A facilities
-    const onlyAFacs = await db.prepare(`
+    // Only-side facilities — same SQL, swapped ids for only_a / only_b.
+    const onlyFacsSql = `
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
                f.latitude, f.longitude
         FROM peeringdb_ix_facility a
@@ -255,25 +242,10 @@ async function overlapIxIx(db, idA, idB) {
             SELECT b.fac_id FROM peeringdb_ix_facility b
             WHERE b.ix_id = ? AND b.status = 'ok'
           )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-B facilities
-    const onlyBFacs = await db.prepare(`
-        SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
-               f.latitude, f.longitude
-        FROM peeringdb_ix_facility a
-        JOIN peeringdb_facility f ON a.fac_id = f.id
-        WHERE a.ix_id = ? AND a.status = 'ok' AND f.status = 'ok'
-          AND f.id NOT IN (
-            SELECT b.fac_id FROM peeringdb_ix_facility b
-            WHERE b.ix_id = ? AND b.status = 'ok'
-          )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(idB, idA).all();
-
-    // Only-A networks
-    const onlyANets = await db.prepare(`
+    // Only-side networks.
+    const onlyNetsSql = `
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
@@ -284,23 +256,16 @@ async function overlapIxIx(db, idA, idB) {
             JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
             WHERE ixlan2.ix_id = ? AND b.status = 'ok'
           )
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    // Only-B networks
-    const onlyBNets = await db.prepare(`
-        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
-        FROM peeringdb_network_ixlan a
-        JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
-        JOIN peeringdb_network n ON a.net_id = n.id
-        WHERE ixlan.ix_id = ? AND a.status = 'ok' AND n.status = 'ok'
-          AND n.id NOT IN (
-            SELECT DISTINCT b.net_id FROM peeringdb_network_ixlan b
-            JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
-            WHERE ixlan2.ix_id = ? AND b.status = 'ok'
-          )
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idB, idA).all();
+    const [sharedFacs, sharedNets, onlyAFacs, onlyBFacs, onlyANets, onlyBNets] = await Promise.all([
+        db.prepare(sharedFacsSql).bind(idA, idB).all(),
+        db.prepare(sharedNetsSql).bind(idA, idB).all(),
+        db.prepare(onlyFacsSql).bind(idA, idB).all(),
+        db.prepare(onlyFacsSql).bind(idB, idA).all(),
+        db.prepare(onlyNetsSql).bind(idA, idB).all(),
+        db.prepare(onlyNetsSql).bind(idB, idA).all(),
+    ]);
 
     return {
         shared_facilities: sharedFacs.results || [],
@@ -324,8 +289,10 @@ async function overlapIxIx(db, idA, idB) {
  * @returns {Promise<Record<string, any>>} Overlap result sections.
  */
 async function overlapIxNet(db, ixId, netId) {
-    // Shared Facilities: IX is there AND Net is there
-    const sharedFacs = await db.prepare(`
+    // Independent queries (cross-entity, so only_a/only_b are different SQL).
+    const [sharedFacs, onlyAIxFacs, onlyBNetFacs, membership] = await Promise.all([
+        // Shared Facilities: IX is there AND Net is there
+        db.prepare(`
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country,
                f.latitude, f.longitude
         FROM peeringdb_ix_facility a
@@ -334,11 +301,11 @@ async function overlapIxNet(db, ixId, netId) {
         WHERE a.ix_id = ? AND b.net_id = ?
           AND a.status = 'ok' AND b.status = 'ok'
           AND f.status = 'ok'
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(ixId, netId).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(ixId, netId).all(),
 
-    // Only-A (IX) facilities
-    const onlyAIxFacs = await db.prepare(`
+        // Only-A (IX) facilities
+        db.prepare(`
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
         FROM peeringdb_ix_facility a
         JOIN peeringdb_facility f ON a.fac_id = f.id
@@ -347,11 +314,11 @@ async function overlapIxNet(db, ixId, netId) {
             SELECT b.fac_id FROM peeringdb_network_facility b
             WHERE b.net_id = ? AND b.status = 'ok'
           )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(ixId, netId).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(ixId, netId).all(),
 
-    // Only-B (Net) facilities
-    const onlyBNetFacs = await db.prepare(`
+        // Only-B (Net) facilities
+        db.prepare(`
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
         FROM peeringdb_network_facility b
         JOIN peeringdb_facility f ON b.fac_id = f.id
@@ -360,17 +327,19 @@ async function overlapIxNet(db, ixId, netId) {
             SELECT a.fac_id FROM peeringdb_ix_facility a
             WHERE a.ix_id = ? AND a.status = 'ok'
           )
-        ORDER BY f.name COLLATE NOCASE
-    `).bind(netId, ixId).all();
+        ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(netId, ixId).all(),
 
-    // Membership: Is the network peering at the IX?
-    const membership = await db.prepare(`
+        // Membership: Is the network peering at the IX?
+        db.prepare(`
         SELECT ixlan.id as ixlan_id, ixlan.ix_id, a.speed, a.ipaddr4, a.ipaddr6, a.is_rs_peer
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
         WHERE a.net_id = ? AND ixlan.ix_id = ?
           AND a.status = 'ok' AND ixlan.status = 'ok'
-    `).bind(netId, ixId).all();
+        LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(netId, ixId).all(),
+    ]);
 
     return {
         shared_facilities: sharedFacs.results || [],
@@ -390,7 +359,8 @@ async function overlapIxNet(db, ixId, netId) {
  * @returns {Promise<Record<string, any>>} Overlap result sections.
  */
 async function overlapFacNet(db, facId, netId) {
-    const sharedIxps = await db.prepare(`
+    const [sharedIxps, onlyAFacIxps, onlyBNetIxps] = await Promise.all([
+        db.prepare(`
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city,
                n.speed AS speed_b, n.ipaddr4 AS ipv4_b, n.ipaddr6 AS ipv6_b, n.is_rs_peer AS rs_b
         FROM peeringdb_ix_facility ixfac
@@ -399,10 +369,10 @@ async function overlapFacNet(db, facId, netId) {
         JOIN peeringdb_network_ixlan n ON n.ixlan_id = ixlan.id
         WHERE ixfac.fac_id = ? AND n.net_id = ?
           AND ixfac.status = 'ok' AND ix.status = 'ok' AND ixlan.status = 'ok' AND n.status = 'ok'
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(facId, netId).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(facId, netId).all(),
 
-    const onlyAFacIxps = await db.prepare(`
+        db.prepare(`
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_ix_facility a
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
@@ -412,10 +382,10 @@ async function overlapFacNet(db, facId, netId) {
             JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
             WHERE b.net_id = ? AND b.status = 'ok'
           )
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(facId, netId).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(facId, netId).all(),
 
-    const onlyBNetIxps = await db.prepare(`
+        db.prepare(`
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city,
                b.speed AS speed_b, b.ipaddr4 AS ipv4_b, b.ipaddr6 AS ipv6_b, b.is_rs_peer AS rs_b
         FROM peeringdb_network_ixlan b
@@ -426,8 +396,9 @@ async function overlapFacNet(db, facId, netId) {
             SELECT a.ix_id FROM peeringdb_ix_facility a
             WHERE a.fac_id = ? AND a.status = 'ok'
           )
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(netId, facId).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(netId, facId).all(),
+    ]);
 
     return {
         shared_ixps: sharedIxps.results || [],
@@ -446,7 +417,8 @@ async function overlapFacNet(db, facId, netId) {
  * @returns {Promise<Record<string, any>>} Overlap result sections.
  */
 async function overlapFacIx(db, facId, ixId) {
-    const sharedNets = await db.prepare(`
+    const [sharedNets, onlyAFacNets, onlyBIxNets] = await Promise.all([
+        db.prepare(`
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network n ON a.net_id = n.id
@@ -454,10 +426,10 @@ async function overlapFacIx(db, facId, ixId) {
         JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
         WHERE a.fac_id = ? AND ixlan.ix_id = ?
           AND a.status = 'ok' AND n.status = 'ok' AND b.status = 'ok' AND ixlan.status = 'ok'
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(facId, ixId).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(facId, ixId).all(),
 
-    const onlyAFacNets = await db.prepare(`
+        db.prepare(`
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network n ON a.net_id = n.id
@@ -467,10 +439,10 @@ async function overlapFacIx(db, facId, ixId) {
             JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
             WHERE ixlan.ix_id = ? AND b.status = 'ok'
           )
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(facId, ixId).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(facId, ixId).all(),
 
-    const onlyBIxNets = await db.prepare(`
+        db.prepare(`
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_ixlan b
         JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
@@ -480,8 +452,9 @@ async function overlapFacIx(db, facId, ixId) {
             SELECT a.net_id FROM peeringdb_network_facility a
             WHERE a.fac_id = ? AND a.status = 'ok'
           )
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(ixId, facId).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
+    `).bind(ixId, facId).all(),
+    ]);
 
     return {
         shared_networks: sharedNets.results || [],
@@ -499,61 +472,49 @@ async function overlapFacIx(db, facId, ixId) {
  * @returns {Promise<Record<string, any>>} Overlap result sections.
  */
 async function overlapFacFac(db, idA, idB) {
-    const sharedNets = await db.prepare(`
+    const sharedNetsSql = `
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network_facility b ON a.net_id = b.net_id
         JOIN peeringdb_network n ON a.net_id = n.id
         WHERE a.fac_id = ? AND b.fac_id = ?
           AND a.status = 'ok' AND b.status = 'ok' AND n.status = 'ok'
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    const sharedIxps = await db.prepare(`
+    const sharedIxpsSql = `
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_ix_facility a
         JOIN peeringdb_ix_facility b ON a.ix_id = b.ix_id
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
         WHERE a.fac_id = ? AND b.fac_id = ?
           AND a.status = 'ok' AND b.status = 'ok' AND ix.status = 'ok'
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    const onlyANets = await db.prepare(`
+    // Only-side networks / ixps — same SQL, swapped ids for only_a / only_b.
+    const onlyNetsSql = `
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network n ON a.net_id = n.id
         WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
           AND n.id NOT IN (SELECT net_id FROM peeringdb_network_facility WHERE fac_id = ? AND status='ok')
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    const onlyBNets = await db.prepare(`
-        SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
-        FROM peeringdb_network_facility a
-        JOIN peeringdb_network n ON a.net_id = n.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
-          AND n.id NOT IN (SELECT net_id FROM peeringdb_network_facility WHERE fac_id = ? AND status='ok')
-        ORDER BY n.name COLLATE NOCASE
-    `).bind(idB, idA).all();
-
-    const onlyAIxps = await db.prepare(`
+    const onlyIxpsSql = `
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_ix_facility a
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
         WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
           AND ix.id NOT IN (SELECT ix_id FROM peeringdb_ix_facility WHERE fac_id = ? AND status='ok')
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idA, idB).all();
+        ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
-    const onlyBIxps = await db.prepare(`
-        SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
-        FROM peeringdb_ix_facility a
-        JOIN peeringdb_ix ix ON a.ix_id = ix.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
-          AND ix.id NOT IN (SELECT ix_id FROM peeringdb_ix_facility WHERE fac_id = ? AND status='ok')
-        ORDER BY ix.name COLLATE NOCASE
-    `).bind(idB, idA).all();
+    const [sharedNets, sharedIxps, onlyANets, onlyBNets, onlyAIxps, onlyBIxps] = await Promise.all([
+        db.prepare(sharedNetsSql).bind(idA, idB).all(),
+        db.prepare(sharedIxpsSql).bind(idA, idB).all(),
+        db.prepare(onlyNetsSql).bind(idA, idB).all(),
+        db.prepare(onlyNetsSql).bind(idB, idA).all(),
+        db.prepare(onlyIxpsSql).bind(idA, idB).all(),
+        db.prepare(onlyIxpsSql).bind(idB, idA).all(),
+    ]);
 
     return {
         shared_networks: sharedNets.results || [],
@@ -653,12 +614,13 @@ async function executeCompareQuery(db, refA, refB, pk) {
  * @returns {Promise<Response>} JSON response with overlap data.
  */
 export async function handleCompare(request, db, ctx, queryString, authenticated, hNocache) {
-    // Parse query parameters via tokenizeString (no array allocation).
-    // The compare endpoint expects exactly 3 params: a, b, __pdbfe.
-    // maxParts=3 hits the hardwired indexOf fast path in tokenizeString.
+    // Parse ALL query parameters via tokenizeString (no array allocation).
+    // Split on '&' with maxParts=-1 (unlimited): capping at 3 folded a 4th
+    // param (e.g. a cache-buster `_=…`, or `__pdbfe` placed last) into the
+    // previous value, breaking `__pdbfe` detection / ref parsing.
     const params = new Map();
     if (queryString) {
-        const pairs = tokenizeString(queryString, '&', 3);
+        const pairs = tokenizeString(queryString, '&', -1);
 
         for (let i = 0; pairs[`p${i}`] !== undefined; i++) {
             const { p0: rawKey, p1: rawValue } = tokenizeString(pairs[`p${i}`], '=', 2);

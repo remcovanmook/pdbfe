@@ -81,6 +81,18 @@ describe('handleCompare', () => {
             assert.ok(body.error.includes('__pdbfe=1'));
         });
 
+        it('detects __pdbfe past a trailing cache-buster param (>3 params)', async () => {
+            // The old 3-param cap folded a 4th param into the previous value,
+            // so __pdbfe was not seen and the request wrongly 400-ed.
+            const res = await callCompare(db, 'a=net:1&b=net:2&__pdbfe=1&_=169');
+            assert.notEqual(res.status, 400, 'must pass the __pdbfe gate');
+        });
+
+        it('detects __pdbfe when placed after the entity refs', async () => {
+            const res = await callCompare(db, 'a=net:1&b=net:2&extra=x&__pdbfe=1');
+            assert.notEqual(res.status, 400, 'must pass the __pdbfe gate');
+        });
+
         it('rejects missing a parameter', async () => {
             const res = await callCompare(db, 'b=net:2&__pdbfe=1');
             assert.equal(res.status, 400);
