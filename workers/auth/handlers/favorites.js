@@ -189,27 +189,36 @@ async function handleReplaceFavorites(request, env) {
     await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
 
     // Build batch: delete all existing, then insert in order.
-    // Sequential created_at values encode the sort order without
-    // needing a sort_order column.
+    // created_at encodes the sort order. The list query is ORDER BY
+    // created_at DESC, so the first submitted item must get the LARGEST
+    // timestamp — assign DESCENDING (baseTime - order) so the submitted order
+    // is preserved (a +order offset silently reversed it). Duplicates are
+    // deduped (first occurrence wins) so a repeated (type,id) can't violate
+    // the UNIQUE constraint and 500 the whole batch.
     const baseTime = Date.now();
     const stmts = [
         env.USERDB.prepare('DELETE FROM user_favorites WHERE user_id = ?').bind(session.id),
     ];
-    for (let i = 0; i < body.favorites.length; i++) {
-        const fav = body.favorites[i];
+    const seen = new Set();
+    let order = 0;
+    for (const fav of body.favorites) {
+        const dedupKey = `${fav.entity_type}:${fav.entity_id}`;
+        if (seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
         const label = (typeof fav.label === 'string' && fav.label.trim().length > 0)
             ? fav.label.trim().slice(0, 200)
             : '';
-        const ts = new Date(baseTime + i).toISOString();
+        const ts = new Date(baseTime - order).toISOString();
+        order++;
         stmts.push(
             env.USERDB.prepare(
-                'INSERT INTO user_favorites (user_id, entity_type, entity_id, label, created_at) VALUES (?, ?, ?, ?, ?)'
+                'INSERT OR IGNORE INTO user_favorites (user_id, entity_type, entity_id, label, created_at) VALUES (?, ?, ?, ?, ?)'
             ).bind(session.id, fav.entity_type, fav.entity_id, label, ts)
         );
     }
     await env.USERDB.batch(stmts);
 
-    return jsonResponse({ replaced: body.favorites.length }, 200, origin);
+    return jsonResponse({ replaced: seen.size }, 200, origin);
 }
 
 /**

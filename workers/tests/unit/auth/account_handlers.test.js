@@ -913,3 +913,82 @@ describe('handleFavorites — PUT (bulk replace)', () => {
         assert.equal(res.status, 200);
     });
 });
+
+// ── PR5: input caps + favorites correctness ─────────────────────────────────
+
+describe('handleProfile — input caps', () => {
+    it('rejects preferences with too many keys', async () => {
+        const prefs = {};
+        for (let i = 0; i < 60; i++) prefs[`k${i}`] = 'v';
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferences: prefs }),
+        });
+        const res = await handleProfile(req, env);
+        assert.equal(res.status, 400);
+        const body = await json(res);
+        assert.match(body.error, /Too many preferences/);
+    });
+
+    it('caps an over-long name to 200 chars', async () => {
+        const env = mockEnv();
+        const req = authRequest('https://auth.pdbfe.dev/account/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'x'.repeat(500) }),
+        });
+        const res = await handleProfile(req, env);
+        assert.equal(res.status, 200);
+        const body = await json(res);
+        assert.equal(body.name.length, 200);
+    });
+});
+
+describe('handleReplaceFavorites — order + dedup', () => {
+    /** Capture the INSERT statements handed to USERDB.batch. */
+    function captureDB() {
+        const db = mockUserDB();
+        db._captured = [];
+        db.batch = (stmts) => { db._captured = stmts; return Promise.resolve(stmts.map(() => ({ success: true }))); };
+        return db;
+    }
+
+    it('preserves submitted order (first item sorts first under created_at DESC)', async () => {
+        const USERDB = captureDB();
+        const env = mockEnv({ USERDB });
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [
+                { entity_type: 'net', entity_id: 1 },
+                { entity_type: 'ix', entity_id: 2 },
+                { entity_type: 'fac', entity_id: 3 },
+            ] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 200);
+        // captured[0] = DELETE; [1..] = INSERTs, _params = [user, type, id, label, created_at]
+        const ts = USERDB._captured.slice(1).map(s => s._params[4]);
+        assert.ok(ts[0] > ts[1] && ts[1] > ts[2], `created_at must descend in submit order, got ${JSON.stringify(ts)}`);
+    });
+
+    it('dedupes duplicate (type,id) entries instead of 500-ing on the UNIQUE constraint', async () => {
+        const USERDB = captureDB();
+        const env = mockEnv({ USERDB });
+        const req = authRequest('https://auth.pdbfe.dev/account/favorites', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ favorites: [
+                { entity_type: 'net', entity_id: 1 },
+                { entity_type: 'net', entity_id: 1 },
+            ] }),
+        });
+        const res = await handleFavorites(req, env, '');
+        assert.equal(res.status, 200);
+        const body = await json(res);
+        assert.equal(body.replaced, 1, 'duplicate collapsed');
+        assert.equal(USERDB._captured.slice(1).length, 1, 'only one INSERT emitted');
+    });
+});

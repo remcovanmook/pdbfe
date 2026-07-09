@@ -215,6 +215,12 @@ describe('normaliseIP', () => {
         assert.equal(normaliseIP('fe80::1:2'), 'fe80:0:0:0');
     });
 
+    it('returns "unknown" for a missing/empty IP instead of throwing', () => {
+        assert.equal(normaliseIP(''), 'unknown');
+        assert.equal(normaliseIP(/** @type {any} */ (undefined)), 'unknown');
+        assert.equal(normaliseIP(/** @type {any} */ (null)), 'unknown');
+    });
+
     it('should pass through unknown as-is', () => {
         assert.equal(normaliseIP('unknown'), 'unknown');
     });

@@ -9,6 +9,16 @@
 
 import { resolveAllowedOrigin, accountCorsHeaders, jsonResponse, methodNotAllowed, handlePreflight, requireSession, ensureUser } from '../http.js';
 
+/** Max stored display-name length (matches the favorites label cap). */
+const MAX_NAME_LEN = 200;
+
+/**
+ * Max number of preference keys accepted in one update. Each key costs a
+ * sequential D1 SELECT against preference_options, so an unbounded object
+ * would exhaust the subrequest budget / stall the isolate.
+ */
+const MAX_PREF_KEYS = 50;
+
 /**
  * GET /account/preferences/options — Returns available preference keys
  * and their valid values from the preference_options table.
@@ -121,7 +131,7 @@ async function handleUpdateProfile(request, env) {
             return jsonResponse({ error: 'name must be non-empty' }, 400, origin);
         }
         sets.push('name = ?');
-        binds.push(body.name.trim());
+        binds.push(body.name.trim().slice(0, MAX_NAME_LEN));
     }
 
     // Preferences update (merge with existing)
@@ -134,9 +144,14 @@ async function handleUpdateProfile(request, env) {
             return jsonResponse({ error: 'preferences must be an object' }, 400, origin);
         }
 
+        const prefEntries = Object.entries(body.preferences);
+        if (prefEntries.length > MAX_PREF_KEYS) {
+            return jsonResponse({ error: `Too many preferences (max ${MAX_PREF_KEYS})` }, 400, origin);
+        }
+
         // Validate each preference key/value against the preference_options table.
         // This avoids hardcoded enum checks — adding a new preference is a DB INSERT.
-        for (const [key, value] of Object.entries(body.preferences)) {
+        for (const [key, value] of prefEntries) {
             if (typeof value !== 'string') {
                 return jsonResponse({ error: `Preference '${key}' must be a string` }, 400, origin);
             }
@@ -166,7 +181,7 @@ async function handleUpdateProfile(request, env) {
 
     return jsonResponse({
         id: user.id,
-        name: body.name === undefined ? user.name : body.name.trim(),
+        name: body.name === undefined ? user.name : body.name.trim().slice(0, MAX_NAME_LEN),
         email: user.email,
         preferences: mergedPrefs,
         updated_at: now,
