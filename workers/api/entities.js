@@ -27,27 +27,46 @@ import { ENTITIES } from '../../extracted/entities-worker.js';
 // ── Field accessor helpers ──────────────────────────────────────────────────
 
 /**
+ * pdbfe-extension columns the frontend legitimately needs under __pdbfe=1.
+ * This is an explicit ALLOWLIST, not "every __ column". __logo_migrated is a
+ * harmless hint (whether the logo can be served from our R2 bucket instead of
+ * the upstream URL). Internal-only __vector_embedded and the private,
+ * never-populated notes_private are deliberately excluded, so they are emitted
+ * by no route at all.
+ * @type {string[]}
+ */
+const PDBFE_EXTENSION_COLUMNS = ['__logo_migrated'];
+
+/**
  * Returns column names for an entity. Uses precompiled _columns cache,
  * falls back to deriving from fields (for test mocks).
  *
- * By default, columns with a __ prefix (local pdbfe extension fields
- * like __logo_migrated) are excluded from the result. This keeps the
- * API surface upstream-compatible for third-party consumers. Pass
- * includePdbfe=true to include them (triggered by ?__pdbfe=1).
+ * By default, columns with a __ prefix (local pdbfe extension fields) and the
+ * private notes_private are excluded, keeping the API surface upstream-
+ * compatible for third-party consumers. Pass includePdbfe=true (?__pdbfe=1) to
+ * additionally include the allowlisted PDBFE_EXTENSION_COLUMNS.
  *
  * @param {EntityMeta} entity - Entity metadata.
- * @param {boolean} [includePdbfe=false] - Include __ prefixed local fields.
+ * @param {boolean} [includePdbfe=false] - Include the pdbfe-extension columns
+ *        (the explicit allowlist below), triggered by ?__pdbfe=1.
  * @returns {string[]} Ordered column names.
  */
 export function getColumns(entity, includePdbfe = false) {
     const all = /** @type {any} */ (entity)._columns || entity.fields.map(f => f.name);
-    if (includePdbfe) return all;
-    // Lazy-cache the filtered column list to avoid re-filtering per request.
+    // Lazy-cache both projections to avoid re-filtering per request.
     const e = /** @type {any} */ (entity);
     if (!e._columnsPublic) {
         e._columnsPublic = all.filter(/** @type {(c: string) => boolean} */ (c) => !c.startsWith('__') && c !== 'notes_private');
     }
-    return e._columnsPublic;
+    if (!includePdbfe) return e._columnsPublic;
+    if (!e._columnsPdbfe) {
+        // Public columns plus ONLY the allowlisted extension columns present on
+        // this entity — never __vector_embedded (internal) or notes_private
+        // (private, never populated). So those are emitted by no route at all.
+        const extras = PDBFE_EXTENSION_COLUMNS.filter(/** @type {(c: string) => boolean} */ (c) => all.includes(c));
+        e._columnsPdbfe = e._columnsPublic.concat(extras);
+    }
+    return e._columnsPdbfe;
 }
 
 /**

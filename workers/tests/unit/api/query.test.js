@@ -92,6 +92,8 @@ const POC_RESTRICTED = {
         f("email", "string"),
         f("visible", "string"),
         f("notes_private", "string"),
+        f("__logo_migrated", "boolean"),
+        f("__vector_embedded", "boolean"),
         f("status", "string"),
     ],
     relationships: [],
@@ -826,9 +828,21 @@ describe("field projection gate", () => {
         assert.ok(sql.includes('"id"'), 'public field still selected');
     });
 
-    it("fields=notes_private is allowed with __pdbfe=1 (consistent with the gate)", () => {
+    it("fields=notes_private is stripped EVEN with __pdbfe=1 (not on the extension allowlist)", () => {
         const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', 'notes_private'], pdbfe: true });
-        assert.ok(sql.includes('notes_private'), 'pdbfe callers may select extension columns');
+        assert.ok(!sql.includes('notes_private'), 'notes_private is emitted by no route');
+    });
+
+    it("__logo_migrated (allowlisted) is selectable with __pdbfe=1 but not without", () => {
+        const withPdbfe = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__logo_migrated'], pdbfe: true });
+        assert.ok(withPdbfe.sql.includes('__logo_migrated'), 'allowlisted extension column selectable under __pdbfe');
+        const without = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__logo_migrated'], pdbfe: false });
+        assert.ok(!without.sql.includes('__logo_migrated'), 'extension column excluded by default');
+    });
+
+    it("__vector_embedded (internal) is stripped even with __pdbfe=1", () => {
+        const { sql } = buildRowQuery(POC_RESTRICTED, [], { ...base, fields: ['id', '__vector_embedded'], pdbfe: true });
+        assert.ok(!sql.includes('__vector_embedded'), 'internal bookkeeping column is emitted by no route');
     });
 
     it("requesting only an unauthorised field falls back to the public projection", () => {
