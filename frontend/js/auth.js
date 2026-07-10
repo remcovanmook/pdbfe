@@ -31,6 +31,15 @@ import { setTimezone } from './timezone.js';
 /** @type {string} localStorage key for the session token. */
 const STORAGE_KEY = 'pdbfe_sid';
 
+/**
+ * sessionStorage key holding the PKCE verifier for an in-flight login. Set
+ * before redirecting to /auth/login; consumed once when the callback returns
+ * `?code=`. It never leaves this browser, which is what binds the exchange
+ * code to the browser that initiated the login (session-fixation defence).
+ * @type {string}
+ */
+const VERIFIER_KEY = 'pdbfe_login_verifier';
+
 /** @type {string} localStorage key for anonymous favorites. */
 const LOCAL_FAVS_KEY = 'pdbfe_favorites';
 
@@ -205,6 +214,78 @@ function _loadLocalFavorites() {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Generates a random 256-bit PKCE verifier as a 64-char hex string.
+ * @returns {string}
+ */
+function _generateVerifier() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Computes the base64url(sha256(verifier)) challenge. Must match the worker's
+ * sha256Base64Url exactly (core/oauth.js) so the exchange verifies.
+ * @param {string} verifier
+ * @returns {Promise<string>}
+ */
+async function _challengeFrom(verifier) {
+    const data = new TextEncoder().encode(verifier);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    return btoa(String.fromCodePoint(...digest))
+        .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+/**
+ * Begins an OAuth login. Mints a browser-held verifier, stashes it in
+ * sessionStorage, and redirects to /auth/login carrying the derived challenge.
+ * The verifier never leaves this browser, so only this browser can later redeem
+ * the exchange code the callback returns.
+ *
+ * @returns {Promise<void>}
+ */
+export async function startLogin() {
+    const verifier = _generateVerifier();
+    try {
+        sessionStorage.setItem(VERIFIER_KEY, verifier);
+    } catch { /* sessionStorage unavailable (private mode) — exchange will fail closed */ }
+    const challenge = await _challengeFrom(verifier);
+    globalThis.location.href = `${AUTH_ORIGIN}/auth/login?challenge=${encodeURIComponent(challenge)}`;
+}
+
+/**
+ * Redeems the one-time `?code=` from the callback for a durable session id by
+ * POSTing it together with the browser-held verifier. On success the sid is
+ * persisted to localStorage. Fails closed (no session) if the verifier is
+ * missing — e.g. an injected `?code=` link that this browser never initiated.
+ *
+ * @param {string} code - The exchange code from the callback redirect.
+ * @returns {Promise<void>}
+ */
+async function _exchangeCode(code) {
+    const verifier = sessionStorage.getItem(VERIFIER_KEY);
+    sessionStorage.removeItem(VERIFIER_KEY);
+    if (!verifier) return;
+    try {
+        const res = await fetch(`${AUTH_ORIGIN}/auth/exchange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, verifier }),
+        });
+        if (!res.ok) {
+            console.warn('Auth exchange failed:', res.status);
+            return;
+        }
+        const data = await res.json();
+        if (data.sid && SID_PATTERN.test(data.sid)) {
+            localStorage.setItem(STORAGE_KEY, data.sid);
+        }
+    } catch (err) {
+        console.warn('Auth exchange error:', err);
+    }
+}
+
+/**
  * Initialises the auth module. Should be called once during page boot.
  *
  * 1. Checks URL fragment for a new session token from OAuth callback
@@ -223,9 +304,13 @@ export async function initAuth() {
     // strips fragments during its auth redirect chain.
     const urlParams = new URLSearchParams(globalThis.location.search);
 
-    const sid = urlParams.get('sid');
-    if (sid && SID_PATTERN.test(sid)) {
-        localStorage.setItem(STORAGE_KEY, sid);
+    // OAuth callback returns a single-use `?code=` (never the raw session id).
+    // Swap it for the sid via a browser-bound POST. We deliberately do NOT
+    // accept a `?sid=` from the URL any more: adopting an externally-supplied
+    // session id enabled login/session fixation.
+    const code = urlParams.get('code');
+    if (code) {
+        await _exchangeCode(code);
         // Clean the query param from the URL without triggering a page reload
         history.replaceState(null, '', globalThis.location.pathname);
     }
@@ -499,9 +584,15 @@ export function logout() {
 
     renderAuthUI();
 
-    // Redirect to auth worker logout to clean up KV
+    // Revoke the KV session server-side. POST carries the Bearer so the worker
+    // can identify and delete the session — a top-level GET navigation can't
+    // (the browser never attaches the Bearer to it). Best-effort: local state
+    // is already cleared regardless of the network outcome.
     if (sid) {
-        globalThis.location.href = `${AUTH_ORIGIN}/auth/logout`;
+        fetch(`${AUTH_ORIGIN}/auth/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${sid}` },
+        }).catch(() => { /* best effort — session will lapse at its TTL if this fails */ });
     }
 }
 
@@ -694,6 +785,9 @@ function renderAuthUI() {
         loginLink.href = `${AUTH_ORIGIN}/auth/login`;
         loginLink.className = 'header-nav-link';
         loginLink.textContent = '🔑 ' + t('Sign in');
+        // Intercept so login goes through startLogin() (mints the PKCE verifier
+        // + challenge). The href is kept as a no-JS fallback.
+        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
 
         container.replaceChildren(loginLink);
     }

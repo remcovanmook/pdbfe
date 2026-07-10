@@ -9,6 +9,7 @@
  */
 
 import { renderMarkdown } from './markdown.js';
+import { sanitiseURL } from './url.js';
 import { t, getCurrentLang } from './i18n.js';
 import { isFavorite, addFavorite, removeFavorite } from './auth.js';
 import { getTimezone } from './timezone.js';
@@ -175,6 +176,30 @@ export function createLink(type, id, label) {
 }
 
 /**
+ * Builds an anchor for an operator-supplied URL, enforcing the scheme
+ * allowlist (http/https/mailto) so a `javascript:`/`data:` URL can never
+ * become a clickable link. Returns null when the scheme is rejected — the
+ * caller should fall back to rendering plain text.
+ *
+ * @param {string} href - The untrusted URL.
+ * @param {string} text - Link text (assigned via textContent).
+ * @param {boolean} [external] - Open in a new tab with rel=noopener.
+ * @returns {HTMLAnchorElement|null}
+ */
+function buildSafeLink(href, text, external) {
+    const safeHref = sanitiseURL(href);
+    if (!safeHref) return null;
+    const a = document.createElement('a');
+    a.href = safeHref;
+    if (external) {
+        a.target = '_blank';
+        a.rel = 'noopener';
+    }
+    a.textContent = text;
+    return a;
+}
+
+/**
  * Creates a key/value info field as a DOM node by cloning the
  * tpl-info-field template. Returns null for empty/null values,
  * matching the same skip-empty semantics as renderField().
@@ -215,14 +240,12 @@ export function createField(label, value, opts = {}) {
         // This is the only place innerHTML is used — on authored/sanitised content.
         valueEl.innerHTML = renderMarkdown(displayValue);
     } else if (opts.href) {
-        const a = document.createElement('a');
-        a.href = opts.href;
-        if (opts.external) {
-            a.target = '_blank';
-            a.rel = 'noopener';
-        }
-        a.textContent = displayValue;
-        valueEl.appendChild(a);
+        // opts.href is an operator-editable PeeringDB field (website,
+        // looking_glass, route_server, policy_url, …). A rejected scheme
+        // degrades to plain text rather than a live link.
+        const link = buildSafeLink(opts.href, displayValue, opts.external);
+        if (link) valueEl.appendChild(link);
+        else valueEl.textContent = displayValue;
     } else if (opts.date) {
         valueEl.textContent = formatLocaleDate(displayValue);
     } else if (opts.email) {

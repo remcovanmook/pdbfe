@@ -11,6 +11,8 @@
  * Link URLs are validated to only allow http:, https:, and mailto: protocols.
  */
 
+import { sanitiseURL, sanitiseImageURL } from './url.js';
+
 /**
  * Sentinel strings used to protect sanitised HTML tags from the
  * escape pass. These are chosen to be unlikely to appear in real input.
@@ -42,39 +44,6 @@ function escapeForMarkdown(str) {
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;');
-}
-
-/**
- * Validates a URL, allowing only safe protocols.
- * Returns the URL if valid, empty string otherwise.
- *
- * @param {string} url - URL to validate.
- * @returns {string} Sanitised URL or empty string.
- */
-function sanitiseURL(url) {
-    const trimmed = url.trim();
-    if (/^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) {
-        return trimmed;
-    }
-    return '';
-}
-
-/**
- * Validates a URL for use in image src attributes.
- * Allows the same protocols as sanitiseURL plus data:image URIs
- * (base64-encoded inline images commonly found in PeeringDB notes).
- *
- * @param {string} url - URL to validate.
- * @returns {string} Sanitised URL or empty string.
- */
-function sanitiseImageURL(url) {
-    const trimmed = url.trim();
-    // Strip optional dimension suffix (e.g. " =410x300")
-    const cleaned = trimmed.replace(/\s*=\d+x\d+$/, '');
-    if (/^data:image\/[a-z+]+;base64,/i.test(cleaned)) {
-        return cleaned;
-    }
-    return sanitiseURL(cleaned);
 }
 
 /**

@@ -215,90 +215,97 @@ describe('reorderFavorites — anonymous path', () => {
 
 // ── initAuth — SID validation ─────────────────────────────────────────────────
 
-describe('initAuth — SID pattern validation', () => {
+describe('initAuth — code exchange (PKCE hand-off)', () => {
     beforeEach(setup);
 
-    it('accepts a valid 64-char lowercase hex SID from the URL', async () => {
-        const validSid = 'a'.repeat(64);
-        globalThis.location = /** @type {any} */ ({
-            href: `http://localhost/?sid=${validSid}`,
-            pathname: '/',
-            search: `?sid=${validSid}`,
-        });
-
-        /** @type {Record<string, string>} */
-        const store = {};
+    /**
+     * Installs writable local + session storage mocks. `setItems` records every
+     * localStorage.setItem so a stored sid can be asserted even if a later
+     * /auth/me invalidation removes it.
+     */
+    function mockStores() {
+        /** @type {Record<string, string>} */ const local = {};
+        /** @type {Record<string, string>} */ const session = {};
+        /** @type {Array<[string, string]>} */ const setItems = [];
         globalThis.localStorage = /** @type {any} */ ({
-            getItem: (k) => store[k] ?? null,
-            setItem: (k, v) => { store[k] = v; },
-            removeItem: (k) => { delete store[k]; },
+            getItem: (k) => local[k] ?? null,
+            setItem: (k, v) => { local[k] = v; setItems.push([k, v]); },
+            removeItem: (k) => { delete local[k]; },
         });
+        globalThis.sessionStorage = /** @type {any} */ ({
+            getItem: (k) => session[k] ?? null,
+            setItem: (k, v) => { session[k] = v; },
+            removeItem: (k) => { delete session[k]; },
+        });
+        return { local, session, setItems };
+    }
 
-        // Mock /auth/me as invalid — we only care that the SID was stored
-        globalThis.fetch = /** @type {any} */ (async () => ({
-            ok: false, status: 401, json: async () => ({}),
-        }));
+    it('exchanges the code for the sid when the verifier is present', async () => {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/?code=CODE', pathname: '/', search: '?code=CODE' });
+        const { session, setItems } = mockStores();
+        session['pdbfe_login_verifier'] = 'v'.repeat(64);
+        const sid = 'a'.repeat(64);
+        let exchangeBody = null;
+        globalThis.fetch = /** @type {any} */ (async (url, opts) => {
+            if (String(url).includes('/auth/exchange')) {
+                exchangeBody = JSON.parse(opts.body);
+                return { ok: true, status: 200, json: async () => ({ sid }) };
+            }
+            return { ok: false, status: 401, json: async () => ({}) };
+        });
 
         const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
-        // SID pattern was valid so it should have been written to localStorage
-        // (even though the session is then invalidated by the mocked /auth/me)
-        // We verify it was at least attempted via localStorage.setItem
-        assert.ok(store['pdbfe_sid'] !== undefined || true,
-            'Valid SID should not be immediately discarded by pattern check');
+        assert.equal(exchangeBody.code, 'CODE');
+        assert.equal(exchangeBody.verifier, 'v'.repeat(64));
+        assert.ok(setItems.some(([k, v]) => k === 'pdbfe_sid' && v === sid), 'sid from exchange stored');
+        assert.equal(session['pdbfe_login_verifier'], undefined, 'verifier consumed');
     });
 
-    it('rejects a malformed SID (too short)', async () => {
-        const badSid = 'abc'; // only 3 chars
-        globalThis.location = /** @type {any} */ ({
-            href: `http://localhost/?sid=${badSid}`,
-            pathname: '/',
-            search: `?sid=${badSid}`,
+    it('ignores an injected ?code= when no verifier was set (fixation defence)', async () => {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/?code=ATTACKER', pathname: '/', search: '?code=ATTACKER' });
+        const { setItems } = mockStores(); // no verifier stashed
+        let exchangeAttempted = false;
+        globalThis.fetch = /** @type {any} */ (async (url) => {
+            if (String(url).includes('/auth/exchange')) exchangeAttempted = true;
+            return { ok: false, status: 401, json: async () => ({}) };
         });
-
-        /** @type {Record<string, string>} */
-        const store = {};
-        globalThis.localStorage = /** @type {any} */ ({
-            getItem: (k) => store[k] ?? null,
-            setItem: (k, v) => { store[k] = v; },
-            removeItem: (k) => { delete store[k]; },
-        });
-
-        globalThis.fetch = /** @type {any} */ (async () => ({
-            ok: false, status: 401, json: async () => ({}),
-        }));
 
         const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
-        assert.equal(store['pdbfe_sid'], undefined, 'Malformed SID should not be stored');
+        assert.equal(exchangeAttempted, false, 'no exchange without a browser-held verifier');
+        assert.ok(!setItems.some(([k]) => k === 'pdbfe_sid'), 'no session adopted from an injected code');
     });
 
-    it('rejects a SID containing non-hex characters', async () => {
-        // Valid length but contains uppercase and special chars
-        const badSid = 'Z'.repeat(64);
-        globalThis.location = /** @type {any} */ ({
-            href: `http://localhost/?sid=${badSid}`,
-            pathname: '/',
-            search: `?sid=${badSid}`,
+    it('stores nothing when the exchange fails', async () => {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/?code=CODE', pathname: '/', search: '?code=CODE' });
+        const { session, setItems } = mockStores();
+        session['pdbfe_login_verifier'] = 'v'.repeat(64);
+        globalThis.fetch = /** @type {any} */ (async (url) => {
+            if (String(url).includes('/auth/exchange')) return { ok: false, status: 400, json: async () => ({}) };
+            return { ok: false, status: 401, json: async () => ({}) };
         });
-
-        /** @type {Record<string, string>} */
-        const store = {};
-        globalThis.localStorage = /** @type {any} */ ({
-            getItem: (k) => store[k] ?? null,
-            setItem: (k, v) => { store[k] = v; },
-            removeItem: (k) => { delete store[k]; },
-        });
-
-        globalThis.fetch = /** @type {any} */ (async () => ({
-            ok: false, status: 401, json: async () => ({}),
-        }));
 
         const { initAuth } = await import('../../js/auth.js');
         await initAuth();
 
-        assert.equal(store['pdbfe_sid'], undefined, 'Non-hex SID should not be stored');
+        assert.ok(!setItems.some(([k]) => k === 'pdbfe_sid'), 'no sid stored on failed exchange');
+    });
+
+    it('rejects a malformed sid returned by the exchange', async () => {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/?code=CODE', pathname: '/', search: '?code=CODE' });
+        const { session, setItems } = mockStores();
+        session['pdbfe_login_verifier'] = 'v'.repeat(64);
+        globalThis.fetch = /** @type {any} */ (async (url) => {
+            if (String(url).includes('/auth/exchange')) return { ok: true, status: 200, json: async () => ({ sid: 'not-valid' }) };
+            return { ok: false, status: 401, json: async () => ({}) };
+        });
+
+        const { initAuth } = await import('../../js/auth.js');
+        await initAuth();
+
+        assert.ok(!setItems.some(([k]) => k === 'pdbfe_sid'), 'malformed sid from exchange not stored');
     });
 });

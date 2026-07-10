@@ -290,8 +290,14 @@ describe('createOAuthHandler / handleCallback — token + session', () => {
             const res = await handler.handleCallback(req, env);
             assert.equal(res.status, 302);
             const location = res.headers.get('Location');
-            assert.ok(location.includes('sid='), `Expected sid in Location, got: ${location}`);
+            // Hand-off is a single-use exchange code, never the raw session id.
+            assert.ok(location.includes('code='), `Expected code in Location, got: ${location}`);
+            assert.ok(!location.includes('sid='), `Session id must not appear in the URL, got: ${location}`);
             assert.equal(fetchCallCount, 2, 'Should call token + profile endpoints');
+            // A session and a bound exchange code were both persisted.
+            const keys = [...kv._store.keys()];
+            assert.ok(keys.some(k => k.startsWith('session:')), 'session written to KV');
+            assert.ok(keys.some(k => k.startsWith('authcode:')), 'exchange code written to KV');
         } finally {
             globalThis.fetch = originalFetch;
         }
@@ -559,12 +565,174 @@ describe('PeeringDB handleAuth / profile parsing', () => {
                 headers: { 'Cookie': 'pdbfe_oauth_state=S; pdbfe_oauth_return=https%3A%2F%2Fpdbfe.dev' },
             });
 
-            const res = await handleAuth(req, env);
+            const res = await handleAuth(req, env, '/auth/callback');
             assert.equal(res.status, 302);
             const location = res.headers.get('Location');
-            assert.ok(location.includes('sid='), `Expected sid in redirect, got: ${location}`);
+            assert.ok(location.includes('code='), `Expected code in redirect, got: ${location}`);
+            assert.ok(!location.includes('sid='), `Session id must not appear in the URL, got: ${location}`);
+            // Verify the profile was actually mapped into the persisted session.
+            const sessionEntry = [...kv._store.entries()].find(([k]) => k.startsWith('session:'));
+            assert.ok(sessionEntry, 'session written to KV');
+            const session = JSON.parse(sessionEntry[1]);
+            assert.equal(session.id, 42);
+            assert.equal(session.name, 'Alice Operator');
+            assert.equal(session.email, 'alice@example.com');
+            assert.equal(session.verified_user, true);
+            assert.deepEqual(session.networks, [{ id: 1, name: 'AS64496' }]);
         } finally {
             globalThis.fetch = originalFetch;
         }
+    });
+});
+
+// ── PKCE exchange-code hand-off ───────────────────────────────────────────────
+
+/** base64url(sha256(input)) — mirrors the worker's sha256Base64Url. */
+async function challengeFor(verifier) {
+    const data = new TextEncoder().encode(verifier);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    return btoa(String.fromCodePoint(...digest))
+        .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
+/** A key-aware KV mock (the shared mockKV ignores keys). */
+function keyedKV() {
+    const store = new Map();
+    return /** @type {any} */ ({
+        get(key, opts) {
+            const raw = store.get(key);
+            if (raw === undefined) return Promise.resolve(null);
+            return Promise.resolve(opts && opts.type === 'json' ? JSON.parse(raw) : raw);
+        },
+        put(key, value) { store.set(key, value); return Promise.resolve(); },
+        delete(key) { store.delete(key); return Promise.resolve(); },
+        _store: store,
+    });
+}
+
+describe('createOAuthHandler / handleExchange', () => {
+    it('returns the sid when the verifier matches the bound challenge', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const kv = keyedKV();
+        const verifier = 'a'.repeat(64);
+        await kv.put('authcode:CODE1', JSON.stringify({ sid: 'S'.repeat(64), challenge: await challengeFor(verifier) }));
+        const env = mockEnv({ SESSIONS: kv });
+
+        const req = new Request('https://auth.pdbfe.dev/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: 'CODE1', verifier }),
+        });
+        const res = await handler.handleExchange(req, env);
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.sid, 'S'.repeat(64));
+        // Single-use: the code is consumed.
+        assert.equal(kv._store.has('authcode:CODE1'), false);
+    });
+
+    it('rejects a wrong verifier and does NOT consume the code', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const kv = keyedKV();
+        await kv.put('authcode:CODE2', JSON.stringify({ sid: 'S'.repeat(64), challenge: await challengeFor('a'.repeat(64)) }));
+        const env = mockEnv({ SESSIONS: kv });
+
+        const req = new Request('https://auth.pdbfe.dev/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: 'CODE2', verifier: 'b'.repeat(64) }),
+        });
+        const res = await handler.handleExchange(req, env);
+        assert.equal(res.status, 400);
+        assert.equal(kv._store.has('authcode:CODE2'), true, 'wrong verifier must not burn the code');
+    });
+
+    it('rejects an unknown/expired code', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const env = mockEnv({ SESSIONS: keyedKV() });
+        const req = new Request('https://auth.pdbfe.dev/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: 'NOPE', verifier: 'a'.repeat(64) }),
+        });
+        const res = await handler.handleExchange(req, env);
+        assert.equal(res.status, 400);
+    });
+
+    it('rejects when code or verifier is missing', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const env = mockEnv({ SESSIONS: keyedKV() });
+        const req = new Request('https://auth.pdbfe.dev/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: 'X' }),
+        });
+        const res = await handler.handleExchange(req, env);
+        assert.equal(res.status, 400);
+    });
+
+    it('rejects a code stored without a challenge (unbound)', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const kv = keyedKV();
+        await kv.put('authcode:CODE3', JSON.stringify({ sid: 'S'.repeat(64), challenge: '' }));
+        const env = mockEnv({ SESSIONS: kv });
+        const req = new Request('https://auth.pdbfe.dev/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: 'CODE3', verifier: 'a'.repeat(64) }),
+        });
+        const res = await handler.handleExchange(req, env);
+        assert.equal(res.status, 400);
+    });
+});
+
+describe('createOAuthHandler / handleLogout (POST revoke)', () => {
+    it('deletes the KV session and returns JSON on POST with Bearer', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const sid = 'S'.repeat(64);
+        const kv = keyedKV();
+        await kv.put(`session:${sid}`, JSON.stringify({ id: 1 }));
+        const env = mockEnv({ SESSIONS: kv });
+
+        const req = new Request('https://auth.pdbfe.dev/auth/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${sid}` },
+        });
+        const res = await handler.handleLogout(req, env, { 'Access-Control-Allow-Origin': 'https://pdbfe.dev' });
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.ok, true);
+        assert.equal(kv._store.has(`session:${sid}`), false, 'session revoked in KV');
+    });
+
+    it('keeps the legacy 302 redirect on GET', async () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const env = mockEnv({ SESSIONS: keyedKV() });
+        const req = new Request('https://auth.pdbfe.dev/auth/logout', { method: 'GET' });
+        const res = await handler.handleLogout(req, env);
+        assert.equal(res.status, 302);
+    });
+});
+
+describe('createOAuthHandler / handleLogin (PKCE challenge)', () => {
+    it('persists the challenge in an HttpOnly cookie', () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const env = mockEnv();
+        const req = new Request('https://auth.pdbfe.dev/auth/login?challenge=CHAL123');
+        const res = handler.handleLogin(req, env);
+        const cookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('Set-Cookie')];
+        const chal = cookies.find(c => c && c.startsWith('test_chal='));
+        assert.ok(chal, 'challenge cookie set');
+        assert.ok(chal.includes('CHAL123'));
+        assert.ok(/HttpOnly/i.test(chal));
+    });
+
+    it('omits the challenge cookie when none is supplied', () => {
+        const handler = createOAuthHandler(minimalConfig());
+        const env = mockEnv();
+        const req = new Request('https://auth.pdbfe.dev/auth/login');
+        const res = handler.handleLogin(req, env);
+        const cookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('Set-Cookie')];
+        assert.ok(!cookies.some(c => c && c.startsWith('test_chal=')), 'no challenge cookie');
     });
 });

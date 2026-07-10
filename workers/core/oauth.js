@@ -37,6 +37,8 @@ import { generateSessionId, writeSession, deleteSession, extractSessionId, resol
  *   CSRF state cookie TTL in seconds.
  * @property {number} [sessionTtl=86400]
  *   KV session TTL in seconds.
+ * @property {number} [authCodeTtl=120]
+ *   Single-use exchange-code TTL in seconds (the /auth/exchange handoff window).
  *
  * @property {(profile: Record<string, any>) => OAuthProfileResult} parseProfile
  *   Maps the raw provider profile JSON to a session data object.
@@ -57,7 +59,8 @@ import { generateSessionId, writeSession, deleteSession, extractSessionId, resol
  * @typedef {Object} OAuthHandler
  * @property {(request: Request, env: any, returnOrigin?: string) => Response} handleLogin
  * @property {(request: Request, env: any) => Promise<Response>} handleCallback
- * @property {(request: Request, env: any) => Promise<Response>} handleLogout
+ * @property {(request: Request, env: any, corsHeaders?: Record<string, string>) => Promise<Response>} handleLogout
+ * @property {(request: Request, env: any) => Promise<Response>} handleExchange
  * @property {(request: Request, env: any) => Promise<Response>} handleMe
  * @property {(
  *   request: Request,
@@ -85,17 +88,23 @@ function extractCookie(request, name) {
 
 /**
  * Builds a 302 redirect response back to the frontend origin.
- * Appends `?sid=` on success or `?auth_error=` on failure.
+ * Appends `?code=` (a single-use, browser-bound exchange code) on success or
+ * `?auth_error=` on failure.
+ *
+ * The durable session id is deliberately NOT placed in the URL — it would be
+ * captured in access logs and, being a bearer credential adoptable by any
+ * browser, would enable session fixation. The frontend swaps the code for the
+ * session id via an authenticated POST to /auth/exchange.
  *
  * @param {string} frontendOrigin - The frontend origin URL.
- * @param {string|null} sid - Session ID on success.
+ * @param {string|null} code - Single-use exchange code on success.
  * @param {string|null} error - Error message on failure.
  * @returns {Response}
  */
-function redirectToFrontend(frontendOrigin, sid, error) {
+function redirectToFrontend(frontendOrigin, code, error) {
     let location = frontendOrigin;
-    if (sid) {
-        location += `/?sid=${sid}`;
+    if (code) {
+        location += `/?code=${code}`;
     } else if (error) {
         location += `/?auth_error=${encodeURIComponent(error)}`;
     }
@@ -106,18 +115,35 @@ function redirectToFrontend(frontendOrigin, sid, error) {
 }
 
 /**
- * GET /auth/logout.
+ * /auth/logout.
  *
- * Deletes the KV session and redirects to the frontend.
+ * Deletes the KV session (when the request carries a resolvable session id).
+ * POST returns JSON so the SPA can clear local state itself; GET keeps the
+ * legacy 302 redirect to the frontend.
  *
  * @param {Request} request
  * @param {any} env
+ * @param {Record<string, string>} [corsHeaders] - CORS headers for the JSON (POST) response.
  * @returns {Promise<Response>}
  */
-async function handleLogout(request, env) {
+async function handleLogout(request, env, corsHeaders) {
     const sid = extractSessionId(request);
     if (sid) {
         await deleteSession(env.SESSIONS, sid);
+    }
+    // POST is the app-initiated fetch path: it carries Authorization: Bearer,
+    // so the session id above is resolved and the KV session actually deleted.
+    // Return JSON so the SPA can then clear local state and navigate itself.
+    // GET is the legacy top-level-navigation path (no Bearer → nothing to
+    // revoke) kept for backward compatibility; it just redirects home.
+    if (request.method === 'POST') {
+        return new Response(
+            JSON.stringify({ ok: true }) + '\n',
+            {
+                status: 200,
+                headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders },
+            }
+        );
     }
     return new Response(null, {
         status: 302,
@@ -202,6 +228,26 @@ async function fetchProfile(accessToken, profileUrl, extraHeaders) {
     }
 }
 
+/** @type {string} KV key prefix for single-use OAuth exchange codes. */
+const AUTHCODE_PREFIX = 'authcode:';
+
+/**
+ * Computes the base64url-encoded SHA-256 of a string. Used for the PKCE-style
+ * challenge: the frontend sends `challenge = sha256Base64Url(verifier)` at
+ * login; /auth/exchange recomputes it from the presented verifier and compares.
+ *
+ * @param {string} input - The value to hash (the PKCE verifier).
+ * @returns {Promise<string>} base64url digest, no padding.
+ */
+async function sha256Base64Url(input) {
+    const data = new TextEncoder().encode(input);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    // 32 bytes → binary string → base64url (no padding). Spread is safe at this
+    // fixed small size.
+    const bin = String.fromCodePoint(...digest);
+    return btoa(bin).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
@@ -221,6 +267,8 @@ export function createOAuthHandler(config) {
     const prefix         = config.cookiePrefix   ?? 'oauth';
     const stateCookie    = `${prefix}_state`;
     const returnCookie   = `${prefix}_return`;
+    const challengeCookie = `${prefix}_chal`;
+    const authCodeTtl    = config.authCodeTtl    ?? 120;
 
     /**
      * GET /auth/login.
@@ -255,6 +303,15 @@ export function createOAuthHandler(config) {
         headers.append('Set-Cookie', `${stateCookie}=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateTtl}; Path=/`);
         headers.append('Set-Cookie', `${returnCookie}=${encodeURIComponent(returnOrigin)}; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateTtl}; Path=/`);
 
+        // PKCE-style binding: the frontend sends a challenge (sha256 of a
+        // browser-held verifier). Persist it in an HttpOnly cookie so the
+        // callback can bind the one-time exchange code to it. base64url is
+        // cookie-safe (no chars needing escaping).
+        const challenge = new URL(request.url).searchParams.get('challenge'); // ap-ok: auth worker only
+        if (challenge) {
+            headers.append('Set-Cookie', `${challengeCookie}=${challenge}; HttpOnly; Secure; SameSite=Lax; Max-Age=${stateTtl}; Path=/`);
+        }
+
         return new Response(null, { status: 302, headers });
     }
 
@@ -278,6 +335,7 @@ export function createOAuthHandler(config) {
         const clearCookies = [
             `${stateCookie}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
             `${returnCookie}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
+            `${challengeCookie}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`,
         ];
 
         /**
@@ -335,7 +393,20 @@ export function createOAuthHandler(config) {
         const sid = generateSessionId();
         await writeSession(env.SESSIONS, sid, /** @type {SessionData} */ (parsed.sessionData), sessionTtl);
 
-        return clearAndReturn(redirectToFrontend(returnOrigin, sid, null));
+        // Hand the session back via a single-use, browser-bound exchange code
+        // rather than putting the durable sid in the redirect URL. The code is
+        // bound to the PKCE challenge captured at login; only the browser that
+        // holds the matching verifier can redeem it at /auth/exchange. An
+        // injected `?code=` (or one scraped from logs) is useless without it.
+        const challenge = extractCookie(request, challengeCookie) || '';
+        const handoffCode = generateSessionId();
+        await env.SESSIONS.put(
+            `${AUTHCODE_PREFIX}${handoffCode}`,
+            JSON.stringify({ sid, challenge }),
+            { expirationTtl: authCodeTtl }
+        );
+
+        return clearAndReturn(redirectToFrontend(returnOrigin, handoffCode, null));
     }
 
 
@@ -379,6 +450,62 @@ export function createOAuthHandler(config) {
     }
 
     /**
+     * POST /auth/exchange.
+     *
+     * Swaps a single-use exchange code (delivered to the frontend via the
+     * callback redirect) for the durable session id — but only if the caller
+     * presents the PKCE verifier whose sha256 matches the challenge the code
+     * was bound to at login. This makes an injected/scraped code useless to
+     * anyone but the browser that initiated the login (session-fixation
+     * defence), and keeps the session id out of URLs/logs.
+     *
+     * @param {Request} request
+     * @param {any} env
+     * @returns {Promise<Response>}
+     */
+    async function handleExchange(request, env) {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            ...config.getCorsHeaders(request, env),
+        };
+        /** @param {number} status @param {object} respBody @returns {Response} */
+        const json = (status, respBody) =>
+            new Response(JSON.stringify(respBody) + '\n', { status, headers });
+
+        let body;
+        try {
+            body = /** @type {{code?: string, verifier?: string}} */ (await request.json());
+        } catch {
+            body = {};
+        }
+        const code = typeof body.code === 'string' ? body.code : '';
+        const verifier = typeof body.verifier === 'string' ? body.verifier : '';
+        if (!code || !verifier) {
+            return json(400, { error: 'Missing code or verifier' });
+        }
+
+        const key = `${AUTHCODE_PREFIX}${code}`;
+        const stored = /** @type {{sid: string, challenge: string}|null} */ (
+            await env.SESSIONS.get(key, { type: 'json' })
+        );
+        if (!stored) {
+            return json(400, { error: 'Invalid or expired code' });
+        }
+
+        // Empty challenge means the login did not present one — reject rather
+        // than fall back to an unbound (fixation-prone) exchange.
+        const expected = await sha256Base64Url(verifier);
+        if (!stored.challenge || expected !== stored.challenge) {
+            return json(400, { error: 'Verifier mismatch' });
+        }
+
+        // Single-use: consume the code only once the verifier checks out.
+        await env.SESSIONS.delete(key);
+        return json(200, { sid: stored.sid });
+    }
+
+    /**
      * Top-level OAuth2 request dispatcher.
      *
      * Routes /auth/login, /auth/callback, /auth/logout, and /auth/me by
@@ -400,7 +527,8 @@ export function createOAuthHandler(config) {
         switch (path) {
             case '/auth/login':    return handleLogin(request, env, returnOrigin);
             case '/auth/callback': return handleCallback(request, env);
-            case '/auth/logout':   return handleLogout(request, env);
+            case '/auth/logout':   return handleLogout(request, env, config.getCorsHeaders(request, env));
+            case '/auth/exchange': return handleExchange(request, env);
             case '/auth/me':       return handleMe(request, env);
             default:
                 return new Response(
@@ -410,5 +538,5 @@ export function createOAuthHandler(config) {
         }
     }
 
-    return { handleLogin, handleCallback, handleLogout, handleMe, handleOAuth };
+    return { handleLogin, handleCallback, handleLogout, handleExchange, handleMe, handleOAuth };
 }

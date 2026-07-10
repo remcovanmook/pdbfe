@@ -152,15 +152,25 @@ function getOAuthHandler(env) {
 
 /**
  * Dispatches /auth/* requests to the generic OAuth2 handler.
- * Enforces GET-only and handles OPTIONS preflight.
+ *
+ * Most endpoints are GET (login/callback/me, and the legacy logout redirect).
+ * /auth/exchange and /auth/logout additionally accept POST — the app-initiated,
+ * Bearer-authenticated fetches used by the SPA (same shape as /account/*). The
+ * OPTIONS preflight is handled centrally.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @param {string} path - The request pathname (e.g. "/auth/login").
  * @returns {Promise<Response>|Response} The HTTP response.
  */
-export function handleAuth(request, env) {
+export function handleAuth(request, env, path) {
     if (request.method === 'OPTIONS') return handlePreflight(request, env);
-    if (request.method !== 'GET') return methodNotAllowed('GET, OPTIONS');
+
+    const postAllowed = path === '/auth/exchange' || path === '/auth/logout';
+    const ok = request.method === 'GET' || (request.method === 'POST' && postAllowed);
+    if (!ok) {
+        return methodNotAllowed(postAllowed ? 'GET, POST, OPTIONS' : 'GET, OPTIONS');
+    }
 
     return getOAuthHandler(env).handleOAuth(request, env, resolveReturnOrigin);
 }
