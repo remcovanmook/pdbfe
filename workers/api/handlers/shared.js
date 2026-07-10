@@ -45,26 +45,46 @@ export function parseJsonFields(entity, row) {
     }
 }
 
+// Byte values for the countRowsBytes scan. '[' ']' '}' ',' '{' are all
+// single-byte ASCII (< 0x80), so they can never occur as a UTF-8 continuation
+// byte — a raw byte scan for the '},{' object separator is exactly equivalent
+// to scanning the decoded string, without allocating the (potentially
+// multi-MB) string just to count.
+const B_LBRACKET = 0x5b; // [
+const B_RBRACKET = 0x5d; // ]
+const B_RBRACE = 0x7d;   // }
+const B_COMMA = 0x2c;    // ,
+const B_LBRACE = 0x7b;   // {
+
 /**
- * Estimates the number of rows in a JSON array payload without parsing it.
- * Counts occurrences of '},{' which separate objects in json_group_array
- * output. Returns 0 for empty arrays, 1 for single-object payloads.
+ * Estimates the number of rows in a JSON array payload without parsing it, by
+ * scanning the raw UTF-8 bytes for the '},{' separator between objects in
+ * json_group_array output. Returns 0 for empty arrays, 1 for single-object
+ * payloads. Operates on bytes to avoid decoding the (potentially multi-MB)
+ * buffer to a string on the list hot path.
  *
- * @param {string} payload - The raw JSON string from D1.
+ * @param {Uint8Array} buf - The raw JSON payload bytes from D1 / the cache.
  * @returns {number} Estimated row count.
  */
-export function countRows(payload) {
-    const start = payload.indexOf('[');
-    const end = payload.lastIndexOf(']');
-    if (start === -1 || end === -1 || end <= start + 1) return 0;
+export function countRowsBytes(buf) {
+    const len = buf.byteLength;
+    let start = -1;
+    for (let i = 0; i < len; i++) {
+        if (buf[i] === B_LBRACKET) { start = i; break; }
+    }
+    if (start === -1) return 0;
+    let end = -1;
+    for (let i = len - 1; i > start; i--) {
+        if (buf[i] === B_RBRACKET) { end = i; break; }
+    }
+    if (end === -1 || end <= start + 1) return 0;
 
     let count = 1;
-    let i = start + 1;
-    while (i < end) {
-        i = payload.indexOf('},{', i);
-        if (i === -1 || i >= end) break;
-        count++;
-        i += 3;
+    for (let i = start + 1; i + 2 < end; i++) {
+        if (buf[i] === B_RBRACE && buf[i + 1] === B_COMMA && buf[i + 2] === B_LBRACE) {
+            count++;
+            i += 2;
+        }
     }
     return count;
 }

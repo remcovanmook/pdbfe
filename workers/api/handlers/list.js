@@ -13,7 +13,7 @@ import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '.
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
-import { parseJsonFields, countRows } from './shared.js';
+import { parseJsonFields, countRowsBytes } from './shared.js';
 
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
@@ -40,9 +40,11 @@ export async function handleList(hc) {
     );
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
-    // Pre-fetch next page in background if paginated
+    // Pre-fetch next page in background if paginated. Count rows directly from
+    // the payload bytes — decoding the whole (potentially multi-MB) buffer to a
+    // string just to count would be pure waste on every cache hit.
     const cache = getEntityCache(entityTag);
-    const rowCount = countRows(new TextDecoder().decode(effectiveBuf));
+    const rowCount = countRowsBytes(effectiveBuf);
     if (rowCount > 0) {
         const nextPage = nextPageParams(entity, filters, opts, rowCount);
         if (nextPage) {
@@ -124,8 +126,7 @@ async function handleCount(hc, entity) {
         const listCached = cache.get(listKey); // ap-ok: cross-key optimization, synchronous destructure follows
         const listBuf = listCached ? listCached.buf : null;
         if (listBuf) {
-            const payload = new TextDecoder().decode(/** @type {Uint8Array} */(/** @type {unknown} */(listBuf)));
-            const count = countRows(payload);
+            const count = countRowsBytes(/** @type {Uint8Array} */(/** @type {unknown} */(listBuf)));
             if (count > 0) {
                 const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
                 cache.add(cacheKey, buf, { entityTag }, Date.now());

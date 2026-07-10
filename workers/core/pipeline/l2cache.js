@@ -41,6 +41,20 @@ export function initL2(requestUrl) {
 }
 
 /**
+ * Builds the synthetic Cache API URL for a key. The key is percent-encoded so
+ * it becomes a single opaque path segment — otherwise a (user-derived) key
+ * containing `..` would be path-normalised by URL resolution and collide with a
+ * different key (two requests served each other's bytes), and a key with a
+ * space / quote / `#` would truncate the URL and silently disable L2 for it.
+ *
+ * @param {string} cacheKey - Normalised cache key.
+ * @returns {string} Fully-qualified synthetic URL.
+ */
+function l2Url(cacheKey) {
+    return _cachePrefix + encodeURIComponent(cacheKey);
+}
+
+/**
  * Attempts to retrieve a cached payload from the per-PoP L2 cache.
  * Returns the raw bytes if found and not expired, or null on miss.
  *
@@ -52,7 +66,7 @@ export async function getL2(cacheKey) {
     if (!_cachePrefix) return null;
     try {
         const cfCache = /** @type {any} */(caches).default;
-        const url = _cachePrefix + cacheKey;
+        const url = l2Url(cacheKey);
         const response = await cfCache.match(url);
         if (!response) return null;
 
@@ -78,11 +92,16 @@ export async function putL2(cacheKey, buf, ttlSeconds) {
     if (!_cachePrefix) return;
     try {
         const cfCache = /** @type {any} */(caches).default;
-        const url = _cachePrefix + cacheKey;
+        const url = l2Url(cacheKey);
+        // Cache-Control max-age is integer seconds; a sub-second TTL (e.g. a
+        // 500ms negative TTL passed as 0.5) would round to 0 and disable
+        // caching for the entry. Floor to a minimum of 1s so short TTLs still
+        // take effect.
+        const maxAge = Math.max(1, Math.floor(ttlSeconds));
         const response = new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
-                'Cache-Control': `public, max-age=${ttlSeconds}`,
+                'Cache-Control': `public, max-age=${maxAge}`,
                 'Content-Length': buf.byteLength.toString(),
             }
         });

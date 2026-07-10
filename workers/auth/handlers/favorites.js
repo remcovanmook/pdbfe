@@ -8,7 +8,7 @@
  *   DELETE /account/favorites/:type/:id    → Remove a favorite
  */
 
-import { jsonResponse, methodNotAllowed, handlePreflight, requireSession, ensureUser } from '../http.js';
+import { jsonResponse, methodNotAllowed, handlePreflight, requireSession, ensureUser, resolveAllowedOrigin } from '../http.js';
 
 /** Maximum number of favorites per user. */
 const MAX_FAVORITES_PER_USER = 50;
@@ -33,7 +33,7 @@ export async function handleFavorites(request, env, subPath) {
         const rest = subPath.slice(1); // strip leading "/"
         const slashIdx = rest.indexOf('/');
         if (slashIdx < 1 || slashIdx === rest.length - 1 || rest.slice(slashIdx + 1).includes('/')) {
-            return jsonResponse({ error: 'Expected /account/favorites/:type/:id' }, 400, '');
+            return jsonResponse({ error: 'Expected /account/favorites/:type/:id' }, 400, resolveAllowedOrigin(request, env));
         }
         if (request.method !== 'DELETE') return methodNotAllowed('DELETE, OPTIONS');
         return handleRemoveFavorite(request, env, rest.slice(0, slashIdx), rest.slice(slashIdx + 1));

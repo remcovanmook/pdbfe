@@ -23,7 +23,7 @@
  *   refresh(db)                       — force a synchronous poll (cold boot / tests)
  */
 
-import { encoder } from './http.js';
+import { encoder, jsonError } from './http.js';
 
 /**
  * Creates an isolated sync-state tracker. Instantiate once per worker
@@ -175,6 +175,13 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
         if (!statusPayload) {
             // Cold boot: block on first poll to generate payload.
             await refresh(db);
+            if (!statusPayload) {
+                // refresh() couldn't build a payload — D1 was unavailable (the
+                // error is swallowed inside refresh) or _sync_meta returned no
+                // rows. Surface a 503 rather than a misleading empty 200, and
+                // cache nothing so the next request retries once D1 recovers.
+                return jsonError(503, 'Sync status temporarily unavailable');
+            }
         } else {
             // Warm: non-blocking background refresh.
             ensureSyncFreshness(db, ctx, Date.now());

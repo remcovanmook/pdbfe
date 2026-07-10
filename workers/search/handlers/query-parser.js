@@ -145,17 +145,6 @@ const INFO_TYPE_TERMS = [
  */
 const LOCATION_PREPS = ['in ', 'at ', 'near ', 'around ', 'from '];
 
-/**
- * Words that suggest "find entities present at / connected to Y"
- * rather than "find entities similar to Y".
- *
- * @type {Set<string>}
- */
-const TRAVERSAL_VERBS = new Set([
-    'at', 'in', 'member', 'members', 'peering', 'connected', 'present',
-    'located', 'hosted', 'collocated', 'collocated', 'present',
-]);
-
 // ---------------------------------------------------------------------------
 // Pattern definitions
 // ---------------------------------------------------------------------------
