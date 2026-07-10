@@ -24,3 +24,7 @@
 
 - [Django/D1 Gotchas](django-gotchas.md) — Behavioral divergences between Django+MySQL and Cloudflare Workers+D1
 - [PeeringDB API Patterns](peeringdb-api-patterns.md) — Common PeeringDB API integration patterns and consumer workflows
+
+## Audits
+
+- [Worker Security & Quality Audit — July 2026](audits/2026-07-worker-security-quality-audit.md) — Full-codebase review before enabling the edge cache; findings + fixes (`#90`–`#99`)
