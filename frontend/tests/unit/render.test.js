@@ -115,6 +115,16 @@ describe('formatDate', () => {
         assert.ok(result.includes('year'),
             `Expected "years ago", got: ${result}`);
     });
+
+    it("shows months (not '0 years ago') at 360-364 days old", async () => {
+        // Regression: diffMonth is 12 here (so the old `diffMonth < 12` check
+        // failed) but diffYear is still 0, which used to render "0 years ago".
+        const { formatDate } = await import('../../js/render.js');
+        const ts = new Date(Date.now() - 362 * 24 * 60 * 60_000).toISOString();
+        const result = formatDate(ts);
+        assert.ok(result.includes('month'), `Expected months, got: ${result}`);
+        assert.ok(!result.includes('0 year'), `Must not say "0 years ago", got: ${result}`);
+    });
 });
 
 // ── DOM builders — no <template> dependency ───────────────────────────────────

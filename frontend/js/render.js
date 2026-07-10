@@ -62,7 +62,10 @@ export function formatDate(iso) {
     if (diffDay < 30) return t('{n} days ago', { n: diffDay });
     const diffMonth = Math.floor(diffDay / 30);
     if (diffMonth === 1) return t('1 month ago');
-    if (diffMonth < 12) return t('{n} months ago', { n: diffMonth });
+    // Gate on days, not the derived month count: at 360–364 days diffMonth is
+    // 12 (so `< 12` fails) but diffYear is still 0, which previously rendered
+    // the nonsensical "0 years ago". Show months right up to a full year.
+    if (diffDay < 365) return t('{n} months ago', { n: diffMonth });
     const diffYear = Math.floor(diffDay / 365);
     if (diffYear === 1) return t('1 year ago');
     return t('{n} years ago', { n: diffYear });
@@ -361,6 +364,22 @@ export function createTextNode(text) {
 }
 
 /**
+ * Removes all `<tableId>.<key>` table-state params from a URLSearchParams.
+ * Collects matching keys before deleting — deleting from the live keys()
+ * iterator mid-loop shifts subsequent entries and skips the key immediately
+ * after each deletion (e.g. peers.dir after peers.sort would survive).
+ *
+ * @param {URLSearchParams} params
+ */
+function stripTableStateParams(params) {
+    const stale = [];
+    for (const key of params.keys()) {
+        if (key.includes('.')) stale.push(key);
+    }
+    for (const key of stale) params.delete(key);
+}
+
+/**
  * Builds the standard detail-layout wrapper used by all entity pages.
  * Assembles header, optional logo, optional stats bar, sidebar, and
  * main content into the grid layout structure.
@@ -431,10 +450,8 @@ export function createDetailLayout(opts) {
     shareBtn.setAttribute('aria-label', t('Share page'));
     shareBtn.addEventListener('click', async () => {
         const url = new URL(globalThis.location.href);
-        // Clear existing table state params
-        for (const key of url.searchParams.keys()) {
-            if (key.includes('.')) url.searchParams.delete(key);
-        }
+        // Clear existing table state params before re-collecting current state.
+        stripTableStateParams(url.searchParams);
         // Collect state from all pdb-table elements
         for (const table of document.querySelectorAll('pdb-table')) {
             const state = /** @type {any} */ (table).getState?.();
