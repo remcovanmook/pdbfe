@@ -167,6 +167,23 @@ describe('wrapHandler', () => {
         assert.ok(!text.includes('boom'), 'error message must not leak either');
     });
 
+    it('sets X-Content-Type-Options: nosniff on every response', async () => {
+        const handler = async () => new Response('ok');
+        const wrapped = wrapHandler(handler, 'test');
+        const req = mockRequest('GET');
+        const resp = await wrapped.fetch(req, {}, { waitUntil: () => {} });
+        assert.equal(resp.headers.get('X-Content-Type-Options'), 'nosniff');
+    });
+
+    it('sets X-Content-Type-Options: nosniff even on the 500 error path', async () => {
+        const handler = async () => { throw new Error('boom'); };
+        const wrapped = wrapHandler(handler, 'test');
+        const req = mockRequest('GET');
+        const resp = await wrapped.fetch(req, {}, { waitUntil: () => {} });
+        assert.equal(resp.status, 500);
+        assert.equal(resp.headers.get('X-Content-Type-Options'), 'nosniff');
+    });
+
     it('sets default X-Auth-Status when handler omits it', async () => {
         const handler = async () => new Response('ok');
         const wrapped = wrapHandler(handler, 'test');

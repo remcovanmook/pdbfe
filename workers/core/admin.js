@@ -264,6 +264,12 @@ export function wrapHandler(handler, serviceName) {
             h.set("X-Served-By", `cache-${request.cf?.colo ?? "UNKNOWN"}-${serviceName}`);
             h.set("X-Isolate-ID", ISOLATE_ID);
 
+            // Defence-in-depth: every response from every worker is JSON (or a
+            // known static asset), never something a browser should content-type
+            // sniff. Set nosniff here at the single choke point so it covers all
+            // paths — cached, error, preflight, static, and Yoga's own responses.
+            h.set("X-Content-Type-Options", "nosniff");
+
             // Inject the deployed release version when available.
             // PDBFE_VERSION is set as a wrangler [vars] entry at deploy time
             // from the VERSION file, so this is a zero-cost string read.
