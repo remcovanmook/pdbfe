@@ -92,7 +92,14 @@ export function isNotModified(requestHeaders, etag) {
     const reqEtag = requestHeaders.get("if-none-match");
     if (!reqEtag) return false;
     if (reqEtag === "*") return true;
-    return stripEtagDecoration(reqEtag) === stripEtagDecoration(etag);
+    // If-None-Match is a comma-separated list of ETags (RFC 9110 §13.1.2), e.g.
+    // '"a", W/"b"'. A single-string compare would miss a 304 whenever the client
+    // holds more than one cached representation, so compare each token in turn.
+    const want = stripEtagDecoration(etag);
+    for (const token of reqEtag.split(",")) { // ap-ok: If-None-Match list, small bounded header
+        if (stripEtagDecoration(token.trim()) === want) return true;
+    }
+    return false;
 }
 
 /**

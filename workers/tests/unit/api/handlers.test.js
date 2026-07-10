@@ -15,8 +15,10 @@ import assert from 'node:assert/strict';
 import { handleList } from '../../../api/handlers/list.js';
 import { handleDetail } from '../../../api/handlers/detail.js';
 import { handleAsSet } from '../../../api/handlers/as_set.js';
-import { handleNotImplemented } from '../../../api/handlers/shared.js';
+import { handleNotImplemented, countRowsBytes } from '../../../api/handlers/shared.js';
 import { purgeAllCaches } from '../../../api/cache.js';
+
+const enc = new TextEncoder();
 
 // ── Shared test utilities ────────────────────────────────────────────────────
 
@@ -371,5 +373,34 @@ describe('handleNotImplemented', () => {
         const res = handleNotImplemented('PUT', '/api/net/1');
         const body = await res.json();
         assert.ok(body.error.includes('read-only'));
+    });
+});
+
+describe('countRowsBytes', () => {
+    it('returns 0 for an empty array payload', () => {
+        assert.equal(countRowsBytes(enc.encode('{"data":[],"meta":{}}')), 0);
+    });
+
+    it('returns 1 for a single-object payload', () => {
+        assert.equal(countRowsBytes(enc.encode('{"data":[{"id":1}],"meta":{}}')), 1);
+    });
+
+    it('counts multiple objects via the },{ separator', () => {
+        assert.equal(
+            countRowsBytes(enc.encode('{"data":[{"id":1},{"id":2},{"id":3}],"meta":{}}')),
+            3
+        );
+    });
+
+    it('returns 0 when there is no array', () => {
+        assert.equal(countRowsBytes(enc.encode('{"error":"boom"}')), 0);
+    });
+
+    it('matches the byte offsets even with multi-byte UTF-8 content', () => {
+        // Multi-byte chars (é, 世, 🌍) inside string values must not shift the
+        // separator detection — their continuation bytes are all >= 0x80 and
+        // can never collide with the ASCII } , { bytes.
+        const payload = '{"data":[{"n":"café"},{"n":"世界"},{"n":"🌍"}],"meta":{}}';
+        assert.equal(countRowsBytes(enc.encode(payload)), 3);
     });
 });

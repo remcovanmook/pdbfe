@@ -12,7 +12,7 @@
  */
 
 import { hashKey } from '../../core/auth.js';
-import { jsonResponse, methodNotAllowed, handlePreflight, requireSession, ensureUser } from '../http.js';
+import { jsonResponse, methodNotAllowed, handlePreflight, requireSession, ensureUser, resolveAllowedOrigin } from '../http.js';
 
 /** Prefix prepended to generated API keys for identification. */
 const KEY_VISUAL_PREFIX = 'pdbfe.';
@@ -79,7 +79,7 @@ export async function handleKeys(request, env, subPath) {
     if (subPath.length > 1) {
         const deleteKeyId = subPath.slice(1); // strip leading "/"
         if (deleteKeyId.includes('/')) {
-            return jsonResponse({ error: 'Invalid key ID' }, 400, '');
+            return jsonResponse({ error: 'Invalid key ID' }, 400, resolveAllowedOrigin(request, env));
         }
         if (request.method !== 'DELETE') return methodNotAllowed('DELETE, OPTIONS');
         return handleDeleteKey(request, env, deleteKeyId);

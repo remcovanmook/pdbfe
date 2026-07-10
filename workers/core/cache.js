@@ -123,7 +123,10 @@ export function LRUCache(maxSlots, maxSize, ttlMs = 3600000) {
       pinnedArray[slot] = pinned ? 1 : 0;
       size += buf.byteLength;
 
-      while (size > maxSize && index.size > 0) evict();
+      // Evict LRU entries until within budget. evict() returns -1 when nothing
+      // is evictable (every remaining entry is pinned) — the condition stops
+      // then, otherwise size stays over budget and the loop spins forever.
+      while (size > maxSize && index.size > 0 && evict() !== -1) { /* evicts in condition */ }
     },
 
     /**

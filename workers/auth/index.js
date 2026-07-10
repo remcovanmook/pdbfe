@@ -24,6 +24,7 @@ import {
 } from './handlers/index.js';
 
 import { wrapHandler } from '../core/admin.js';
+import { parseURL } from '../core/utils.js';
 
 /**
  * Routes incoming requests to the appropriate handler.
@@ -34,8 +35,11 @@ import { wrapHandler } from '../core/admin.js';
  * @returns {Promise<Response>} The HTTP response.
  */
 async function handleRequest(request, env, _ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    // parseURL avoids constructing a full URL object (§1) and does not
+    // normalise dot-segments, so a path like /account/keys/../profile stays
+    // literal and cannot be confused for another route. rawPath omits the
+    // leading slash; restore it so the prefix matches below are unchanged.
+    const path = '/' + parseURL(request).rawPath;
 
     // Validate required environment variables early
     if (!env.OAUTH_CLIENT_ID || !env.OAUTH_CLIENT_SECRET) {
