@@ -1,5 +1,5 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, fetchPreferenceOptions } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, fetchPreferenceOptions, startLogin } from '../auth.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { fetchEntity } from '../api.js';
 import { t, setLanguage, LANGUAGES } from '../i18n.js';
@@ -89,6 +89,9 @@ export async function renderAccount(_params) {
         loginLink.href = `${AUTH_ORIGIN}/auth/login`;
         loginLink.className = 'auth-link';
         loginLink.textContent = t('Sign in with PeeringDB');
+        // Route through startLogin() to mint the PKCE verifier + challenge;
+        // href kept as a no-JS fallback.
+        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
         body.appendChild(loginLink);
         card_.appendChild(body);
         container.replaceChildren(card_);
