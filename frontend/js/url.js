@@ -45,8 +45,11 @@ export function sanitiseURL(url) {
 export function sanitiseImageURL(url) {
     if (typeof url !== 'string') return '';
     const trimmed = url.trim();
-    // Strip optional dimension suffix (e.g. " =410x300")
-    const cleaned = trimmed.replace(/\s*=\d+x\d+$/, '');
+    // Strip optional dimension suffix (e.g. " =410x300"). Anchored to the end
+    // with no leading `\s*` scan — a `\s*` here backtracks at every start
+    // position, which is super-linear on a long whitespace run. trimEnd() drops
+    // the space the suffix left behind.
+    const cleaned = trimmed.replace(/=\d+x\d+$/, '').trimEnd();
     if (/^data:image\/[a-z+]+;base64,/i.test(cleaned)) {
         return cleaned;
     }

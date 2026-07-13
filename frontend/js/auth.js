@@ -277,8 +277,13 @@ async function _exchangeCode(code) {
             return;
         }
         const data = await res.json();
-        if (data.sid && SID_PATTERN.test(data.sid)) {
-            localStorage.setItem(STORAGE_KEY, data.sid);
+        // Reconstruct the sid from its allowed alphabet before storing, so the
+        // value written to localStorage is one we built here — never the raw
+        // response string. Strips to lowercase hex, then requires the exact
+        // 64-char shape; anything else fails the length check and is dropped.
+        const sid = typeof data.sid === 'string' ? data.sid.replace(/[^0-9a-f]/g, '') : '';
+        if (SID_PATTERN.test(sid)) {
+            localStorage.setItem(STORAGE_KEY, sid);
         }
     } catch (err) {
         console.warn('Auth exchange error:', err);
