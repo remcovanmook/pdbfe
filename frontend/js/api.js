@@ -18,10 +18,12 @@ import { ENTITIES, getLabel } from './entities.js';
 const SUBTITLE_FORMATTERS = {
     net:     /** @param {any} r */ (r) => r.asn != null ? `AS${r.asn}` : '',
     ix:      /** @param {any} r */ (r) => r.city || '',
-    fac:     /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
+    // Join only the present parts so a missing city/country doesn't leave a
+    // stray ", " (which is truthy and would render as a lone-comma subtitle).
+    fac:     /** @param {any} r */ (r) => [r.city, r.country].filter(Boolean).join(', '),
     org:     () => '',
     carrier: () => '',
-    campus:  /** @param {any} r */ (r) => `${r.city || ''}, ${r.country || ''}`,
+    campus:  /** @param {any} r */ (r) => [r.city, r.country].filter(Boolean).join(', '),
 };
 
 /**

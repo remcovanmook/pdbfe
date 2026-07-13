@@ -185,6 +185,13 @@ export function attachTypeahead(input, opts = {}) {
 
     /** Closes the dropdown and resets state. */
     function closeDropdown() {
+        // Abort any in-flight search so a late-resolving response can't reopen
+        // the dropdown after it's been closed — e.g. clearing the input (or
+        // pressing Enter to navigate) while a request is still pending.
+        if (searchController) {
+            searchController.abort();
+            searchController = null;
+        }
         dropdown.classList.remove('is-open');
         dropdown.replaceChildren();
         activeIndex = -1;

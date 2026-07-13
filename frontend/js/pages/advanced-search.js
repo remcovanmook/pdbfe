@@ -861,7 +861,13 @@ function exportCsv(entityType, columns, results) {
     const header = columns.map(c => c.label).join(',');
     const rows = results.map(item =>
         columns.map(c => {
-            const val = String(item[c.field] ?? '');
+            let val = String(item[c.field] ?? '');
+            // Neutralise spreadsheet formula injection: a cell starting with
+            // =, +, -, @ (or a leading tab/CR) is evaluated as a formula by
+            // Excel/Sheets. Prefixing an apostrophe forces it to be text.
+            if (/^[=+\-@\t\r]/.test(val)) {
+                val = `'${val}`;
+            }
             // Escape CSV values containing commas, quotes, or newlines
             if (val.includes(',') || val.includes('"') || val.includes('\n')) {
                 return `"${val.replaceAll('"', '""')}"`;

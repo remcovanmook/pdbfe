@@ -238,24 +238,30 @@ function createEntityInput(label, prefix, initialRef) {
     if (initialRef) {
         // ── Locked mode: A-side is pre-filled and non-editable ──
         refInput.value = initialRef;
-        const [tag, id] = initialRef.split(':');
+        const [tag, rawId] = initialRef.split(':');
         input.value = initialRef;
         input.readOnly = true;
         searchWrap.classList.add('compare-search-wrap--locked');
 
-        fetchEntity(tag, id)
-            .then(entity => {
-                if (entity) {
-                    const name = entity.name || initialRef;
-                    input.value = name;
-                    selected.replaceChildren();
-                    selected.appendChild(createEntityBadge(tag));
-                    const desc = document.createElement('span');
-                    desc.textContent = ` ${name}`;
-                    selected.appendChild(desc);
-                }
-            })
-            .catch(() => { /* ignore fetch errors on bootstrap */ });
+        // Validate the URL-supplied ref before issuing an API request: tag must
+        // be a known compare type and id a positive integer. Guards a crafted
+        // ?a= (e.g. "net/../status:1") from shaping the request path.
+        const id = /^\d+$/.test(rawId || '') ? rawId : '';
+        if (COMPARE_TYPES.includes(tag) && id) {
+            fetchEntity(tag, id)
+                .then(entity => {
+                    if (entity) {
+                        const name = entity.name || initialRef;
+                        input.value = name;
+                        selected.replaceChildren();
+                        selected.appendChild(createEntityBadge(tag));
+                        const desc = document.createElement('span');
+                        desc.textContent = ` ${name}`;
+                        selected.appendChild(desc);
+                    }
+                })
+                .catch(() => { /* ignore fetch errors on bootstrap */ });
+        }
 
         // No typeahead wiring for locked inputs
     } else {
