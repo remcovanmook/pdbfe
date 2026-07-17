@@ -345,6 +345,148 @@ body[data-page="home"] .site-logo {
     width: 90%;
 }
 
+/* ── Generic modal (API access, etc.) ─────────────────────────────── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md);
+    background: hsl(0 0% 0% / 0.6);
+    backdrop-filter: blur(4px);
+    animation: fadeIn 0.2s ease-out;
+}
+
+.modal-card {
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.modal-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-card__title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-card__close {
+    background: none;
+    border: none;
+    padding: var(--space-xs);
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.modal-card__close:hover {
+    color: var(--accent);
+}
+
+.modal-card__body {
+    padding: var(--space-lg);
+}
+
+/* Labelled read-only value + copy button (API modal) */
+.copy-block {
+    margin-bottom: var(--space-lg);
+}
+
+.copy-block:last-child {
+    margin-bottom: 0;
+}
+
+.copy-block__label {
+    margin-bottom: var(--space-xs);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.copy-block__row {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-sm);
+}
+
+.copy-block__value {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8125rem;
+    color: var(--accent);
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+}
+
+.copy-block__btn {
+    flex: 0 0 auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0 var(--space-sm);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+}
+
+.copy-block__btn:hover {
+    border-color: var(--accent-muted);
+}
+
+.api-modal__note {
+    margin: var(--space-md) 0 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* ── Toast (brief clipboard confirmations, etc.) ──────────────────── */
+.toast-host {
+    position: fixed;
+    left: 50%;
+    bottom: var(--space-xl);
+    transform: translateX(-50%);
+    z-index: 11000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+    pointer-events: none;
+}
+
+.toast {
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px hsl(0 0% 0% / 0.3);
+    animation: fadeIn 0.15s ease-out;
+}
+
+.toast--out {
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+}
+
 .key-display {
     display: block;
     padding: var(--space-sm) var(--space-md);

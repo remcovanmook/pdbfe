@@ -30,6 +30,7 @@
  */
 
 import { t } from '../i18n.js';
+import { showToast } from '../modal.js';
 
 /** Default number of rows per page. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -651,6 +652,7 @@ class PdbTable extends HTMLElement {
         }
 
         await navigator.clipboard.writeText(output);
+        showToast(t('Copied to clipboard'));
     }
 
     /**
