@@ -13,7 +13,8 @@ import { sanitiseURL } from './url.js';
 import { t, getCurrentLang } from './i18n.js';
 import { isFavorite, addFavorite, removeFavorite } from './auth.js';
 import { getTimezone } from './timezone.js';
-import { IMAGES_ORIGIN, S3_MEDIA_PREFIX } from './config.js';
+import { IMAGES_ORIGIN, S3_MEDIA_PREFIX, API_ORIGIN } from './config.js';
+import { openModal, copyText } from './modal.js';
 
 /**
  * Formats a speed value in Mbps to a human-readable string.
@@ -403,6 +404,129 @@ function stripTableStateParams(params) {
 }
 
 /**
+ * Builds the Share button — copies the page URL with the current sort/filter
+ * state of every pdb-table on the page appended as query params. Extracted
+ * from createDetailLayout to keep that builder's complexity low.
+ *
+ * @returns {HTMLButtonElement}
+ */
+function buildShareButton() {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'detail-header__btn';
+    shareBtn.textContent = '📤 ' + t('Share');
+    shareBtn.title = t('Copy shareable link with current table state');
+    shareBtn.setAttribute('aria-label', t('Share page'));
+    shareBtn.addEventListener('click', async () => {
+        const url = new URL(globalThis.location.href);
+        // Clear existing table state params before re-collecting current state.
+        stripTableStateParams(url.searchParams);
+        // Collect state from all pdb-table elements
+        for (const table of document.querySelectorAll('pdb-table')) {
+            const state = /** @type {any} */ (table).getState?.();
+            if (!state) continue;
+            const id = /** @type {any} */ (table)._config?.tableId;
+            if (!id) continue;
+            if (state.sort) {
+                url.searchParams.set(`${id}.sort`, state.sort);
+                url.searchParams.set(`${id}.dir`, state.dir);
+            }
+            if (state.filter) {
+                url.searchParams.set(`${id}.filter`, state.filter);
+            }
+        }
+        await navigator.clipboard.writeText(url.href);
+        shareBtn.textContent = '✓ ' + t('Copied!');
+        setTimeout(() => { shareBtn.textContent = '📤 ' + t('Share'); }, 2000);
+    });
+    return shareBtn;
+}
+
+/**
+ * Builds a labelled, read-only value paired with a copy-to-clipboard button.
+ *
+ * @param {string} label - Field label shown above the value.
+ * @param {string} value - The text to display and copy.
+ * @param {boolean} multiline - Render the value in a <pre> block (for commands).
+ * @returns {HTMLDivElement}
+ */
+function buildCopyBlock(label, value, multiline) {
+    const wrap = document.createElement('div');
+    wrap.className = 'copy-block';
+
+    const lab = document.createElement('div');
+    lab.className = 'copy-block__label';
+    lab.textContent = label;
+    wrap.appendChild(lab);
+
+    const row = document.createElement('div');
+    row.className = 'copy-block__row';
+
+    const code = document.createElement(multiline ? 'pre' : 'code');
+    code.className = 'copy-block__value';
+    code.textContent = value;
+    row.appendChild(code);
+
+    const btn = document.createElement('button');
+    btn.className = 'copy-block__btn';
+    btn.textContent = '📋';
+    btn.title = t('Copy to clipboard');
+    btn.setAttribute('aria-label', t('Copy to clipboard'));
+    btn.addEventListener('click', () => copyText(value, t('Copied to clipboard')));
+    row.appendChild(btn);
+
+    wrap.appendChild(row);
+    return wrap;
+}
+
+/**
+ * Opens the API-access modal for an entity: the direct REST URL plus an
+ * example authenticated curl command, each with a copy-to-clipboard button.
+ *
+ * @param {string} type - Entity type.
+ * @param {number} id - Entity ID.
+ */
+function openApiModal(type, id) {
+    const apiUrl = `${API_ORIGIN}/api/${type}/${id}`;
+    const exampleKey = 'pdbfe.0123456789abcdef0123456789abcdef';
+    const curl = `curl -H "Authorization: Api-Key ${exampleKey}" \\\n  "${apiUrl}"`;
+
+    const body = document.createElement('div');
+    body.className = 'api-modal';
+    body.appendChild(buildCopyBlock(t('Direct API link'), apiUrl, false));
+    body.appendChild(buildCopyBlock(t('Example request'), curl, true));
+
+    const note = document.createElement('p');
+    note.className = 'api-modal__note';
+    const acct = document.createElement('a');
+    acct.href = '/account';
+    acct.dataset.link = '';
+    acct.textContent = t('your Account page');
+    note.append(t('The key shown is an example — create your own on '), acct, '.');
+    body.appendChild(note);
+
+    const close = openModal({ title: t('API access'), body });
+    // Client-side nav to /account must dismiss the overlay (it lives on <body>).
+    acct.addEventListener('click', () => close());
+}
+
+/**
+ * Builds the API button — opens the API-access modal for this entity.
+ *
+ * @param {string} entityType - Entity type (net, ix, fac, ...).
+ * @param {number} entityId - Entity ID.
+ * @returns {HTMLButtonElement}
+ */
+function buildApiButton(entityType, entityId) {
+    const apiBtn = document.createElement('button');
+    apiBtn.className = 'detail-header__btn';
+    apiBtn.textContent = '{ } ' + t('API');
+    apiBtn.title = t('Show the API call for this page');
+    apiBtn.setAttribute('aria-label', t('Show API access'));
+    apiBtn.addEventListener('click', () => openApiModal(entityType, entityId));
+    return apiBtn;
+}
+
+/**
  * Builds the standard detail-layout wrapper used by all entity pages.
  * Assembles header, optional logo, optional stats bar, sidebar, and
  * main content into the grid layout structure.
@@ -465,35 +589,13 @@ export function createDetailLayout(opts) {
         actionsWrap.appendChild(compareBtn);
     }
 
-    // Share button — copies URL with current table sort/filter state
-    const shareBtn = document.createElement('button');
-    shareBtn.className = 'detail-header__btn';
-    shareBtn.textContent = '🔗 ' + t('Share');
-    shareBtn.title = t('Copy shareable link with current table state');
-    shareBtn.setAttribute('aria-label', t('Share page'));
-    shareBtn.addEventListener('click', async () => {
-        const url = new URL(globalThis.location.href);
-        // Clear existing table state params before re-collecting current state.
-        stripTableStateParams(url.searchParams);
-        // Collect state from all pdb-table elements
-        for (const table of document.querySelectorAll('pdb-table')) {
-            const state = /** @type {any} */ (table).getState?.();
-            if (!state) continue;
-            const id = /** @type {any} */ (table)._config?.tableId;
-            if (!id) continue;
-            if (state.sort) {
-                url.searchParams.set(`${id}.sort`, state.sort);
-                url.searchParams.set(`${id}.dir`, state.dir);
-            }
-            if (state.filter) {
-                url.searchParams.set(`${id}.filter`, state.filter);
-            }
-        }
-        await navigator.clipboard.writeText(url.href);
-        shareBtn.textContent = '✓ ' + t('Copied!');
-        setTimeout(() => { shareBtn.textContent = '🔗 ' + t('Share'); }, 2000);
-    });
-    actionsWrap.appendChild(shareBtn);
+    // Share button — copies URL with current table sort/filter state.
+    actionsWrap.appendChild(buildShareButton());
+
+    // API button — opens a modal with the direct API URL + example curl.
+    if (opts.entityType && opts.entityId) {
+        actionsWrap.appendChild(buildApiButton(opts.entityType, opts.entityId));
+    }
 
     header.appendChild(actionsWrap);
 
