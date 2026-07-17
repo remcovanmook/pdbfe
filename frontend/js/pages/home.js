@@ -13,7 +13,8 @@ import { createLink, createLoading, formatDate, createEntityBadge } from '../ren
 import { attachTypeahead } from '../typeahead.js';
 import { t } from '../i18n.js';
 import { getLabel } from '../entities.js';
-import { isAuthenticated, getUser, getFavorites } from '../auth.js';
+import { isAuthenticated, getUser, getFavorites, startLogin } from '../auth.js';
+import { AUTH_ORIGIN } from '../config.js';
 
 /** @type {HTMLElement} */
 let _app;
@@ -166,6 +167,29 @@ export async function renderHome(_params) {
         favsSection.appendChild(hint);
     }
     rightCol.appendChild(favsSection);
+
+    // Sign-in prompt — only for signed-out visitors, directly below Favorites.
+    // Mirrors the top-bar "Sign in": routes through startLogin() to mint the
+    // PKCE verifier + challenge; the href is kept as a no-JS fallback.
+    if (!isAuthenticated()) {
+        const signinSection = document.createElement('div');
+        signinSection.className = 'home-signin';
+
+        const signinHint = document.createElement('p');
+        signinHint.className = 'home-hero__desc';
+        signinHint.style.fontSize = '0.8125rem';
+        signinHint.textContent = t('Sign in to sync your favorites across your devices.');
+        signinSection.appendChild(signinHint);
+
+        const signinLink = document.createElement('a');
+        signinLink.href = `${AUTH_ORIGIN}/auth/login`;
+        signinLink.className = 'auth-link';
+        signinLink.textContent = '🔑 ' + t('Sign in through PeeringDB');
+        signinLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
+        signinSection.appendChild(signinLink);
+
+        rightCol.appendChild(signinSection);
+    }
 
     homeTop.appendChild(rightCol);
     frag.appendChild(homeTop);

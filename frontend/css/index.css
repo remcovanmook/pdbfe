@@ -2006,6 +2006,14 @@ body[data-page="home"] .site-logo {
     margin-bottom: var(--space-xl);
 }
 
+.home-signin .home-hero__desc {
+    margin-bottom: var(--space-sm);
+}
+
+.home-signin .auth-link {
+    display: inline-block;
+}
+
 .favorites-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
