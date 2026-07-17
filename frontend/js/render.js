@@ -434,9 +434,7 @@ function buildShareButton() {
                 url.searchParams.set(`${id}.filter`, state.filter);
             }
         }
-        await navigator.clipboard.writeText(url.href);
-        shareBtn.textContent = '✓ ' + t('Copied!');
-        setTimeout(() => { shareBtn.textContent = '📤 ' + t('Share'); }, 2000);
+        await copyText(url.href, t('Link copied to clipboard'));
     });
     return shareBtn;
 }
