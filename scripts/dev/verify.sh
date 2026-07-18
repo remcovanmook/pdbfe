@@ -28,16 +28,17 @@ run_gate() {
         RESULTS+=("FAIL  ${name}")
         FAILED=1
     fi
+    return 0
 }
 
-if [ "$SCOPE" != "--workers" ]; then
+if [[ "$SCOPE" != "--workers" ]]; then
     run_gate "frontend typecheck"  bash -c "cd '$ROOT/frontend' && npm run --silent typecheck"
     run_gate "frontend unit tests" bash -c "cd '$ROOT/frontend' && npm run --silent test:unit 2>&1 | tail -8"
     run_gate "xss lint"            node "$ROOT/scripts/lint_xss.js"
     run_gate "locale coverage"     bash -c "node '$ROOT/scripts/check_locales.js' 2>&1 | tail -5"
 fi
 
-if [ "$SCOPE" != "--frontend" ]; then
+if [[ "$SCOPE" != "--frontend" ]]; then
     run_gate "workers typecheck"   bash -c "cd '$ROOT/workers' && npm run --silent typecheck"
     run_gate "workers unit tests"  bash -c "cd '$ROOT/workers' && npm run --silent test 2>&1 | tail -10"
 fi

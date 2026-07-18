@@ -22,11 +22,11 @@ MISMATCH=0
 for host in "api.${DOMAIN}" "rest.${DOMAIN}" "auth.${DOMAIN}"; do
     v=$(curl -s -m 8 -D - "https://${host}/health" -o /dev/null 2>/dev/null \
         | grep -i "^x-pdbfe-version:" | tr -d '\r' | awk '{print $2}')
-    if [ -z "$v" ]; then
+    if [[ -z "$v" ]]; then
         v=$(curl -s -m 8 -D - "https://${host}/" -o /dev/null 2>/dev/null \
             | grep -i "^x-pdbfe-version:" | tr -d '\r' | awk '{print $2}')
     fi
-    if [ "$v" = "$EXPECT" ]; then
+    if [[ "$v" == "$EXPECT" ]]; then
         printf "%-20s %-10s ✓\n" "$host" "${v:-<none>}"
     else
         printf "%-20s %-10s ✗ (expected %s)\n" "$host" "${v:-<none>}" "$EXPECT"
@@ -38,7 +38,7 @@ done
 # healthy signature for an unauthenticated probe.
 code=$(curl -s -m 8 -o /dev/null -w "%{http_code}" "https://${DOMAIN}/")
 loc=$(curl -s -m 8 -D - "https://${DOMAIN}/" -o /dev/null 2>/dev/null | grep -i "^location:" | grep -c "cloudflareaccess.com")
-if [ "$code" = "302" ] && [ "$loc" = "1" ]; then
+if [[ "$code" == "302" && "$loc" == "1" ]]; then
     printf "%-20s %-10s ✓ (302 → CF Access, expected)\n" "$DOMAIN" "n/a"
 else
     printf "%-20s HTTP %-5s ✗ (expected 302 → CF Access)\n" "$DOMAIN" "$code"

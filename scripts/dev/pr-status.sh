@@ -14,10 +14,10 @@ PR="${1:?usage: pr-status.sh <pr-number> [--wait]}"
 WAIT="${2:-}"
 PROJECT="remcovanmook_pdbfe"
 
-if [ "$WAIT" = "--wait" ]; then
+if [[ "$WAIT" == "--wait" ]]; then
     for _ in $(seq 1 60); do
         pending=$(gh pr checks "$PR" 2>/dev/null | grep -c "pending")
-        [ "$pending" -eq 0 ] && break
+        [[ "$pending" -eq 0 ]] && break
         sleep 15
     done
 fi

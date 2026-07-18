@@ -87,8 +87,19 @@ swapped = true;
 writeFileSync(CONFIG, readFileSync(CONFIG, 'utf8').replaceAll('<your-domain>', PROD_DOMAIN));
 
 // ── start wrangler pages dev ────────────────────────────────────────
-server = spawn('npx', ['wrangler', 'pages', 'dev', '.', '--port', String(PORT), '--log-level', 'error'], {
+// Resolve npx from fixed, root-owned directories and pin the child's PATH to
+// the same list — never search a writable PATH for the binary we execute.
+const FIXED_PATH = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin';
+function resolveBin(name) {
+    for (const dir of FIXED_PATH.split(':')) {
+        const p = join(dir, name);
+        if (existsSync(p)) return p;
+    }
+    throw new Error(`${name} not found in fixed paths (${FIXED_PATH})`);
+}
+server = spawn(resolveBin('npx'), ['wrangler', 'pages', 'dev', '.', '--port', String(PORT), '--log-level', 'error'], {
     cwd: FRONTEND,
+    env: { ...process.env, PATH: FIXED_PATH },
     stdio: ['ignore', 'ignore', 'inherit'],
     detached: true,
 });
