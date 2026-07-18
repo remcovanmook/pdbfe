@@ -15,9 +15,14 @@ WAIT="${2:-}"
 PROJECT="remcovanmook_pdbfe"
 
 if [[ "$WAIT" == "--wait" ]]; then
+    # Grace period: checks register asynchronously after a push/PR-create;
+    # an instant poll can see zero checks and misread that as "settled".
+    sleep 10
     for _ in $(seq 1 60); do
-        pending=$(gh pr checks "$PR" 2>/dev/null | grep -c "pending")
-        [[ "$pending" -eq 0 ]] && break
+        checks=$(gh pr checks "$PR" 2>/dev/null)
+        total=$(printf '%s' "$checks" | grep -c .)
+        pending=$(printf '%s' "$checks" | grep -c "pending")
+        [[ "$total" -gt 0 && "$pending" -eq 0 ]] && break
         sleep 15
     done
 fi
