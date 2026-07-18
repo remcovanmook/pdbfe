@@ -14,10 +14,11 @@ step). Production: `pdbfe.dev` (frontend, behind Cloudflare Access),
 
 | Command | What it does |
 |---------|--------------|
-| `scripts/dev/verify.sh [--frontend\|--workers]` | The full local gate: typechecks, unit tests, XSS lint, locale coverage — everything CI runs, one command, PASS/FAIL summary. |
+| `scripts/dev/verify.sh [--frontend / --workers]` | The full local gate: typechecks, unit tests, XSS lint, locale coverage — everything CI runs, one command, PASS/FAIL summary. |
 | `node scripts/dev/browse.mjs --url /net/4224 [--wait <sel>] [--shot out.png]` | Headless-browser check against **real production data**: auto-swaps `config.js` origins, starts `wrangler pages dev`, collects console errors, **always restores config**. `--script check.mjs` runs a custom Playwright function (`export default async ({page, ...}) => {...}`). |
 | `scripts/dev/pr-status.sh <PR#> [--wait]` | One-shot PR health: GitHub checks + SonarCloud gate + open Sonar issues. |
 | `scripts/dev/live-version.sh` | Live `X-PDBFE-Version` of every worker vs the latest git tag; verifies the frontend 302→CF-Access signature. |
+| `node scripts/dev/d1-drift.mjs` | **Run before any release that touches schema/entities.** Compares LIVE production D1 against `extracted/schema.sql` (missing tables/columns = the production-500 class unit tests can't catch — they mock D1) and `database/migrations/*.sql` against the `_migrations` table (unapplied migrations). Read-only; exit 1 on drift. |
 
 ## Hard rules
 
