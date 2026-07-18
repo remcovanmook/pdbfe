@@ -27,6 +27,7 @@ workers/wrangler-async.toml
 
 # Frontend deploy configs (use .example files as templates)
 frontend/js/config.js
+frontend/js/config.js.browse-bak
 frontend/_headers
 frontend/_redirects
 
