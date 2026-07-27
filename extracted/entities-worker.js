@@ -15,7 +15,7 @@
  */
 export const VERSIONS = Object.freeze({
     django_peeringdb: "3.7.0",
-    api_schema: "2.80.1",
+    api_schema: "2.81.0",
 });
 
 /** @type {EntityMeta} */
