@@ -15,7 +15,7 @@
  */
 export const VERSIONS = Object.freeze({
     django_peeringdb: "3.7.0",
-    api_schema: "2.80.1",
+    api_schema: "2.82.0",
 });
 
 /** @type {EntityMeta} */
@@ -325,7 +325,7 @@ const _entity_carrier = {
         { name: "notes", type: "string" },
         { name: "org_id", type: "number", foreignKey: "org" },
         { name: "org_name", type: "string", queryable: false },
-        { name: "fac_count", type: "number", queryable: false },
+        { name: "fac_count", type: "number" },
         { name: "logo", type: "string", queryable: false, nullable: true },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
@@ -343,7 +343,7 @@ const _entity_carrier = {
     _nullableColumns: new Set(["logo"]),
     _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "created", "fac_count", "id", "logo", "name", "name_long", "notes", "org_id", "org_name", "social_media", "status", "updated", "website"]),
-    _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
+    _filterTypes: new Map([["id", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["website", "string"], ["notes", "string"], ["org_id", "number"], ["fac_count", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
 /** @type {EntityMeta} */
