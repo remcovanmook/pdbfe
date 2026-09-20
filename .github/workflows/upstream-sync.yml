@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write       # failure reports (see "Report failure" below)
 
 jobs:
   sync:
@@ -116,3 +117,30 @@ jobs:
       - name: No changes
         if: steps.pipeline.outputs.changed == 'false'
         run: echo "Upstream versions unchanged. Nothing to do."
+
+      # A failed scheduled run notifies nobody by default, which is how this
+      # workflow stayed broken from 2026-07-06 to 2026-09-14 without anyone
+      # noticing. File an issue instead — reusing the open one, so a repeat
+      # weekly failure becomes a comment thread rather than an issue per week.
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: Upstream Schema Sync is failing
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Match on exact title rather than a label (no label to provision)
+          # and rather than --search (the search index lags a fresh issue,
+          # which would let a retry open a duplicate).
+          EXISTING=$(gh issue list --state open --limit 100 --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Failed again: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --body \
+              "The weekly upstream schema sync failed.
+
+          Run: $RUN_URL
+
+          This issue is reused by later failures; close it once the sync is green."
+          fi
