@@ -50,7 +50,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyyaml
+          pip install --only-binary :all: 'pyyaml==6.0.2'
           npm ci --prefix workers --ignore-scripts
 
       # Next version = latest v* tag + bump. `auto` picks the level from

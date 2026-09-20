@@ -15,7 +15,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # auto/** is here because PRs opened by the upstream-sync workflow use
+    # GITHUB_TOKEN, and GitHub deliberately does not fire pull_request events
+    # for those — without this, a sync PR shows no CI at all and has to be
+    # closed and reopened by hand to get checked.
+    branches: [main, 'auto/**']
   pull_request:
     branches: [main]
 
@@ -160,7 +164,8 @@ jobs:
           cache-dependency-path: workers/package-lock.json
 
       - name: Install Python dependencies
-        run: pip install pyyaml
+        run: |
+          pip install --only-binary :all: 'pyyaml==6.0.2'
 
       - name: Install Node dependencies
         run: npm ci --ignore-scripts
