@@ -79,6 +79,11 @@ jobs:
       # (feat -> minor, `!` / BREAKING CHANGE -> major, else patch).
       - name: Determine version
         id: ver
+        env:
+          # Via env, never interpolated into the script body: workflow_call
+          # takes a free-form string (workflow_dispatch's `choice` constraint
+          # does not apply there), so this is attacker-controlled input.
+          BUMP: ${{ inputs.bump }}
         run: |
           git fetch --tags --quiet || true
           LATEST="$(git tag --list 'v*' --sort=-v:refname | head -1)"
@@ -86,7 +91,10 @@ jobs:
           BASE="${LATEST#v}"
           IFS='.' read -r MAJ MIN PAT <<< "$BASE"
 
-          LEVEL="${{ inputs.bump }}"
+          case "$BUMP" in
+            auto|patch|minor|major) LEVEL="$BUMP" ;;
+            *) echo "::error::invalid bump '$BUMP' (expected auto|patch|minor|major)"; exit 1 ;;
+          esac
           if [ "$LEVEL" = "auto" ]; then
             RANGE="${LATEST}..HEAD"
             git rev-parse "$LATEST" >/dev/null 2>&1 || RANGE="HEAD"
