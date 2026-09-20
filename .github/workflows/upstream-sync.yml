@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyyaml
+          pip install --only-binary :all: 'pyyaml==6.0.2'
           npm ci --prefix workers --ignore-scripts
 
       - name: Run schema pipeline
