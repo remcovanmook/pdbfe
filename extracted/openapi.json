@@ -3,7 +3,7 @@
   "info": {
     "title": "PeeringDB REST API",
     "description": "REST API for the PeeringDB dataset. Provides list and detail endpoints for all PeeringDB entity types with full filter support matching the upstream PeeringDB API conventions.",
-    "version": "3.7.0+2.80.1",
+    "version": "3.7.0+2.82.0",
     "contact": {
       "name": "PDBFE",
       "url": "https://pdbfe.dev"
@@ -6606,6 +6606,60 @@
               "type": "string"
             },
             "description": "Filter by org_id (in operator) \u2014 comma-separated values"
+          },
+          {
+            "name": "fac_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by fac_count"
+          },
+          {
+            "name": "fac_count__lt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by fac_count (lt operator)"
+          },
+          {
+            "name": "fac_count__gt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by fac_count (gt operator)"
+          },
+          {
+            "name": "fac_count__lte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by fac_count (lte operator)"
+          },
+          {
+            "name": "fac_count__gte",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter by fac_count (gte operator)"
+          },
+          {
+            "name": "fac_count__in",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by fac_count (in operator) \u2014 comma-separated values"
           }
         ],
         "responses": {

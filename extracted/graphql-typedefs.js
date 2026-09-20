@@ -1233,6 +1233,14 @@ input CarrierWhere {
   org_id_in: [Int]
   org_id_not: Int
   org_id_notIn: [Int]
+  fac_count: Int
+  fac_count_lt: Int
+  fac_count_gt: Int
+  fac_count_lte: Int
+  fac_count_gte: Int
+  fac_count_in: [Int]
+  fac_count_not: Int
+  fac_count_notIn: [Int]
   id: Int
   id_in: [Int]
   id_not: Int
