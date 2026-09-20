@@ -50,6 +50,17 @@ jobs:
           fi
 
 
+      # parse_django_models.py writes only entities.json, schema.sql,
+      # entities.js and entities-worker.js. The GraphQL typedefs and the
+      # OpenAPI spec come from separate generators, and CI's Schema Freshness
+      # job regenerates all three — so a PR that ships only the first set is
+      # stale on arrival and fails its own checks.
+      - name: Regenerate derived artifacts
+        if: steps.pipeline.outputs.changed == 'true'
+        run: |
+          python scripts/gen_graphql_schema.py
+          python scripts/gen_openapi_spec.py
+
       - name: Generate migration
         if: steps.pipeline.outputs.changed == 'true'
         run: python scripts/diff_schema.py
@@ -80,7 +91,8 @@ jobs:
           # -B and --force make the step idempotent: a leftover branch from a
           # run that pushed but failed before opening a PR is simply rebuilt.
           git checkout -B "$BRANCH"
-          git add extracted/ frontend/js/entities.js database/migrations/
+          git add extracted/ frontend/js/entities.js \
+            database/migrations/ scripts/lib/api-schema.yaml
           if git diff --cached --quiet; then
             echo "Pipeline reported a version change but no tracked files differ."
             exit 0
