@@ -15,7 +15,7 @@
  */
 export const VERSIONS = Object.freeze({
     django_peeringdb: "3.7.0",
-    api_schema: "2.82.0",
+    api_schema: "2.83.0",
 });
 
 /** @type {EntityMeta} */
@@ -226,6 +226,8 @@ const _entity_net = {
         { name: "ixp_update_exclude_is_rs_peer", type: "boolean", queryable: false },
         { name: "ixp_update_exclude_operational", type: "boolean", queryable: false },
         { name: "logo", type: "string", queryable: false, nullable: true },
+        { name: "rtbh_community", type: "string", queryable: false },
+        { name: "preferred_ip_mtu", type: "number", queryable: false, nullable: true },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" },
@@ -238,12 +240,12 @@ const _entity_net = {
         { field: "netfac_set", table: "peeringdb_network_facility", fk: "net_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_id" }
     ],
-    _columns: ["id", "asn", "name", "aka", "name_long", "irr_as_set", "website", "social_media", "looking_glass", "route_server", "notes", "notes_private", "info_traffic", "info_ratio", "info_scope", "info_types", "info_prefixes4", "info_prefixes6", "info_unicast", "info_multicast", "info_ipv6", "info_never_via_route_servers", "policy_url", "policy_general", "policy_locations", "policy_ratio", "policy_contracts", "status_dashboard", "rir_status", "rir_status_updated", "org_id", "info_type", "ix_count", "fac_count", "netixlan_updated", "netfac_updated", "poc_updated", "allow_ixp_update", "ixp_update_exclude", "ixp_update_exclude_speed", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
+    _columns: ["id", "asn", "name", "aka", "name_long", "irr_as_set", "website", "social_media", "looking_glass", "route_server", "notes", "notes_private", "info_traffic", "info_ratio", "info_scope", "info_types", "info_prefixes4", "info_prefixes6", "info_unicast", "info_multicast", "info_ipv6", "info_never_via_route_servers", "policy_url", "policy_general", "policy_locations", "policy_ratio", "policy_contracts", "status_dashboard", "rir_status", "rir_status_updated", "org_id", "info_type", "ix_count", "fac_count", "netixlan_updated", "netfac_updated", "poc_updated", "allow_ixp_update", "ixp_update_exclude", "ixp_update_exclude_speed", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "logo", "rtbh_community", "preferred_ip_mtu", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["info_types", "ixp_update_exclude", "social_media"]),
     _boolColumns: new Set(["__logo_migrated", "__vector_embedded", "allow_ixp_update", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_unicast", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "ixp_update_exclude_speed", "policy_ratio"]),
-    _nullableColumns: new Set(["info_prefixes4", "info_prefixes6", "logo", "rir_status", "rir_status_updated", "status_dashboard"]),
+    _nullableColumns: new Set(["info_prefixes4", "info_prefixes6", "logo", "preferred_ip_mtu", "rir_status", "rir_status_updated", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "ixp_update_exclude", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "ixp_update_exclude_speed", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "rir_status", "rir_status_updated", "route_server", "social_media", "status", "status_dashboard", "updated", "website"]),
+    _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "ixp_update_exclude", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "ixp_update_exclude_speed", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "preferred_ip_mtu", "rir_status", "rir_status_updated", "route_server", "rtbh_community", "social_media", "status", "status_dashboard", "updated", "website"]),
     _filterTypes: new Map([["id", "number"], ["asn", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["irr_as_set", "string"], ["website", "string"], ["looking_glass", "string"], ["route_server", "string"], ["notes", "string"], ["notes_private", "string"], ["info_traffic", "string"], ["info_ratio", "string"], ["info_scope", "string"], ["info_prefixes4", "number"], ["info_prefixes6", "number"], ["info_unicast", "boolean"], ["info_multicast", "boolean"], ["info_ipv6", "boolean"], ["info_never_via_route_servers", "boolean"], ["policy_url", "string"], ["policy_general", "string"], ["policy_locations", "string"], ["policy_ratio", "boolean"], ["policy_contracts", "string"], ["status_dashboard", "string"], ["rir_status", "string"], ["rir_status_updated", "datetime"], ["org_id", "number"], ["ix_count", "number"], ["fac_count", "number"], ["netixlan_updated", "datetime"], ["netfac_updated", "datetime"], ["poc_updated", "datetime"], ["allow_ixp_update", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
@@ -556,18 +558,21 @@ const _entity_netixlan = {
         { name: "ix_side_id", type: "number", nullable: true, foreignKey: "fac" },
         { name: "ix_id", type: "number" },
         { name: "name", type: "string" },
+        { name: "rfc8950", type: "boolean", queryable: false, nullable: true },
+        { name: "planned_status_change_status", type: "string", queryable: false },
+        { name: "planned_status_change_date", type: "string", queryable: false },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
     ],
     joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }],
     relationships: [],
-    _columns: ["id", "asn", "ipaddr4", "ipaddr6", "is_rs_peer", "bfd_support", "notes", "speed", "operational", "net_id", "ixlan_id", "net_side_id", "ix_side_id", "ix_id", "name", "created", "updated", "status"],
+    _columns: ["id", "asn", "ipaddr4", "ipaddr6", "is_rs_peer", "bfd_support", "notes", "speed", "operational", "net_id", "ixlan_id", "net_side_id", "ix_side_id", "ix_id", "name", "rfc8950", "planned_status_change_status", "planned_status_change_date", "created", "updated", "status"],
     _jsonColumns: new Set([]),
-    _boolColumns: new Set(["bfd_support", "is_rs_peer", "operational"]),
-    _nullableColumns: new Set(["ipaddr4", "ipaddr6", "ix_side_id", "net_side_id"]),
+    _boolColumns: new Set(["bfd_support", "is_rs_peer", "operational", "rfc8950"]),
+    _nullableColumns: new Set(["ipaddr4", "ipaddr6", "ix_side_id", "net_side_id", "rfc8950"]),
     _omitEmptyColumns: new Set([]),
-    _fieldNames: new Set(["asn", "bfd_support", "created", "id", "ipaddr4", "ipaddr6", "is_rs_peer", "ix_id", "ix_side_id", "ixlan_id", "name", "net_id", "net_side_id", "notes", "operational", "speed", "status", "updated"]),
+    _fieldNames: new Set(["asn", "bfd_support", "created", "id", "ipaddr4", "ipaddr6", "is_rs_peer", "ix_id", "ix_side_id", "ixlan_id", "name", "net_id", "net_side_id", "notes", "operational", "planned_status_change_date", "planned_status_change_status", "rfc8950", "speed", "status", "updated"]),
     _filterTypes: new Map([["id", "number"], ["asn", "number"], ["ipaddr4", "string"], ["ipaddr6", "string"], ["is_rs_peer", "boolean"], ["bfd_support", "boolean"], ["notes", "string"], ["speed", "number"], ["operational", "boolean"], ["net_id", "number"], ["ixlan_id", "number"], ["net_side_id", "number"], ["ix_side_id", "number"], ["ix_id", "number"], ["name", "string"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
