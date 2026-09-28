@@ -3,7 +3,7 @@
   "info": {
     "title": "PeeringDB REST API",
     "description": "REST API for the PeeringDB dataset. Provides list and detail endpoints for all PeeringDB entity types with full filter support matching the upstream PeeringDB API conventions.",
-    "version": "3.7.0+2.82.0",
+    "version": "3.7.0+2.83.0",
     "contact": {
       "name": "PDBFE",
       "url": "https://pdbfe.dev"
@@ -11072,6 +11072,19 @@
                 "type": "null"
               }
             ]
+          },
+          "rtbh_community": {
+            "type": "string"
+          },
+          "preferred_ip_mtu": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -11112,7 +11125,8 @@
           "ixp_update_exclude",
           "ixp_update_exclude_speed",
           "ixp_update_exclude_is_rs_peer",
-          "ixp_update_exclude_operational"
+          "ixp_update_exclude_operational",
+          "rtbh_community"
         ]
       },
       "NetworkListResponse": {
@@ -12044,6 +12058,22 @@
           },
           "name": {
             "type": "string"
+          },
+          "rfc8950": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "planned_status_change_status": {
+            "type": "string"
+          },
+          "planned_status_change_date": {
+            "type": "string"
           }
         },
         "required": [
@@ -12058,7 +12088,9 @@
           "net_id",
           "ixlan_id",
           "ix_id",
-          "name"
+          "name",
+          "planned_status_change_status",
+          "planned_status_change_date"
         ]
       },
       "NetworkExchangeLANListResponse": {

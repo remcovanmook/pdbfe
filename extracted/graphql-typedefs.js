@@ -628,6 +628,8 @@ type Network {
   ixp_update_exclude_is_rs_peer: Boolean!
   ixp_update_exclude_operational: Boolean!
   logo: String
+  rtbh_community: String!
+  preferred_ip_mtu: Int
   pointsOfContact(limit: Int, skip: Int): [PointOfContact!]!
   networkFacilities(limit: Int, skip: Int): [NetworkFacility!]!
   networkExchangeLans(limit: Int, skip: Int): [NetworkExchangeLan!]!
@@ -1650,6 +1652,9 @@ type NetworkExchangeLan {
   ix_side: Facility
   ix_id: Int!
   name: String!
+  rfc8950: Boolean
+  planned_status_change_status: String!
+  planned_status_change_date: String!
 }
 
 input NetworkExchangeLanWhere {
