@@ -56,9 +56,15 @@ step). Production: `pdbfe.dev` (frontend, behind Cloudflare Access),
 
 ## Release model (tag-authoritative)
 
-- Deploys happen ONLY via the manual **Release** workflow
+- Deploys happen via the **Release** workflow
   (`gh workflow run "Release" -f bump=<auto|patch|minor|major>`). Merges to
   main do NOT deploy.
+- **One exception**: `upstream-sync` calls Release directly (`workflow_call`)
+  after it auto-merges a schema update that generated **no migration**. If a
+  migration WAS generated, the sync stops at the PR for review and deploys
+  nothing — applying auto-generated DDL to production D1 unreviewed is the
+  failure mode that 500s the API. The merge still never deploys on its own;
+  the sync workflow invokes Release explicitly.
 - Version derives from the latest `v*` git tag, not the `VERSION` file — the
   file on main lags the tag **by design** (branch protection blocks the
   workflow's push-back). Never "fix" a stale VERSION.
