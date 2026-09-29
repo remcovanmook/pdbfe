@@ -183,6 +183,12 @@ export function renderMarkdown(text) {
         return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
+    // Step 3c: Backslash escapes. `\_` and `\*` stand for a literal
+    // character that must not open bold/italic — e.g. `\__contains`, which
+    // would otherwise pair with the next `__` on the line. Parked as
+    // sentinels here and restored as plain characters at the very end.
+    html = html.replaceAll('\\_', '\uE003').replaceAll('\\*', '\uE004');
+
     // Step 4: Code spans (before other inline processing)
     html = html.replaceAll(/`([^`]+)`/g, '<code>$1</code>');
 
@@ -316,5 +322,5 @@ export function renderMarkdown(text) {
         '<a href="/$1/$2" data-link>$3</a>'
     );
 
-    return output;
+    return output.replaceAll('\uE003', '_').replaceAll('\uE004', '*');
 }

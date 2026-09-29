@@ -339,3 +339,28 @@ describe("renderMarkdown — same-site links and heading anchors", () => {
         assert.ok(result.includes('<h2 id="using-the-api">Using the API</h2>'));
     });
 });
+
+describe("renderMarkdown — backslash escapes", () => {
+    it("keeps escaped double underscores literal instead of bolding across them", () => {
+        const result = renderMarkdown('filters (`\\__contains`, `\\__lt`, `\\__in`)');
+        assert.ok(!result.includes('<strong>'));
+        assert.ok(result.includes('<code>__contains</code>'));
+        assert.ok(result.includes('<code>__lt</code>'));
+        assert.ok(!result.includes('\\'), 'the escaping backslash is consumed');
+    });
+
+    it("keeps an escaped asterisk literal", () => {
+        const result = renderMarkdown('2 \\* 3 \\* 4');
+        assert.ok(!result.includes('<em>'));
+        assert.ok(result.includes('2 * 3 * 4'));
+    });
+
+    it("still bolds unescaped __text__", () => {
+        assert.ok(renderMarkdown('__bold__').includes('<strong>bold</strong>'));
+    });
+
+    it("leaves backslashes inside fenced code blocks alone", () => {
+        const result = renderMarkdown('```\na\\_b\n```');
+        assert.ok(result.includes('a\\_b'));
+    });
+});

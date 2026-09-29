@@ -39,7 +39,7 @@ The mirror exposes a PeeringDB-compatible REST API. Example:
 GET /api/net/694?depth=2
 ```
 
-Supported query parameters include `depth`, `limit`, `skip`, `since`, and the standard PeeringDB filter suffixes (`__contains`, `__lt`, `__gt`, `__in`, etc.).
+Supported query parameters include `depth`, `limit`, `skip`, `since`, and the standard PeeringDB filter suffixes (`\__contains`, `\__lt`, `\__gt`, `\__in`, etc.).
 
 Endpoints available: `net`, `org`, `fac`, `ix`, `ixlan`, `ixpfx`, `netixlan`, `netfac`, `poc`, `carrier`, `carrierfac`, `ixfac`, `campus`, `as_set`.
 
