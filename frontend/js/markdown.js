@@ -141,6 +141,39 @@ function restoreTags(html) {
 }
 
 /**
+ * Builds a heading anchor id from rendered heading HTML. Characters inside
+ * inline tags (`<strong>`) and entities (`&amp;`) are skipped so they don't
+ * leak into the id; every other run of non-[a-z0-9] becomes a single `-`.
+ * The output alphabet is [a-z0-9-] only, so it is safe inside an attribute.
+ * A single character pass rather than a tag-stripping regex: it cannot be
+ * bypassed by nesting and runs in linear time.
+ *
+ * @param {string} html - Rendered heading content.
+ * @returns {string} Slug, e.g. "using-the-api".
+ */
+function headingSlug(html) {
+    let slug = '';
+    let skipUntil = '';
+    let pendingDash = false;
+    for (const ch of html.toLowerCase()) {
+        if (skipUntil) {
+            if (ch === skipUntil) skipUntil = '';
+            continue;
+        }
+        if (ch === '<') { skipUntil = '>'; continue; }
+        if (ch === '&') { skipUntil = ';'; continue; }
+        if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+            if (pendingDash && slug) slug += '-';
+            pendingDash = false;
+            slug += ch;
+        } else {
+            pendingDash = true;
+        }
+    }
+    return slug;
+}
+
+/**
  * Converts a markdown-formatted string to sanitised HTML.
  * Handles both markdown formatting and raw HTML from PeeringDB notes.
  *
@@ -187,7 +220,7 @@ export function renderMarkdown(text) {
     // character that must not open bold/italic — e.g. `\__contains`, which
     // would otherwise pair with the next `__` on the line. Parked as
     // sentinels here and restored as plain characters at the very end.
-    html = html.replaceAll('\\_', '\uE003').replaceAll('\\*', '\uE004');
+    html = html.replaceAll(String.raw`\_`, '\uE003').replaceAll(String.raw`\*`, '\uE004');
 
     // Step 4: Code spans (before other inline processing)
     html = html.replaceAll(/`([^`]+)`/g, '<code>$1</code>');
@@ -268,13 +301,7 @@ export function renderMarkdown(text) {
             }
             const level = headingMatch[1].length;
             // Anchor id so sections can be deep-linked (/about#using-the-api).
-            // Built from [a-z0-9-] only, so it is safe inside the attribute;
-            // inline tags and entities are dropped first so they don't leak in.
-            const slug = headingMatch[2]
-                .replaceAll(/<[^>]*>|&[#\w]+;/g, '')
-                .toLowerCase()
-                .replaceAll(/[^a-z0-9]+/g, '-')
-                .replaceAll(/(^-)|(-$)/g, '');
+            const slug = headingSlug(headingMatch[2]);
             result.push(`<h${level} id="${slug}">${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
             continue;
         }

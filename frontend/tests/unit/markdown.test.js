@@ -364,3 +364,16 @@ describe("renderMarkdown — backslash escapes", () => {
         assert.ok(result.includes('a\\_b'));
     });
 });
+
+describe("renderMarkdown — heading slugs", () => {
+    it("drops inline tags and entities from the id", () => {
+        assert.ok(renderMarkdown('## **Peering** & Transit').includes('<h2 id="peering-transit">'));
+    });
+
+    it("keeps the id to [a-z0-9-] whatever the heading contains", () => {
+        const result = renderMarkdown('## <script>alert(1)</script> "quoted" <img src=x onerror=alert(1)>');
+        const id = /<h2 id="([^"]*)">/.exec(result)?.[1];
+        assert.ok(id !== undefined, 'heading rendered with an id');
+        assert.match(id, /^[a-z0-9-]*$/);
+    });
+});
