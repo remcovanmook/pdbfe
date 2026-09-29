@@ -44,6 +44,8 @@
       "ixp_update_exclude_is_rs_peer": false,
       "ixp_update_exclude_operational": false,
       "logo": null,
+      "rtbh_community": "",
+      "preferred_ip_mtu": null,
       "created": "2025-01-01T00:00:00Z",
       "updated": "2025-01-01T00:00:00Z",
       "status": ""

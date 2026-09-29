@@ -64,6 +64,10 @@ jobs:
         run: |
           python scripts/gen_graphql_schema.py
           python scripts/gen_openapi_spec.py
+          # The golden fixtures are built from entities-worker.js, so new
+          # columns show up as extra fields and fail CI on the sync PR.
+          # They are a derived artifact for schema changes: regenerate them.
+          (cd workers && UPDATE_GOLDEN=1 node --test tests/unit/api/golden.test.js)
 
       # Whether a migration appears decides everything downstream: a schema
       # change that adds tables/columns needs D1 altered before the new code
@@ -111,7 +115,8 @@ jobs:
           # run that pushed but failed before opening a PR is simply rebuilt.
           git checkout -B "$BRANCH"
           git add extracted/ frontend/js/entities.js \
-            database/migrations/ scripts/lib/api-schema.yaml
+            database/migrations/ scripts/lib/api-schema.yaml \
+            workers/tests/fixtures/golden/
           if git diff --cached --quiet; then
             echo "Pipeline reported a version change but no tracked files differ."
             exit 0
