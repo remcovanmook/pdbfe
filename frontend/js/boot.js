@@ -207,14 +207,16 @@ if (syncResult.status === 'fulfilled') {
         // ── Stats ticker — compact entity counts from the same /status data
         const ticker = document.getElementById('stats-ticker');
         if (ticker) {
-            /** @type {{label: string, count: number}[]} */
+            // `tab` links the label to its advanced-search tab; the
+            // connection counts have no tab and stay plain text.
+            /** @type {{label: string, count: number, tab?: string}[]} */
             const stats = [
-                { label: t('Networks'),    count: entities.net?.row_count || 0 },
-                { label: t('Exchanges'),   count: entities.ix?.row_count || 0 },
-                { label: t('Facilities'),  count: entities.fac?.row_count || 0 },
-                { label: t('Campuses'),    count: entities.campus?.row_count || 0 },
-                { label: t('Carriers'),    count: entities.carrier?.row_count || 0 },
-                { label: t('Organizations'), count: entities.org?.row_count || 0 },
+                { label: t('Networks'),    count: entities.net?.row_count || 0, tab: 'net' },
+                { label: t('Exchanges'),   count: entities.ix?.row_count || 0, tab: 'ix' },
+                { label: t('Facilities'),  count: entities.fac?.row_count || 0, tab: 'fac' },
+                { label: t('Campuses'),    count: entities.campus?.row_count || 0, tab: 'campus' },
+                { label: t('Carriers'),    count: entities.carrier?.row_count || 0, tab: 'carrier' },
+                { label: t('Organizations'), count: entities.org?.row_count || 0, tab: 'org' },
                 { label: t('Connections to IXPs'), count: entities.netixlan?.row_count || 0 },
                 { label: t('Connections to Facilities'), count: entities.netfac?.row_count || 0 },
             ];
@@ -231,7 +233,18 @@ if (syncResult.status === 'fulfilled') {
                 const strong = document.createElement('strong');
                 strong.textContent = stats[i].count.toLocaleString();
                 item.appendChild(strong);
-                item.appendChild(document.createTextNode(' ' + stats[i].label));
+                item.appendChild(document.createTextNode(' '));
+                const tab = stats[i].tab;
+                if (tab) {
+                    const link = document.createElement('a');
+                    link.href = `/advanced_search#${tab}`;
+                    link.dataset.link = '';
+                    link.className = 'stats-ticker__link';
+                    link.textContent = stats[i].label;
+                    item.appendChild(link);
+                } else {
+                    item.appendChild(document.createTextNode(stats[i].label));
+                }
                 fragment.appendChild(item);
             }
             ticker.replaceChildren(fragment);
