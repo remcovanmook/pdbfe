@@ -418,7 +418,10 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
 
     // Text fields
     for (const tf of tabDef.textFields) {
-        const { el, getValue } = createTextField(tf.field, tf.label, tf.placeholder, params[tf.field] || '');
+        // executeSearch writes text filters as `<field>__contains` (asn stays
+        // exact), so read both spellings back when restoring from the URL.
+        const initial = params[tf.field] || params[`${tf.field}__contains`] || '';
+        const { el, getValue } = createTextField(tf.field, tf.label, tf.placeholder, initial);
         grid.appendChild(el);
         fieldGetters.set(tf.field, getValue);
     }
@@ -482,6 +485,12 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
 
     form.appendChild(actions);
     formWrap.appendChild(form);
+
+    // Filters in the URL mean we arrived via back/forward or a shared
+    // link: re-run the search so the results come back with the form.
+    if (Object.keys(buildFilters(fieldGetters)).length > 0) {
+        executeSearch(tabKey, fieldGetters, resultsWrap);
+    }
 }
 
 // ── Field builders ──────────────────────────────────────────────────────
@@ -732,9 +741,11 @@ async function executeSearch(entityType, fieldGetters, resultsWrap) {
     for (const [k, v] of Object.entries(filters)) {
         searchParams.set(k, String(v));
     }
+    // Query before hash: the router only sees location.search, and a
+    // query placed after `#` becomes part of the tab key and is lost.
     const hash = globalThis.location.hash;
     const paramStr = searchParams.toString();
-    const newUrl = `/advanced_search${hash}${paramStr ? '?' + paramStr : ''}`;
+    const newUrl = `/advanced_search${paramStr ? '?' + paramStr : ''}${hash}`;
     globalThis.history.replaceState(null, '', newUrl);
 
     resultsWrap.replaceChildren(createLoading(t('Searching...')));

@@ -109,7 +109,9 @@ export class PdbMap extends HTMLElement {
             zoomControl: isModal,
             dragging: isModal,
             touchZoom: isModal,
-            scrollWheelZoom: false, // Prevent page scrolling hijacking entirely
+            // Inline map: never hijack page scrolling. Modal: the overlay
+            // covers the page, so the wheel should zoom the map.
+            scrollWheelZoom: isModal,
             doubleClickZoom: isModal,
             boxZoom: isModal,
             keyboard: isModal,
@@ -182,7 +184,13 @@ export class PdbMap extends HTMLElement {
             position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column'
         });
 
+        // Lock page scroll while the overlay is open; wheel events outside
+        // the map would otherwise still scroll the page underneath.
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
         const cleanup = () => {
+            document.body.style.overflow = prevOverflow;
             overlay.remove();
             document.removeEventListener('keydown', handleEsc);
         };

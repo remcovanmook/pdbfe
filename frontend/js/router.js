@@ -110,7 +110,9 @@ export function initRouter(appContainer) {
  */
 export function navigate(path) {
     globalThis.history.pushState(null, '', path);
-    dispatch(path);
+    // Dispatch from location rather than `path` so a `#fragment` in the
+    // href (e.g. /advanced_search#carrier) doesn't break route matching.
+    dispatch(globalThis.location.pathname + globalThis.location.search);
 }
 
 /**
