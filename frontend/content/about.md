@@ -12,22 +12,24 @@ The database is synchronised incrementally. The sync status is displayed in the 
 
 ## Authentication
 
-You can sign in using your existing PeeringDB account. Click **Sign in with PeeringDB** in the header to authenticate via PeeringDB's OAuth2 flow. No separate registration is required — your PeeringDB credentials are used directly.
+You can sign in using your existing PeeringDB account. Click **🔑 Sign in** in the header to authenticate via PeeringDB's OAuth2 flow. No separate registration is required — your PeeringDB credentials are used directly.
 
 Signing in gives you access to contact information (POC data) that is restricted to authenticated users on the upstream PeeringDB. Your session lasts 24 hours.
 
-## API Keys
+## Using the API
 
-Once signed in, you can create API keys for programmatic access to the mirror at [your account page](/account). These keys are specific to this mirror — upstream PeeringDB API keys are not accepted here.
+The mirror speaks the PeeringDB API. Scripts and tools that work against `https://www.peeringdb.com/api/` work here too: point them at `https://api.pdbfe.dev/api/` and use a PDBFE API key instead of a PeeringDB one.
 
-To use a key, include it in the `Authorization` header of your API requests:
+- **Sign in.** Click **🔑 Sign in** in the header and log in with your PeeringDB account. No separate registration is needed.
+- **Create a key.** On [your account page](/account), create an API key. The full key is shown only once, so copy it then. Keys look like `pdbfe.<32 hex chars>`; you can have up to 5 and revoke them at any time. Upstream PeeringDB keys are not accepted here.
+- **Call the API** with the key in the `Authorization` header, exactly as you would with PeeringDB:
 
 ```
 curl -H "Authorization: Api-Key pdbfe.your_key_here" \
-    https://your-mirror-host/api/net?asn=13335
+    "https://api.pdbfe.dev/api/net?asn=13335"
 ```
 
-Keys follow the format `pdbfe.<32 hex chars>`. You can create up to 5 keys per account. The full key is shown only once at creation — copy it then. You can revoke keys at any time from the account page.
+Requests without a key work too, but are limited to 60 per minute and leave out contact (POC) data that PeeringDB restricts to signed-in users. With a key the limit is 600 requests per minute.
 
 ## API
 
@@ -37,7 +39,7 @@ The mirror exposes a PeeringDB-compatible REST API. Example:
 GET /api/net/694?depth=2
 ```
 
-Supported query parameters include `depth`, `limit`, `skip`, `since`, and the standard PeeringDB filter suffixes (`__contains`, `__lt`, `__gt`, `__in`, etc.).
+Supported query parameters include `depth`, `limit`, `skip`, `since`, and the standard PeeringDB filter suffixes (`\__contains`, `\__lt`, `\__gt`, `\__in`, etc.).
 
 Endpoints available: `net`, `org`, `fac`, `ix`, `ixlan`, `ixpfx`, `netixlan`, `netfac`, `poc`, `carrier`, `carrierfac`, `ixfac`, `campus`, `as_set`.
 

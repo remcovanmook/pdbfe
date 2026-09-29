@@ -13,6 +13,9 @@
 
 import { sanitiseURL, sanitiseImageURL } from './url.js';
 
+/** Same-site path: `/seg/seg` plus optional `#fragment`, nothing else. */
+const SITE_PATH_RE = /^(\/[\w-]+)+\/?(#[\w-]+)?$/;
+
 /**
  * Sentinel strings used to protect sanitised HTML tags from the
  * escape pass. These are chosen to be unlikely to appear in real input.
@@ -138,6 +141,39 @@ function restoreTags(html) {
 }
 
 /**
+ * Builds a heading anchor id from rendered heading HTML. Characters inside
+ * inline tags (`<strong>`) and entities (`&amp;`) are skipped so they don't
+ * leak into the id; every other run of non-[a-z0-9] becomes a single `-`.
+ * The output alphabet is [a-z0-9-] only, so it is safe inside an attribute.
+ * A single character pass rather than a tag-stripping regex: it cannot be
+ * bypassed by nesting and runs in linear time.
+ *
+ * @param {string} html - Rendered heading content.
+ * @returns {string} Slug, e.g. "using-the-api".
+ */
+function headingSlug(html) {
+    let slug = '';
+    let skipUntil = '';
+    let pendingDash = false;
+    for (const ch of html.toLowerCase()) {
+        if (skipUntil) {
+            if (ch === skipUntil) skipUntil = '';
+            continue;
+        }
+        if (ch === '<') { skipUntil = '>'; continue; }
+        if (ch === '&') { skipUntil = ';'; continue; }
+        if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+            if (pendingDash && slug) slug += '-';
+            pendingDash = false;
+            slug += ch;
+        } else {
+            pendingDash = true;
+        }
+    }
+    return slug;
+}
+
+/**
  * Converts a markdown-formatted string to sanitised HTML.
  * Handles both markdown formatting and raw HTML from PeeringDB notes.
  *
@@ -180,6 +216,12 @@ export function renderMarkdown(text) {
         return `\uE002CODEBLOCK_${idx}\uE002`;
     });
 
+    // Step 3c: Backslash escapes. `\_` and `\*` stand for a literal
+    // character that must not open bold/italic — e.g. `\__contains`, which
+    // would otherwise pair with the next `__` on the line. Parked as
+    // sentinels here and restored as plain characters at the very end.
+    html = html.replaceAll(String.raw`\_`, '\uE003').replaceAll(String.raw`\*`, '\uE004');
+
     // Step 4: Code spans (before other inline processing)
     html = html.replaceAll(/`([^`]+)`/g, '<code>$1</code>');
 
@@ -215,6 +257,11 @@ export function renderMarkdown(text) {
 
     // Step 7c: Markdown links [text](url) — only if not already inside an <a> tag
     html = html.replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+        // Same-site paths (/account, /about#using-the-api) become in-app
+        // links. The allowlist admits no scheme, no `//` host and no quotes.
+        if (SITE_PATH_RE.test(url)) {
+            return `<a href="${url}" data-link>${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
+        }
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;
         return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
@@ -253,7 +300,9 @@ export function renderMarkdown(text) {
                 inList = false;
             }
             const level = headingMatch[1].length;
-            result.push(`<h${level}>${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
+            // Anchor id so sections can be deep-linked (/about#using-the-api).
+            const slug = headingSlug(headingMatch[2]);
+            result.push(`<h${level} id="${slug}">${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
             continue;
         }
 
@@ -300,5 +349,5 @@ export function renderMarkdown(text) {
         '<a href="/$1/$2" data-link>$3</a>'
     );
 
-    return output;
+    return output.replaceAll('\uE003', '_').replaceAll('\uE004', '*');
 }

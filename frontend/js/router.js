@@ -187,8 +187,13 @@ async function dispatch(fullPath) {
                 );
             }
 
-            // Reset scroll after content is rendered
-            globalThis.scrollTo(0, 0);
+            // Reset scroll after content is rendered, or jump to the
+            // #fragment target when the page has one (e.g. /about#using-the-api).
+            const target = globalThis.location.hash
+                ? document.getElementById(decodeURIComponent(globalThis.location.hash.slice(1)))
+                : null;
+            if (target) target.scrollIntoView();
+            else globalThis.scrollTo(0, 0);
 
             // Trigger enter transition
             requestAnimationFrame(() => {

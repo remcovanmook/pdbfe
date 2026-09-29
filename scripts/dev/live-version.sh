@@ -34,14 +34,13 @@ for host in "api.${DOMAIN}" "rest.${DOMAIN}" "auth.${DOMAIN}"; do
     fi
 done
 
-# Frontend sits behind Cloudflare Access — a 302 to the Access login is the
-# healthy signature for an unauthenticated probe.
+# Frontend is public (CF Access removed 2026-09-28): a 200 is healthy. A 302
+# to cloudflareaccess.com means Access was put back in front of it.
 code=$(curl -s -m 8 -o /dev/null -w "%{http_code}" "https://${DOMAIN}/")
-loc=$(curl -s -m 8 -D - "https://${DOMAIN}/" -o /dev/null 2>/dev/null | grep -i "^location:" | grep -c "cloudflareaccess.com")
-if [[ "$code" == "302" && "$loc" == "1" ]]; then
-    printf "%-20s %-10s ✓ (302 → CF Access, expected)\n" "$DOMAIN" "n/a"
+if [[ "$code" == "200" ]]; then
+    printf "%-20s %-10s ✓ (HTTP 200, public)\n" "$DOMAIN" "n/a"
 else
-    printf "%-20s HTTP %-5s ✗ (expected 302 → CF Access)\n" "$DOMAIN" "$code"
+    printf "%-20s HTTP %-5s ✗ (expected 200)\n" "$DOMAIN" "$code"
     MISMATCH=1
 fi
 

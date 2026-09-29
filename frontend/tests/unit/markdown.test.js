@@ -186,34 +186,34 @@ describe("renderMarkdown — HTML sanitisation", () => {
 describe("renderMarkdown — headings", () => {
     it("should render # as h1", () => {
         const result = renderMarkdown("# Main Title");
-        assert.ok(result.includes('<h1>Main Title</h1>'));
+        assert.ok(result.includes('<h1 id="main-title">Main Title</h1>'));
     });
 
     it("should render ## as h2", () => {
         const result = renderMarkdown("## Section");
-        assert.ok(result.includes('<h2>Section</h2>'));
+        assert.ok(result.includes('<h2 id="section">Section</h2>'));
     });
 
     it("should render ### as h3", () => {
         const result = renderMarkdown("### Subsection");
-        assert.ok(result.includes('<h3>Subsection</h3>'));
+        assert.ok(result.includes('<h3 id="subsection">Subsection</h3>'));
     });
 
     it("should render h4 through h6", () => {
-        assert.ok(renderMarkdown("#### H4").includes('<h4>H4</h4>'));
-        assert.ok(renderMarkdown("##### H5").includes('<h5>H5</h5>'));
-        assert.ok(renderMarkdown("###### H6").includes('<h6>H6</h6>'));
+        assert.ok(renderMarkdown("#### H4").includes('<h4 id="h4">H4</h4>'));
+        assert.ok(renderMarkdown("##### H5").includes('<h5 id="h5">H5</h5>'));
+        assert.ok(renderMarkdown("###### H6").includes('<h6 id="h6">H6</h6>'));
     });
 
     it("should not treat # without a space as a heading", () => {
         const result = renderMarkdown("#nospace");
-        assert.ok(!result.includes('<h1>'));
+        assert.ok(!result.includes('<h1'));
         assert.ok(result.includes('#nospace'));
     });
 
     it("should handle inline formatting inside headings", () => {
         const result = renderMarkdown("## **Bold** heading");
-        assert.ok(result.includes('<h2>'));
+        assert.ok(result.includes('<h2 id="bold-heading">'));
         assert.ok(result.includes('<strong>Bold</strong>'));
     });
 });
@@ -312,5 +312,68 @@ describe("renderMarkdown — PeeringDB link rewriting", () => {
         const input = '[Net](http://peeringdb.com/net/111)';
         const result = renderMarkdown(input);
         assert.ok(result.includes('href="/net/111"'));
+    });
+});
+
+describe("renderMarkdown — same-site links and heading anchors", () => {
+    it("renders a same-site path as an in-app link", () => {
+        const result = renderMarkdown('See [your account page](/account).');
+        assert.ok(result.includes('<a href="/account" data-link>your account page</a>'));
+    });
+
+    it("keeps a #fragment on a same-site path", () => {
+        const result = renderMarkdown('[API](/about#using-the-api)');
+        assert.ok(result.includes('href="/about#using-the-api" data-link'));
+    });
+
+    it("does not treat protocol-relative or scripted paths as same-site", () => {
+        for (const url of ['//evil.example/x', '/x" onclick="alert(1)', 'javascript:alert(1)']) {
+            const result = renderMarkdown(`[x](${url})`);
+            assert.ok(!result.includes('data-link'), `${url} must not become an in-app link`);
+            assert.ok(!result.includes('href="//'), `${url} must not produce a host-relative href`);
+        }
+    });
+
+    it("gives headings a slug id", () => {
+        const result = renderMarkdown('## Using the API');
+        assert.ok(result.includes('<h2 id="using-the-api">Using the API</h2>'));
+    });
+});
+
+describe("renderMarkdown — backslash escapes", () => {
+    it("keeps escaped double underscores literal instead of bolding across them", () => {
+        const result = renderMarkdown('filters (`\\__contains`, `\\__lt`, `\\__in`)');
+        assert.ok(!result.includes('<strong>'));
+        assert.ok(result.includes('<code>__contains</code>'));
+        assert.ok(result.includes('<code>__lt</code>'));
+        assert.ok(!result.includes('\\'), 'the escaping backslash is consumed');
+    });
+
+    it("keeps an escaped asterisk literal", () => {
+        const result = renderMarkdown('2 \\* 3 \\* 4');
+        assert.ok(!result.includes('<em>'));
+        assert.ok(result.includes('2 * 3 * 4'));
+    });
+
+    it("still bolds unescaped __text__", () => {
+        assert.ok(renderMarkdown('__bold__').includes('<strong>bold</strong>'));
+    });
+
+    it("leaves backslashes inside fenced code blocks alone", () => {
+        const result = renderMarkdown('```\na\\_b\n```');
+        assert.ok(result.includes('a\\_b'));
+    });
+});
+
+describe("renderMarkdown — heading slugs", () => {
+    it("drops inline tags and entities from the id", () => {
+        assert.ok(renderMarkdown('## **Peering** & Transit').includes('<h2 id="peering-transit">'));
+    });
+
+    it("keeps the id to [a-z0-9-] whatever the heading contains", () => {
+        const result = renderMarkdown('## <script>alert(1)</script> "quoted" <img src=x onerror=alert(1)>');
+        const id = /<h2 id="([^"]*)">/.exec(result)?.[1];
+        assert.ok(id !== undefined, 'heading rendered with an id');
+        assert.match(id, /^[a-z0-9-]*$/);
     });
 });
