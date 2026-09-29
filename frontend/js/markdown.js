@@ -13,6 +13,9 @@
 
 import { sanitiseURL, sanitiseImageURL } from './url.js';
 
+/** Same-site path: `/seg/seg` plus optional `#fragment`, nothing else. */
+const SITE_PATH_RE = /^(\/[\w-]+)+\/?(#[\w-]+)?$/;
+
 /**
  * Sentinel strings used to protect sanitised HTML tags from the
  * escape pass. These are chosen to be unlikely to appear in real input.
@@ -215,6 +218,11 @@ export function renderMarkdown(text) {
 
     // Step 7c: Markdown links [text](url) — only if not already inside an <a> tag
     html = html.replaceAll(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+        // Same-site paths (/account, /about#using-the-api) become in-app
+        // links. The allowlist admits no scheme, no `//` host and no quotes.
+        if (SITE_PATH_RE.test(url)) {
+            return `<a href="${url}" data-link>${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
+        }
         const safeUrl = sanitiseURL(url);
         if (!safeUrl) return label;
         return `<a href="${escapeAttr(safeUrl)}" rel="noopener noreferrer" target="_blank">${/* safe — already escaped by escapeForMarkdown */ label}</a>`;
@@ -253,7 +261,15 @@ export function renderMarkdown(text) {
                 inList = false;
             }
             const level = headingMatch[1].length;
-            result.push(`<h${level}>${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
+            // Anchor id so sections can be deep-linked (/about#using-the-api).
+            // Built from [a-z0-9-] only, so it is safe inside the attribute;
+            // inline tags and entities are dropped first so they don't leak in.
+            const slug = headingMatch[2]
+                .replaceAll(/<[^>]*>|&[#\w]+;/g, '')
+                .toLowerCase()
+                .replaceAll(/[^a-z0-9]+/g, '-')
+                .replaceAll(/(^-)|(-$)/g, '');
+            result.push(`<h${level} id="${slug}">${/* safe — escaped by escapeForMarkdown in step 2 */ headingMatch[2]}</h${level}>`);
             continue;
         }
 

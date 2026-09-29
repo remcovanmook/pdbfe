@@ -90,7 +90,11 @@ export async function renderHome(_params) {
     aboutLink.href = '/about';
     aboutLink.dataset.link = '';
     aboutLink.textContent = t('about this mirror');
-    desc3.append('Learn more ', aboutLink, '.');
+    const apiLink = document.createElement('a');
+    apiLink.href = '/about#using-the-api';
+    apiLink.dataset.link = '';
+    apiLink.textContent = t('how to use the API');
+    desc3.append('Learn more ', aboutLink, ', or ', apiLink, '.');
     hero.appendChild(desc3);
 
     homeTop.appendChild(hero);
