@@ -52,6 +52,8 @@ scripts/__pycache__/
 scripts/tests/__pycache__/
 .vscode/settings.json
 .claude/
+CLAUDE.md
+CLAUDE.local.md
 
 # Playwright
 frontend/test-results/
