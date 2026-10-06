@@ -7,7 +7,7 @@
  *   - Authenticated callers are not filtered
  *   - GraphQL resolver factories enforce the restriction pattern:
  *     listResolver blocks anon without visible filter,
- *     detailResolver blocks anon entirely,
+ *     detailResolver pins anon to visible=Public (public ids resolve),
  *     reverseEdgeResolver injects visible=Public for anon,
  *     connectionResolver blocks anon without visible filter
  */
@@ -25,16 +25,18 @@ import { expandDepth } from '../../../api/depth.js';
  * Matches results by checking if the SQL contains a key substring.
  *
  * @param {Record<string, any[]>} responses - Map of SQL substring → results.
- * @returns {{db: D1Database, queries: string[]}} Mock DB and SQL log.
+ * @returns {{db: D1Database, queries: string[], binds: any[][]}} Mock DB, SQL log and bound params.
  */
 function mockD1(responses) {
     /** @type {string[]} */
     const queries = [];
+    /** @type {any[][]} */
+    const binds = [];
     const db = {
         prepare: (/** @type {string} */ sql) => {
             queries.push(sql);
             return {
-                bind: (/** @type {any[]} */...args) => ({
+                bind: (/** @type {any[]} */...args) => (binds.push(args), {
                     all: async () => {
                         for (const [key, results] of Object.entries(responses)) {
                             if (sql.includes(key)) {
@@ -51,7 +53,7 @@ function mockD1(responses) {
             };
         }
     };
-    return { db: /** @type {any} */(db), queries };
+    return { db: /** @type {any} */(db), queries, binds };
 }
 
 function f(name, type, opts) {
@@ -175,11 +177,11 @@ describe('GraphQL resolver poc restriction', () => {
      * Creates a mock yoga context with D1 and authentication state.
      * @param {boolean} authenticated - Whether the caller is authenticated.
      * @param {Record<string, any[]>} [responses] - Mock D1 responses.
-     * @returns {{ctx: any, queries: string[]}}
+     * @returns {{ctx: any, queries: string[], binds: any[][]}}
      */
     function mockCtx(authenticated, responses = {}) {
-        const { db, queries } = mockD1(responses);
-        return { ctx: { db, authenticated }, queries };
+        const { db, queries, binds } = mockD1(responses);
+        return { ctx: { db, authenticated }, queries, binds };
     }
 
     it('loads resolvers from generated module', async () => {
@@ -233,10 +235,22 @@ describe('GraphQL resolver poc restriction', () => {
         assert.ok(Array.isArray(result));
     });
 
-    it('detailResolver (poc) returns null for anon', async () => {
-        const { ctx } = mockCtx(false);
+    it('detailResolver (poc) pins anon lookups to visible=Public', async () => {
+        const { ctx, queries, binds } = mockCtx(false, {
+            peeringdb_network_contact: [{ id: 1, visible: 'Public', name: 'NOC' }],
+        });
         const result = await resolvers.Query.poc(null, { id: 1 }, ctx);
-        assert.equal(result, null);
+        assert.equal(result?.id, 1);
+        assert.ok(queries[0].includes('"visible" = ?'), 'anon detail should filter by visible');
+        assert.ok(binds[0].includes('Public'), 'visible should be bound to Public');
+    });
+
+    it('detailResolver (poc) does not pin visibility for authenticated caller', async () => {
+        const { ctx, queries } = mockCtx(true, {
+            peeringdb_network_contact: [{ id: 1, visible: 'Users' }],
+        });
+        await resolvers.Query.poc(null, { id: 1 }, ctx);
+        assert.ok(!queries[0].includes('"visible" = ?'), 'authenticated detail should not filter by visible');
     });
 
     it('detailResolver (poc) queries D1 for authenticated caller', async () => {

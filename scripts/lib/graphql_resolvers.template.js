@@ -156,9 +156,9 @@ function listResolver(tag) {
 /**
  * Creates a detail resolver for the given entity tag.
  *
- * For restricted entities (e.g. poc), anonymous callers get null.
- * Single-record lookups cannot be filtered by visibility without
- * querying the database first, so we block entirely.
+ * For restricted entities (e.g. poc), the WHERE builder pins anonymous
+ * callers to the entity's _anonFilter (visible=Public), so a non-public
+ * record resolves to null — matching upstream /api/poc/{id}.
  *
  * @param {string} tag - Entity tag (e.g. "net").
  * @returns {Function} GraphQL resolver function.
@@ -166,10 +166,8 @@ function listResolver(tag) {
 function detailResolver(tag) {
     return async (_parent, args, ctx) => {
         const entity = ENTITIES[tag];
-        const bail = applyAnonGate(entity, ctx.authenticated, [], 'block', null);
-        if (bail !== null) return bail;
         const filters = [{ field: 'id', op: 'eq', value: String(args.id) }];
-        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '' };
+        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '', authenticated: ctx.authenticated };
         const { sql, params } = buildRowQuery(entity, filters, opts);
         const result = await ctx.db.prepare(sql).bind(...params).all();
         return (result.results || [])[0] || null;

@@ -206,16 +206,15 @@ async function handleRequest(request, env, ctx) {
     // Upstream behaviour:
     //   - Bare /api/poc → 200 with empty data
     //   - /api/poc?visible=Public → 200 with public contacts
-    //   - /api/poc/{id} → 404 (we don't know visibility without querying)
-    // If the caller explicitly filters for the allowed visibility value,
-    // let the query through with the filter enforced to prevent spoofing.
-    if (!authenticated && entity._restricted) {
+    //   - /api/poc/{id} → the contact if it is public, else 404
+    // Lookups by id go straight through: the WHERE builder (api/query.js)
+    // pins anonymous callers to visible=Public, so non-public ids 404.
+    // For lists, if the caller explicitly filters for the allowed visibility
+    // value, let the query through with the filter enforced to prevent spoofing.
+    if (!authenticated && entity._restricted && id <= 0) {
         const af = entity._anonFilter;
         const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
         if (!visFilter) {
-            if (id > 0) {
-                return jsonError(404, `${entityTag} with id ${id} not found`, hNocache);
-            }
             return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
         }
         // Force the filter value to the allowed value (e.g. "Public")
