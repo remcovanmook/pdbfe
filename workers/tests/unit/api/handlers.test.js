@@ -66,7 +66,8 @@ function mockD1({ hotPayload = null, rows = [], count = 0, asSetResult = null } 
                 first() {
                     // json_group_array hot path
                     if (sql.includes('json_group_array')) {
-                        return Promise.resolve(hotPayload ? { payload: hotPayload } : null);
+                        // n: row count, as buildJsonQuery(withCount) returns for paged lists
+                        return Promise.resolve(hotPayload ? { payload: hotPayload, n: JSON.parse(hotPayload).data.length } : null);
                     }
                     // COUNT(*) query
                     if (sql.includes('COUNT(*)')) {
