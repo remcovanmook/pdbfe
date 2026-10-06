@@ -172,7 +172,7 @@ async function handlePaged(hc, entity, paging) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const { buf, tier, hits } = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
-        () => buildPagedEnvelope(db, entity, filters, opts, page, perPage, base, queryString,
+        () => buildPagedEnvelope(db, entity, filters, opts, { page, perPage, base, queryString },
             (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated))
     );
     if (!buf) return jsonError(404, 'Invalid page.');

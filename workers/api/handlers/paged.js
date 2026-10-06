@@ -67,7 +67,9 @@ export function pageLink(base, queryString, n) {
     parts.sort((a, b) => {
         const ka = a.slice(0, a.indexOf('=') >>> 0);
         const kb = b.slice(0, b.indexOf('=') >>> 0);
-        return ka < kb ? -1 : (ka > kb ? 1 : 0);
+        if (ka < kb) return -1;
+        if (ka > kb) return 1;
+        return 0;
     });
     return `${base}?${parts.join('&')}`;
 }
@@ -80,14 +82,14 @@ export function pageLink(base, queryString, n) {
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed filters.
  * @param {QueryOpts} opts - Query options (limit/skip define the result set).
- * @param {number} page - Validated page number (>= 1).
- * @param {number} perPage - Validated page size.
- * @param {string} base - Request URL without query, for links.
- * @param {string} queryString - Raw query string, for links.
+ * @param {{page: number, perPage: number, base: string, queryString: string}} paging -
+ *     Validated page number (>= 1) and size, plus the request URL without
+ *     query and the raw query string, for links.
  * @param {(pageOpts: QueryOpts) => Promise<Uint8Array>} runPage - Executes the list query for a window.
  * @returns {Promise<Uint8Array|null>}
  */
-export async function buildPagedEnvelope(db, entity, filters, opts, page, perPage, base, queryString, runPage) {
+export async function buildPagedEnvelope(db, entity, filters, opts, paging, runPage) {
+    const { page, perPage, base, queryString } = paging;
     const { sql, params } = buildCountQuery(entity, filters, opts);
     const row = await db.prepare(sql).bind(...params).first();
     const total = row && typeof row.cnt === 'number' ? row.cnt : 0;
