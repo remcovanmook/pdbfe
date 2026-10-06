@@ -5,9 +5,11 @@
  * 1. depth>=1 lists with >100 parents: depth expansion bound one `?` per
  *    parent id and hit D1's 100-parameter cap ("too many SQL variables").
  * 2. Large depth=0 lists: the json_group_array envelope exceeded D1's max
- *    string size (SQLITE_TOOBIG). The fallback pages the query and splices
- *    the results; these tests force it with a small value-size cap and check
- *    the paged result is identical in rows and order to a direct SQL query.
+ *    string size (SQLITE_TOOBIG) or memory (SQLITE_NOMEM — which also failed
+ *    concurrent queries). Large/unbounded lists are now paged from the start
+ *    and small ones fall back to paging on either error. These tests force
+ *    both errors with a small value-size cap and check the paged result is
+ *    identical in rows and order to a direct SQL query.
  */
 
 import { describe, it, before } from 'node:test';
@@ -17,6 +19,14 @@ import { createSqliteD1, registerAssetLoader, envFor, mockCtx } from '../../lib/
 registerAssetLoader();
 const { default: apiWorker } = await import('../../../api/index.js');
 const { default: restWorker } = await import('../../../rest/index.js');
+const { purgeAllCaches } = await import('../../../api/cache.js');
+const { purgeRestCache } = await import('../../../rest/cache.js');
+
+/** Each suite seeds its own database; drop isolate caches so no response leaks across. */
+function freshCaches() {
+    purgeAllCaches();
+    purgeRestCache();
+}
 
 const TS = '2026-01-01T00:00:00Z';
 const NOTES = 'x'.repeat(400); // ~0.6KB per net row in the JSON envelope
@@ -60,6 +70,7 @@ describe('depth expansion over D1\'s 100-parameter cap', () => {
     /** @type {any} */
     let env;
     before(() => {
+        freshCaches();
         const { sqlite, db } = createSqliteD1();
         seed(sqlite, 300);
         env = envFor(db);
@@ -90,7 +101,7 @@ describe('depth expansion over D1\'s 100-parameter cap', () => {
     });
 });
 
-describe('chunked fallback when the list envelope is too big (SQLITE_TOOBIG)', () => {
+for (const oversizeError of /** @type {const} */ (['toobig', 'nomem'])) describe(`paged list when D1 can't build the envelope (${oversizeError})`, () => {
     const NETS = 2000;
     /** @type {any} */
     let env;
@@ -100,9 +111,10 @@ describe('chunked fallback when the list envelope is too big (SQLITE_TOOBIG)', (
     let stats;
 
     before(() => {
+        freshCaches();
         // ~1.3MB for the full net list; 400KB cap forces the fallback and
         // at least one page-size halving (5000 → … → 312 rows per page).
-        const d = createSqliteD1({ maxValueBytes: 400_000 });
+        const d = createSqliteD1({ maxValueBytes: 400_000, oversizeError });
         sqlite = d.sqlite;
         stats = d.stats;
         seed(sqlite, NETS);
@@ -132,7 +144,7 @@ describe('chunked fallback when the list envelope is too big (SQLITE_TOOBIG)', (
             const before = stats.tooBig;
             const { status, body } = await getJSON(apiWorker, env, `https://api.pdbfe.dev${c.path}`);
             assert.equal(status, 200, String(body));
-            assert.ok(stats.tooBig > before, 'fallback should have been exercised');
+            assert.ok(stats.tooBig > before, 'page-size halving should have been exercised');
             assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), expectedIds(c.order, c.limit, c.skip));
             assert.equal(body.data[0].notes, 'x'.repeat(400));
             assert.deepEqual(body.meta, {});
@@ -151,5 +163,36 @@ describe('chunked fallback when the list envelope is too big (SQLITE_TOOBIG)', (
         assert.equal(status, 200);
         assert.equal(body.data.length, 100);
         assert.equal(stats.tooBig, before, 'no TOOBIG for a small list');
+    });
+});
+
+describe('paging cost on an unconstrained database', () => {
+    /** @type {any} */
+    let env;
+    /** @type {{queries: number, payloadQueries: number, tooBig: number}} */
+    let stats;
+    before(() => {
+        freshCaches();
+        const d = createSqliteD1();
+        seed(d.sqlite, 5000);
+        stats = d.stats;
+        env = envFor(d.db);
+    });
+
+    it('an unbounded list that fits one page costs exactly one query', async () => {
+        const before = stats.payloadQueries;
+        const { status, body } = await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?asn__lt=65000');
+        assert.equal(status, 200);
+        assert.equal(body.data.length, 999);
+        assert.equal(stats.payloadQueries - before, 1);
+    });
+
+    it('a large unbounded list is never fetched in one statement', async () => {
+        const before = stats.payloadQueries;
+        const { status, body } = await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net');
+        assert.equal(status, 200);
+        assert.equal(body.data.length, 5000);
+        assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), Array.from({ length: 5000 }, (_, i) => i + 1));
+        assert.ok(stats.payloadQueries - before > 1, 'should page');
     });
 });

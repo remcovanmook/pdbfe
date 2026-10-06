@@ -8,7 +8,8 @@
  *
  *   - at most 100 bound parameters per statement ("too many SQL variables")
  *   - an optional cap on the size of any returned string value, to simulate
- *     D1's SQLITE_TOOBIG on large json_group_array payloads.
+ *     D1 failing large json_group_array payloads with SQLITE_TOOBIG or
+ *     SQLITE_NOMEM (both seen in production).
  */
 
 import { readFileSync } from 'node:fs';
@@ -48,14 +49,19 @@ export function registerAssetLoader() {
  * Creates an in-memory database with the production schema and a D1 binding
  * over it.
  *
- * @param {{maxValueBytes?: number}} [opts] - maxValueBytes: throw
- *     SQLITE_TOOBIG when any returned string column exceeds this length.
- * @returns {{sqlite: DatabaseSync, db: any, stats: {queries: number, tooBig: number}}}
+ * @param {{maxValueBytes?: number, oversizeError?: 'toobig'|'nomem'}} [opts] -
+ *     maxValueBytes: fail when any returned string column exceeds this length,
+ *     with D1's SQLITE_TOOBIG (default) or SQLITE_NOMEM error.
+ * @returns {{sqlite: DatabaseSync, db: any, stats: {queries: number, payloadQueries: number, tooBig: number}}}
  */
-export function createSqliteD1({ maxValueBytes = Infinity } = {}) {
+export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toobig' } = {}) {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec(SCHEMA);
-    const stats = { queries: 0, tooBig: 0 };
+    /** payloadQueries: json_group_array list/detail statements (`AS payload`). */
+    const stats = { queries: 0, payloadQueries: 0, tooBig: 0 };
+    const oversizeMessage = oversizeError === 'nomem'
+        ? 'D1_ERROR: out of memory: SQLITE_NOMEM'
+        : 'D1_ERROR: string or blob too big: SQLITE_TOOBIG';
 
     /** @param {any} row */
     const checkSize = (row) => {
@@ -63,13 +69,14 @@ export function createSqliteD1({ maxValueBytes = Infinity } = {}) {
         for (const v of Object.values(row)) {
             if (typeof v === 'string' && v.length > maxValueBytes) {
                 stats.tooBig++;
-                throw new Error('D1_ERROR: string or blob too big: SQLITE_TOOBIG');
+                throw new Error(oversizeMessage);
             }
         }
     };
 
     const prepare = (/** @type {string} */ sql) => {
         const stmt = sqlite.prepare(sql);
+        const isPayload = sql.includes('AS payload');
         /** @param {any[]} args */
         const bound = (args) => {
             if (args.length > D1_MAX_PARAMS) {
@@ -84,6 +91,7 @@ export function createSqliteD1({ maxValueBytes = Infinity } = {}) {
                 },
                 first: async () => {
                     stats.queries++;
+                    if (isPayload) stats.payloadQueries++;
                     const row = stmt.get(...args) ?? null;
                     checkSize(row);
                     return row;

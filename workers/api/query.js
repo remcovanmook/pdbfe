@@ -311,9 +311,12 @@ function resolveColumns(entity, opts) {
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {QueryOpts} opts - Pagination.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
- * @returns {BuiltQuery} Parameterised SQL that returns {payload: string}.
+ * @param {boolean} [withCount=false] - Also return the page's row count as `n`
+ *     (used by the paged list path in json_list.js to detect the last page).
+ * @returns {BuiltQuery} Parameterised SQL that returns {payload: string} (and {n: number} with withCount).
  */
-export function buildJsonQuery(entity, filters, opts, singleId = null) {
+export function buildJsonQuery(entity, filters, opts, singleId = null, withCount = false) {
+    const countCol = withCount ? ', COUNT(*) AS n' : '';
     const columns = resolveColumns(entity, opts);
     const jsonCols = getJsonColumns(entity);
     const boolCols = getBoolColumns(entity);
@@ -351,7 +354,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
             : innerExpr;
 
         const sql =
-            `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload` +
+            `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}` +
             ` FROM (SELECT ${allSelectCols}` +
             ` FROM "${entity.table}" AS t${joinSql}${where}` +
             ` ORDER BY ${orderBy}${pagination})`;
@@ -365,7 +368,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null) {
         ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
         : innerExpr;
     const sql =
-        `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload` +
+        `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}` +
         ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
 
     return { sql, params };

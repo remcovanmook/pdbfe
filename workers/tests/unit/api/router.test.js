@@ -333,7 +333,7 @@ describe('restricted entity — poc', () => {
     it('serves anonymous /api/poc list from D1 (visibility pinned in the query)', async () => {
         const payload = '{"data":[{"id":74060,"visible":"Public"}],"meta":{}}';
         const res = await fetch('https://api.pdbfe.dev/api/poc', {}, {
-            PDB: mockPDB({ peeringdb_network_contact: { payload } }),
+            PDB: mockPDB({ peeringdb_network_contact: { payload, n: 1 } }),
         });
         assert.equal(res.status, 200);
         const body = await res.json();
