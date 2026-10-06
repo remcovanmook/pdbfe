@@ -69,7 +69,7 @@ export async function queryJsonList(db, entity, filters, opts) {
  */
 async function queryJsonListChunked(db, entity, filters, opts) {
     const window = opts.limit > 0 && opts.limit < MAX_PAGE_LIMIT ? opts.limit : MAX_PAGE_LIMIT;
-    const baseSkip = opts.skip > 0 ? opts.skip : 0;
+    const baseSkip = Math.max(opts.skip, 0);
 
     /** @type {Uint8Array[]} */
     const pages = [];
