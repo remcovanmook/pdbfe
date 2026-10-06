@@ -152,7 +152,12 @@ async function handleRequest(request, env, ctx) {
     //   api/{entity}       → list
     //   api/{entity}/{id}  → detail
     //   api/as_set/{asn}   → AS set lookup
-    const { p0: entityTag, p1: rest } = tokenizeString(apiCall, '/', 2);
+    const { p0: rawTag, p1: rest } = tokenizeString(apiCall, '/', 2);
+
+    // Upstream accepts a ".json" suffix on the entity (api/net.json?asn=…);
+    // IXP Manager calls it that way. The detail form (api/net/1.json) is
+    // already handled by parseInt below.
+    const entityTag = rawTag?.endsWith('.json') ? rawTag.slice(0, -5) : rawTag;
 
     // Special case: as_set/{asn} — early return before shared entity flow.
     // Upstream rejects comma-separated ASNs with 400 — match that behaviour.

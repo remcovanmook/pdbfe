@@ -31,6 +31,8 @@ curl -H "Authorization: Api-Key pdbfe.your_key_here" \
 
 Requests without a key work too, but are limited to 60 per minute and leave out contact (POC) data that PeeringDB restricts to signed-in users. With a key the limit is 600 requests per minute.
 
+Send a `User-Agent` that names your tool, for example `mytool/1.0`. Requests carrying Python's bare `urllib` default (`Python-urllib/3.x`) are blocked by Cloudflare's bot protection with a 403. `requests`, `httpx`, curl and the common PeeringDB clients are not affected.
+
 ## API
 
 The mirror exposes a PeeringDB-compatible REST API. Example:
