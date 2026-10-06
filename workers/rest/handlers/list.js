@@ -28,7 +28,10 @@ import { withRestSWR } from '../cache.js';
  */
 export async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
-    const cacheKey = normaliseCacheKey(rawPath, queryString);
+    // Partition by auth state, as the api worker does: authenticated
+    // responses include non-public contacts (poc lists, depth>0 poc_set)
+    // and must never be served to an anonymous caller from L1/L2.
+    const cacheKey = normaliseCacheKey(`${authenticated ? 'auth' : 'anon'}:${rawPath}`, queryString);
 
     const { buf, tier, hits } = await withRestSWR(
         entityTag, cacheKey, ctx,

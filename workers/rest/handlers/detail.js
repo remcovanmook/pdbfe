@@ -25,7 +25,9 @@ import { withRestSWR } from '../cache.js';
  */
 export async function handleDetail(request, entity, id, opts, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
-    const cacheKey = normaliseCacheKey(`v1/${entityTag}/${id}`, queryString);
+    // Partition by auth state (see handlers/list.js): authenticated detail
+    // responses at depth>0 carry non-public contacts.
+    const cacheKey = normaliseCacheKey(`${authenticated ? 'auth' : 'anon'}:v1/${entityTag}/${id}`, queryString);
 
     const { buf, tier, hits } = await withRestSWR(
         entityTag, cacheKey, ctx,
