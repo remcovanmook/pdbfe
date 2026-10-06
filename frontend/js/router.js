@@ -65,7 +65,7 @@ export function initRouter(appContainer) {
 
     // Handle browser back/forward
     globalThis.addEventListener('popstate', () => {
-        dispatch(globalThis.location.pathname + globalThis.location.search);
+        void dispatch(globalThis.location.pathname + globalThis.location.search);
     });
 
     // Intercept clicks on [data-link] anchors for SPA navigation
@@ -100,7 +100,7 @@ export function initRouter(appContainer) {
     });
 
     // Render current URL on load
-    dispatch(globalThis.location.pathname + globalThis.location.search);
+    void dispatch(globalThis.location.pathname + globalThis.location.search);
 }
 
 /**
@@ -112,7 +112,7 @@ export function navigate(path) {
     globalThis.history.pushState(null, '', path);
     // Dispatch from location rather than `path` so a `#fragment` in the
     // href (e.g. /advanced_search#carrier) doesn't break route matching.
-    dispatch(globalThis.location.pathname + globalThis.location.search);
+    void dispatch(globalThis.location.pathname + globalThis.location.search);
 }
 
 /**
@@ -121,7 +121,7 @@ export function navigate(path) {
  * displayed content needs to reflect the new setting.
  */
 export function redispatch() {
-    dispatch(globalThis.location.pathname + globalThis.location.search);
+    void dispatch(globalThis.location.pathname + globalThis.location.search);
 }
 
 /**

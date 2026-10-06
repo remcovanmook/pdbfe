@@ -104,7 +104,7 @@ if (prefResult.status === 'fulfilled') {
         }
 
         langSelect.addEventListener('change', () => {
-            setLanguage(langSelect.value, () => {
+            void setLanguage(langSelect.value, () => {
                 globalThis.location.reload();
             });
         });
