@@ -5,9 +5,11 @@
  * falls back to row-level expansion for depth>0. Cached via withRestSWR.
  */
 
-import { buildJsonQuery, buildRowQuery } from '../../api/query.js';
+import { buildRowQuery } from '../../api/query.js';
+import { queryJsonList } from '../../api/json_list.js';
 import { expandDepth } from '../../api/depth.js';
-import { encodeJSON, encoder } from '../../core/http.js';
+import { parseJsonFields } from '../../api/handlers/shared.js';
+import { encodeJSON } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { serveJSON } from '../../api/http.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
@@ -35,13 +37,12 @@ export async function handleListRequest(request, entity, filters, opts, rawPath,
                 const { sql, params } = buildRowQuery(entity, filters, opts);
                 const result = await db.prepare(sql).bind(...params).all();
                 const rows = result.results || [];
-                const expanded = await expandDepth(db, entity, rows, opts.depth, authenticated);
-                return encodeJSON({ data: expanded, meta: {} });
+                // expandDepth mutates rows in place and returns nothing.
+                for (const row of rows) { parseJsonFields(entity, row); }
+                await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe);
+                return encodeJSON({ data: rows, meta: {} });
             }
-            const { sql, params } = buildJsonQuery(entity, filters, opts);
-            const row = await db.prepare(sql).bind(...params).first();
-            if (!row?.payload) return null;
-            return encoder.encode(/** @type {string} */(row.payload));
+            return queryJsonList(db, entity, filters, opts);
         }
     );
 

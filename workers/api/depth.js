@@ -46,6 +46,14 @@ function resolveAnonFilter(authenticated, childEntity) {
 }
 
 /**
+ * Membership test against a JSON array of ids bound as a single parameter.
+ * D1 caps bound parameters at 100 per statement, so one `?` per id fails
+ * ("too many SQL variables") as soon as a list page has >100 parents.
+ * Same pattern as the `__in` filter in query.js.
+ */
+const IN_IDS = 'IN (SELECT value FROM json_each(?))';
+
+/**
  * Builds a Map from row.id → row for fast parent lookup, and
  * returns the list of parent IDs.
  *
@@ -151,15 +159,13 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
             row[rel.field] = [];
         }
 
-        const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
-
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
-        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${placeholders}) AND "status" != 'deleted'`;
+        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS} AND "status" != 'deleted'`;
         /** @type {any[]} */
-        const params = [...parentIds]; // ap-ok: SQL bind params
+        const params = [JSON.stringify(parentIds)];
 
         sql = appendFilterAndOrder(sql, params, anonFilter);
 
@@ -226,9 +232,8 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             childColumns = [];
         }
 
-        const placeholders = parentIds.map(() => "?").join(", "); // ap-ok: SQL construction
         /** @type {any[]} */
-        const params = [...parentIds]; // ap-ok: SQL bind params
+        const params = [JSON.stringify(parentIds)];
         let sql;
 
         if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
@@ -255,7 +260,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
 
             sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
                 joinParts.join('') +
-                ` WHERE t."${rel.fk}" IN (${placeholders})` +
+                ` WHERE t."${rel.fk}" ${IN_IDS}` +
                 ` AND t."status" != 'deleted'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
@@ -263,14 +268,14 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             // Standard path: no JOINs
             const colExpr = childColumns.map(c => `"${c}"`).join(", "); // ap-ok: SQL construction
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" IN (${placeholders})` +
+                ` WHERE "${rel.fk}" ${IN_IDS}` +
                 ` AND "status" != 'deleted'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
         } else {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" IN (${placeholders})` +
+                ` WHERE "${rel.fk}" ${IN_IDS}` +
                 ` AND "status" != 'deleted'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
@@ -335,10 +340,9 @@ async function expandParentOrg(db, entity, rows, pdbfe) {
     const orgColumns = getColumns(orgEntity, pdbfe);
 
     const colExpr = orgColumns.map(c => `"${c}"`).join(', '); // ap-ok: SQL construction
-    const placeholders = ids.map(() => '?').join(', '); // ap-ok: SQL construction
-    const sql = `SELECT ${colExpr} FROM "${orgEntity.table}" WHERE "id" IN (${placeholders}) AND "status" != 'deleted'`;
+    const sql = `SELECT ${colExpr} FROM "${orgEntity.table}" WHERE "id" ${IN_IDS} AND "status" != 'deleted'`;
 
-    const result = await db.prepare(sql).bind(...ids).all();
+    const result = await db.prepare(sql).bind(JSON.stringify(ids)).all();
 
     /** @type {Map<number, Record<string, any>>} */
     const orgMap = new Map();

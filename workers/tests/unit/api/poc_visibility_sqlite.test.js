@@ -11,35 +11,11 @@
 
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
-import { register } from 'node:module';
+import { createSqliteD1, registerAssetLoader, envFor, mockCtx as ctx } from '../../lib/sqlite_d1.js';
 
-// The rest worker imports non-JS assets the way wrangler bundles them:
-// openapi.json without an import attribute, .html/.css as text, fonts as
-// binary data. Node refuses all three, so this loader supplies the JSON
-// attribute and serves other assets as a default export (string for text,
-// ArrayBuffer for binary), letting the rest worker be imported here.
-register('data:text/javascript,' + encodeURIComponent(`
-    import { readFileSync } from 'node:fs';
-    const TEXT = ['.html', '.css', '.txt', '.md', '.svg'];
-    export async function load(url, context, next) {
-        if (!url.startsWith('file:') || /\\.[cm]?js$/.test(url)) return next(url, context);
-        if (url.endsWith('.json')) {
-            return next(url, { ...context, importAttributes: { type: 'json' } });
-        }
-        const buf = readFileSync(new URL(url));
-        const source = TEXT.some(ext => url.endsWith(ext))
-            ? 'export default ' + JSON.stringify(buf.toString('utf8'))
-            : 'export default Uint8Array.from(atob(' + JSON.stringify(buf.toString('base64')) + '), c => c.charCodeAt(0)).buffer';
-        return { format: 'module', source, shortCircuit: true };
-    }
-`));
-
+registerAssetLoader();
 const { default: apiWorker } = await import('../../../api/index.js');
 const { default: restWorker } = await import('../../../rest/index.js');
-
-const SCHEMA = readFileSync(new URL('../../../../extracted/schema.sql', import.meta.url), 'utf8');
 
 /** Seeded contacts: one per visibility level, all on net 1, all status=ok. */
 const CONTACTS = [
@@ -48,37 +24,6 @@ const CONTACTS = [
     { id: 3, visible: 'Private', role: 'NOC' },
 ];
 const PUBLIC_IDS = [1];
-
-/**
- * Wraps a node:sqlite database in the subset of the D1 API the workers use.
- *
- * @param {DatabaseSync} sqlite - Seeded in-memory database.
- * @returns {any} D1-compatible binding.
- */
-function d1(sqlite) {
-    const prepare = (/** @type {string} */ sql) => {
-        const stmt = sqlite.prepare(sql);
-        /** @param {any[]} args */
-        const bound = (args) => ({
-            all: async () => ({ results: stmt.all(...args), success: true, meta: {} }),
-            first: async () => stmt.get(...args) ?? null,
-            run: async () => { stmt.run(...args); return { success: true, meta: {}, results: [] }; },
-        });
-        return { ...bound([]), bind: (/** @type {any[]} */ ...args) => bound(args) };
-    };
-    return {
-        withSession() { return this; },
-        prepare,
-        batch: async (/** @type {any[]} */ stmts) => Promise.all(stmts.map(s => s.all())),
-    };
-}
-
-/** @returns {any} KV mock with no sessions (every caller is anonymous). */
-function kv() {
-    return { get: async () => null, put: async () => {}, delete: async () => {} };
-}
-
-const ctx = /** @type {any} */ ({ waitUntil(p) { p.catch(() => {}); }, passThroughOnException() {} });
 
 /** @type {any} */
 let env;
@@ -117,13 +62,12 @@ function assertOnlyPublic(body, label) {
 }
 
 before(() => {
-    const sqlite = new DatabaseSync(':memory:');
-    sqlite.exec(SCHEMA);
+    const { sqlite, db } = createSqliteD1();
     sqlite.exec(`INSERT INTO "peeringdb_organization" (id, name, status, created, updated) VALUES (1, 'Org', 'ok', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`);
     sqlite.exec(`INSERT INTO "peeringdb_network" (id, org_id, name, asn, status, created, updated) VALUES (1, 1, 'Net', 64500, 'ok', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`);
     const ins = sqlite.prepare(`INSERT INTO "peeringdb_network_contact" (id, net_id, role, visible, name, phone, email, url, status, created, updated) VALUES (?, 1, ?, ?, 'n', '', 'e@example.net', '', 'ok', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`);
     for (const c of CONTACTS) ins.run(c.id, c.role, c.visible);
-    env = { PDB: d1(sqlite), SESSIONS: kv(), ADMIN_SECRET: 'x', PDBFE_VERSION: '0.0.0' };
+    env = envFor(db);
 });
 
 describe('anonymous poc visibility — api worker', () => {

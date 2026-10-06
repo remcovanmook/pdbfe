@@ -24,11 +24,12 @@ import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmit
  *   tight.
  * MAX_PAGE_LIMIT — every other query (flat / depth=0 / leaf). This is a
  *   *runaway backstop*, not a page size: PeeringDB queries legitimately return
- *   whole tables and the entire dataset is ~60MB (largest table ~65k rows), so
- *   a full-table json_group_array is only tens of MB — safe in the isolate.
- *   The value is set ~15x above the largest table so it never clips a real
- *   query; its only job is to stop a literally-unbounded (LIMIT -1) scan. If a
- *   table ever approaches this, switch that path to streaming/pagination.
+ *   whole tables and the entire dataset is ~60MB (largest table ~65k rows).
+ *   A full-table json_group_array can exceed D1's max string size
+ *   (SQLITE_TOOBIG); json_list.js then re-runs the query in pages and
+ *   splices them. The value is set ~15x above the largest table so it never
+ *   clips a real query; its only job is to stop a literally-unbounded
+ *   (LIMIT -1) scan.
  */
 const DEPTH_EXPANSION_CAP = 250;
 export const MAX_PAGE_LIMIT = 1_000_000;
@@ -611,9 +612,13 @@ function buildOrderBy(entity, sort, pfx) {
     const desc = sort.startsWith('-');
     const col = desc ? sort.slice(1) : sort;
     const allCols = getColumns(entity);
-    if (allCols.includes(col)) {
-        return `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}`;
+    if (allCols.includes(col) && col !== 'id') {
+        // id tiebreak: rows sharing a sort value keep a stable order, so
+        // limit/skip paging (and the chunked list fallback) never repeats or
+        // drops rows across pages.
+        return `${pfx}"${col}" ${desc ? 'DESC' : 'ASC'}, ${pfx}"id" ASC`;
     }
+    if (col === 'id') return `${pfx}"id" ${desc ? 'DESC' : 'ASC'}`;
     return `${pfx}"id" ASC`;
 }
 
