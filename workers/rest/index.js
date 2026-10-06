@@ -131,7 +131,13 @@ async function routeApiRequest(request, rc) {
     }
 
     const entity = ENTITIES[entityTag];
-    const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe } = parseQueryFilters(queryString);
+    const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe, page, perPage } = parseQueryFilters(queryString);
+
+    // Page-number pagination is an upstream-compatibility feature of /api;
+    // the REST API pages with limit/skip. Reject rather than silently ignore.
+    if (page !== null || perPage !== null) {
+        return jsonError(400, 'page/per_page are not supported on the REST API; use limit and skip (or the /api endpoint)');
+    }
 
     if (limit < -1 || skip < 0) {
         return jsonError(400, 'limit and skip must be non-negative integers');

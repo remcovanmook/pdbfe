@@ -199,7 +199,7 @@ async function handleRequest(request, env, ctx) {
         }
     }
 
-    const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe } = parseQueryFilters(queryString);
+    const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe, page, perPage } = parseQueryFilters(queryString);
 
     if (limit < -1 || skip < 0) {
         return jsonError(400, 'limit and skip must be non-negative integers', hNocache);
@@ -250,12 +250,15 @@ async function handleRequest(request, env, ctx) {
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
 
+    // ?page= pagination applies to list requests only (upstream ignores it on detail).
+    const paging = page !== null && id <= 0 ? { page, perPage } : null;
+
     // ── Handler dispatch ─────────────────────────────────────────────
     // entityVersionMs and userId are threaded into the context so that
     // serveJSON can bake Last-Modified and X-Auth-Id into the initial
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId };
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging };
     return id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
