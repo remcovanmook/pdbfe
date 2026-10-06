@@ -308,7 +308,17 @@ describe('restricted entity — poc', () => {
         assert.deepEqual(body.data, []);
     });
 
-    it('returns 404 for anonymous access to /api/poc/:id', async () => {
+    it('serves anonymous /api/poc/:id from D1 (visibility pinned in the query)', async () => {
+        const payload = '{"data":[{"id":74060,"visible":"Public"}],"meta":{}}';
+        const res = await fetch('https://api.pdbfe.dev/api/poc/74060', {}, {
+            PDB: mockPDB({ peeringdb_network_contact: { payload } }),
+        });
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.data[0].id, 74060);
+    });
+
+    it('returns 404 for anonymous /api/poc/:id when no public row matches', async () => {
         const res = await fetch('https://api.pdbfe.dev/api/poc/1');
         assert.equal(res.status, 404);
     });
