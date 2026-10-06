@@ -44,8 +44,8 @@ export function isAuthSensitive(entityTag, depth, filters) {
     const entity = ENTITIES[entityTag];
     if (!entity || entity._restricted) return true;
     if (depth > 0 && DEPTH_SENSITIVE.has(entityTag)) return true;
-    for (let i = 0; i < filters.length; i++) {
-        const fe = filters[i].entity;
+    for (const f of filters) {
+        const fe = f.entity;
         if (fe && (!ENTITIES[fe] || ENTITIES[fe]._restricted)) return true;
     }
     return false;

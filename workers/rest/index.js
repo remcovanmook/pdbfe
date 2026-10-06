@@ -152,8 +152,12 @@ async function routeApiRequest(request, rc) {
     const shared = relation === undefined
         ? !isAuthSensitive(entityTag, depth, filters)
         : !isRelationAuthSensitive(entityTag, def?.targetTag) && !isAuthSensitive(def?.targetTag ?? '', 0, filters);
-    const hResponse = shared ? H_API_SHARED : (authenticated ? H_API_AUTH : H_API_ANON);
-    const cachePrefix = shared ? 'pub' : (authenticated ? 'auth' : 'anon');
+    let hResponse = authenticated ? H_API_AUTH : H_API_ANON;
+    let cachePrefix = authenticated ? 'auth' : 'anon';
+    if (shared) {
+        hResponse = H_API_SHARED;
+        cachePrefix = 'pub';
+    }
 
     const queryError = validateQuery(entity, filters, sort);
     if (queryError) return jsonError(400, queryError);

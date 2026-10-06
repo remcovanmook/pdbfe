@@ -105,9 +105,8 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
  * @returns {Promise<Response>} JSON response with count in meta.
  */
 async function handleCount(hc, entity) {
-    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
+    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, hApi } = hc;
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const hApi = hc.hApi;
 
     // Try to derive count from a cached unfiltered list for this entity.
     // Only possible when there are no user-supplied filters and no since param.

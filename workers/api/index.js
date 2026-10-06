@@ -241,7 +241,9 @@ async function handleRequest(request, env, ctx) {
     // poisoning where it matters: anonymous users see restricted poc data
     // filtered to visible=Public, authenticated users see all visibility
     // levels. Shared responses use one partition for everyone.
-    const cachePath = shared ? `pub:${rawPath}` : `${authenticated ? 'auth' : 'anon'}:${rawPath}`;
+    let partition = authenticated ? 'auth' : 'anon';
+    if (shared) partition = 'pub';
+    const cachePath = `${partition}:${rawPath}`;
 
     const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
