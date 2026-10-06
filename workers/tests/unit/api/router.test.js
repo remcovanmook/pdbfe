@@ -258,6 +258,35 @@ describe('unknown entity tag', () => {
         const body = await res.json();
         assert.ok(body.error.includes('Unknown entity'));
     });
+
+    it('returns 404 for an empty entity segment (/api/)', async () => {
+        const res = await fetch('https://api.pdbfe.dev/api/');
+        assert.equal(res.status, 404);
+    });
+});
+
+// ── .json suffix (upstream-compatible, used by IXP Manager) ───────────────────
+
+describe('.json entity suffix', () => {
+    it('serves /api/net.json as the net list', async () => {
+        const res = await fetch('https://api.pdbfe.dev/api/net.json?asn=2128');
+        assert.equal(res.status, 200);
+    });
+
+    it('serves /api/net/1.json as a net detail lookup', async () => {
+        const payload = '{"data":[{"id":1}],"meta":{}}';
+        const res = await fetch('https://api.pdbfe.dev/api/net/1.json', {}, {
+            PDB: mockPDB({ peeringdb_network: { payload } }),
+        });
+        assert.equal(res.status, 200);
+    });
+
+    it('still 404s an unknown entity with a .json suffix', async () => {
+        const res = await fetch('https://api.pdbfe.dev/api/unicorn.json');
+        assert.equal(res.status, 404);
+        const body = await res.json();
+        assert.ok(body.error.includes('Unknown entity: unicorn'));
+    });
 });
 
 // ── Invalid ID ────────────────────────────────────────────────────────────────
