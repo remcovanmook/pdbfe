@@ -135,6 +135,9 @@ async function dispatch(fullPath) {
 
     const gen = ++_navGen;
 
+    // Lets chrome outside the app container (footer sync status) refresh.
+    globalThis.dispatchEvent(new CustomEvent('pdbfe:navigate'));
+
     const [path, search] = fullPath.split('?');
 
     // Parse search params into a plain object
