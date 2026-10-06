@@ -104,7 +104,7 @@ if (prefResult.status === 'fulfilled') {
         }
 
         langSelect.addEventListener('change', () => {
-            setLanguage(langSelect.value, () => {
+            void setLanguage(langSelect.value, () => {
                 globalThis.location.reload();
             });
         });
@@ -152,8 +152,14 @@ if (prefResult.status === 'fulfilled') {
 }
 
 // ── Sync status indicator ────────────────────────────────────────────
-if (syncResult.status === 'fulfilled') {
-    const sync = syncResult.value;
+/**
+ * Renders the footer sync indicator and stats ticker from /status data.
+ * Runs at boot and again on every SPA navigation, since the footer lives
+ * outside the router's container and would otherwise freeze at first load.
+ *
+ * @param {Awaited<ReturnType<typeof fetchSyncStatus>>} sync - /status sync payload.
+ */
+function renderSyncStatus(sync) {
     const el = document.getElementById('sync-status');
 
     if (el && sync && 'rate_limited' in sync) {
@@ -251,6 +257,29 @@ if (syncResult.status === 'fulfilled') {
         }
     }
 }
+
+if (syncResult.status === 'fulfilled') {
+    renderSyncStatus(syncResult.value);
+}
+
+/**
+ * Re-renders the footer so the relative time and freshness state are
+ * recalculated. fetchSyncStatus goes through cachedFetch, so this only
+ * hits the network once the cached /status is stale.
+ */
+function refreshSyncStatus() {
+    fetchSyncStatus().then(renderSyncStatus, () => { /* non-critical */ });
+}
+
+// On every SPA navigation (the router fires pdbfe:navigate per dispatch),
+// and once a minute so an idle tab's "x minutes ago" doesn't freeze.
+globalThis.addEventListener('pdbfe:navigate', refreshSyncStatus);
+setInterval(() => {
+    if (!document.hidden) refreshSyncStatus();
+}, 60_000);
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshSyncStatus();
+});
 
 // ── Rate-limit modal ─────────────────────────────────────────────────
 // Shown once per page load when any API request returns 429.

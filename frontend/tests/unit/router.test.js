@@ -15,6 +15,9 @@ import assert from 'node:assert/strict';
  * The router imports createError from render.js, which needs
  * document.createElement. We set up the bare minimum.
  */
+/** Event types the router sent through globalThis.dispatchEvent. */
+const dispatchedEvents = /** @type {string[]} */ ([]);
+
 function setupMocks() {
     globalThis.document = /** @type {any} */ ({
         getElementById: () => null,
@@ -60,6 +63,7 @@ function setupMocks() {
         reload: () => {},
     });
     globalThis.addEventListener = () => {};
+    globalThis.dispatchEvent = (e) => { dispatchedEvents.push(e.type); return true; };
     globalThis.history = /** @type {any} */ ({
         pushState: () => {},
         scrollRestoration: 'auto',
@@ -226,5 +230,17 @@ describe('addRoute — pattern compilation', () => {
         // The key guarantee: the fast navigation was not blocked or overwritten.
         assert.ok(handlersRun.includes('slow-finished'), 'Slow handler body eventually completes');
         assert.ok(handlersRun.includes('fast'), 'Fast navigation result is preserved');
+    });
+
+    it('fires pdbfe:navigate on every dispatch so the footer can refresh', async () => {
+        const { addRoute, navigate } = await import('../../js/router.js');
+        addRoute('/nav-event-test', async () => {});
+
+        dispatchedEvents.length = 0;
+        globalThis.location.pathname = '/nav-event-test';
+        navigate('/nav-event-test');
+        navigate('/nav-event-test');
+
+        assert.deepEqual(dispatchedEvents, ['pdbfe:navigate', 'pdbfe:navigate']);
     });
 });
