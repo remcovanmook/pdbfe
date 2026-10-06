@@ -7,8 +7,9 @@
  */
 
 import { ENTITIES } from '../entities.js';
-import { buildJsonQuery, buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
+import { buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
+import { queryJsonList } from '../json_list.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
@@ -87,13 +88,8 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
     }
 
     // Hot path: D1 returns the full JSON envelope as a single string
-    const { sql, params } = buildJsonQuery(entity, filters, opts);
-    const result = await db.prepare(sql).bind(...params).first();
-
-    if (!result || !result.payload) {
-        return EMPTY_ENVELOPE;
-    }
-    return encoder.encode(/** @type {string} */(result.payload));
+    // (chunked fallback when it exceeds SQLite's max value size).
+    return (await queryJsonList(db, entity, filters, opts)) ?? EMPTY_ENVELOPE;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

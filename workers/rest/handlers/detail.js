@@ -7,6 +7,7 @@
 
 import { buildJsonQuery, buildRowQuery } from '../../api/query.js';
 import { expandDepth } from '../../api/depth.js';
+import { parseJsonFields } from '../../api/handlers/shared.js';
 import { encodeJSON, encoder } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { serveJSON, jsonError } from '../../api/http.js';
@@ -34,8 +35,10 @@ export async function handleDetail(request, entity, id, opts, qc) {
                 const result = await db.prepare(sql).bind(...params).all();
                 const rows = result.results || [];
                 if (rows.length === 0) return null;
-                const expanded = await expandDepth(db, entity, rows, opts.depth, authenticated);
-                return encodeJSON({ data: expanded, meta: {} });
+                // expandDepth mutates rows in place and returns nothing.
+                for (const row of rows) { parseJsonFields(entity, row); }
+                await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe);
+                return encodeJSON({ data: rows, meta: {} });
             }
             const { sql, params } = buildJsonQuery(entity, [], opts, id);
             const row = await db.prepare(sql).bind(...params).first();
