@@ -64,8 +64,7 @@ The API worker supports two authentication methods, resolved in this order:
 2. **Session token** (`Authorization: Bearer <sid>` or cookie) — verified against the SESSIONS KV namespace.
 
 Unauthenticated callers:
-- Cannot access restricted entities (`poc`) — direct queries return `{"data":[]}`.
-- Have `visible=Public` filters applied during depth expansion on poc_set.
+- See only `visible=Public` contacts (`poc`) on every path — lists, lookups by id, depth expansion and sub-resources. The WHERE builder (`api/query.js`) enforces this; a caller-supplied `visible` filter is ignored. Non-public ids 404.
 
 The auth worker handles the OAuth ceremony (`/auth/start`, `/auth/callback`, `/auth/logout`) and API key CRUD (`/api-keys/*`). See [`auth/auth.md`](./auth/auth.md) for details.
 
@@ -172,6 +171,7 @@ Run locally with mock D1 bindings. No real database needed.
 | `account.test.js` | 11 | API key CRUD: create, list, delete, validation |
 | `swr.test.js` | 10 | withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling |
 | `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
+| `poc_visibility_sqlite.test.js` | 24 | Anonymous poc visibility end-to-end against real SQLite (node:sqlite): api, rest and GraphQL routes never return a non-Public contact |
 | `sync_state.test.js` | 5 | sync_state.js: getEntityVersion, L2 version tagging, ensureSyncFreshness |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
 

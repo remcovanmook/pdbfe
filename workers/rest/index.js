@@ -139,18 +139,9 @@ async function routeApiRequest(request, rc) {
 
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // Restricted entities (poc) are gated for anonymous callers.
-    // Bare /v1/poc → empty; /v1/poc?visible=Public → returns public contacts.
-    // /v1/poc/{id} goes through: the WHERE builder (api/query.js) pins
-    // anonymous callers to visible=Public, so non-public ids 404.
-    if (!authenticated && entity._restricted && idStr === undefined) {
-        const af = entity._anonFilter;
-        const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
-        if (!visFilter) {
-            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
-        }
-        visFilter.value = af.value;
-    }
+    // Restricted entities (poc): no gate here. The WHERE builder
+    // (api/query.js) pins anonymous callers to visible=Public on every
+    // query path.
 
     resolveImplicitFilters(entity, filters);
 

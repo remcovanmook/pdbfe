@@ -202,24 +202,10 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
-    // Restricted entities (poc) are gated for anonymous callers.
-    // Upstream behaviour:
-    //   - Bare /api/poc → 200 with empty data
-    //   - /api/poc?visible=Public → 200 with public contacts
-    //   - /api/poc/{id} → the contact if it is public, else 404
-    // Lookups by id go straight through: the WHERE builder (api/query.js)
-    // pins anonymous callers to visible=Public, so non-public ids 404.
-    // For lists, if the caller explicitly filters for the allowed visibility
-    // value, let the query through with the filter enforced to prevent spoofing.
-    if (!authenticated && entity._restricted && id <= 0) {
-        const af = entity._anonFilter;
-        const visFilter = af && filters.find(f => f.field === af.field && !f.entity);
-        if (!visFilter) {
-            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hApi });
-        }
-        // Force the filter value to the allowed value (e.g. "Public")
-        visFilter.value = af.value;
-    }
+    // Restricted entities (poc): no gate here. The WHERE builder
+    // (api/query.js) pins anonymous callers to visible=Public on every
+    // query path, so lists return public contacts and non-public ids 404,
+    // as upstream does.
 
     // If-Modified-Since shortcut: return 304 without touching cache or D1
     // if the entity data hasn't changed since the client's cached copy.

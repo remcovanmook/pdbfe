@@ -301,11 +301,14 @@ describe('query parameter validation', () => {
 // ── Restricted entity (poc) anonymous access ──────────────────────────────────
 
 describe('restricted entity — poc', () => {
-    it('returns empty 200 for anonymous access to /api/poc list', async () => {
-        const res = await fetch('https://api.pdbfe.dev/api/poc');
+    it('serves anonymous /api/poc list from D1 (visibility pinned in the query)', async () => {
+        const payload = '{"data":[{"id":74060,"visible":"Public"}],"meta":{}}';
+        const res = await fetch('https://api.pdbfe.dev/api/poc', {}, {
+            PDB: mockPDB({ peeringdb_network_contact: { payload } }),
+        });
         assert.equal(res.status, 200);
         const body = await res.json();
-        assert.deepEqual(body.data, []);
+        assert.equal(body.data[0].id, 74060);
     });
 
     it('serves anonymous /api/poc/:id from D1 (visibility pinned in the query)', async () => {
@@ -325,8 +328,6 @@ describe('restricted entity — poc', () => {
 
     it('passes through poc list when visible=Public filter is present', async () => {
         const res = await fetch('https://api.pdbfe.dev/api/poc?visible=Public');
-        // Anonymous with explicit filter — should not return empty 200 gate response
-        // (will return 200 with actual query results from mock D1, i.e. empty data)
         assert.equal(res.status, 200);
     });
 });
