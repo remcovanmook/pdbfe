@@ -5,7 +5,7 @@
  */
 
 import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
-import { encoder, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
+import { encoder, serveJSON, jsonError, H_API_SHARED } from '../http.js';
 
 /**
  * Handles the special /api/as_set/{asn} endpoint.
@@ -15,10 +15,9 @@ import { encoder, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.j
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {number} asn - The ASN to look up.
- * @param {boolean} authenticated - Whether the caller is authenticated (for X-Auth-Status).
  * @returns {Promise<Response>} JSON response.
  */
-export async function handleAsSet(request, db, ctx, asn, authenticated) {
+export async function handleAsSet(request, db, ctx, asn) {
     const cacheKey = `as_set/${asn}`;
     const { buf, tier, hits } = await withEdgeSWR(
         "as_set", cacheKey, ctx, DETAIL_TTL,
@@ -34,5 +33,5 @@ export async function handleAsSet(request, db, ctx, asn, authenticated) {
 
     if (!buf) return jsonError(404, `No network found for ASN ${asn}`);
 
-    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
+    return serveJSON(request, buf, { tier, hits }, H_API_SHARED) // never contains restricted (poc) data — see api/auth_scope.js;
 }

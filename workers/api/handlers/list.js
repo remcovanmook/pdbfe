@@ -13,7 +13,7 @@ import { queryJsonList } from '../json_list.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
-import { encoder, encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
+import { encoder, encodeJSON, serveJSON, jsonError } from '../http.js';
 import { parseJsonFields, countRowsBytes } from './shared.js';
 
 /**
@@ -59,7 +59,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, effectiveBuf, { tier, hits }, hc.hApi, hc.entityVersionMs, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
 async function handleCount(hc, entity) {
     const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const hApi = authenticated ? H_API_AUTH : H_API_ANON;
+    const hApi = hc.hApi;
 
     // Try to derive count from a cached unfiltered list for this entity.
     // Only possible when there are no user-supplied filters and no since param.

@@ -7,7 +7,8 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
+import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
@@ -169,13 +170,13 @@ async function handleRequest(request, env, ctx) {
         if (Number.isNaN(asn)) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
-        return handleAsSet(request, db, ctx, asn, authenticated);
+        return handleAsSet(request, db, ctx, asn);
     }
 
     // Entity overlap analysis — PDBFE extension endpoint.
     // Dispatched before the entity tag check since "compare" is not an entity tag.
     if (entityTag === "compare") {
-        return handleCompare(request, db, ctx, queryString, authenticated, hNocache);
+        return handleCompare(request, db, ctx, queryString, hNocache);
     }
 
     // ── Shared entity request pipeline ───────────────────────────────
@@ -207,6 +208,17 @@ async function handleRequest(request, env, ctx) {
     const entity = ENTITIES[entityTag];
     const fields = rawFields.length > 0 ? validateFields(entity, rawFields) : [];
 
+    // Resolve implicit cross-entity filters first, so the auth-scope check
+    // below sees every filter's target entity.
+    resolveImplicitFilters(entity, filters);
+
+    // Auth-independent responses (everything that cannot contain a
+    // restricted entity) are shared: one cache entry and one public,
+    // edge-cacheable response for every caller, without X-Auth-Status /
+    // X-Auth-Id. See api/auth_scope.js.
+    const shared = !isAuthSensitive(entityTag, depth, filters);
+    const hEntity = shared ? H_API_SHARED : hApi;
+
     // Restricted entities (poc): no gate here. The WHERE builder
     // (api/query.js) pins anonymous callers to visible=Public on every
     // query path, so lists return public contacts and non-public ids 404,
@@ -219,18 +231,17 @@ async function handleRequest(request, env, ctx) {
         return new Response(null, {
             status: 304,
             headers: {
-                ...hApi,
+                ...hEntity,
                 'Last-Modified': lastModifiedHeader(entityVersionMs),
             }
         });
     }
 
-    resolveImplicitFilters(entity, filters);
-
     // Partition cache keys by authentication state to prevent cache
-    // poisoning. Anonymous users see restricted poc_set filtered to
-    // visible=Public; authenticated users see all visibility levels.
-    const cachePath = `${authenticated ? 'auth' : 'anon'}:${rawPath}`;
+    // poisoning where it matters: anonymous users see restricted poc data
+    // filtered to visible=Public, authenticated users see all visibility
+    // levels. Shared responses use one partition for everyone.
+    const cachePath = shared ? `pub:${rawPath}` : `${authenticated ? 'auth' : 'anon'}:${rawPath}`;
 
     const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
     if (errorResponse) return errorResponse;
@@ -242,7 +253,7 @@ async function handleRequest(request, env, ctx) {
     // serveJSON can bake Last-Modified and X-Auth-Id into the initial
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, entityVersionMs, userId };
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId };
     return id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);

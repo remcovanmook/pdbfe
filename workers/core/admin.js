@@ -8,6 +8,7 @@
  */
 
 import { tokenizeString } from './utils.js';
+import { SHARED_MARKER } from './http.js';
 
 const H_PLAIN = Object.freeze({
     "Content-Type": "text/plain; charset=utf-8",
@@ -280,8 +281,12 @@ export function wrapHandler(handler, serviceName) {
 
             // Default X-Auth-Status for responses produced before auth resolution
             // (405, preflight, path traversal). The main handler sets it after
-            // resolving auth; wrapHandler ensures it's always present.
-            if (!h.has("X-Auth-Status")) {
+            // resolving auth. Shared (auth-independent, edge-cacheable)
+            // responses deliberately carry none: an edge hit replays the
+            // filling caller's headers to everyone.
+            if (h.has(SHARED_MARKER)) {
+                h.delete(SHARED_MARKER);
+            } else if (!h.has("X-Auth-Status")) {
                 h.set("X-Auth-Status", "unauthenticated");
             }
 

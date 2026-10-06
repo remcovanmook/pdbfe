@@ -17,6 +17,8 @@ import { handleDetail } from '../../../api/handlers/detail.js';
 import { handleAsSet } from '../../../api/handlers/as_set.js';
 import { handleNotImplemented, countRowsBytes } from '../../../api/handlers/shared.js';
 import { purgeAllCaches } from '../../../api/cache.js';
+import { H_API_AUTH, H_API_ANON, H_API_SHARED } from '../../../api/http.js';
+import { SHARED_MARKER } from '../../../core/http.js';
 
 const enc = new TextEncoder();
 
@@ -112,6 +114,7 @@ function makeHC(overrides = {}) {
         rawPath: 'anon:api/net',
         queryString: '',
         authenticated: false,
+        hApi: H_API_ANON,
         entityVersionMs: 0,
         userId: null,
         ...overrides,
@@ -172,22 +175,36 @@ describe('handleList', () => {
         assert.equal(body.meta.count, 42);
     });
 
-    it('includes X-Auth-Status header for authenticated callers', async () => {
+    it('serves the router-selected auth header set (authenticated, private)', async () => {
         const payload = '{"data":[],"meta":{}}';
         const db = mockD1({ hotPayload: payload });
-        const hc = makeHC({ db, authenticated: true });
+        const hc = makeHC({ db, authenticated: true, hApi: H_API_AUTH });
 
         const res = await handleList(hc);
         assert.equal(res.headers.get('X-Auth-Status'), 'authenticated');
+        assert.ok(res.headers.get('Cache-Control')?.startsWith('private'));
     });
 
-    it('includes X-Auth-Status header for anonymous callers', async () => {
+    it('serves the router-selected anon header set', async () => {
         const payload = '{"data":[],"meta":{}}';
         const db = mockD1({ hotPayload: payload });
-        const hc = makeHC({ db, authenticated: false });
+        const hc = makeHC({ db, authenticated: false, hApi: H_API_ANON });
 
         const res = await handleList(hc);
         assert.equal(res.headers.get('X-Auth-Status'), 'unauthenticated');
+    });
+
+    it('serves shared responses public, without Vary: Authorization or auth headers', async () => {
+        const payload = '{"data":[],"meta":{}}';
+        const db = mockD1({ hotPayload: payload });
+        const hc = makeHC({ db, authenticated: true, hApi: H_API_SHARED, userId: null });
+
+        const res = await handleList(hc);
+        assert.ok(res.headers.get('Cache-Control')?.startsWith('public'));
+        assert.equal(res.headers.get('Vary'), null);
+        assert.equal(res.headers.get('X-Auth-Status'), null);
+        assert.equal(res.headers.get('X-Auth-Id'), null);
+        assert.equal(res.headers.get(SHARED_MARKER), '1', 'marker for wrapHandler (stripped there)');
     });
 
     it('returns rows from cold path when depth > 0', async () => {
@@ -318,7 +335,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/13335');
 
-        const res = await handleAsSet(request, db, ctx, 13335, false);
+        const res = await handleAsSet(request, db, ctx, 13335);
         assert.equal(res.status, 200);
 
         const body = await res.json();
@@ -331,7 +348,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/999999');
 
-        const res = await handleAsSet(request, db, ctx, 999999, false);
+        const res = await handleAsSet(request, db, ctx, 999999);
         assert.equal(res.status, 404);
     });
 
@@ -340,18 +357,20 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/999');
 
-        const res = await handleAsSet(request, db, ctx, 999, false);
+        const res = await handleAsSet(request, db, ctx, 999);
         assert.equal(res.status, 404);
     });
 
-    it('includes authenticated X-Auth-Status', async () => {
+    it('is always a shared response (as_set never contains restricted data)', async () => {
         const asSetPayload = '{"data":[{"asn":1,"irr_as_set":"","name":"Test"}],"meta":{}}';
         const db = mockD1({ asSetResult: { payload: asSetPayload } });
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/1');
 
-        const res = await handleAsSet(request, db, ctx, 1, true);
-        assert.equal(res.headers.get('X-Auth-Status'), 'authenticated');
+        const res = await handleAsSet(request, db, ctx, 1);
+        assert.ok(res.headers.get('Cache-Control')?.startsWith('public'));
+        assert.equal(res.headers.get('Vary'), null);
+        assert.equal(res.headers.get('X-Auth-Status'), null);
     });
 });
 

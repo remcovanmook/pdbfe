@@ -22,7 +22,7 @@ Shared code lives in `workers/core/` — the generic cache, HTTP, auth, and rout
 
 For a per-file breakdown, see [`index.md`](./index.md).
 
-**Entry point:** Every worker's `index.js` exports `wrapHandler(handler, serviceName)` (from `core/admin.js`). This is the function Cloudflare calls, the error boundary, and the source of `X-Timer`/`X-Served-By`/`X-Auth-Status` headers. If the inner handler does not set `X-Auth-Status`, `wrapHandler` defaults it to `unauthenticated`. The env type flows end-to-end via a `@template E` generic — if your handler declares `@param {PdbApiEnv} env`, tsc enforces that at the module boundary.
+**Entry point:** Every worker's `index.js` exports `wrapHandler(handler, serviceName)` (from `core/admin.js`). This is the function Cloudflare calls, the error boundary, and the source of `X-Timer`/`X-Served-By`/`X-Auth-Status` headers. If the inner handler does not set `X-Auth-Status`, `wrapHandler` defaults it to `unauthenticated` — except on shared (auth-independent) responses, which carry no `X-Auth-Status` at all: they are `public` without `Vary: Authorization`, so one edge-cached object serves every caller (see `api/auth_scope.js`). The env type flows end-to-end via a `@template E` generic — if your handler declares `@param {PdbApiEnv} env`, tsc enforces that at the module boundary.
 
 ---
 

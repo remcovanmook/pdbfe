@@ -38,6 +38,13 @@ export const H_CORS = Object.freeze({
 /**
  * Headers for responses that should not be cached.
  */
+/**
+ * Internal response header marking an auth-independent (shared) response.
+ * wrapHandler skips its default X-Auth-Status for these and removes the
+ * marker before the response leaves the Worker.
+ */
+export const SHARED_MARKER = "X-PDBFE-Shared";
+
 export const H_NOCACHE = Object.freeze({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",

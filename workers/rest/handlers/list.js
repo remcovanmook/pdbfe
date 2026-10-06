@@ -23,15 +23,16 @@ import { withRestSWR } from '../cache.js';
  * @param {ParsedFilter[]} filters - Query filters.
  * @param {QueryOpts} opts - Parsed query options.
  * @param {string} rawPath - Raw URL path (for cache key).
- * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} qc - Query context.
+ * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string}} qc - Query context.
  * @returns {Promise<Response>}
  */
 export async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
-    // Partition by auth state, as the api worker does: authenticated
-    // responses include non-public contacts (poc lists, depth>0 poc_set)
-    // and must never be served to an anonymous caller from L1/L2.
-    const cacheKey = normaliseCacheKey(`${authenticated ? 'auth' : 'anon'}:${rawPath}`, queryString);
+    // Partitioned by auth state where it matters (poc lists, depth>0
+    // poc_set): authenticated responses include non-public contacts and must
+    // never reach an anonymous caller from L1/L2. Shared responses use one
+    // 'pub' partition. The router picks qc.cachePrefix (api/auth_scope.js).
+    const cacheKey = normaliseCacheKey(`${qc.cachePrefix}:${rawPath}`, queryString);
 
     const { buf, tier, hits } = await withRestSWR(
         entityTag, cacheKey, ctx,
