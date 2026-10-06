@@ -15,7 +15,7 @@
  * Route: GET /api/compare?a={tag}:{id}&b={tag}:{id}&__pdbfe=1
  */
 
-import { encodeJSON, serveJSON, jsonError, H_API_AUTH, H_API_ANON } from '../http.js';
+import { encodeJSON, serveJSON, jsonError, H_API_SHARED } from '../http.js';
 import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { tokenizeString } from '../../core/utils.js';
@@ -609,11 +609,10 @@ async function executeCompareQuery(db, refA, refB, pk) {
  * @param {D1Session} db - D1 database session (with read replication).
  * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {string} queryString - Raw query string (without leading '?').
- * @param {boolean} authenticated - Whether the caller is authenticated.
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Promise<Response>} JSON response with overlap data.
  */
-export async function handleCompare(request, db, ctx, queryString, authenticated, hNocache) {
+export async function handleCompare(request, db, ctx, queryString, hNocache) {
     // Parse ALL query parameters via tokenizeString (no array allocation).
     // Split on '&' with maxParts=-1 (unlimited): capping at 3 folded a 4th
     // param (e.g. a cache-buster `_=…`, or `__pdbfe` placed last) into the
@@ -667,5 +666,5 @@ export async function handleCompare(request, db, ctx, queryString, authenticated
         return jsonError(404, 'One or both entities not found', hNocache);
     }
 
-    return serveJSON(request, buf, { tier, hits }, authenticated ? H_API_AUTH : H_API_ANON);
+    return serveJSON(request, buf, { tier, hits }, H_API_SHARED) // never contains restricted (poc) data — see api/auth_scope.js;
 }

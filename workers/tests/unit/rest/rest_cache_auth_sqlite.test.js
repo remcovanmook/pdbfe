@@ -44,6 +44,8 @@ before(() => {
 const qc = (entityTag, authenticated, queryString) => ({
     db, ctx: mockCtx, entityTag, authenticated, queryString,
     hResponse: authenticated ? H_API_AUTH : H_API_ANON,
+    // these routes are auth-sensitive, so the router partitions by auth state
+    cachePrefix: authenticated ? 'auth' : 'anon',
 });
 
 /** @param {boolean} authenticated @param {number} depth */

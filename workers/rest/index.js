@@ -24,7 +24,8 @@ import { parseQueryFilters } from '../api/utils.js';
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
-import { H_API_AUTH, H_API_ANON } from '../api/http.js';
+import { H_API_AUTH, H_API_ANON, H_API_SHARED } from '../api/http.js';
+import { isAuthSensitive, isRelationAuthSensitive } from '../api/auth_scope.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
@@ -32,7 +33,7 @@ import { getRestCacheStats, purgeRestCache, ensureSyncFreshness } from './cache.
 import { serveStaticAsset } from './handlers/static.js';
 import { handleDetail } from './handlers/detail.js';
 import { handleListRequest } from './handlers/list.js';
-import { handleSubResource } from './subresource.js';
+import { handleSubResource, SUBRESOURCE_MAP } from './subresource.js';
 
 /**
  * Rate limiter for REST requests.
@@ -117,7 +118,6 @@ async function handleRequest(request, env, ctx) {
  */
 async function routeApiRequest(request, rc) {
     const { db, ctx, rawPath, queryString, authenticated } = rc;
-    const hResponse = authenticated ? H_API_AUTH : H_API_ANON;
 
     if (!rawPath.startsWith('v1/')) {
         return jsonError(404, 'Not found');
@@ -145,12 +145,26 @@ async function routeApiRequest(request, rc) {
 
     resolveImplicitFilters(entity, filters);
 
+    // Auth-independent responses are shared (one cache partition, public,
+    // edge-cacheable, no X-Auth-Status) — see api/auth_scope.js. A
+    // sub-resource is sensitive if either end is a restricted entity.
+    const def = relation === undefined ? undefined : SUBRESOURCE_MAP.get(entityTag)?.get(relation);
+    const shared = relation === undefined
+        ? !isAuthSensitive(entityTag, depth, filters)
+        : !isRelationAuthSensitive(entityTag, def?.targetTag) && !isAuthSensitive(def?.targetTag ?? '', 0, filters);
+    let hResponse = authenticated ? H_API_AUTH : H_API_ANON;
+    let cachePrefix = authenticated ? 'auth' : 'anon';
+    if (shared) {
+        hResponse = H_API_SHARED;
+        cachePrefix = 'pub';
+    }
+
     const queryError = validateQuery(entity, filters, sort);
     if (queryError) return jsonError(400, queryError);
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
-    /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, queryString: string}} */
-    const qc = { db, ctx, entityTag, authenticated, hResponse, queryString };
+    /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string}} */
+    const qc = { db, ctx, entityTag, authenticated, hResponse, cachePrefix, queryString };
 
     if (idStr !== undefined) {
         const id = Number.parseInt(idStr, 10);

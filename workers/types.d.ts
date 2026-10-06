@@ -671,6 +671,8 @@ interface HandlerContext {
     rawPath: string;
     queryString: string;
     authenticated: boolean;
+    /** Response header set chosen by the router: H_API_SHARED for auth-independent responses, else H_API_AUTH / H_API_ANON. */
+    hApi: Record<string, string>;
     /** Entity last-modified epoch ms (0 if unknown). serveJSON uses this to set Last-Modified. */
     entityVersionMs?: number;
     /** Authenticated user ID (null for anon). serveJSON uses this to set X-Auth-Id. */

@@ -11,7 +11,7 @@
  */
 
 import { VERSIONS } from './entities.js';
-import { H_CORS, H_NOCACHE, generateETag, isNotModified, lastModifiedHeader } from '../core/http.js';
+import { H_CORS, H_NOCACHE, SHARED_MARKER, generateETag, isNotModified, lastModifiedHeader } from '../core/http.js';
 
 // Re-export core symbols that api/ modules also need, so they can
 // import everything from a single api/http.js entry point.
@@ -63,6 +63,20 @@ export const H_API_AUTH = Object.freeze({
     "X-Auth-Status": "authenticated",
 });
 export const H_API_ANON = Object.freeze({ ...H_API, "X-Auth-Status": "unauthenticated" });
+
+/**
+ * H_API_SHARED: responses that cannot differ by auth state (see
+ * api/auth_scope.js) — everything except restricted-entity content. One
+ * copy serves every caller, so it is `public` with NO `Vary: Authorization`:
+ * authenticated requests hit the same edge object as anonymous ones.
+ *
+ * It must never carry per-caller data: no X-Auth-Id (serveJSON enforces
+ * that authId only rides H_API_AUTH) and no X-Auth-Status, since an edge hit
+ * replays whatever the filling caller got. SHARED_MARKER tells wrapHandler
+ * not to add its default X-Auth-Status; wrapHandler strips the marker.
+ */
+const { Vary: _vary, ...H_API_NO_VARY } = H_API;
+export const H_API_SHARED = Object.freeze({ ...H_API_NO_VARY, [SHARED_MARKER]: "1" });
 
 /**
  * Pre-cooked no-cache header sets with X-Auth-Status baked in.
