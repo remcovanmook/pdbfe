@@ -677,4 +677,6 @@ interface HandlerContext {
     entityVersionMs?: number;
     /** Authenticated user ID (null for anon). serveJSON uses this to set X-Auth-Id. */
     userId?: number | null;
+    /** Raw ?page / ?per_page for page-number pagination on list requests (null when absent). */
+    paging?: { page: string, perPage: string | null } | null;
 }

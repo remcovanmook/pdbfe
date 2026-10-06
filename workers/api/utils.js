@@ -20,7 +20,10 @@ import { FILTER_OPS } from './query.js';
  * and returned in the `pagination` and `meta` objects.
  *
  * @param {string} queryString - Raw query string without the leading '?'.
- * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[], pdbfe: boolean}} Parsed query components.
+ * `page` / `per_page` (upstream page-number pagination) are returned raw;
+ * the api list handler validates them (see handlers/paged.js).
+ *
+ * @returns {{filters: ParsedFilter[], depth: number, limit: number, skip: number, since: number, sort: string, fields: string[], pdbfe: boolean, page: string|null, perPage: string|null}} Parsed query components.
  */
 export function parseQueryFilters(queryString) {
     /** @type {ParsedFilter[]} */
@@ -33,11 +36,15 @@ export function parseQueryFilters(queryString) {
     /** @type {string[]} */
     let fields = [];
     let pdbfe = false;
+    /** @type {string|null} */
+    let page = null;
+    /** @type {string|null} */
+    let perPage = null;
 
     /** @type {Map<string, number>} Track filter index by "field:op" to implement last-value-wins */
     const filterIdx = new Map();
 
-    if (!queryString) return { filters, depth, limit, skip, since, sort, fields, pdbfe };
+    if (!queryString) return { filters, depth, limit, skip, since, sort, fields, pdbfe, page, perPage };
 
     const pairs = queryString.includes('&')
         ? tokenizeString(queryString, '&', -1)
@@ -60,6 +67,14 @@ export function parseQueryFilters(queryString) {
         if (rawKey === "limit") {
             const parsed = Number.parseInt(rawValue, 10);
             limit = Number.isNaN(parsed) ? -1 : parsed;
+            continue;
+        }
+        if (rawKey === "page") {
+            page = rawValue;
+            continue;
+        }
+        if (rawKey === "per_page") {
+            perPage = rawValue;
             continue;
         }
         if (rawKey === "skip") {
@@ -125,5 +140,5 @@ export function parseQueryFilters(queryString) {
         }
     }
 
-    return { filters, depth, limit, skip, since, sort, fields, pdbfe };
+    return { filters, depth, limit, skip, since, sort, fields, pdbfe, page, perPage };
 }

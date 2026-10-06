@@ -10,6 +10,7 @@ import { ENTITIES } from '../entities.js';
 import { buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { queryJsonList } from '../json_list.js';
+import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
@@ -28,6 +29,12 @@ export async function handleList(hc) {
     const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
+
+    // Page-number pagination (?page=N) — takes precedence over count mode,
+    // as upstream: ?page=1&limit=0 paginates the full set.
+    if (hc.paging) {
+        return handlePaged(hc, entity, hc.paging);
+    }
 
     // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
     if (opts.limit === 0 && opts.skip === 0) {
@@ -142,6 +149,34 @@ async function handleCount(hc, entity) {
     );
 
     return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
+}
+
+/**
+ * Serves ?page=N&per_page=M with meta.pagination (see handlers/paged.js).
+ * The whole paged envelope is cached under the request's own key.
+ *
+ * @param {HandlerContext} hc - Common handler context.
+ * @param {EntityMeta} entity - Resolved entity metadata.
+ * @param {{page: string, perPage: string|null}} paging - Raw page / per_page values.
+ * @returns {Promise<Response>}
+ */
+async function handlePaged(hc, entity, paging) {
+    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated, hApi } = hc;
+    const page = parsePageNumber(paging.page);
+    if (page === null) return jsonError(404, 'Invalid page.');
+    const perPage = parsePerPage(paging.perPage);
+
+    const qIdx = request.url.indexOf('?');
+    const base = qIdx === -1 ? request.url : request.url.slice(0, qIdx);
+
+    const cacheKey = normaliseCacheKey(rawPath, queryString);
+    const { buf, tier, hits } = await withEdgeSWR(
+        entityTag, cacheKey, ctx, LIST_TTL,
+        () => buildPagedEnvelope(db, entity, filters, opts, page, perPage, base, queryString,
+            (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated))
+    );
+    if (!buf) return jsonError(404, 'Invalid page.');
+    return serveJSON(request, buf, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**

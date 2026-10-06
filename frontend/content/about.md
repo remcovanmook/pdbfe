@@ -41,7 +41,9 @@ The mirror exposes a PeeringDB-compatible REST API. Example:
 GET /api/net/694?depth=2
 ```
 
-Supported query parameters include `depth`, `limit`, `skip`, `since`, and the standard PeeringDB filter suffixes (`\__contains`, `\__lt`, `\__gt`, `\__in`, etc.).
+Supported query parameters include `depth`, `limit`, `skip`, `since`, `page` / `per_page`, and the standard PeeringDB filter suffixes (`\__contains`, `\__lt`, `\__gt`, `\__in`, etc.).
+
+List requests with `depth=1` or `depth=2` return at most 250 rows, as on PeeringDB for filtered queries. Page through larger results with `limit` / `skip` or `page` / `per_page` (up to 250 per page, with `meta.pagination` links). Unlike PeeringDB, unfiltered whole-table dumps with `depth` are not precomputed here.
 
 Endpoints available: `net`, `org`, `fac`, `ix`, `ixlan`, `ixpfx`, `netixlan`, `netfac`, `poc`, `carrier`, `carrierfac`, `ixfac`, `campus`, `as_set`.
 
