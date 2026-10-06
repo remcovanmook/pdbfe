@@ -5,11 +5,10 @@
  *   - Depth expansion (depth=1 and depth=2) applies the visibility
  *     filter on restricted child entities for anonymous callers
  *   - Authenticated callers are not filtered
- *   - GraphQL resolver factories enforce the restriction pattern:
- *     listResolver blocks anon without visible filter,
- *     detailResolver pins anon to visible=Public (public ids resolve),
- *     reverseEdgeResolver injects visible=Public for anon,
- *     connectionResolver blocks anon without visible filter
+ *   - GraphQL resolver factories pass ctx.authenticated to the WHERE
+ *     builder, which pins anonymous callers to visible=Public on list,
+ *     detail, reverse-edge and connection queries
+ *     (end-to-end check against real SQLite: poc_visibility_sqlite.test.js)
  */
 
 import { describe, it } from 'node:test';
@@ -190,10 +189,11 @@ describe('GraphQL resolver poc restriction', () => {
         assert.ok(resolvers.Query);
     });
 
-    it('listResolver (pocs) returns empty for anon without visible filter', async () => {
-        const { ctx } = mockCtx(false);
-        const result = await resolvers.Query.pocs(null, { where: {} }, ctx);
-        assert.deepEqual(result, []);
+    it('listResolver (pocs) pins anon to visible=Public without an explicit filter', async () => {
+        const { ctx, queries, binds } = mockCtx(false);
+        await resolvers.Query.pocs(null, { where: {} }, ctx);
+        assert.ok(queries[0].includes('"visible" = ?'), 'anon list should filter by visible');
+        assert.ok(binds[0].includes('Public'), 'visible should be bound to Public');
     });
 
     it('listResolver (pocs) queries D1 for anon with visible=Public filter', async () => {
@@ -295,12 +295,14 @@ describe('GraphQL resolver poc restriction', () => {
         assert.ok(pocQuery);
     });
 
-    it('connectionResolver (pocsConnection) returns empty for anon without filter', async () => {
-        const { ctx } = mockCtx(false);
-        const result = await resolvers.Query.pocsConnection(null, {}, ctx);
-        assert.deepEqual(result.edges, []);
-        assert.equal(result.totalCount, 0);
-        assert.equal(result.pageInfo.hasNextPage, false);
+    it('connectionResolver (pocsConnection) pins anon count and page to visible=Public', async () => {
+        const { ctx, queries, binds } = mockCtx(false);
+        await resolvers.Query.pocsConnection(null, {}, ctx);
+        assert.equal(queries.length, 2, 'count + page queries');
+        for (let i = 0; i < 2; i++) {
+            assert.ok(queries[i].includes('"visible" = ?'), `query ${i} should filter by visible`);
+            assert.ok(binds[i].includes('Public'), `query ${i} should bind Public`);
+        }
     });
 
     it('connectionResolver (pocsConnection) queries D1 for anon with visible=Public', async () => {

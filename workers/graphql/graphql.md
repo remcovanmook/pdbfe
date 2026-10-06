@@ -52,14 +52,14 @@ The codebase aims for drop-in compatibility with older downstream client expecta
 
 ## Restricted Entities
 
-Entities marked `_restricted: true` in the entity registry (currently only `poc`) have access controls enforced at the resolver level, matching upstream PeeringDB behaviour:
+Entities marked `_restricted: true` in the entity registry (currently only `poc`) are restricted by the shared WHERE builder (`buildWherePagination` in `api/query.js`), not by the resolvers. Every resolver passes `ctx.authenticated` through `opts.authenticated`; for anonymous callers the builder pins `visible = 'Public'` and ignores any caller-supplied `visible` filter. The same rule applies to the API and REST workers.
 
 | Resolver | Anonymous Behaviour |
 |----------|-------------------|
-| `listResolver` (e.g. `pocs`) | Returns `[]` unless `where: { visible: "Public" }` is provided. Filter value is forced to `"Public"` to prevent spoofing. |
-| `detailResolver` (e.g. `poc(id: N)`) | Returns `null`. Single-row lookups cannot be filtered by visibility. |
-| `reverseEdgeResolver` (e.g. `Network.pointsOfContact`) | Injects `visible=Public` filter automatically, matching the API worker's depth-expansion behaviour. |
-| `connectionResolver` (e.g. `pocsConnection`) | Returns empty connection unless `where: { visible: "Public" }` is provided. |
+| `listResolver` (e.g. `pocs`) | Public contacts only, with or without other filters. |
+| `detailResolver` (e.g. `poc(id: N)`) | The contact if it is public, else `null` (matches upstream `/api/poc/{id}`). |
+| `reverseEdgeResolver` (e.g. `Network.pointsOfContact`) | Public contacts only, matching the API worker's depth expansion. |
+| `connectionResolver` (e.g. `pocsConnection`) | Public contacts only, in both `totalCount` and the page. |
 
 Authenticated callers receive all visibility levels without restriction.
 
