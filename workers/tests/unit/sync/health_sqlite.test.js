@@ -117,6 +117,11 @@ describe('weekly cron wiring', async () => {
     const { readFileSync } = await import('node:fs');
     const { default: worker, HEALTH_CRON } = await import('../../../sync/index.js');
 
+    it('HEALTH_CRON uses Cloudflare day-of-week syntax (1-7 or SUN-SAT, never 0)', () => {
+        const dow = HEALTH_CRON.trim().split(/\s+/)[4];
+        assert.match(dow, /^([1-7]|SUN|MON|TUE|WED|THU|FRI|SAT)$/, `day-of-week "${dow}" — Cloudflare rejects 0`);
+    });
+
     it('HEALTH_CRON is one of the sync worker crons', () => {
         const toml = readFileSync(new URL('../../../wrangler-sync.toml.example', import.meta.url), 'utf8');
         assert.ok(toml.includes(`"${HEALTH_CRON}"`), `${HEALTH_CRON} not in wrangler-sync.toml.example crons`);

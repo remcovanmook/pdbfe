@@ -1,7 +1,7 @@
 name: Mirror health
 
 # The sync worker runs a weekly health check & repair (workers/sync/health.js,
-# cron "7 3 * * 0") and records a report in D1 (_health_runs). This workflow
+# cron "7 3 * * SUN") and records a report in D1 (_health_runs). This workflow
 # runs half an hour later and makes noise about it: job summary, a
 # `mirror-health` issue (opened or commented) and a FAILED run whenever
 # anything was repaired, errored, alerted — or the weekly run is missing.

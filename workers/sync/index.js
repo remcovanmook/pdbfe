@@ -35,7 +35,7 @@ export { buildUpsert, ensureColumns } from './rows.js';
 const API_BASE = 'https://www.peeringdb.com/api';
 
 /** Weekly health check cron: Sunday 03:07 UTC, off the quarter-hour sync slots. Must match wrangler-sync.toml. */
-export const HEALTH_CRON = '7 3 * * 0';
+export const HEALTH_CRON = '7 3 * * SUN';
 
 
 /**
