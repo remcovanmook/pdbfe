@@ -464,7 +464,10 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
 
     // Since filter (unix epoch seconds → ISO datetime comparison)
     if (since > 0) {
-        clauses.push(`${pfx}"updated" >= datetime(?, 'unixepoch')`);
+        // `updated` is stored as upstream's ISO form (2026-10-07T11:12:47Z).
+        // Compare against the same form: datetime() yields '2026-10-07 11:12:47'
+        // and ' ' < 'T', so every row updated earlier the same day matched.
+        clauses.push(`${pfx}"updated" >= strftime('%Y-%m-%dT%H:%M:%SZ', ?, 'unixepoch')`);
         params.push(since);
     }
 

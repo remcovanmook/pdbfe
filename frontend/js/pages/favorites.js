@@ -112,7 +112,7 @@ function buildFavoriteRow(fav, listEl) {
             updateCount();
             // Show empty state if list is now empty
             if (listEl.children.length === 0) {
-                renderFavorites({});
+                renderFavorites({}).catch((err) => console.error('Favorites render failed:', err));
             }
         } else {
             deleteBtn.disabled = false;

@@ -153,7 +153,7 @@ export function initDebugger() {
             if (/** @type {HTMLElement} */ (e.target).isContentEditable) return;
 
             e.preventDefault();
-            toggleOverlay();
+            toggleOverlay().catch((err) => console.error('Debug overlay failed:', err));
         }
     });
 
@@ -485,7 +485,7 @@ function wireButtons() {
 
     document.getElementById('debug-clear-cache')?.addEventListener('click', () => {
         clearCache();
-        toggleOverlay();
+        toggleOverlay().catch((err) => console.error('Debug overlay failed:', err));
     });
 
     document.getElementById('debug-clear-session')?.addEventListener('click', () => {
@@ -497,7 +497,7 @@ function wireButtons() {
             }
             for (const k of keys) sessionStorage.removeItem(k);
         } catch { /* unavailable */ }
-        refreshOverlay();
+        refreshOverlay().catch((err) => console.error('Debug overlay refresh failed:', err));
     });
 
     document.getElementById('debug-force-refresh')?.addEventListener('click', () => {

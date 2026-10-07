@@ -318,7 +318,7 @@ export class PdbMap extends HTMLElement {
                 if (coords) this._plotSingleMarker(coords.lat, coords.lon, name, customIcon);
             }
         });
-        processGeocodeQueue();
+        processGeocodeQueue().catch((err) => console.error('Geocoding failed:', err));
     }
 }
 

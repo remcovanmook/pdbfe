@@ -11,7 +11,25 @@ Usage:
 """
 
 import json
+import os
 import sys
+
+# Inputs are PeeringDB dumps inside the repository (migrate-to-d1.sh passes
+# database/<tag>.json); refuse anything that resolves outside it.
+REPO_ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
+
+
+def safe_input_path(arg):
+    """Resolve a CLI path argument and require a .json file inside the repo.
+
+    Returns:
+        str: The resolved real path.
+    """
+    path = os.path.realpath(arg)
+    if os.path.commonpath([REPO_ROOT, path]) != REPO_ROOT or not path.endswith(".json") or not os.path.isfile(path):
+        print(f"Refusing input outside {REPO_ROOT} or not a .json file: {arg}", file=sys.stderr)
+        sys.exit(1)
+    return path
 
 
 def to_sql_value(v):
@@ -49,7 +67,7 @@ def main():
         print(f"Usage: {sys.argv[0]} <json_file> <table_name> [columns]", file=sys.stderr)
         sys.exit(1)
 
-    json_file = sys.argv[1]
+    json_file = safe_input_path(sys.argv[1])
     table = sys.argv[2]
 
     with open(json_file) as f:
