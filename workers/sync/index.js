@@ -204,6 +204,50 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
 }
 
 /**
+ * JSON response helper.
+ * @param {unknown} body
+ * @param {number} [status=200]
+ * @returns {Response}
+ */
+function json(body, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+/**
+ * Runs `fn` only when `secret` matches ADMIN_SECRET; otherwise 403.
+ * @param {PdbSyncEnv} env
+ * @param {string} secret
+ * @param {() => Response} fn
+ * @returns {Response}
+ */
+function withSecret(env, secret, fn) {
+    return isValidSyncSecret(env, secret) ? fn() : json({ error: 'Forbidden' }, 403);
+}
+
+/**
+ * GET /sync/status — last sync times and row counts.
+ * @param {PdbSyncEnv} env
+ * @returns {Promise<Response>}
+ */
+async function syncStatus(env) {
+    const rows = await env.PDB.prepare('SELECT * FROM "_sync_meta" ORDER BY entity').all();
+    return new Response(JSON.stringify({ data: rows.results }, null, 2), {
+        headers: { 'Content-Type': 'application/json' },
+    });
+}
+
+/**
+ * GET /sync/health — latest weekly health report (ids and counts only).
+ * @param {PdbSyncEnv} env
+ * @returns {Promise<Response>}
+ */
+async function latestHealth(env) {
+    const row = await env.PDB.prepare('SELECT report FROM "_health_runs" ORDER BY id DESC LIMIT 1').first();
+    if (!row) return json({ error: 'no health run yet' }, 404);
+    return new Response(/** @type {string} */ (row.report), { headers: { 'Content-Type': 'application/json' } });
+}
+
+/**
  * Validates a secret from the URL path against ADMIN_SECRET using constant-time
  * comparison to prevent timing side-channels.
  *
@@ -265,60 +309,25 @@ export default {
      */
     async fetch(request, env, ctx) {
         const { rawPath } = parseURL(request);
+        const method = request.method;
 
-        if (rawPath === 'sync/status' && request.method === 'GET') {
-            const rows = await env.PDB.prepare(
-                'SELECT * FROM "_sync_meta" ORDER BY entity'
-            ).all();
-            return new Response(JSON.stringify({ data: rows.results }, null, 2), {
-                headers: { 'Content-Type': 'application/json' },
+        if (method === 'GET' && rawPath === 'sync/status') return syncStatus(env);
+        if (method === 'GET' && rawPath === 'sync/health') return latestHealth(env);
+        if (method === 'POST' && rawPath.startsWith('sync/health.')) {
+            return withSecret(env, rawPath.slice('sync/health.'.length), () => {
+                ctx.waitUntil(runHealthCheck(env));
+                return json({ status: 'health check triggered' });
             });
         }
-
-        // Latest health check report (ids and counts only — no sensitive data).
-        if (rawPath === 'sync/health' && request.method === 'GET') {
-            const row = await env.PDB.prepare(
-                'SELECT report FROM "_health_runs" ORDER BY id DESC LIMIT 1'
-            ).first();
-            return new Response(row ? /** @type {string} */ (row.report) : '{"error":"no health run yet"}', {
-                status: row ? 200 : 404,
-                headers: { 'Content-Type': 'application/json' },
+        if (method === 'POST' && rawPath.startsWith('sync/trigger.')) {
+            return withSecret(env, rawPath.slice('sync/trigger.'.length), () => {
+                ctx.waitUntil(this.scheduled(
+                    /** @type {ScheduledEvent} */ ({ cron: 'manual', scheduledTime: Date.now() }),
+                    env, ctx
+                ));
+                return json({ status: 'sync triggered' });
             });
         }
-
-        // Run the health check now (same secret as the sync trigger).
-        if (rawPath.startsWith('sync/health.') && request.method === 'POST') {
-            if (!isValidSyncSecret(env, rawPath.slice('sync/health.'.length))) {
-                return new Response(JSON.stringify({ error: 'Forbidden' }), {
-                    status: 403,
-                    headers: { 'Content-Type': 'application/json' },
-                });
-            }
-            ctx.waitUntil(runHealthCheck(env));
-            return new Response(JSON.stringify({ status: 'health check triggered' }), {
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
-
-        if (rawPath.startsWith('sync/trigger.') && request.method === 'POST') {
-            const secret = rawPath.slice('sync/trigger.'.length);
-            if (!isValidSyncSecret(env, secret)) {
-                return new Response(JSON.stringify({ error: 'Forbidden' }), {
-                    status: 403,
-                    headers: { 'Content-Type': 'application/json' },
-                });
-            }
-
-            const promise = this.scheduled(
-                /** @type {ScheduledEvent} */ ({ cron: 'manual', scheduledTime: Date.now() }),
-                env, ctx
-            );
-            ctx.waitUntil(promise);
-            return new Response(JSON.stringify({ status: 'sync triggered' }), {
-                headers: { 'Content-Type': 'application/json' },
-            });
-        }
-
         return new Response('Not found', { status: 404 });
     },
 };
