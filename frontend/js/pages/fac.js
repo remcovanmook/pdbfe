@@ -1,6 +1,6 @@
 /**
  * @fileoverview Facility detail page renderer.
- * Displays facility info, networks present, and exchanges at the facility.
+ * Displays facility info, networks present, and exchanges and carriers at the facility.
  *
  * Uses DOM-based rendering via Web Components (<pdb-table>) and
  * createField/createLink builders.
@@ -106,7 +106,7 @@ function buildSidebar(fac) {
 }
 
 /**
- * Builds the data tables (networks + exchanges) for a facility.
+ * Builds the data tables (networks, exchanges, carriers) for a facility.
  *
  * @param {any} fac - Facility entity object.
  * @returns {DocumentFragment} Tables fragment.
@@ -166,8 +166,32 @@ function buildTables(fac) {
         frag.appendChild(ixTable);
     }
 
+    if (fac.carrierfac_set && fac.carrierfac_set.length > 0) {
+        const carrierTable = /** @type {any} */ (document.createElement('pdb-table'));
+        carrierTable.configure({
+            tableId: 'carrier',
+            title: 'Carriers',
+            filterable: true,
+            filterPlaceholder: t('Filter carriers...'),
+            columns: [
+                { key: 'carrier', label: t('Carrier') },
+            ],
+            rows: fac.carrierfac_set,
+            cellRenderer: (/** @type {any} */ row, /** @type {TableColumn} */ col) => {
+                if (col.key === 'carrier') {
+                    const label = row.carrier_name || `Carrier ${row.carrier_id}`;
+                    return row.carrier_id
+                        ? createLink('carrier', row.carrier_id, label)
+                        : document.createTextNode(label);
+                }
+                return document.createTextNode(String(row[col.key] ?? ''));
+            }
+        });
+        frag.appendChild(carrierTable);
+    }
+
     if (frag.children.length === 0) {
-        frag.appendChild(createEmptyState(t('No networks or exchanges')));
+        frag.appendChild(createEmptyState(t('No networks, exchanges, or carriers')));
     }
 
     return frag;
