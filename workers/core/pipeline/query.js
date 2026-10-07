@@ -113,7 +113,7 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, negativeT
     let inflight = cache.pending.get(cacheKey);
 
     if (!inflight) {
-        inflight = _resolve(cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel, useL2);
+        inflight = _resolve({ cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel, useL2 });
         cache.pending.set(cacheKey, inflight);
         inflight.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
@@ -125,19 +125,20 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, negativeT
  * Internal fetch pipeline — separated from cachedQuery so the coalescing
  * wrapper can store and share the single promise reference.
  *
- * @param {string} cacheKey - Normalised cache key.
- * @param {LocalCache} cache - Per-entity LRU cache instance.
- * @param {string} entityTag - Tag for cache metadata.
- * @param {number} ttlMs - TTL in milliseconds for positive results.
- * @param {number} negativeTtlMs - TTL in milliseconds for negative results.
- * @param {() => Promise<Uint8Array|null>} queryFn - Backend query closure.
- * @param {((tag: string) => number)|undefined} getVersion - Optional version getter.
- * @param {ExecutionContext} [ctx] - Worker execution context for L2 write-back.
- * @param {Uint8Array} [emptySentinel] - Sentinel buffer for negative entries.
- * @param {boolean} [useL2=true] - Consult/populate the per-PoP L2 cache.
+ * @param {object} opts - Resolve options (see cachedQuery).
+ * @param {string} opts.cacheKey - Normalised cache key.
+ * @param {LocalCache} opts.cache - Per-entity LRU cache instance.
+ * @param {string} opts.entityTag - Tag for cache metadata.
+ * @param {number} opts.ttlMs - TTL in milliseconds for positive results.
+ * @param {number} opts.negativeTtlMs - TTL in milliseconds for negative results.
+ * @param {() => Promise<Uint8Array|null>} opts.queryFn - Backend query closure.
+ * @param {(tag: string) => number} [opts.getVersion] - Optional version getter.
+ * @param {ExecutionContext} [opts.ctx] - Worker execution context for L2 write-back.
+ * @param {Uint8Array} [opts.emptySentinel] - Sentinel buffer for negative entries.
+ * @param {boolean} [opts.useL2=true] - Consult/populate the per-PoP L2 cache.
  * @returns {Promise<CachedResult>}
  */
-async function _resolve(cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel = EMPTY_ENVELOPE, useL2 = true) {
+async function _resolve({ cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel = EMPTY_ENVELOPE, useL2 = true }) {
     // ── L2 per-PoP cache check ───────────────────────────────────
     // L2 keys are version-tagged with the entity's last_modified_at.
     // When data changes, the version advances and old L2 entries are
