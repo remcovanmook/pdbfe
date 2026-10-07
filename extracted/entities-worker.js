@@ -160,7 +160,7 @@ const _entity_fac = {
     ],
     joinColumns: undefined,
     relationships: [
-        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "fac_id" },
+        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_carrier", localFk: "carrier_id", columns: { "name": "carrier_name" } }] },
         { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_ix", localFk: "ix_id", columns: { "name": "ix_name" } }] },
         { field: "netfac_set", table: "peeringdb_network_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name", "asn": "net_asn" } }] },
         { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_side_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] },
@@ -357,14 +357,14 @@ const _entity_carrierfac = {
     _anonFilter: undefined,
     fields: [
         { name: "id", type: "number" },
-        { name: "carrier_id", type: "number", foreignKey: "carrier" },
+        { name: "carrier_id", type: "number", foreignKey: "carrier", resolve: { "name": "carrier_name" } },
         { name: "fac_id", type: "number", foreignKey: "fac", resolve: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } },
         { name: "name", type: "string", queryable: false },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
         { name: "status", type: "string" }
     ],
-    joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }],
+    joinColumns: [{ table: "peeringdb_carrier", localFk: "carrier_id", columns: { "name": "carrier_name" } }, { table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }],
     relationships: [],
     _columns: ["id", "carrier_id", "fac_id", "name", "created", "updated", "status"],
     _jsonColumns: new Set([]),
