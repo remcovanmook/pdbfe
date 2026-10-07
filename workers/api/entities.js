@@ -240,8 +240,8 @@ export function validateQuery(entity, filters) {
 export function dropUnknownFilters(entity, filters) {
     const fieldNames = getFieldNames(entity);
     let w = 0;
-    for (let r = 0; r < filters.length; r++) {
-        const f = filters[r];
+    // Compact in place; the write index never passes the read position.
+    for (const f of filters) {
         const known = VALID_OPS.has(f.op) && (f.entity
             ? typeof resolveCrossEntityFilter(entity, f.entity, f.field) !== 'string'
             : fieldNames.has(f.field));
