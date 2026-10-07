@@ -61,7 +61,10 @@ const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account
 });
 const text = await res.text();
 if (!res.ok || !text.startsWith('{')) {
-    console.error(`query failed (${res.status}): ${text.slice(0, 300)}`);
+    // The body is remote input: strip control characters (incl. CR/LF) so it
+    // cannot forge or corrupt log lines.
+    const safe = text.slice(0, 300).replaceAll(/[\u0000-\u001f\u007f]/g, ' ');
+    console.error(`query failed (${res.status}): ${safe}`);
     process.exit(1);
 }
 const rows = JSON.parse(text).data ?? [];
