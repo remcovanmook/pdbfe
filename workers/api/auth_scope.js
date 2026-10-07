@@ -13,17 +13,31 @@
  *     (net → poc_set), or
  *   - a cross-entity filter into a restricted entity.
  *
+ * Tables with visibility-gated columns (api/field_visibility.js, e.g.
+ * ixlan.ixf_ixp_member_list_url) count as restricted here too.
+ *
  * Unknown entities are treated as sensitive.
  */
 
 import { ENTITIES } from './entities.js';
+import { GATED_TABLES } from './field_visibility.js';
+
+/**
+ * Whether an entity's rows can differ by auth state: restricted (poc) or
+ * carrying a visibility-gated column (ixlan).
+ * @param {any} entity
+ * @returns {boolean}
+ */
+function isRestrictedish(entity) {
+    return entity._restricted === true || GATED_TABLES.has(entity.table);
+}
 
 /** Tags whose depth>0 expansion includes a restricted child set. Built once at isolate start. */
 const DEPTH_SENSITIVE = new Set();
 {
     const restrictedTables = new Set();
     for (const tag in ENTITIES) {
-        if (ENTITIES[tag]._restricted) restrictedTables.add(ENTITIES[tag].table);
+        if (isRestrictedish(ENTITIES[tag])) restrictedTables.add(ENTITIES[tag].table);
     }
     for (const tag in ENTITIES) {
         for (const rel of ENTITIES[tag].relationships) {
@@ -42,11 +56,11 @@ const DEPTH_SENSITIVE = new Set();
  */
 export function isAuthSensitive(entityTag, depth, filters) {
     const entity = ENTITIES[entityTag];
-    if (!entity || entity._restricted) return true;
+    if (!entity || isRestrictedish(entity)) return true;
     if (depth > 0 && DEPTH_SENSITIVE.has(entityTag)) return true;
     for (const f of filters) {
         const fe = f.entity;
-        if (fe && (!ENTITIES[fe] || ENTITIES[fe]._restricted)) return true;
+        if (fe && (!ENTITIES[fe] || isRestrictedish(ENTITIES[fe]))) return true;
     }
     return false;
 }
@@ -62,5 +76,5 @@ export function isAuthSensitive(entityTag, depth, filters) {
 export function isRelationAuthSensitive(sourceTag, targetTag) {
     const s = ENTITIES[sourceTag];
     const t = targetTag ? ENTITIES[targetTag] : undefined;
-    return !s || !t || s._restricted === true || t._restricted === true;
+    return !s || !t || isRestrictedish(s) || isRestrictedish(t);
 }
