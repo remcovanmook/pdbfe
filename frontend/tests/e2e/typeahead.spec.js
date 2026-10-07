@@ -11,6 +11,7 @@
  *   - Keyboard navigation (ArrowDown, Enter, Escape)
  *   - Enter with no selection navigates to /search
  *   - Clicking outside closes the dropdown
+ *   - A slow click (held past the 150 ms blur-close delay) still navigates
  */
 
 import { test, expect } from '@playwright/test';
@@ -123,6 +124,22 @@ test('clicking a dropdown item navigates to the entity page', async ({ page }) =
     await firstItem.click();
 
     // Should have navigated to a detail page
+    await expect(page).toHaveURL(/\/(net|ix|fac|org|carrier|campus)\/\d+/);
+});
+
+test('a slow click (button held longer than the blur close delay) still navigates', async ({ page }) => {
+    // Regression: mousedown on a result blurred the input, the blur handler
+    // closed the dropdown after 150 ms, and a click held past that (normal on
+    // trackpads and touch) landed on nothing.
+    const input = page.locator('#header-search');
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await input.fill('Cloud');
+    await page.waitForTimeout(400);
+
+    const firstItem = page.locator('.search-dropdown__item').first();
+    await expect(firstItem).toBeVisible();
+    await firstItem.click({ delay: 300 }); // mousedown … 300 ms … mouseup
+
     await expect(page).toHaveURL(/\/(net|ix|fac|org|carrier|campus)\/\d+/);
 });
 
