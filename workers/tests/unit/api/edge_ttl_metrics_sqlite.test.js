@@ -49,7 +49,7 @@ describe('secondsUntilFreshData (absolute expiry after the next sync)', () => {
 
     it('interval matches the sync worker cron', () => {
         const toml = readFileSync(new URL('../../../wrangler-sync.toml.example', import.meta.url), 'utf8');
-        const m = toml.match(/crons\s*=\s*\["\*\/(\d+) \* \* \* \*"\]/);
+        const m = toml.match(/crons\s*=\s*\[[^\]]*"\*\/(\d+) \* \* \* \*"/);
         assert.ok(m, 'cron of the form */N * * * *');
         assert.equal(Number(m[1]) * 60, SYNC_INTERVAL_S);
         assert.ok(SYNC_GRACE_S < SYNC_INTERVAL_S);

@@ -880,6 +880,17 @@ def generate_schema_sql(entities, schema_version="unknown"):
         '    "applied_at" TEXT NOT NULL DEFAULT (datetime(\'now\'))',
         ');',
         "",
+        # Weekly health check & repair reports (workers/sync/health.js).
+        'CREATE TABLE IF NOT EXISTS "_health_runs" (',
+        '    "id" INTEGER PRIMARY KEY AUTOINCREMENT,',
+        '    "started_at" TEXT NOT NULL,',
+        '    "finished_at" TEXT NOT NULL,',
+        '    "repaired" INTEGER NOT NULL DEFAULT 0,',
+        '    "errors" INTEGER NOT NULL DEFAULT 0,',
+        '    "alerts" INTEGER NOT NULL DEFAULT 0,',
+        '    "report" TEXT NOT NULL',
+        ');',
+        "",
     ]
 
     for tag in sorted(entities.keys()):
