@@ -14,6 +14,7 @@
  * to avoid N+1 patterns.
  */
 
+import { GATED_TABLES, selectColumn } from './field_visibility.js';
 import { ENTITIES, getColumns } from './entities.js';
 import { parseJsonFields } from './handlers/shared.js';
 
@@ -238,7 +239,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
 
         if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
             // JOIN path: alias the child table, add LEFT JOINs for cross-entity names
-            const baseCols = childColumns.map(c => `t."${c}"`).join(", "); // ap-ok: SQL construction
+            const baseCols = childColumns.map(c => selectColumn(rel.table, c, 't.', authenticated)).join(", "); // ap-ok: SQL construction
 
             /** @type {string[]} */
             const joinParts = [];
@@ -266,12 +267,15 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
         } else if (childColumns.length > 0) {
             // Standard path: no JOINs
-            const colExpr = childColumns.map(c => `"${c}"`).join(", "); // ap-ok: SQL construction
+            const colExpr = childColumns.map(c => selectColumn(rel.table, c, '', authenticated)).join(", "); // ap-ok: SQL construction
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" ${IN_IDS}` +
                 ` AND "status" != 'deleted'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
+        } else if (GATED_TABLES.has(rel.table)) {
+            // Never SELECT * from a table with visibility-gated columns.
+            throw new Error(`expandDepthTwo: no column list for gated table ${rel.table}`);
         } else {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +

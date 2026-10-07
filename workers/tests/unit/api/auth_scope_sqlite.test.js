@@ -188,9 +188,16 @@ describe('isAuthSensitive / isRelationAuthSensitive', async () => {
         assert.equal(isAuthSensitive('net', 2, []), true);
     });
     it('entities without a restricted child set stay shared at depth 2', () => {
-        for (const tag of ['org', 'fac', 'ix', 'netixlan', 'netfac', 'ixlan', 'carrier', 'campus']) {
+        for (const tag of ['org', 'fac', 'netixlan', 'netfac', 'carrier', 'campus']) {
             assert.equal(isAuthSensitive(tag, 2, []), false, tag);
         }
+    });
+    it('ixlan (visibility-gated member-list URL) is sensitive; ix is sensitive at depth>0', () => {
+        assert.equal(isAuthSensitive('ixlan', 0, []), true);
+        assert.equal(isAuthSensitive('ix', 0, []), false);
+        assert.equal(isAuthSensitive('ix', 2, []), true);
+        assert.equal(isAuthSensitive('ixpfx', 0, [{ field: 'ixf_ixp_member_list_url', op: 'contains', value: 'x', entity: 'ixlan' }]), true);
+        assert.equal(isRelationAuthSensitive('ix', 'ixlan'), true);
     });
     it('a cross-entity filter into a restricted or unknown entity is sensitive', () => {
         assert.equal(isAuthSensitive('net', 0, [{ field: 'role', op: 'eq', value: 'NOC', entity: 'poc' }]), true);

@@ -15,6 +15,7 @@
  */
 
 import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmitEmptyColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
+import { GATED_TABLES, selectColumn, visibilityClause } from './field_visibility.js';
 
 /**
  * Row-count ceilings applied by buildWherePagination.
@@ -307,6 +308,21 @@ function resolveColumns(entity, opts) {
 }
 
 /**
+ * Inner SELECT list for the non-join json_group_array path. `*` unless the
+ * table has visibility-gated columns, in which case the emitted columns are
+ * listed explicitly with the gated ones masked (see field_visibility.js).
+ *
+ * @param {EntityMeta} entity
+ * @param {string[]} columns - Columns the outer json_object emits.
+ * @param {QueryOpts} opts
+ * @returns {string}
+ */
+function innerSelect(entity, columns, opts) {
+    if (!GATED_TABLES.has(entity.table)) return '*';
+    return columns.map((c) => selectColumn(entity.table, c, '', opts.authenticated)).join(', '); // ap-ok: SQL construction
+}
+
+/**
  * @param {EntityMeta} entity - Entity metadata from the registry.
  * @param {ParsedFilter[]} filters - Parsed query filters.
  * @param {QueryOpts} opts - Pagination.
@@ -341,7 +357,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null, withCount
         // At depth=0, only emit base entity columns — skip JOIN-resolved
         // fields (org_name, net_name, etc.) to match upstream PeeringDB.
         // The LEFT JOINs remain in the query for cross-entity WHERE filters.
-        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(', '); // ap-ok: SQL construction
+        const baseCols = columns.map((/** @type {string} */ c) => selectColumn(entity.table, c, 't.', opts.authenticated)).join(', '); // ap-ok: SQL construction
         const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
 
         // Standard depth=0 — base entity columns only, no join cols.
@@ -369,7 +385,7 @@ export function buildJsonQuery(entity, filters, opts, singleId = null, withCount
         : innerExpr;
     const sql =
         `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}` +
-        ` FROM (SELECT * FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
+        ` FROM (SELECT ${innerSelect(entity, columns, opts)} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
 
     return { sql, params };
 }
@@ -402,7 +418,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         const { joinSql, selectCols } = buildJoinFragments(
             /** @type {JoinColumnDef[]} */ (entity.joinColumns)
         );
-        const baseCols = columns.map((/** @type {string} */ c) => `t."${c}"`).join(", "); // ap-ok: SQL construction
+        const baseCols = columns.map((/** @type {string} */ c) => selectColumn(entity.table, c, 't.', opts.authenticated)).join(", "); // ap-ok: SQL construction
         const allCols = hasExplicitFields
             ? baseCols
             : baseCols + ', ' + selectCols.join(', ');
@@ -411,7 +427,7 @@ export function buildRowQuery(entity, filters, opts, singleId = null) {
         return { sql, params };
     }
 
-    const cols = columns.map((/** @type {string} */ c) => `"${c}"`).join(", "); // ap-ok: SQL construction
+    const cols = columns.map((/** @type {string} */ c) => selectColumn(entity.table, c, '', opts.authenticated)).join(", "); // ap-ok: SQL construction
     const sql = `SELECT ${cols} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination}`;
     return { sql, params };
 }
@@ -491,15 +507,20 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             const opFn = OPS[f.op];
             if (!opFn) continue;
 
+            // A filter on a visibility-gated column only matches rows whose
+            // value the caller may see (no existence oracle via filters).
+            const gate = visibilityClause(ref.targetTable, f.field, '', opts.authenticated);
+            const gateSql = gate ? ` AND ${gate}` : '';
+
             // Build the inner WHERE clause using the standard OPS functions
             // (they operate on unaliased column names, which is what we want)
             if (f.op === 'in') {
                 const parts = f.value.split(',').map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))); // ap-ok: SQL IN clause construction
-                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (SELECT value FROM json_each(?)))`);
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (SELECT value FROM json_each(?))${gateSql})`);
                 params.push(JSON.stringify(parts)); // ap-ok: SQL bind params
             } else {
                 const inner = opFn(f.field, f.value);
-                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause})`);
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause}${gateSql})`);
                 params.push(coerceValue(f.value, /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)));
             }
             continue;
@@ -507,6 +528,11 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
 
         const fieldType = getFilterType(entity, f.field);
         if (!fieldType) continue; // Unknown or non-queryable field — ignore silently
+
+        // Filters on a visibility-gated column only see rows whose value the
+        // caller may see (see api/field_visibility.js).
+        const gate = visibilityClause(entity.table, f.field, pfx, opts.authenticated);
+        if (gate) clauses.push(gate);
 
         const opFn = OPS[f.op];
         if (!opFn) continue; // Unknown operator — ignore silently
@@ -567,7 +593,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
     }
 
     const pagination = buildPagination(effectiveLimit, skip, params);
-    const orderBy = buildOrderBy(entity, sort, pfx);
+    const orderBy = buildOrderBy(entity, sort, pfx, opts.authenticated);
 
     return { clauses, params, pagination, orderBy };
 }
@@ -608,12 +634,19 @@ function buildPagination(effectiveLimit, skip, params) {
  * @param {string} sort - Sort parameter (e.g. "-updated", "name").
  * @param {string} pfx - Table alias prefix (e.g. "t." or "").
  * @returns {string} SQL ORDER BY expression.
+ * @param {boolean|undefined} authenticated - Caller auth state (gated sort columns).
  */
-function buildOrderBy(entity, sort, pfx) {
+function buildOrderBy(entity, sort, pfx, authenticated) {
     if (!sort) return `${pfx}"id" ASC`;
 
     const desc = sort.startsWith('-');
     const col = desc ? sort.slice(1) : sort;
+    // Sorting by a visibility-gated column would order rows by values the
+    // caller may not see; sort on the masked expression instead.
+    const gate = visibilityClause(entity.table, col, pfx, authenticated);
+    if (gate) {
+        return `CASE WHEN ${gate} THEN ${pfx}"${col}" END ${desc ? 'DESC' : 'ASC'}, ${pfx}"id" ASC`;
+    }
     const allCols = getColumns(entity);
     if (allCols.includes(col) && col !== 'id') {
         // id tiebreak: rows sharing a sort value keep a stable order, so
