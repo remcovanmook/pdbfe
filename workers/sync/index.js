@@ -25,94 +25,18 @@
  *   QUEUE — pdbfe-tasks Queue producer (optional; sync operates without it)
  */
 
-import { ENTITIES, VECTOR_ENTITY_TAGS } from './entities.js';
+import { ENTITIES } from './entities.js';
 import { parseURL } from '../core/utils.js';
+import { upsertActiveRows, publishTasks } from './rows.js';
+import { runHealthCheck } from './health.js';
+
+export { buildUpsert, ensureColumns } from './rows.js';
 
 const API_BASE = 'https://www.peeringdb.com/api';
 
+/** Weekly health check cron: Sunday 03:07 UTC, off the quarter-hour sync slots. Must match wrangler-sync.toml. */
+export const HEALTH_CRON = '7 3 * * 0';
 
-/**
- * Coerces a single API field value to a D1-compatible SQL parameter.
- *
- * Django CharField(blank=True, null=False) stores "" not NULL. Coerce to ""
- * for NOT NULL string columns to satisfy D1 schema constraints and match
- * upstream behaviour.
- *
- * @param {string} col - Column name.
- * @param {any} v - Raw value from the API row.
- * @param {Set<string>} notNullStrings - Column names that are NOT NULL strings.
- * @returns {string|number|null} D1-compatible parameter value.
- */
-function coerceValue(col, v, notNullStrings) {
-    // Treat missing values AND non-finite numbers (NaN / Infinity, which D1's
-    // bind rejects and would throw, wedging the whole batch) as null.
-    if (v === undefined || v === null || (typeof v === 'number' && !Number.isFinite(v))) {
-        return notNullStrings.has(col) ? '' : null;
-    }
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    if (typeof v === 'number') return v;
-    if (Array.isArray(v) || typeof v === 'object') return JSON.stringify(v);
-    return String(v);
-}
-
-/**
- * Builds an INSERT OR REPLACE statement for a single row.
- *
- * For NOT NULL string columns, null/undefined values from the API are coerced
- * to empty string ("") to match Django's CharField convention and prevent D1
- * NOT NULL constraint violations.
- *
- * @param {string} table - D1 table name.
- * @param {string[]} columns - Column names.
- * @param {Record<string, any>} row - Row data from the API.
- * @param {Set<string>} notNullStrings - Column names that are NOT NULL strings.
- * @returns {{ sql: string, params: any[] }} Parameterised statement.
- */
-export function buildUpsert(table, columns, row, notNullStrings) {
-    const placeholders = columns.map(() => '?').join(',');
-    const quotedCols = columns.map(c => `"${c}"`).join(',');
-    const sql = `INSERT OR REPLACE INTO "${table}" (${quotedCols}) VALUES (${placeholders})`;
-    const params = columns.map(col => coerceValue(col, row[col], notNullStrings));
-    return { sql, params };
-}
-
-/**
- * Ensures all columns from the API response exist in the D1 table.
- *
- * If the upstream PeeringDB API adds new fields, this auto-evolves the schema
- * by running ALTER TABLE ADD COLUMN for each missing one. New columns are
- * added as nullable TEXT. Rejects column names that don't look like valid SQL
- * identifiers to prevent injection via compromised upstream JSON keys.
- *
- * @param {D1Database} db - D1 database binding.
- * @param {string} table - D1 table name.
- * @param {string[]} apiColumns - Column names from the API response.
- * @returns {Promise<Set<string>>} The set of columns that exist in the table
- *          afterwards (existing + newly added). Callers intersect the upsert
- *          column list with this so a rejected (invalid-identifier) upstream
- *          key is never emitted into an INSERT.
- */
-export async function ensureColumns(db, table, apiColumns) {
-    const info = await db.prepare(`PRAGMA table_info("${table}")`).all();
-    const existing = new Set(info.results.map(
-        (/** @type {{name: string}} */ r) => r.name
-    ));
-
-    for (const col of apiColumns) {
-        if (existing.has(col)) continue;
-
-        if (!/^[a-zA-Z_]\w*$/.test(col)) {
-            console.error(`[sync] rejected invalid column name: ${JSON.stringify(col)} on ${table}`);
-            continue;
-        }
-
-        console.warn(`[sync] auto-adding column "${col}" to ${table}`);
-        await db.prepare(`ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`).run();
-        existing.add(col);
-    }
-
-    return existing;
-}
 
 /**
  * Processes a single entity: fetches updates from PeeringDB since last sync,
@@ -190,29 +114,6 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         const skipped = rows.length - activeRows.length - deletedRows.length;
         if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
 
-        // Column set = union of keys across ACTIVE rows (not rows[0], which may
-        // be a sparse `deleted` record that would truncate every upsert),
-        // intersected with columns that actually exist in the table after
-        // ensureColumns. That intersection drops any upstream key with an
-        // invalid SQL identifier — ensureColumns refuses to add those, and
-        // emitting them anyway made every INSERT reference a non-existent
-        // column and permanently wedge the entity.
-        const apiColumnSet = new Set();
-        for (const row of activeRows) {
-            for (const k of Object.keys(row)) apiColumnSet.add(k);
-        }
-        const apiColumns = [...apiColumnSet];
-        const existing = await ensureColumns(db, meta.table, apiColumns);
-        const columns = apiColumns.filter(c => existing.has(c));
-
-        /** @type {Set<string>} */
-        const notNullStrings = new Set();
-        meta.fields.forEach((/** @type {{type: string, name: string, nullable?: boolean}} */ field) => {
-            if ((field.type === 'string' || field.type === 'datetime') && !field.nullable) {
-                notNullStrings.add(field.name);
-            }
-        });
-
         // How many incoming active ids already exist, read BEFORE the upsert so
         // row_count can be advanced by the genuinely new rows. One json_each
         // probe reads only those ids — a COUNT(*) of the whole table instead
@@ -227,16 +128,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             existingActive = probe ? /** @type {number} */ (probe.cnt) : 0;
         }
 
-        // Batch upsert active rows (D1 batch limit is 100 statements)
-        const BATCH_SIZE = 50;
-        for (let i = 0; i < activeRows.length; i += BATCH_SIZE) {
-            const batch = activeRows.slice(i, i + BATCH_SIZE);
-            const statements = batch.map(row => {
-                const { sql, params } = buildUpsert(meta.table, columns, row, notNullStrings);
-                return db.prepare(sql).bind(...params);
-            });
-            await db.batch(statements);
-        }
+        await upsertActiveRows(db, meta, activeRows);
         result.updated = activeRows.length;
 
         let actuallyDeleted = 0;
@@ -254,38 +146,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         // ── Publish Queue messages ─────────────────────────────────────────────
         // Must happen BEFORE _sync_meta is advanced so that a Queue publish
         // failure causes the next cron to re-fetch and retry.
-        if (queue) {
-            /** @type {QueueSendRequest<AsyncTaskMessage>[]} */
-            const messages = [];
-
-            if (VECTOR_ENTITY_TAGS.has(tag)) {
-                for (const row of activeRows) {
-                    messages.push({ body: { action: 'embed', tag, id: row.id } });
-                }
-            }
-
-            if (VECTOR_ENTITY_TAGS.has(tag)) {
-                for (const row of activeRows) {
-                    if (row.logo) {
-                        messages.push({ body: { action: 'logo', tag, id: row.id } });
-                    }
-                }
-            }
-
-            for (const id of result.deletedIds) {
-                messages.push({ body: { action: 'delete', tag, id } });
-            }
-
-            // Cloudflare Queues caps sendBatch at 100 messages per call;
-            // exceeding it throws "batch message count of N exceeds limit of
-            // 100" and (since this runs before _sync_meta advances) wedges the
-            // entity — high-churn tags (net, poc, netfac) re-fetch a growing
-            // backlog every cron and never recover. Chunk at 100.
-            const QUEUE_BATCH = 100;
-            for (let i = 0; i < messages.length; i += QUEUE_BATCH) {
-                await queue.sendBatch(messages.slice(i, i + QUEUE_BATCH));
-            }
-        }
+        await publishTasks(queue, tag, activeRows, result.deletedIds);
 
         // ── Advance lastSync ───────────────────────────────────────────────────
         // row_count: incremental when a previous count exists (new ids minus
@@ -336,6 +197,10 @@ export default {
      * @param {ExecutionContext} _ctx - Execution context.
      */
     async scheduled(_event, env, _ctx) {
+        if (_event.cron === HEALTH_CRON) {
+            await runHealthCheck(env);
+            return;
+        }
         const apiKey = env.PEERINGDB_API_KEY || '';
         const queue  = env.QUEUE;
         const results = [];
@@ -359,6 +224,8 @@ export default {
      * HTTP handler for manual sync trigger and status.
      *   GET  /sync/status             — returns last sync times and row counts.
      *   POST /sync/trigger.<secret>   — runs a full sync cycle (requires ADMIN_SECRET).
+     *   GET  /sync/health             — latest weekly health check report.
+     *   POST /sync/health.<secret>    — runs the health check now (requires ADMIN_SECRET).
      *
      * @param {Request} request - The inbound HTTP request.
      * @param {PdbSyncEnv} env - Environment bindings.
@@ -373,6 +240,31 @@ export default {
                 'SELECT * FROM "_sync_meta" ORDER BY entity'
             ).all();
             return new Response(JSON.stringify({ data: rows.results }, null, 2), {
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        // Latest health check report (ids and counts only — no sensitive data).
+        if (rawPath === 'sync/health' && request.method === 'GET') {
+            const row = await env.PDB.prepare(
+                'SELECT report FROM "_health_runs" ORDER BY id DESC LIMIT 1'
+            ).first();
+            return new Response(row ? /** @type {string} */ (row.report) : '{"error":"no health run yet"}', {
+                status: row ? 200 : 404,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
+
+        // Run the health check now (same secret as the sync trigger).
+        if (rawPath.startsWith('sync/health.') && request.method === 'POST') {
+            if (!isValidSyncSecret(env, rawPath.slice('sync/health.'.length))) {
+                return new Response(JSON.stringify({ error: 'Forbidden' }), {
+                    status: 403,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
+            ctx.waitUntil(runHealthCheck(env));
+            return new Response(JSON.stringify({ status: 'health check triggered' }), {
                 headers: { 'Content-Type': 'application/json' },
             });
         }

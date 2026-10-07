@@ -5,7 +5,9 @@ main = "sync/index.js"
 compatibility_date = "2026-03-18"
 
 [triggers]
-crons = ["*/15 * * * *"]
+# */15: incremental sync. 7 3 * * 0: weekly health check & repair (sync/health.js),
+# Sunday 03:07 UTC — off the sync slots; must match HEALTH_CRON in sync/index.js.
+crons = ["*/15 * * * *", "7 3 * * 0"]
 
 [[d1_databases]]
 binding = "PDB"

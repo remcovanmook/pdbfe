@@ -1,0 +1,67 @@
+name: Mirror health
+
+# The sync worker runs a weekly health check & repair (workers/sync/health.js,
+# cron "7 3 * * 0") and records a report in D1 (_health_runs). This workflow
+# runs half an hour later and makes noise about it: job summary, a
+# `mirror-health` issue (opened or commented) and a FAILED run whenever
+# anything was repaired, errored, alerted — or the weekly run is missing.
+# A clean run comments on and closes any open mirror-health issue.
+
+on:
+  schedule:
+    - cron: "40 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read latest health report
+        id: report
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          REPORT_FILE: ${{ runner.temp }}/mirror-health.md
+        run: python3 .github/scripts/mirror_health_report.py
+
+      - name: Open or update the mirror-health issue
+        if: steps.report.outputs.attention == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: ${{ steps.report.outputs.title }}
+          REPORT_FILE: ${{ runner.temp }}/mirror-health.md
+        run: |
+          gh label create mirror-health --color B60205 --description "Weekly mirror health check found drift or failed" --force
+          ISSUE=$(gh issue list --label mirror-health --state open --json number -q '.[0].number')
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --body-file "$REPORT_FILE"
+          else
+            gh issue create --title "$TITLE" --label mirror-health --body-file "$REPORT_FILE"
+          fi
+
+      - name: Close the mirror-health issue on a clean run
+        if: steps.report.outputs.attention == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT_FILE: ${{ runner.temp }}/mirror-health.md
+        run: |
+          ISSUE=$(gh issue list --label mirror-health --state open --json number -q '.[0].number' 2>/dev/null || true)
+          if [ -n "$ISSUE" ]; then
+            gh issue comment "$ISSUE" --body-file "$REPORT_FILE"
+            gh issue close "$ISSUE" --reason completed
+          fi
+
+      - name: Fail the run when the mirror needed attention
+        if: steps.report.outputs.attention == 'true'
+        env:
+          TITLE: ${{ steps.report.outputs.title }}
+        run: |
+          echo "::error::$TITLE"
+          exit 1
