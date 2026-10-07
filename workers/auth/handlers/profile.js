@@ -79,10 +79,12 @@ export async function handleProfile(request, env) {
  * @returns {Promise<Response>}
  */
 async function handleGetProfile(request, env) {
-    const { session, origin, error } = await requireSession(request, env);
+    const { session, origin, error, kvMs } = await requireSession(request, env);
     if (error) return error;
 
+    const tDb = Date.now();
     const user = await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
+    const dbMs = Date.now() - tDb;
 
     /** @type {UserPreferences} */
     let preferences = {};
@@ -96,7 +98,7 @@ async function handleGetProfile(request, env) {
         networks: session.networks,
         created_at: user.created_at,
         updated_at: user.updated_at,
-    }, 200, origin);
+    }, 200, origin, `kv;dur=${kvMs}, db;dur=${dbMs}`);
 }
 
 /**

@@ -1042,3 +1042,30 @@ describe('key_id is wide and hash-derived', () => {
         assert.ok(!body.key.includes(body.key_id), 'key_id derives from the hash, not the key prefix');
     });
 });
+
+// ── Server-Timing on the account reads ──────────────────────────────────────
+
+describe('account reads: Server-Timing and query count', () => {
+    /** Wraps a USERDB mock and records every SQL statement prepared. */
+    function recordingDB(/** @type {any} */ inner) {
+        /** @type {string[]} */
+        const sql = [];
+        return { db: /** @type {any} */ ({ ...inner, prepare: (/** @type {string} */ q) => { sql.push(q); return inner.prepare(q); } }), sql };
+    }
+
+    it('GET /account/favorites reports kv and db phases and skips the user-row lookup', async () => {
+        const { db, sql } = recordingDB(mockUserDB({ favorites: [{ entity_type: 'net', entity_id: 1, label: 'x', created_at: '' }] }));
+        const res = await handleFavorites(authRequest('https://auth.pdbfe.dev/account/favorites', { headers: { Origin: 'https://pdbfe.dev' } }), mockEnv({ USERDB: db }), '');
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get('Server-Timing') ?? '', /^kv;dur=\d+, db;dur=\d+$/);
+        assert.equal(res.headers.get('Timing-Allow-Origin'), 'https://pdbfe.dev');
+        assert.equal(sql.length, 1, `one D1 query, got: ${sql.join(' | ')}`);
+        assert.ok(!sql[0].includes('FROM users'), 'no ensureUser lookup on list');
+    });
+
+    it('GET /account/profile reports kv and db phases', async () => {
+        const res = await handleProfile(authRequest('https://auth.pdbfe.dev/account/profile', { headers: { Origin: 'https://pdbfe.dev' } }), mockEnv());
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get('Server-Timing') ?? '', /^kv;dur=\d+, db;dur=\d+$/);
+    });
+});

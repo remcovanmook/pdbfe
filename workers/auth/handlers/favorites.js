@@ -55,19 +55,21 @@ export async function handleFavorites(request, env, subPath) {
  * @returns {Promise<Response>}
  */
 async function handleListFavorites(request, env) {
-    const { session, origin, error } = await requireSession(request, env);
+    const { session, origin, error, kvMs } = await requireSession(request, env);
     if (error) return error;
 
-    await ensureUser(env.USERDB, /** @type {SessionData} */ (session));
-
+    // No ensureUser here: listing needs no user row (an unprovisioned user
+    // simply has no favorites), and it cost an extra sequential D1 query.
+    const tDb = Date.now();
     const result = await env.USERDB.prepare(
         'SELECT entity_type, entity_id, label, created_at FROM user_favorites WHERE user_id = ? ORDER BY created_at DESC'
     ).bind(session.id).all();
+    const dbMs = Date.now() - tDb;
 
     return jsonResponse({
         favorites: result.results,
         max_favorites: MAX_FAVORITES_PER_USER,
-    }, 200, origin);
+    }, 200, origin, `kv;dur=${kvMs}, db;dur=${dbMs}`);
 }
 
 /**
