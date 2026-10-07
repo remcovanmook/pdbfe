@@ -122,28 +122,21 @@ describe('validateFields', () => {
 describe('validateQuery', () => {
     it('returns null for valid filters', () => {
         const filters = [{ field: 'asn', op: 'eq', value: '12345' }];
-        const error = validateQuery(ENTITIES.net, filters, '');
+        const error = validateQuery(ENTITIES.net, filters);
         assert.equal(error, null);
     });
 
-    it('returns error string for unknown field', () => {
+    it('does not reject unknown fields (ignored, as upstream)', () => {
         const filters = [{ field: 'nonexistent_abc', op: 'eq', value: 'x' }];
-        const error = validateQuery(ENTITIES.net, filters, '');
-        assert.equal(typeof error, 'string');
+        assert.equal(validateQuery(ENTITIES.net, filters), null);
     });
 
-    it('returns error for invalid sort field', () => {
-        const error = validateQuery(ENTITIES.net, [], 'nonexistent_field');
-        assert.equal(typeof error, 'string');
-    });
-
-    it('accepts valid sort field', () => {
-        const error = validateQuery(ENTITIES.net, [], 'name');
-        assert.equal(error, null);
+    it('does not reject sort columns (unknown ones fall back to id ordering)', () => {
+        assert.equal(validateQuery(ENTITIES.net, []), null);
     });
 
     it('accepts descending sort with - prefix', () => {
-        const error = validateQuery(ENTITIES.net, [], '-name');
+        const error = validateQuery(ENTITIES.net, []);
         assert.equal(error, null);
     });
 });

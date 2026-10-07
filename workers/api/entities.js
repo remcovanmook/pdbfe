@@ -197,16 +197,14 @@ export const MAX_IN_VALUES = 500;
  *
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed query filters.
- * @param {string} sort - Sort parameter (e.g. "-updated").
+ * Unknown sort columns are not an error either: buildOrderBy falls back to id.
+ *
  * @returns {string|null} Error message, or null if query is valid.
  */
-export function validateQuery(entity, filters, sort) {
+export function validateQuery(entity, filters) {
     const fieldNames = getFieldNames(entity);
 
     for (const f of filters) {
-        if (!VALID_OPS.has(f.op)) {
-            return `Unknown filter operator '${f.op}'`;
-        }
 
         // Reject __in lists that would exceed D1's bind parameter limit
         if (f.op === 'in') {
@@ -216,30 +214,40 @@ export function validateQuery(entity, filters, sort) {
             }
         }
 
-        if (f.entity) {
-            // Cross-entity filter: validate FK chain
-            const ref = resolveCrossEntityFilter(entity, f.entity, f.field);
-            if (typeof ref === 'string') return ref;
-        } else {
-            // Regular filter: field must exist and be queryable
-            if (!fieldNames.has(f.field)) {
-                return `Unknown field '${f.field}' on ${entity.tag}`;
-            }
-            const fieldType = getFilterType(entity, f.field);
-            if (!fieldType) {
-                return `Field '${f.field}' is not filterable on ${entity.tag}`;
-            }
-        }
-    }
-
-    if (sort) {
-        const col = sort.startsWith('-') ? sort.slice(1) : sort;
-        if (!fieldNames.has(col)) {
-            return `Unknown sort column '${col}' on ${entity.tag}`;
+        // Known but not filterable (e.g. JSON columns): upstream applies these,
+        // so ignoring them would silently return unfiltered results — reject.
+        // Unknown fields are not an error (see dropUnknownFilters).
+        if (!f.entity && fieldNames.has(f.field) && !getFilterType(entity, f.field)) {
+            return `Field '${f.field}' is not filterable on ${entity.tag}`;
         }
     }
 
     return null;
+}
+
+/**
+ * Removes filters that refer to nothing on this entity, in place: unknown
+ * fields (`?zzz=1`, `?pk=26`), unknown operators (`?name__bogus=x`, which
+ * parses as a cross-entity ref), and cross-entity filters whose FK chain or
+ * field does not resolve. Upstream ignores unknown query parameters rather
+ * than failing the request, and clients rely on that (peeringdb-py sends
+ * `?pk=`). Known-but-not-filterable fields are kept so validateQuery can
+ * reject them.
+ *
+ * @param {EntityMeta} entity
+ * @param {ParsedFilter[]} filters - Mutated in place.
+ */
+export function dropUnknownFilters(entity, filters) {
+    const fieldNames = getFieldNames(entity);
+    let w = 0;
+    for (let r = 0; r < filters.length; r++) {
+        const f = filters[r];
+        const known = VALID_OPS.has(f.op) && (f.entity
+            ? typeof resolveCrossEntityFilter(entity, f.entity, f.field) !== 'string'
+            : fieldNames.has(f.field));
+        if (known) filters[w++] = f;
+    }
+    filters.length = w;
 }
 
 /**

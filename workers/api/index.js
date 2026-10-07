@@ -11,7 +11,7 @@ import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOC
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
-import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters } from './entities.js';
+import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { resolveAuth } from '../core/auth.js';
@@ -44,12 +44,11 @@ const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
  *
  * @param {EntityMeta} entity - Entity schema for validation.
  * @param {ParsedFilter[]} filters - Parsed filters to validate.
- * @param {string} sort - Sort parameter to validate.
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Response|null} 400 Response on validation failure, or null if valid.
  */
-function validateQueryOrError(entity, filters, sort, hNocache) {
-    const queryError = validateQuery(entity, filters, sort);
+function validateQueryOrError(entity, filters, hNocache) {
+    const queryError = validateQuery(entity, filters);
     if (!queryError) return null;
     return jsonError(400, queryError, hNocache);
 }
@@ -211,6 +210,8 @@ async function handleRequest(request, env, ctx) {
     // Resolve implicit cross-entity filters first, so the auth-scope check
     // below sees every filter's target entity.
     resolveImplicitFilters(entity, filters);
+    // Unknown parameters are ignored, as upstream does (see dropUnknownFilters).
+    dropUnknownFilters(entity, filters);
 
     // Auth-independent responses (everything that cannot contain a
     // restricted entity) are shared: one cache entry and one public,
@@ -245,7 +246,7 @@ async function handleRequest(request, env, ctx) {
     if (shared) partition = 'pub';
     const cachePath = `${partition}:${rawPath}`;
 
-    const errorResponse = validateQueryOrError(entity, filters, sort, hNocache);
+    const errorResponse = validateQueryOrError(entity, filters, hNocache);
     if (errorResponse) return errorResponse;
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };

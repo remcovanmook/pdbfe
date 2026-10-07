@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRowQuery, buildJsonQuery, buildCountQuery, nextPageParams, MAX_PAGE_LIMIT } from '../../../api/query.js';
-import { validateQuery, MAX_IN_VALUES, ENTITIES, resolveImplicitFilters } from '../../../api/entities.js';
+import { validateQuery, dropUnknownFilters, MAX_IN_VALUES, ENTITIES, resolveImplicitFilters } from '../../../api/entities.js';
 import { parseQueryFilters } from '../../../api/utils.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -189,7 +189,8 @@ describe("buildRowQuery", () => {
 
     it("should apply 'since' as datetime filter on updated", () => {
         const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 1700000000 });
-        assert.ok(result.sql.includes('"updated" >= datetime(?, \'unixepoch\')'));
+        // ISO form, matching how upstream timestamps are stored ('…T…Z')
+        assert.ok(result.sql.includes(`"updated" >= strftime('%Y-%m-%dT%H:%M:%SZ', ?, 'unixepoch')`));
         assert.ok(result.params.includes(1700000000));
     });
 
@@ -403,7 +404,7 @@ describe("buildCountQuery", () => {
 
     it("should apply since filter to COUNT query", () => {
         const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 1700000000 });
-        assert.ok(result.sql.includes('"updated" >= datetime(?,'));
+        assert.ok(result.sql.includes(`"updated" >= strftime('%Y-%m-%dT%H:%M:%SZ', ?,`));
         assert.ok(result.params.includes(1700000000));
     });
 
@@ -443,18 +444,19 @@ describe("fields parameter", () => {
 describe("validateQuery", () => {
     it("should return null for valid filters", () => {
         const filters = [{ field: "asn", op: "eq", value: "13335" }];
-        assert.equal(validateQuery(NET_ENTITY, filters, ''), null);
+        assert.equal(validateQuery(NET_ENTITY, filters), null);
     });
 
     it("should return null for valid sort", () => {
-        assert.equal(validateQuery(NET_ENTITY, [], '-name'), null);
-        assert.equal(validateQuery(NET_ENTITY, [], 'asn'), null);
+        assert.equal(validateQuery(NET_ENTITY, []), null);
+        assert.equal(validateQuery(NET_ENTITY, []), null);
     });
 
-    it("should reject unknown filter field", () => {
-        const filters = [{ field: "nonexistent", op: "eq", value: "foo" }];
-        const err = validateQuery(NET_ENTITY, filters, '');
-        assert.ok(err?.includes("Unknown field 'nonexistent'"));
+    it("should ignore unknown filter fields (dropped, not rejected)", () => {
+        const filters = [{ field: "nonexistent", op: "eq", value: "foo" }, { field: "name", op: "eq", value: "x" }];
+        assert.equal(validateQuery(NET_ENTITY, filters), null);
+        dropUnknownFilters(NET_ENTITY, filters);
+        assert.deepEqual(filters.map(f => f.field), ["name"]);
     });
 
     it("should reject non-queryable field", () => {
@@ -467,47 +469,45 @@ describe("validateQuery", () => {
             ]
         };
         const filters = [{ field: "logo", op: "eq", value: "test" }];
-        const err = validateQuery(entity, filters, '');
+        const err = validateQuery(entity, filters);
         assert.ok(err?.includes("not filterable"));
     });
 
-    it("should reject unknown operator", () => {
+    it("should drop unknown operators", () => {
         const filters = [{ field: "name", op: "regex", value: ".*" }];
-        const err = validateQuery(NET_ENTITY, filters, '');
-        assert.ok(err?.includes("Unknown filter operator 'regex'"));
+        dropUnknownFilters(NET_ENTITY, filters);
+        assert.deepEqual(filters, []);
     });
 
-    it("should reject unknown sort column", () => {
-        const err = validateQuery(NET_ENTITY, [], 'nonexistent');
-        assert.ok(err?.includes("Unknown sort column 'nonexistent'"));
-    });
-
-    it("should reject unknown descending sort column", () => {
-        const err = validateQuery(NET_ENTITY, [], '-bogus');
-        assert.ok(err?.includes("Unknown sort column 'bogus'"));
+    it("should fall back to id ordering for unknown sort columns", () => {
+        for (const sort of ['nonexistent', '-bogus']) {
+            const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0, sort });
+            assert.ok(result.sql.includes('ORDER BY "id" ASC'), sort);
+        }
     });
 
     it("should accept empty filters and no sort", () => {
-        assert.equal(validateQuery(NET_ENTITY, [], ''), null);
+        assert.equal(validateQuery(NET_ENTITY, []), null);
     });
 
     it("should accept cross-entity filter when FK exists", () => {
         // Real netixlan has net_id with foreignKey: 'net'
         const filters = [{ field: "name", op: "contains", value: "Cloud", entity: "net" }];
-        assert.equal(validateQuery(ENTITIES.netixlan, filters, ''), null);
+        assert.equal(validateQuery(ENTITIES.netixlan, filters), null);
     });
 
-    it("should reject cross-entity filter when no FK exists", () => {
+    it("should drop a cross-entity filter when no FK exists (ignored, as upstream)", () => {
         // NET_ENTITY has no FK to 'ix'
         const filters = [{ field: "name", op: "eq", value: "AMS-IX", entity: "ix" }];
-        const err = validateQuery(NET_ENTITY, filters, '');
-        assert.ok(err?.includes("No foreign key to 'ix'"));
+        dropUnknownFilters(NET_ENTITY, filters);
+        assert.deepEqual(filters, []);
+        assert.equal(validateQuery(NET_ENTITY, filters), null);
     });
 
     it("should reject __in filter exceeding MAX_IN_VALUES", () => {
         const ids = Array.from({ length: MAX_IN_VALUES + 1 }, (_, i) => String(i + 1));
         const filters = [{ field: "id", op: "in", value: ids.join(",") }];
-        const err = validateQuery(NET_ENTITY, filters, '');
+        const err = validateQuery(NET_ENTITY, filters);
         assert.ok(err?.includes("Too many values"));
         assert.ok(err?.includes(String(MAX_IN_VALUES + 1)));
     });
@@ -515,7 +515,7 @@ describe("validateQuery", () => {
     it("should accept __in filter at exactly MAX_IN_VALUES", () => {
         const ids = Array.from({ length: MAX_IN_VALUES }, (_, i) => String(i + 1));
         const filters = [{ field: "id", op: "in", value: ids.join(",") }];
-        assert.equal(validateQuery(NET_ENTITY, filters, ''), null);
+        assert.equal(validateQuery(NET_ENTITY, filters), null);
     });
 });
 

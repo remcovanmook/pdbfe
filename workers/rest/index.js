@@ -19,7 +19,7 @@
  * Route: rest.pdbfe.dev/*
  */
 
-import { ENTITIES, ENTITY_TAGS, validateQuery, validateFields, resolveImplicitFilters } from '../api/entities.js';
+import { ENTITIES, ENTITY_TAGS, validateQuery, validateFields, resolveImplicitFilters, dropUnknownFilters } from '../api/entities.js';
 import { parseQueryFilters } from '../api/utils.js';
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
@@ -150,6 +150,8 @@ async function routeApiRequest(request, rc) {
     // query path.
 
     resolveImplicitFilters(entity, filters);
+    // Unknown parameters are ignored, as upstream does (see dropUnknownFilters).
+    dropUnknownFilters(entity, filters);
 
     // Auth-independent responses are shared (one cache partition, public,
     // edge-cacheable, no X-Auth-Status) — see api/auth_scope.js. A
@@ -165,7 +167,7 @@ async function routeApiRequest(request, rc) {
         cachePrefix = 'pub';
     }
 
-    const queryError = validateQuery(entity, filters, sort);
+    const queryError = validateQuery(entity, filters);
     if (queryError) return jsonError(400, queryError);
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
