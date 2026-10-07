@@ -39,6 +39,22 @@ export const HEALTH_CRON = '7 3 * * 0';
 
 
 /**
+ * row_count after a sync run: previous count + net change when a previous
+ * count exists; otherwise one full COUNT(*) to establish it.
+ *
+ * @param {D1Database} db
+ * @param {string} table
+ * @param {number|null} prevCount
+ * @param {number} delta - New rows minus rows actually deleted.
+ * @returns {Promise<number>}
+ */
+async function nextRowCount(db, table, prevCount, delta) {
+    if (prevCount !== null) return Math.max(0, prevCount + delta);
+    const total = await db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`).first();
+    return total ? /** @type {number} */ (total.cnt) : 0;
+}
+
+/**
  * Processes a single entity: fetches updates from PeeringDB since last sync,
  * upserts active rows into D1, deletes removed rows, publishes Queue messages,
  * then advances lastSync in _sync_meta.
@@ -151,15 +167,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         // ── Advance lastSync ───────────────────────────────────────────────────
         // row_count: incremental when a previous count exists (new ids minus
         // rows actually deleted); a full count only to establish it once.
-        let rowCount;
-        if (prevCount !== null) {
-            rowCount = Math.max(0, prevCount + (activeIds.size - existingActive) - actuallyDeleted);
-        } else {
-            const totalCount = await db.prepare(
-                `SELECT COUNT(*) as cnt FROM "${meta.table}"`
-            ).first();
-            rowCount = totalCount ? /** @type {number} */ (totalCount.cnt) : 0;
-        }
+        const rowCount = await nextRowCount(db, meta.table, prevCount, activeIds.size - existingActive - actuallyDeleted);
 
         await db.prepare(
             'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, ?, datetime(\'now\'), ?)'

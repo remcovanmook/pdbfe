@@ -81,7 +81,8 @@ export async function ensureColumns(db, table, apiColumns) {
         }
 
         console.warn(`[sync] auto-adding column "${col}" to ${table}`);
-        await db.prepare(`ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`).run();
+        // Sequential on purpose: schema changes, rare, one column at a time.
+        await db.prepare(`ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT`).run(); // NOSONAR
         existing.add(col);
     }
 
@@ -127,7 +128,9 @@ export async function upsertActiveRows(db, meta, activeRows) {
             const { sql, params } = buildUpsert(meta.table, columns, row, notNullStrings);
             return db.prepare(sql).bind(...params);
         });
-        await db.batch(statements);
+        // Sequential on purpose: D1 caps a batch at 100 statements; batches are
+        // written in order and memory stays bounded.
+        await db.batch(statements); // NOSONAR
     }
 }
 
@@ -163,6 +166,7 @@ export async function publishTasks(queue, tag, activeRows, deletedIds) {
     }
     const QUEUE_BATCH = 100;
     for (let i = 0; i < messages.length; i += QUEUE_BATCH) {
-        await queue.sendBatch(messages.slice(i, i + QUEUE_BATCH));
+        // Sequential on purpose: Queues caps sendBatch at 100 messages.
+        await queue.sendBatch(messages.slice(i, i + QUEUE_BATCH)); // NOSONAR
     }
 }

@@ -33,7 +33,6 @@ export const STALE_ABS = 50;
 export const STALE_PCT = 0.02;
 export const MISSING_FETCH_CAP = 3000;
 const ID_IN_CHUNK = 150;
-const DELETE_CHUNK = 500;
 const UPSTREAM_GAP_MS = 3500;
 
 /**
@@ -76,7 +75,8 @@ export async function runHealthCheck(env, opts = {}) {
     const tables = [];
     for (const [tag, meta] of Object.entries(ENTITIES)) {
         if (opts.tags && !opts.tags.includes(tag)) continue;
-        tables.push(await checkTable(env, tag, meta, upstream));
+        // Sequential on purpose: one table at a time keeps upstream requests paced.
+        tables.push(await checkTable(env, tag, meta, upstream)); // NOSONAR
     }
 
     /** @type {HealthReport} */
@@ -115,69 +115,99 @@ async function checkTable(env, tag, meta, upstream) {
     try {
         const upRows = await upstream(`${tag}?fields=id&depth=0&limit=0`);
         const upIds = new Set(upRows.map((r) => r.id).filter((id) => Number.isInteger(id) && id > 0));
-        t.upstream = upIds.size;
-
         const mirrorRes = await db.prepare(`SELECT id FROM "${meta.table}"`).all();
         const mirrorIds = new Set((mirrorRes.results || []).map((r) => /** @type {number} */ (r.id)));
+        t.upstream = upIds.size;
         t.mirror = mirrorIds.size;
 
-        if (upIds.size === 0) {
-            t.action = 'error';
-            t.error = 'upstream id list is empty — refusing to compare';
-            console.error(`[health] ${tag}: ${t.error}`);
-            return t;
-        }
+        if (upIds.size === 0) throw new Error('upstream id list is empty — refusing to compare');
 
         const stale = [...mirrorIds].filter((id) => !upIds.has(id)).sort((a, b) => a - b);
         const missing = [...upIds].filter((id) => !mirrorIds.has(id)).sort((a, b) => a - b);
         t.stale = stale.length;
         t.missing = missing.length;
 
-        // ── stale rows: delete, unless suspiciously many ─────────────────
-        const staleLimit = Math.max(STALE_ABS, Math.ceil(mirrorIds.size * STALE_PCT));
-        if (stale.length > staleLimit) {
-            t.alerts.push(`${stale.length} stale rows exceed the safety limit of ${staleLimit}; not deleting`);
-        } else if (stale.length > 0) {
-            for (let i = 0; i < stale.length; i += DELETE_CHUNK) {
-                await db.prepare(`DELETE FROM "${meta.table}" WHERE id IN (SELECT value FROM json_each(?))`)
-                    .bind(JSON.stringify(stale.slice(i, i + DELETE_CHUNK))).run();
-            }
-            t.deleted = stale;
-        }
-
-        // ── missing rows: fetch by id and upsert ─────────────────────────
-        const toFetch = missing.slice(0, MISSING_FETCH_CAP);
-        if (missing.length > toFetch.length) {
-            t.alerts.push(`${missing.length} missing rows; fetched the first ${toFetch.length} (cap ${MISSING_FETCH_CAP})`);
-        }
-        /** @type {Record<string, any>[]} */
-        const fetched = [];
-        for (let i = 0; i < toFetch.length; i += ID_IN_CHUNK) {
-            const chunk = toFetch.slice(i, i + ID_IN_CHUNK);
-            const rows = await upstream(`${tag}?id__in=${chunk.join(',')}&depth=0&limit=0`);
-            for (const r of rows) {
-                if (Number.isInteger(r.id) && r.id > 0 && r.status !== 'deleted') fetched.push(r);
-            }
-        }
+        t.deleted = await deleteStale(db, meta, stale, mirrorIds.size, t.alerts);
+        const fetched = await fetchMissing(tag, missing, upstream, t.alerts);
         await upsertActiveRows(db, meta, fetched);
         t.inserted = fetched.map((r) => r.id);
-
         await publishTasks(env.QUEUE, tag, fetched, t.deleted);
 
-        // ── recount (weekly, so the incremental row_count cannot drift) ──
+        // Weekly recount, so the sync's incremental row_count cannot drift.
         const cnt = await db.prepare(`SELECT COUNT(*) AS cnt FROM "${meta.table}"`).first();
         t.rowCount = cnt ? /** @type {number} */ (cnt.cnt) : 0;
         await db.prepare('UPDATE "_sync_meta" SET row_count = ? WHERE entity = ?').bind(t.rowCount, tag).run();
 
-        if (t.deleted.length || t.inserted.length) {
-            t.action = 'repaired';
-            console.error(`[health] REPAIRED ${tag}: deleted ${t.deleted.length} stale (${t.deleted.slice(0, 20).join(',')}${t.deleted.length > 20 ? ',…' : ''}), inserted ${t.inserted.length} missing (${t.inserted.slice(0, 20).join(',')}${t.inserted.length > 20 ? ',…' : ''})`);
-        }
-        for (const a of t.alerts) console.error(`[health] ALERT ${tag}: ${a}`);
+        if (t.deleted.length || t.inserted.length) t.action = 'repaired';
     } catch (err) {
         t.action = 'error';
         t.error = /** @type {Error} */ (err).message;
-        console.error(`[health] ${tag}: ${t.error}`);
     }
+    logTable(t);
     return t;
+}
+
+/**
+ * Deletes stale rows in one statement, unless there are suspiciously many
+ * (a truncated upstream list must never wipe the mirror) — then alerts.
+ *
+ * @param {D1Database} db
+ * @param {Pick<EntityMeta, 'table'>} meta
+ * @param {number[]} stale - Ids present here but not upstream.
+ * @param {number} mirrorSize - Rows in the table.
+ * @param {string[]} alerts - Mutated.
+ * @returns {Promise<number[]>} Ids deleted.
+ */
+async function deleteStale(db, meta, stale, mirrorSize, alerts) {
+    if (stale.length === 0) return [];
+    const limit = Math.max(STALE_ABS, Math.ceil(mirrorSize * STALE_PCT));
+    if (stale.length > limit) {
+        alerts.push(`${stale.length} stale rows exceed the safety limit of ${limit}; not deleting`);
+        return [];
+    }
+    await db.prepare(`DELETE FROM "${meta.table}" WHERE id IN (SELECT value FROM json_each(?))`)
+        .bind(JSON.stringify(stale)).run();
+    return stale;
+}
+
+/**
+ * Fetches missing rows from upstream by id (ID_IN_CHUNK per request, at most
+ * MISSING_FETCH_CAP per run), returning the non-deleted ones.
+ *
+ * @param {string} tag
+ * @param {number[]} missing - Ids upstream lists but the mirror lacks.
+ * @param {(path: string) => Promise<Record<string, any>[]>} upstream - Paced fetcher.
+ * @param {string[]} alerts - Mutated.
+ * @returns {Promise<Record<string, any>[]>}
+ */
+async function fetchMissing(tag, missing, upstream, alerts) {
+    const toFetch = missing.slice(0, MISSING_FETCH_CAP);
+    if (missing.length > toFetch.length) {
+        alerts.push(`${missing.length} missing rows; fetched the first ${toFetch.length} (cap ${MISSING_FETCH_CAP})`);
+    }
+    /** @type {Record<string, any>[]} */
+    const fetched = [];
+    for (let i = 0; i < toFetch.length; i += ID_IN_CHUNK) {
+        const chunk = toFetch.slice(i, i + ID_IN_CHUNK);
+        // Sequential on purpose: upstream requests must be paced (published rate limits).
+        const rows = await upstream(`${tag}?id__in=${chunk.join(',')}&depth=0&limit=0`); // NOSONAR
+        for (const r of rows) {
+            if (Number.isInteger(r.id) && r.id > 0 && r.status !== 'deleted') fetched.push(r);
+        }
+    }
+    return fetched;
+}
+
+/**
+ * Logs a table's outcome loudly (console.error for anything but a clean pass).
+ * @param {TableReport} t
+ */
+function logTable(t) {
+    /** @param {number[]} xs */
+    const sample = (xs) => `${xs.slice(0, 20).join(',')}${xs.length > 20 ? ',…' : ''}`;
+    if (t.action === 'repaired') {
+        console.error(`[health] REPAIRED ${t.tag}: deleted ${t.deleted.length} stale (${sample(t.deleted)}), inserted ${t.inserted.length} missing (${sample(t.inserted)})`);
+    }
+    for (const a of t.alerts) console.error(`[health] ALERT ${t.tag}: ${a}`);
+    if (t.error) console.error(`[health] ${t.tag}: ${t.error}`);
 }

@@ -39,50 +39,63 @@ def ids(xs, n=40):
     return ", ".join(map(str, xs[:n])) + (f", … (+{len(xs) - n})" if len(xs) > n else "")
 
 
-def main():
-    run = latest_run()
-    now = dt.datetime.now(dt.timezone.utc)
-    lines, attention, reasons = [], False, []
-
+def evaluate(run, now):
+    """Return (attention, reasons) for the latest run (None = never ran)."""
     if run is None:
-        attention, reasons = True, ["no health check run has ever been recorded"]
-        report = None
-    else:
-        report = json.loads(run["report"])
-        started = dt.datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
-        age = (now - started).days
-        if age > MAX_AGE_DAYS:
-            attention = True
-            reasons.append(f"latest run is {age} days old (weekly cron missed?)")
-        for key, label in (("repaired", "table(s) repaired"), ("errors", "error(s)"), ("alerts", "alert(s)")):
-            if run[key]:
-                attention = True
-                reasons.append(f"{run[key]} {label}")
+        return True, ["no health check run has ever been recorded"]
+    reasons = []
+    started = dt.datetime.fromisoformat(run["started_at"].replace("Z", "+00:00"))
+    age = (now - started).days
+    if age > MAX_AGE_DAYS:
+        reasons.append(f"latest run is {age} days old (weekly cron missed?)")
+    for key, label in (("repaired", "table(s) repaired"), ("errors", "error(s)"), ("alerts", "alert(s)")):
+        if run[key]:
+            reasons.append(f"{run[key]} {label}")
+    return bool(reasons), reasons
 
-    title = f"Mirror health: {'; '.join(reasons) if reasons else 'clean'}"
-    lines.append(f"## {title}\n")
+
+def fmt(v):
+    return "-" if v is None else str(v)
+
+
+def table_row(t):
+    action = "ok" if t["action"] == "ok" else f"**{t['action']}**"
+    return (f"| {t['tag']} | {fmt(t['upstream'])} | {fmt(t['mirror'])} | {t['stale']} | {t['missing']} "
+            f"| {len(t['deleted'])} | {len(t['inserted'])} | {fmt(t['rowCount'])} | {action} |")
+
+
+def table_details(t):
+    out = []
+    if t["deleted"]:
+        out.append(f"- **{t['tag']}** deleted stale: {ids(t['deleted'])}")
+    if t["inserted"]:
+        out.append(f"- **{t['tag']}** inserted missing: {ids(t['inserted'])}")
+    out.extend(f"- **{t['tag']}** ALERT: {a}" for a in t["alerts"])
+    if t["error"]:
+        out.append(f"- **{t['tag']}** ERROR: {t['error']}")
+    return out
+
+
+def render(title, run, report):
+    lines = [f"## {title}\n"]
     if report:
         lines.append(f"Run `#{run['id']}` started {report['startedAt']}, finished {report['finishedAt']}.\n")
         lines.append("| table | upstream | mirror | stale | missing | deleted | inserted | row_count | action |")
         lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---|")
-        for t in report["tables"]:
-            lines.append(f"| {t['tag']} | {t['upstream'] if t['upstream'] is not None else '-'} | {t['mirror'] if t['mirror'] is not None else '-'} "
-                         f"| {t['stale']} | {t['missing']} | {len(t['deleted'])} | {len(t['inserted'])} "
-                         f"| {t['rowCount'] if t['rowCount'] is not None else '-'} | {'**' + t['action'] + '**' if t['action'] != 'ok' else 'ok'} |")
-        details = []
-        for t in report["tables"]:
-            if t["deleted"]:
-                details.append(f"- **{t['tag']}** deleted stale: {ids(t['deleted'])}")
-            if t["inserted"]:
-                details.append(f"- **{t['tag']}** inserted missing: {ids(t['inserted'])}")
-            for a in t["alerts"]:
-                details.append(f"- **{t['tag']}** ALERT: {a}")
-            if t["error"]:
-                details.append(f"- **{t['tag']}** ERROR: {t['error']}")
+        lines.extend(table_row(t) for t in report["tables"])
+        details = [d for t in report["tables"] for d in table_details(t)]
         if details:
             lines.append("\n### Details\n")
             lines.extend(details)
-    body = "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    run = latest_run()
+    report = json.loads(run["report"]) if run else None
+    attention, reasons = evaluate(run, dt.datetime.now(dt.timezone.utc))
+    title = f"Mirror health: {'; '.join(reasons) if reasons else 'clean'}"
+    body = render(title, run, report)
 
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
         f.write(body)
