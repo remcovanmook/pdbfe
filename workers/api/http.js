@@ -84,6 +84,24 @@ export const H_API_SHARED = Object.freeze({ ...H_API_NO_VARY, [SHARED_MARKER]: "
 export const H_NOCACHE_AUTH = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "authenticated" });
 export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "unauthenticated" });
 
+/**
+ * Builds a Server-Timing value for a served response: auth resolution, the
+ * per-PoP L2 lookup and the D1 query (the latter two only on L1 misses).
+ * Note: the edge cache stores this header with the response, so on an edge
+ * HIT it describes the request that filled the cache (as X-Timer does).
+ *
+ * @param {number|undefined} authMs - Auth resolution time.
+ * @param {{tier: string, l2Ms?: number, dbMs?: number}} r - Pipeline result.
+ * @returns {string}
+ */
+export function serverTiming(authMs, r) {
+    let v = `cache;desc="${r.tier}"`;
+    if (authMs !== undefined) v += `, auth;dur=${authMs}`;
+    if (r.l2Ms !== undefined) v += `, l2;dur=${r.l2Ms}`;
+    if (r.dbMs !== undefined) v += `, db;dur=${r.dbMs}`;
+    return v;
+}
+
 /** Default cache metadata for responses that bypassed all cache tiers. */
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
@@ -98,7 +116,7 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  *
  * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
- * @param {{tier: import('./cache.js').CacheTier, hits: number}} [meta] - Cache metadata for X-Cache headers.
+ * @param {{tier: import('./cache.js').CacheTier, hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
  * @param {number} [lastModifiedMs] - Entity last-modified epoch ms. When >0, sets Last-Modified.
@@ -111,6 +129,7 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
     /** @type {Record<string, string>} */
     const extra = {};
     if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
+    if (meta.timing) extra['Server-Timing'] = meta.timing;
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable

@@ -14,7 +14,7 @@ import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
 import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
-import { encoder, encodeJSON, serveJSON, jsonError } from '../http.js';
+import { encoder, encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
 import { parseJsonFields, countRowsBytes } from './shared.js';
 
 /**
@@ -42,10 +42,11 @@ export async function handleList(hc) {
     }
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const { buf, tier, hits } = await withEdgeSWR(
+    const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
         () => executeListQuery(db, entity, filters, opts, authenticated)
     );
+    const { buf, tier, hits } = result;
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
     // Pre-fetch next page in background if paginated. Count rows directly from
@@ -66,7 +67,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits }, hc.hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hc.hApi, hc.entityVersionMs, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -170,13 +171,14 @@ async function handlePaged(hc, entity, paging) {
     const base = qIdx === -1 ? request.url : request.url.slice(0, qIdx);
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const { buf, tier, hits } = await withEdgeSWR(
+    const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
         () => buildPagedEnvelope(db, entity, filters, opts, { page, perPage, base, queryString },
             (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated))
     );
+    const { buf, tier, hits } = result;
     if (!buf) return jsonError(404, 'Invalid page.');
-    return serveJSON(request, buf, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**

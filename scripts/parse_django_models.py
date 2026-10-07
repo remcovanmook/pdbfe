@@ -857,6 +857,7 @@ def generate_schema_sql(entities, schema_version="unknown"):
       - FK _id columns (for JOIN performance)
       - name, country, city, irr_as_set (COLLATE NOCASE for filtering)
       - asn (numeric lookup)
+      - updated (every ?since= query)
 
     Returns the full SQL string.
     """
@@ -944,6 +945,12 @@ def generate_schema_sql(entities, schema_version="unknown"):
                     f'CREATE INDEX IF NOT EXISTS "{table}_{name}_idx" '
                     f'ON "{table}" ("{name}");'
                 )
+        # ?since= filters every list on `updated` (incremental sync clients
+        # issue one per table per run); without this it is a full table scan.
+        indexes.append(
+            f'CREATE INDEX IF NOT EXISTS "{table}_updated_idx" '
+            f'ON "{table}" ("updated");'
+        )
         if indexes:
             lines.extend(indexes)
 
