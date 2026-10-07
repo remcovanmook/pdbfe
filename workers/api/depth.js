@@ -132,8 +132,73 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
         }
     }
 
+    // Upstream many-to-many sets through a link table (ix.fac_set, ixlan.net_set)
+    if (THROUGH_SETS[entity.tag]) {
+        await expandThroughSets(db, entity, rows, depth, authenticated, pdbfe);
+    }
+
     // Parent org expansion (depth≥1, org-only to match upstream)
     await expandParentOrg(db, entity, rows, pdbfe);
+}
+
+/**
+ * Upstream PeeringDB sets that reach the *other* side of a link table:
+ * ix.fac_set lists facilities (via ixfac), ixlan.net_set lists networks (via
+ * netixlan). depth=1 → distinct target ids, depth=2 → full target objects.
+ * The mirror's own link-row sets (ixfac_set, netixlan_set) stay alongside as
+ * extensions; the frontend uses them.
+ *
+ * @type {Record<string, Array<{field: string, link: string, parentFk: string, targetFk: string, targetTag: string}>>}
+ */
+const THROUGH_SETS = {
+    ix: [{ field: 'fac_set', link: 'peeringdb_ix_facility', parentFk: 'ix_id', targetFk: 'fac_id', targetTag: 'fac' }],
+    ixlan: [{ field: 'net_set', link: 'peeringdb_network_ixlan', parentFk: 'ixlan_id', targetFk: 'net_id', targetTag: 'net' }],
+};
+
+/**
+ * Expands THROUGH_SETS for the parent rows: one query per set, joined from
+ * the link table to the target table, both restricted to status='ok'.
+ *
+ * @param {D1Session} db - The D1 database binding.
+ * @param {EntityMeta} entity - The parent entity metadata.
+ * @param {Record<string, any>[]} rows - The parent result rows.
+ * @param {number} depth - 1 (ids) or 2 (objects).
+ * @param {boolean} authenticated - Caller auth state (gated target columns).
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
+ * @returns {Promise<void>}
+ */
+async function expandThroughSets(db, entity, rows, depth, authenticated, pdbfe) {
+    const { rowMap, parentIds } = buildRowMap(rows);
+    if (parentIds.length === 0) return;
+
+    const tasks = THROUGH_SETS[entity.tag].map(async (ts) => { // ap-ok: cold path behind cachedQuery
+        for (const row of rows) row[ts.field] = [];
+
+        const target = ENTITIES[ts.targetTag];
+        const params = [JSON.stringify(parentIds)];
+        const from = ` FROM "${ts.link}" AS l JOIN "${target.table}" AS t ON t."id" = l."${ts.targetFk}"` +
+            ` WHERE l."${ts.parentFk}" ${IN_IDS} AND l."status" = 'ok' AND t."status" = 'ok'`;
+
+        if (depth >= 2) {
+            const cols = getColumns(target, pdbfe).map(c => selectColumn(target.table, c, 't.', authenticated)).join(', '); // ap-ok: SQL construction
+            const sql = `SELECT DISTINCT l."${ts.parentFk}" AS "__parent", ${cols}${from} ORDER BY t."id" ASC`;
+            const result = await db.prepare(sql).bind(...params).all();
+            for (const child of result.results || []) {
+                const parentRow = rowMap.get(/** @type {number} */ (child.__parent));
+                if (!parentRow) continue;
+                delete child.__parent;
+                parseJsonFields(target, child);
+                parentRow[ts.field].push(child);
+            }
+        } else {
+            const sql = `SELECT DISTINCT l."${ts.parentFk}" AS "p", t."id" AS "c"${from} ORDER BY t."id" ASC`;
+            const result = await db.prepare(sql).bind(...params).all();
+            for (const r of result.results || []) {
+                rowMap.get(/** @type {number} */ (r.p))?.[ts.field].push(r.c);
+            }
+        }
+    });
+    await Promise.all(tasks);
 }
 
 /**
