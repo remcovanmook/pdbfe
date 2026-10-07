@@ -280,6 +280,12 @@ export function attachTypeahead(input, opts = {}) {
         }
     });
 
+    // Keep focus in the input while pressing on the dropdown. Without this a
+    // mousedown on a result blurs the input, the blur handler below closes
+    // the dropdown after 150 ms, and a click held longer than that (normal on
+    // trackpads and touch) lands on nothing — no navigation.
+    dropdown.addEventListener('mousedown', (e) => e.preventDefault());
+
     // Click on dropdown item → navigate
     dropdown.addEventListener('click', (e) => {
         const item = /** @type {HTMLElement|null} */ (/** @type {Element} */ (e.target).closest('.search-dropdown__item'));
