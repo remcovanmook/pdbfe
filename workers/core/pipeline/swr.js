@@ -58,6 +58,8 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
  *        returning the entity's version number for L2 key tagging.
  * @param {number} [opts.staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
+ * @param {boolean} [opts.useL2=true] - Consult/populate the per-PoP L2 cache on a miss.
+ *        False for keys that will not repeat (e.g. ?since= with a fresh timestamp).
  * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number, l2Ms?: number, dbMs?: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
@@ -66,7 +68,7 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
 export async function withSWR({
     cache, cacheKey, ctx, ttlMs, negativeTtlMs,
     queryFn, tag, emptySentinel = EMPTY_ENVELOPE,
-    getVersion, staleMs,
+    getVersion, staleMs, useL2 = true,
 }) {
     const effectiveStaleMs = staleMs !== undefined ? staleMs : Math.floor(ttlMs * 0.8);
 
@@ -74,7 +76,7 @@ export async function withSWR({
     const pipelineOpts = {
         cacheKey, cache, entityTag: tag, ttlMs,
         negativeTtlMs, queryFn, getVersion, ctx,
-        emptySentinel,
+        emptySentinel, useL2,
     };
 
     // ── SYNCHRONOUS DESTRUCTURE ──────────────────────────────────────

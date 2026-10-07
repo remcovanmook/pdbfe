@@ -44,9 +44,11 @@ export async function handleList(hc) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
-        () => executeListQuery(db, entity, filters, opts, authenticated)
+        () => executeListQuery(db, entity, filters, opts, authenticated),
+        undefined, opts.since === 0 // ?since= keys carry a fresh timestamp: skip L2
     );
     const { buf, tier, hits } = result;
+    hc.pipeline = result;
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
     // Pre-fetch next page in background if paginated. Count rows directly from
@@ -177,6 +179,7 @@ async function handlePaged(hc, entity, paging) {
             (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated))
     );
     const { buf, tier, hits } = result;
+    hc.pipeline = result;
     if (!buf) return jsonError(404, 'Invalid page.');
     return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hApi, hc.entityVersionMs, hc.userId);
 }

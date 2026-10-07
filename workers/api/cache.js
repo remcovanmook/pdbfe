@@ -172,12 +172,13 @@ export function purgeAllCaches() {
  *        null for 404/empty.
  * @param {number} [staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
+ * @param {boolean} [useL2=true] - Consult/populate L2 on a miss (false for non-repeating keys).
  * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
  */
-export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs) {
+export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs, useL2 = true) {
     return withSWR({
         cache: getEntityCache(entityTag),
         cacheKey,
@@ -189,6 +190,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
 
         getVersion: getEntityVersion,
         staleMs,
+        useL2,
     });
 }
 

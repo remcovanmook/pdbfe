@@ -283,6 +283,13 @@ interface PdbApiEnv {
     ADMIN_SECRET?: string;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
+    /** Workers Analytics Engine dataset for cache-tier counters (optional; absent in tests/dev). */
+    METRICS?: AnalyticsEngineDataset;
+}
+
+/** Minimal Workers Analytics Engine binding surface used by the API worker. */
+interface AnalyticsEngineDataset {
+    writeDataPoint(event?: { blobs?: (string | null)[]; doubles?: number[]; indexes?: (string | null)[] }): void;
 }
 
 /**
@@ -681,4 +688,6 @@ interface HandlerContext {
     paging?: { page: string, perPage: string | null } | null;
     /** Auth resolution time (ms), reported in Server-Timing. */
     authMs?: number;
+    /** Pipeline result of the request (set by list/detail handlers) for tier metrics. */
+    pipeline?: { tier: string, l2Ms?: number, dbMs?: number };
 }

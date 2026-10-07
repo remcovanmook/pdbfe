@@ -29,9 +29,11 @@ export async function handleDetail(hc, id) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, DETAIL_TTL,
-        () => executeDetailQuery(db, entity, filters, opts, id, authenticated)
+        () => executeDetailQuery(db, entity, filters, opts, id, authenticated),
+        undefined, opts.since === 0 // ?since= keys carry a fresh timestamp: skip L2
     );
     const { buf, tier, hits } = result;
+    hc.pipeline = result;
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
