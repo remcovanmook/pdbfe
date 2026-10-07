@@ -58,7 +58,7 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
  *        returning the entity's version number for L2 key tagging.
  * @param {number} [opts.staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number, l2Ms?: number, dbMs?: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
@@ -117,5 +117,5 @@ export async function withSWR({
 
     // ── CACHE MISS (blocking) ────────────────────────────────────────
     const result = await cachedQuery(pipelineOpts);
-    return { buf: result.buf, tier: result.tier, hits: 0 };
+    return { buf: result.buf, tier: result.tier, hits: 0, l2Ms: result.l2Ms, dbMs: result.dbMs };
 }

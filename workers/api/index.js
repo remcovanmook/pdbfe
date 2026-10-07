@@ -68,7 +68,9 @@ async function handleRequest(request, env, ctx) {
     initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
+    const tAuth = Date.now();
     const { authenticated, identity: authIdentity, userId, rejection } = await resolveAuth(request, env);
+    const authMs = Date.now() - tAuth;
     if (rejection) return jsonError(403, rejection);
 
     // Pre-select header sets based on auth state. These frozen objects
@@ -259,7 +261,7 @@ async function handleRequest(request, env, ctx) {
     // serveJSON can bake Last-Modified and X-Auth-Id into the initial
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging };
+    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
     return id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);

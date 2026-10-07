@@ -62,7 +62,7 @@ export function isNegative(buf, sentinel = EMPTY_ENVELOPE) {
  */
 
 /**
- * @typedef {{buf: Uint8Array|null, tier: CacheTier}} CachedResult
+ * @typedef {{buf: Uint8Array|null, tier: CacheTier, l2Ms?: number, dbMs?: number}} CachedResult
  */
 
 /**
@@ -143,18 +143,24 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryF
     const version = getVersion ? getVersion(entityTag) : 0;
     const l2Key = version ? `v/${version}/${cacheKey}` : cacheKey;
 
+    // Phase timings for Server-Timing. Workers clocks advance across I/O,
+    // which is exactly what these two awaits are.
+    const tL2 = Date.now();
     const l2Buf = await getL2(l2Key);
+    const l2Ms = Date.now() - tL2;
     if (l2Buf) {
         if (isNegative(l2Buf, emptySentinel)) {
             cache.add(cacheKey, emptySentinel, { entityTag }, Date.now());
-            return { buf: null, tier: 'L2' };
+            return { buf: null, tier: 'L2', l2Ms };
         }
         cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
-        return { buf: l2Buf, tier: 'L2' };
+        return { buf: l2Buf, tier: 'L2', l2Ms };
     }
 
     // ── Backend query ────────────────────────────────────────────
+    const tDb = Date.now();
     const buf = await queryFn();
+    const dbMs = Date.now() - tDb;
 
     // ── Cache write-back ─────────────────────────────────────────
     if (buf === null) {
@@ -162,11 +168,11 @@ async function _resolve(cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryF
         cache.add(cacheKey, emptySentinel, { entityTag }, Date.now());
         const negWrite = putL2(l2Key, emptySentinel, negativeTtlMs / 1000);
         if (ctx) ctx.waitUntil(negWrite);
-        return { buf: null, tier: 'MISS' };
+        return { buf: null, tier: 'MISS', l2Ms, dbMs };
     }
 
     cache.add(cacheKey, buf, { entityTag }, Date.now());
     const posWrite = putL2(l2Key, buf, ttlMs / 1000);
     if (ctx) ctx.waitUntil(posWrite);
-    return { buf, tier: 'MISS' };
+    return { buf, tier: 'MISS', l2Ms, dbMs };
 }

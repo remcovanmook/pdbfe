@@ -679,4 +679,6 @@ interface HandlerContext {
     userId?: number | null;
     /** Raw ?page / ?per_page for page-number pagination on list requests (null when absent). */
     paging?: { page: string, perPage: string | null } | null;
+    /** Auth resolution time (ms), reported in Server-Timing. */
+    authMs?: number;
 }

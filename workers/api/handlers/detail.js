@@ -10,7 +10,7 @@ import { buildJsonQuery, buildRowQuery } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
-import { encoder, encodeJSON, serveJSON, jsonError } from '../http.js';
+import { encoder, encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
 import { parseJsonFields } from './shared.js';
 
 /**
@@ -27,14 +27,15 @@ export async function handleDetail(hc, id) {
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
-    const { buf, tier, hits } = await withEdgeSWR(
+    const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, DETAIL_TTL,
         () => executeDetailQuery(db, entity, filters, opts, id, authenticated)
     );
+    const { buf, tier, hits } = result;
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    return serveJSON(request, buf, { tier, hits }, hc.hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hc.hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**
