@@ -39,6 +39,25 @@ export const HEALTH_CRON = '7 3 * * 0';
 
 
 /**
+ * Deletes rows upstream reports as deleted; returns how many actually existed
+ * (upstream also reports deletions of rows the mirror never had).
+ *
+ * @param {D1Database} db
+ * @param {string} table
+ * @param {Record<string, any>[]} deletedRows
+ * @returns {Promise<number>}
+ */
+async function deleteRows(db, table, deletedRows) {
+    if (deletedRows.length === 0) return 0;
+    const results = await db.batch(deletedRows.map(row =>
+        db.prepare(`DELETE FROM "${table}" WHERE id = ?`).bind(row.id)
+    ));
+    let removed = 0;
+    for (const r of results || []) removed += Number(r?.meta?.changes ?? 0);
+    return removed;
+}
+
+/**
  * How many of `ids` already exist in `table` — one json_each probe that reads
  * only those ids (a COUNT(*) of the whole table bills every row).
  *
@@ -157,14 +176,8 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         await upsertActiveRows(db, meta, activeRows);
         result.updated = activeRows.length;
 
-        let actuallyDeleted = 0;
+        const actuallyDeleted = await deleteRows(db, meta.table, deletedRows);
         if (deletedRows.length > 0) {
-            const deleteStmts = deletedRows.map(row =>
-                db.prepare(`DELETE FROM "${meta.table}" WHERE id = ?`).bind(row.id)
-            );
-            const deleteResults = await db.batch(deleteStmts);
-            // Upstream reports deletions of rows the mirror may never have had.
-            for (const r of deleteResults || []) actuallyDeleted += Number(r?.meta?.changes ?? 0);
             result.deleted = deletedRows.length;
             result.deletedIds = deletedRows.map(row => row.id);
         }
