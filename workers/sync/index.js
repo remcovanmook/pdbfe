@@ -39,6 +39,23 @@ export const HEALTH_CRON = '7 3 * * 0';
 
 
 /**
+ * How many of `ids` already exist in `table` — one json_each probe that reads
+ * only those ids (a COUNT(*) of the whole table bills every row).
+ *
+ * @param {D1Database} db
+ * @param {string} table
+ * @param {Set<number>} ids
+ * @returns {Promise<number>}
+ */
+async function countExisting(db, table, ids) {
+    if (ids.size === 0) return 0;
+    const probe = await db.prepare(
+        `SELECT COUNT(*) as cnt FROM "${table}" WHERE id IN (SELECT value FROM json_each(?))`
+    ).bind(JSON.stringify([...ids])).first();
+    return probe ? /** @type {number} */ (probe.cnt) : 0;
+}
+
+/**
  * row_count after a sync run: previous count + net change when a previous
  * count exists; otherwise one full COUNT(*) to establish it.
  *
@@ -134,15 +151,8 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         // row_count can be advanced by the genuinely new rows. One json_each
         // probe reads only those ids — a COUNT(*) of the whole table instead
         // bills every row (66k for netixlan) on every run.
-        let existingActive = 0;
         const activeIds = new Set(activeRows.map(r => r.id));
-        if (prevCount !== null && activeIds.size > 0) {
-            const ids = JSON.stringify([...activeIds]);
-            const probe = await db.prepare(
-                `SELECT COUNT(*) as cnt FROM "${meta.table}" WHERE id IN (SELECT value FROM json_each(?))`
-            ).bind(ids).first();
-            existingActive = probe ? /** @type {number} */ (probe.cnt) : 0;
-        }
+        const existingActive = prevCount === null ? 0 : await countExisting(db, meta.table, activeIds);
 
         await upsertActiveRows(db, meta, activeRows);
         result.updated = activeRows.length;

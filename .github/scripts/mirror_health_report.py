@@ -79,9 +79,11 @@ def table_details(t):
 def render(title, run, report):
     lines = [f"## {title}\n"]
     if report:
-        lines.append(f"Run `#{run['id']}` started {report['startedAt']}, finished {report['finishedAt']}.\n")
-        lines.append("| table | upstream | mirror | stale | missing | deleted | inserted | row_count | action |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---|")
+        lines.extend([
+            f"Run `#{run['id']}` started {report['startedAt']}, finished {report['finishedAt']}.\n",
+            "| table | upstream | mirror | stale | missing | deleted | inserted | row_count | action |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        ])
         lines.extend(table_row(t) for t in report["tables"])
         details = [d for t in report["tables"] for d in table_details(t)]
         if details:
