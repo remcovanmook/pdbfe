@@ -40,3 +40,10 @@ database_id = "<your-users-d1-database-id>"
 # edge cache after deploy falls to a warm L1/L2, not D1.
 [cache]
 enabled = true
+
+# Cache-tier counters (api/index.js recordCacheTier): one data point per entity
+# request that reaches the worker — tier (L1/L2/MISS), scope, entity, since flag,
+# L2/D1 phase times. Query via the Analytics Engine SQL API.
+[[analytics_engine_datasets]]
+binding = "METRICS"
+dataset = "pdbfe_api_cache"

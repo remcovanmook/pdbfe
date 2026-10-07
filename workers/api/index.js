@@ -7,7 +7,7 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
@@ -235,6 +235,7 @@ async function handleRequest(request, env, ctx) {
             status: 304,
             headers: {
                 ...hEntity,
+                ...(hEntity['Cache-Control'].startsWith('public') ? { 'Cache-Control': syncAlignedCacheControl() } : {}),
                 'Last-Modified': lastModifiedHeader(entityVersionMs),
             }
         });
@@ -262,9 +263,39 @@ async function handleRequest(request, env, ctx) {
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
     const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
-    return id > 0
+    const response = id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
+    recordCacheTier(env, hc, response.status, shared, since > 0);
+    return response;
+}
+
+/**
+ * One Analytics Engine data point per entity request that reached the
+ * worker (edge hits never do; Cloudflare's cache analytics cover those):
+ * which tier answered, for which scope and entity, and the L2 / D1 phase
+ * times. Used to decide whether the per-PoP L2 layer earns its lookup cost.
+ * No-op when the METRICS binding is absent (tests, local dev).
+ *
+ * blobs:   [tier, scope, entity, since|plain, status]
+ * doubles: [1, l2Ms, dbMs]   (-1 when the phase did not run)
+ *
+ * @param {PdbApiEnv} env
+ * @param {HandlerContext} hc
+ * @param {number} status
+ * @param {boolean} shared - Auth-independent response (api/auth_scope.js).
+ * @param {boolean} isSince - Request carried ?since=.
+ */
+function recordCacheTier(env, hc, status, shared, isSince) {
+    if (!env.METRICS) return;
+    let scope = hc.authenticated ? 'auth' : 'anon';
+    if (shared) scope = 'shared';
+    const p = hc.pipeline;
+    env.METRICS.writeDataPoint({
+        blobs: [p ? p.tier : 'none', scope, hc.entityTag, isSince ? 'since' : 'plain', String(status)],
+        doubles: [1, p?.l2Ms ?? -1, p?.dbMs ?? -1],
+        indexes: [hc.entityTag],
+    });
 }
 
 /**

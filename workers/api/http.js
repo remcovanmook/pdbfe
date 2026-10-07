@@ -102,6 +102,48 @@ export function serverTiming(authMs, r) {
     return v;
 }
 
+/**
+ * Sync cadence the edge TTL is aligned to: the sync worker's cron
+ * (wrangler-sync.toml: "*\/15 * * * *") runs on every quarter hour, and a
+ * run takes well under a minute. A test pins these to the cron.
+ */
+export const SYNC_INTERVAL_S = 900;
+export const SYNC_GRACE_S = 60;
+/** stale-while-revalidate window on the aligned edge TTL. */
+export const SWR_S = 30;
+
+/**
+ * Seconds until the next point at which newly synced data can be visible:
+ * the next quarter-hour boundary plus SYNC_GRACE_S for the sync run itself.
+ * A response produced inside the grace window of a run that is still
+ * writing expires at the end of that window rather than a full interval
+ * later. Never less than 1.
+ *
+ * @param {number} nowSec - Current time, epoch seconds.
+ * @returns {number}
+ */
+export function secondsUntilFreshData(nowSec) {
+    const prevBoundary = nowSec - (nowSec % SYNC_INTERVAL_S);
+    let expiry = prevBoundary + SYNC_GRACE_S;
+    if (expiry <= nowSec) expiry += SYNC_INTERVAL_S;
+    return Math.max(1, expiry - nowSec);
+}
+
+/**
+ * Cache-Control for public (edge-cacheable) API responses: an absolute
+ * expiry aligned to the sync schedule instead of a fixed relative max-age.
+ * The data only changes when the sync runs, so a copy stays fresh until just
+ * after the next run. stale-while-revalidate lets the edge answer at that
+ * moment while it refetches; with a 15-minute mutation cadence the extra
+ * staleness (≤ SWR_S) is immaterial.
+ *
+ * @param {number} [nowMs] - Current time in ms (injectable for tests).
+ * @returns {string}
+ */
+export function syncAlignedCacheControl(nowMs = Date.now()) {
+    return `public, max-age=${secondsUntilFreshData(Math.floor(nowMs / 1000))}, stale-while-revalidate=${SWR_S}`;
+}
+
 /** Default cache metadata for responses that bypassed all cache tiers. */
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
@@ -130,6 +172,8 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
     const extra = {};
     if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
     if (meta.timing) extra['Server-Timing'] = meta.timing;
+    // Public responses expire just after the next sync, not after a fixed 60s.
+    if (baseHeaders['Cache-Control'].startsWith('public')) extra['Cache-Control'] = syncAlignedCacheControl();
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable
