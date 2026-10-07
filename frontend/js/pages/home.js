@@ -189,7 +189,7 @@ export async function renderHome(_params) {
         signinLink.href = `${AUTH_ORIGIN}/auth/login`;
         signinLink.className = 'auth-link';
         signinLink.textContent = '🔑 ' + t('Sign in through PeeringDB');
-        signinLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
+        signinLink.addEventListener('click', (e) => { e.preventDefault(); startLogin().catch((err) => console.error('Sign-in failed:', err)); });
         signinSection.appendChild(signinLink);
 
         rightCol.appendChild(signinSection);

@@ -462,7 +462,7 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
     searchBtn.className = 'btn btn--primary';
     searchBtn.textContent = t('Search');
     searchBtn.addEventListener('click', () => {
-        executeSearch(tabKey, fieldGetters, resultsWrap);
+        executeSearch(tabKey, fieldGetters, resultsWrap).catch((err) => console.error('Search failed:', err));
     });
     actions.appendChild(searchBtn);
 
@@ -489,7 +489,7 @@ function renderTabForm(tabKey, formWrap, resultsWrap, params) {
     // Filters in the URL mean we arrived via back/forward or a shared
     // link: re-run the search so the results come back with the form.
     if (Object.keys(buildFilters(fieldGetters)).length > 0) {
-        executeSearch(tabKey, fieldGetters, resultsWrap);
+        executeSearch(tabKey, fieldGetters, resultsWrap).catch((err) => console.error('Search failed:', err));
     }
 }
 

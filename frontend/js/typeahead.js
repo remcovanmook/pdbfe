@@ -249,7 +249,7 @@ export function attachTypeahead(input, opts = {}) {
             case 'ArrowDown':
                 e.preventDefault();
                 if (!dropdown.classList.contains('is-open')) {
-                    doSearch(input.value.trim());
+                    doSearch(input.value.trim()).catch((err) => console.error('Typeahead search failed:', err));
                 } else {
                     setActive(activeIndex + 1);
                 }

@@ -792,7 +792,7 @@ function renderAuthUI() {
         loginLink.textContent = '🔑 ' + t('Sign in');
         // Intercept so login goes through startLogin() (mints the PKCE verifier
         // + challenge). The href is kept as a no-JS fallback.
-        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
+        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin().catch((err) => console.error('Sign-in failed:', err)); });
 
         container.replaceChildren(loginLink);
     }

@@ -91,7 +91,7 @@ export async function renderAccount(_params) {
         loginLink.textContent = t('Sign in with PeeringDB');
         // Route through startLogin() to mint the PKCE verifier + challenge;
         // href kept as a no-JS fallback.
-        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin(); });
+        loginLink.addEventListener('click', (e) => { e.preventDefault(); startLogin().catch((err) => console.error('Sign-in failed:', err)); });
         body.appendChild(loginLink);
         card_.appendChild(body);
         container.replaceChildren(card_);
@@ -297,7 +297,7 @@ export async function renderAccount(_params) {
     document.getElementById('btn-create-key')?.addEventListener('click', () => showCreateDialog(sid));
 
     // Render org-grouped affiliations into the left column
-    renderAffiliations(user, netsContainer);
+    renderAffiliations(user, netsContainer).catch((err) => console.error('Affiliations failed:', err));
 
     // Wire up language preference selector — persists to server
     langSelect.addEventListener('change', async () => {
@@ -323,8 +323,8 @@ export async function renderAccount(_params) {
                 document.getElementById('lang-select')
             );
             if (footerSelect) footerSelect.value = newLang;
-            renderAccount(_params);
-        });
+            renderAccount(_params).catch((err) => console.error('Account render failed:', err));
+        }).catch((err) => console.error('Language switch failed:', err));
     });
 
     // Wire up theme preference selector — persists to server
@@ -671,7 +671,7 @@ function showCreateDialog(sid) {
     /** Closes the modal and refreshes the key list. */
     function closeModal() {
         modal.style.display = 'none';
-        loadKeys(sid);
+        loadKeys(sid).catch((err) => console.error('Loading API keys failed:', err));
     }
 
     /** Submits the create request and shows the result. */
@@ -718,7 +718,7 @@ function showCreateDialog(sid) {
                 copyBtn.onclick = () => {
                     navigator.clipboard.writeText(data.key).then(() => {
                         copyBtn.textContent = t('Copied!');
-                    });
+                    }, (err) => console.error('Copy to clipboard failed:', err));
                 };
             }
 
@@ -742,7 +742,7 @@ function showCreateDialog(sid) {
 
     // Submit on Enter
     labelInput.onkeydown = (e) => {
-        if (e.key === 'Enter') doCreate();
+        if (e.key === 'Enter') doCreate().catch((err) => console.error('Create key error:', err));
         if (e.key === 'Escape') closeModal();
     };
 }
