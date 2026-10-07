@@ -52,13 +52,13 @@ export function registerAssetLoader() {
  * @param {{maxValueBytes?: number, oversizeError?: 'toobig'|'nomem'}} [opts] -
  *     maxValueBytes: fail when any returned string column exceeds this length,
  *     with D1's SQLITE_TOOBIG (default) or SQLITE_NOMEM error.
- * @returns {{sqlite: DatabaseSync, db: any, stats: {queries: number, payloadQueries: number, tooBig: number}}}
+ * @returns {{sqlite: DatabaseSync, db: any, stats: {queries: number, payloadQueries: number, tooBig: number, sql: string[]}}}
  */
 export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toobig' } = {}) {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec(SCHEMA);
-    /** payloadQueries: json_group_array list/detail statements (`AS payload`). */
-    const stats = { queries: 0, payloadQueries: 0, tooBig: 0 };
+    /** payloadQueries: json_group_array list/detail statements (`AS payload`); sql: every statement prepared. */
+    const stats = { queries: 0, payloadQueries: 0, tooBig: 0, sql: /** @type {string[]} */ ([]) };
     const oversizeMessage = oversizeError === 'nomem'
         ? 'D1_ERROR: out of memory: SQLITE_NOMEM'
         : 'D1_ERROR: string or blob too big: SQLITE_TOOBIG';
@@ -76,7 +76,9 @@ export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toob
 
     const prepare = (/** @type {string} */ sql) => {
         const stmt = sqlite.prepare(sql);
+        stats.sql.push(sql);
         const isPayload = sql.includes('AS payload');
+        const isRead = /^\s*(SELECT|WITH|PRAGMA)/i.test(sql);
         /** @param {any[]} args */
         const bound = (args) => {
             if (args.length > D1_MAX_PARAMS) {
@@ -96,7 +98,14 @@ export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toob
                     checkSize(row);
                     return row;
                 },
-                run: async () => { stmt.run(...args); return { success: true, meta: {}, results: [] }; },
+                run: async () => {
+                    const info = stmt.run(...args);
+                    return { success: true, meta: { changes: Number(info.changes) }, results: [] };
+                },
+                // D1 batch semantics: reads return rows, writes return meta.changes.
+                exec: async () => (isRead
+                    ? { success: true, meta: {}, results: stmt.all(...args) }
+                    : { success: true, meta: { changes: Number(stmt.run(...args).changes) }, results: [] }),
             };
         };
         return { ...bound([]), bind: (/** @type {any[]} */ ...args) => bound(args) };
@@ -105,7 +114,11 @@ export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toob
     const db = {
         withSession() { return this; },
         prepare,
-        batch: async (/** @type {any[]} */ stmts) => Promise.all(stmts.map(s => s.all())),
+        batch: async (/** @type {any[]} */ stmts) => {
+            const out = [];
+            for (const s of stmts) out.push(await s.exec());
+            return out;
+        },
     };
     return { sqlite, db, stats };
 }

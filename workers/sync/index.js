@@ -135,10 +135,14 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
 
     try {
         const syncRow = await db.prepare(
-            'SELECT last_sync FROM "_sync_meta" WHERE entity = ?'
+            'SELECT last_sync, row_count FROM "_sync_meta" WHERE entity = ?'
         ).bind(tag).first();
 
         const lastSync = syncRow ? /** @type {number} */ (syncRow.last_sync) : 0;
+        // Previous row count, maintained incrementally below; null when unknown
+        // (no row yet or never counted), which triggers a one-off full count.
+        const prevCount = syncRow && typeof syncRow.row_count === 'number' && syncRow.row_count > 0
+            ? /** @type {number} */ (syncRow.row_count) : null;
 
         // Refuse to sync from epoch. Full datasets (e.g. ~300k netixlan rows)
         // exceed the 128MB isolate RAM limit. Bootstrap via the SQLite dump pipeline.
@@ -209,6 +213,20 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             }
         });
 
+        // How many incoming active ids already exist, read BEFORE the upsert so
+        // row_count can be advanced by the genuinely new rows. One json_each
+        // probe reads only those ids — a COUNT(*) of the whole table instead
+        // bills every row (66k for netixlan) on every run.
+        let existingActive = 0;
+        const activeIds = new Set(activeRows.map(r => r.id));
+        if (prevCount !== null && activeIds.size > 0) {
+            const ids = JSON.stringify([...activeIds]);
+            const probe = await db.prepare(
+                `SELECT COUNT(*) as cnt FROM "${meta.table}" WHERE id IN (SELECT value FROM json_each(?))`
+            ).bind(ids).first();
+            existingActive = probe ? /** @type {number} */ (probe.cnt) : 0;
+        }
+
         // Batch upsert active rows (D1 batch limit is 100 statements)
         const BATCH_SIZE = 50;
         for (let i = 0; i < activeRows.length; i += BATCH_SIZE) {
@@ -221,11 +239,14 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         }
         result.updated = activeRows.length;
 
+        let actuallyDeleted = 0;
         if (deletedRows.length > 0) {
             const deleteStmts = deletedRows.map(row =>
                 db.prepare(`DELETE FROM "${meta.table}" WHERE id = ?`).bind(row.id)
             );
-            await db.batch(deleteStmts);
+            const deleteResults = await db.batch(deleteStmts);
+            // Upstream reports deletions of rows the mirror may never have had.
+            for (const r of deleteResults || []) actuallyDeleted += Number(r?.meta?.changes ?? 0);
             result.deleted = deletedRows.length;
             result.deletedIds = deletedRows.map(row => row.id);
         }
@@ -267,10 +288,17 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         }
 
         // ── Advance lastSync ───────────────────────────────────────────────────
-        const totalCount = await db.prepare(
-            `SELECT COUNT(*) as cnt FROM "${meta.table}"`
-        ).first();
-        const rowCount = totalCount ? /** @type {number} */ (totalCount.cnt) : 0;
+        // row_count: incremental when a previous count exists (new ids minus
+        // rows actually deleted); a full count only to establish it once.
+        let rowCount;
+        if (prevCount !== null) {
+            rowCount = Math.max(0, prevCount + (activeIds.size - existingActive) - actuallyDeleted);
+        } else {
+            const totalCount = await db.prepare(
+                `SELECT COUNT(*) as cnt FROM "${meta.table}"`
+            ).first();
+            rowCount = totalCount ? /** @type {number} */ (totalCount.cnt) : 0;
+        }
 
         await db.prepare(
             'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, ?, datetime(\'now\'), ?)'
