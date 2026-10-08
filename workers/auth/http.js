@@ -102,20 +102,24 @@ export function handlePreflight(request, env) {
  * @param {any} body - Response body (will be JSON.stringify'd).
  * @param {number} status - HTTP status code.
  * @param {string} origin - Allowed CORS origin.
+ * @param {string} [timing] - Optional Server-Timing value.
  * @returns {Response}
  */
-export function jsonResponse(body, status, origin) {
-    return new Response(
-        JSON.stringify(body) + '\n',
-        {
-            status,
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Cache-Control': 'no-store',
-                ...accountCorsHeaders(origin),
-            },
-        }
-    );
+export function jsonResponse(body, status, origin, timing) {
+    /** @type {Record<string, string>} */
+    const headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        ...accountCorsHeaders(origin),
+    };
+    if (timing) {
+        // Phase durations (kv = session lookup, db = USERDB queries); the
+        // Timing-Allow-Origin lets the browser's Timing tab show them for
+        // this cross-origin request.
+        headers['Server-Timing'] = timing;
+        if (origin) headers['Timing-Allow-Origin'] = origin;
+    }
+    return new Response(JSON.stringify(body) + '\n', { status, headers });
 }
 
 /**
@@ -143,7 +147,7 @@ export function methodNotAllowed(allow) {
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
- * @returns {Promise<{session: SessionData|null, origin: string, error: Response|null}>}
+ * @returns {Promise<{session: SessionData|null, origin: string, error: Response|null, kvMs?: number}>} kvMs: session lookup time (Server-Timing).
  */
 export async function requireSession(request, env) {
     const origin = resolveAllowedOrigin(request, env);
@@ -159,12 +163,14 @@ export async function requireSession(request, env) {
         return { session: null, origin, error: jsonResponse({ error: 'Authentication required' }, 401, origin) };
     }
 
+    const tKv = Date.now();
     const session = await resolveSession(env.SESSIONS, sid);
+    const kvMs = Date.now() - tKv;
     if (!session) {
-        return { session: null, origin, error: jsonResponse({ error: 'Invalid or expired session' }, 401, origin) };
+        return { session: null, origin, error: jsonResponse({ error: 'Invalid or expired session' }, 401, origin, `kv;dur=${kvMs}`) };
     }
 
-    return { session, origin, error: null };
+    return { session, origin, error: null, kvMs };
 }
 
 // ── User record helpers ──────────────────────────────────────────────────────
