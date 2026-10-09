@@ -77,7 +77,7 @@ done
 
 # ── Step 0: Generate configs ─────────────────────────────────────────────────
 #
-# Generates wrangler toml configs and frontend config.js from .example
+# Generates wrangler toml configs, frontend config.js and frontend _headers from .example
 # templates using environment variables. Called from CI before the deploy
 # step. Exits immediately after generation so callers can keep steps separate.
 
@@ -164,6 +164,10 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
     sed \
         -e "s|<your-domain>|${API_DOMAIN}|g" \
         "$REPO_ROOT/frontend/js/config.js.example" > "$REPO_ROOT/frontend/js/config.js"
+
+    # Pages response headers (no placeholders; generated so the deployed file
+    # stays gitignored like the other configs)
+    cp "$REPO_ROOT/frontend/_headers.example" "$REPO_ROOT/frontend/_headers"
 
     pass "Configs generated (version ${PDBFE_VERSION}, domain ${API_DOMAIN})"
     exit 0
