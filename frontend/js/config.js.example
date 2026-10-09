@@ -4,8 +4,12 @@ export const AUTH_ORIGIN = 'https://auth.<your-domain>';
 /** Origin of the pdbfe-api worker (no trailing slash). */
 export const API_ORIGIN = 'https://api.<your-domain>';
 
-/** Public R2 bucket origin for mirrored entity logos (no trailing slash). Empty to use upstream logos. */
-export const IMAGES_ORIGIN = '';
+/**
+ * Public R2 bucket origin for mirrored entity logos (no trailing slash).
+ * Also enables the pdbfe extension fields (__pdbfe=1) that carry
+ * __logo_migrated. Set to '' to use upstream S3 logos only.
+ */
+export const IMAGES_ORIGIN = 'https://images.<your-domain>';
 
 /** S3 URL prefix to strip when building R2 logo paths. */
 export const S3_MEDIA_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';

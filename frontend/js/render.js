@@ -622,10 +622,16 @@ export function createDetailLayout(opts) {
         // Attach handlers BEFORE setting src — cached images fire
         // load synchronously and would be missed otherwise.
         logo.onload = () => { logo.style.display = ''; };
-        logo.onerror = () => { logo.remove(); };
         if (IMAGES_ORIGIN && opts.logoMigrated && opts.logoUrl.startsWith(S3_MEDIA_PREFIX)) {
+            // R2 mirror first; if it misses, fall back to the upstream URL once.
+            const upstream = opts.logoUrl;
+            logo.onerror = () => {
+                logo.onerror = () => { logo.remove(); };
+                logo.src = upstream;
+            };
             logo.src = `${IMAGES_ORIGIN}/${opts.logoUrl.slice(S3_MEDIA_PREFIX.length)}`;
         } else {
+            logo.onerror = () => { logo.remove(); };
             logo.src = opts.logoUrl;
         }
 
