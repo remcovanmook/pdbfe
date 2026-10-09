@@ -1,14 +1,19 @@
+# Cloudflare Pages headers. deploy.sh --generate-configs copies this to
+# frontend/_headers (gitignored), which `wrangler pages deploy` uploads.
+
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
-  Content-Security-Policy: default-src 'self'; connect-src 'self' https://pdbfe-api.<your-subdomain>.workers.dev https://pdbfe-auth.<your-subdomain>.workers.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' https://static.cloudflareinsights.com;
 
-/css/*
-  Cache-Control: public, max-age=86400
-
-/js/*
-  Cache-Control: public, max-age=3600
-
+# Vendored libraries (Leaflet, Inter): change only on a deliberate upgrade.
+# /js, /css and /locales are deliberately left at the Pages default
+# (short-lived, ETag-revalidated): they are not fingerprinted and change on
+# every release, so a long max-age would let browsers mix module versions.
 /third_party/*
   Cache-Control: public, max-age=604800
+
+# No Content-Security-Policy yet: Cloudflare injects a per-request inline
+# bot-detection script (/cdn-cgi/challenge-platform) that a static CSP can
+# neither hash nor nonce, so `script-src 'self'` would block it. Adding a CSP
+# needs either 'unsafe-inline' or JS detections turned off on the zone.
