@@ -25,7 +25,10 @@
 
     <!-- Third-Party Component Dependencies -->
     <link rel="stylesheet" href="/third_party/leaflet/leaflet.css">
-    <script src="/third_party/leaflet/leaflet.js"></script>
+    <!-- defer: off the render-blocking path; deferred scripts run in document
+         order before the boot.js module below, so globalThis.L is set
+         before any pdb-map connects. -->
+    <script defer src="/third_party/leaflet/leaflet.js"></script>
 
     <!-- Module preloads (parallel fetch with CSS) -->
     <!-- Core modules -->
