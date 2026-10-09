@@ -178,14 +178,14 @@ describe("expandDepth", () => {
         assert.equal(rows[0].netfac_set[0].name, "Equinix DC1");
         assert.equal(rows[0].netfac_set[0].city, "Ashburn");
 
-        // FK column (net_id) should be excluded from child objects
-        assert.equal(rows[0].netfac_set[0].net_id, undefined);
-        assert.equal(rows[0].netfac_set[1].net_id, undefined);
+        // The FK back to the parent is kept (upstream keeps it on some sets; superset)
+        assert.equal(rows[0].netfac_set[0].net_id, 1);
+        assert.equal(rows[0].netfac_set[1].net_id, 1);
 
         // poc_set should have full objects too
         assert.equal(rows[0].poc_set.length, 1);
         assert.equal(rows[0].poc_set[0].role, "Abuse");
-        assert.equal(rows[0].poc_set[0].net_id, undefined);
+        assert.equal(rows[0].poc_set[0].net_id, 1);
     });
 
     it("depth=2 should parse JSON-stored TEXT columns in children", async () => {

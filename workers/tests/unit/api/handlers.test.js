@@ -160,8 +160,8 @@ describe('handleList', () => {
         assert.deepEqual(body.data, []);
     });
 
-    it('returns count when limit=0 and skip=0', async () => {
-        const db = mockD1({ count: 42 });
+    it('limit=0 is a normal list (no limit, as upstream), not a count', async () => {
+        const db = mockD1({ count: 42, hotPayload: '{"data":[{"id":1},{"id":2}],"meta":{}}' });
         const hc = makeHC({
             db,
             opts: { depth: 0, limit: 0, skip: 0, since: 0, sort: '', fields: [], pdbfe: false },
@@ -171,8 +171,8 @@ describe('handleList', () => {
         assert.equal(res.status, 200);
 
         const body = await res.json();
-        assert.deepEqual(body.data, []);
-        assert.equal(body.meta.count, 42);
+        assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), [1, 2]);
+        assert.equal(body.meta.count, undefined);
     });
 
     it('serves the router-selected auth header set (authenticated, private)', async () => {

@@ -4,11 +4,16 @@
  * Child expansion (_set fields):
  *   depth=0 — omit sets entirely
  *   depth=1 — arrays of child IDs
- *   depth=2 — arrays of full child objects (FK column excluded)
+ *   depth=2 — arrays of full child objects (including the FK back to the
+ *             parent, which upstream keeps on some sets — a superset)
  *
- * Parent org expansion:
- *   depth≥1 — nests a full `org` object on entities that have an
- *   `org_id` foreign key, matching upstream PeeringDB behaviour.
+ * Parent expansion (depth≥1): each `<tag>_id` foreign key also gets a
+ * `<tag>` object, as upstream does on detail views (fac.campus,
+ * netixlan.net / .ixlan, ixpfx.ixlan, …). At depth=2 on a detail, each
+ * parent object is itself serialised at depth 1: its own sets as id lists
+ * and its own parents as objects (e.g. fac/1?depth=2 → org.fac_set).
+ * Lists expand only `org` (upstream expands none on lists; the mirror's
+ * org has always been there), keeping 250-row pages cheap.
  *
  * Batches child queries per relationship across all parent rows
  * to avoid N+1 patterns.
@@ -44,6 +49,20 @@ function resolveAnonFilter(authenticated, childEntity) {
         return childEntity._anonFilter;
     }
     return null;
+}
+
+/**
+ * Parent foreign keys expanded into objects, per entity tag: fields named
+ * `<target>_id` → key `<target>` (netixlan.net_side_id / ix_side_id point
+ * at fac but are not expanded upstream). DETAIL: all of them; LIST: org only.
+ *
+ * @type {{ DETAIL: Map<string, FieldDef[]>, LIST: Map<string, FieldDef[]> }}
+ */
+const PARENT_FKS = { DETAIL: new Map(), LIST: new Map() };
+for (const [tag, meta] of Object.entries(ENTITIES)) {
+    const fks = meta.fields.filter(f => f.foreignKey && ENTITIES[f.foreignKey] && f.name === `${f.foreignKey}_id`); // ap-ok: module init, once per isolate
+    PARENT_FKS.DETAIL.set(tag, fks);
+    PARENT_FKS.LIST.set(tag, fks.filter(f => f.foreignKey === 'org')); // ap-ok: module init, once per isolate
 }
 
 /**
@@ -103,9 +122,9 @@ function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
  * - depth=2: Each _set field contains full child objects (all columns
  *   except the FK back to the parent).
  *
- * Parent org expansion (depth≥1):
- * - If the entity has a field with foreignKey "org", the full org
- *   object is fetched and attached as row.org for each row.
+ * Parent expansion (depth≥1): see the file overview. `detail` selects
+ * upstream's detail-view behaviour (every `<tag>_id` parent, recursing one
+ * level at depth=2); lists expand org only.
  *
  * For restricted child entities (e.g. poc), anonymous callers only
  * see records matching the entity's anonFilter (visible=Public).
@@ -116,9 +135,10 @@ function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
  * @param {number} depth - Depth level (0, 1, or 2).
  * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
  * @param {boolean} [pdbfe=false] - Whether to include pdbfe-local extension columns.
+ * @param {boolean} [detail=false] - Detail view (GET /api/{tag}/{id}): expand every parent FK.
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
-export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false) {
+export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false, detail = false) {
     if (depth === 0 || rows.length === 0) {
         return;
     }
@@ -137,8 +157,8 @@ export async function expandDepth(db, entity, rows, depth, authenticated = false
         await expandThroughSets(db, entity, rows, depth, authenticated, pdbfe);
     }
 
-    // Parent org expansion (depth≥1, org-only to match upstream)
-    await expandParentOrg(db, entity, rows, pdbfe);
+    // Parent expansion (depth≥1): every parent on a detail, org on a list
+    await expandParents(db, entity, rows, depth, authenticated, pdbfe, detail);
 }
 
 /**
@@ -255,9 +275,9 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
  * for all columns matching the parent rows, then attaches full child
  * objects (with the FK column excluded) to each parent row.
  *
- * Matches upstream PeeringDB depth=2 behaviour where child objects
- * include all their own fields but omit the FK pointing back to
- * the parent (e.g. netfac_set entries exclude net_id).
+ * Child objects keep the FK pointing back to the parent. Upstream keeps it
+ * on some sets (campus.fac_set[].campus_id, carrier.carrierfac_set[].
+ * carrier_id) and omits it on others; always keeping it is a superset.
  *
  * JSON-stored TEXT columns (social_media, info_types, etc.) are parsed
  * back to native arrays/objects via parseJsonFields.
@@ -357,9 +377,6 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
                 const parentRow = rowMap.get(/** @type {number} */(child[rel.fk]));
                 if (!parentRow) continue;
 
-                // Strip the FK column from the child object
-                delete child[rel.fk];
-
                 // Parse JSON, coerce booleans, nullify empty strings
                 if (childEntity) {
                     parseJsonFields(childEntity, child);
@@ -374,60 +391,58 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
 }
 
 /**
- * Expands the parent `org` reference on entities that have an
- * `org_id` foreign key. Fetches the full org object from
- * peeringdb_organization and attaches it as `row.org`.
+ * Expands parent foreign keys into objects (`row.<tag>` next to
+ * `row.<tag>_id`): one batched query per FK across all rows. On a detail at
+ * depth=2, the fetched parents are themselves expanded at depth 1 (their
+ * sets as id lists, their own parents as objects), as upstream does.
  *
- * Only fires for org — other parent FKs are not expanded upstream.
- * Uses a single batched query across all rows to avoid N+1 patterns.
+ * Gated parent columns (ixlan.ixf_ixp_member_list_url) go through
+ * selectColumn, so anonymous callers get them nulled; api/auth_scope.js
+ * marks those responses auth-sensitive.
  *
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The entity metadata for the current rows.
  * @param {Record<string, any>[]} rows - Result rows to expand in-place.
+ * @param {number} depth - Requested depth (≥1).
+ * @param {boolean} authenticated - Caller auth state (gated columns, restricted sets).
  * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
+ * @param {boolean} detail - Detail view: every parent FK, recursing at depth=2.
  * @returns {Promise<void>}
  */
-async function expandParentOrg(db, entity, rows, pdbfe) {
-    // Find the org_id FK field on this entity
-    const orgFkField = entity.fields.find(f => f.foreignKey === 'org');
-    if (!orgFkField) return;
+async function expandParents(db, entity, rows, depth, authenticated, pdbfe, detail) {
+    const fks = (detail ? PARENT_FKS.DETAIL : PARENT_FKS.LIST).get(entity.tag) ?? [];
+    if (fks.length === 0) return;
 
-    const orgEntity = ENTITIES['org'];
-    if (!orgEntity) return;
+    const tasks = fks.map(async (fk) => { // ap-ok: cold path behind cachedQuery
+        const parentTag = /** @type {string} */ (fk.foreignKey);
+        const parent = ENTITIES[parentTag];
 
-    // Collect unique org IDs
-    /** @type {Set<number>} */
-    const orgIds = new Set();
-    for (const row of rows) {
-        const oid = row[orgFkField.name];
-        if (oid != null) orgIds.add(oid);
-    }
-    if (orgIds.size === 0) return;
-
-    // Batch-fetch all referenced orgs in a single query
-    const ids = [...orgIds]; // ap-ok: cold path behind cachedQuery
-    const orgColumns = getColumns(orgEntity, pdbfe);
-
-    const colExpr = orgColumns.map(c => `"${c}"`).join(', '); // ap-ok: SQL construction
-    const sql = `SELECT ${colExpr} FROM "${orgEntity.table}" WHERE "id" ${IN_IDS} AND "status" != 'deleted'`;
-
-    const result = await db.prepare(sql).bind(JSON.stringify(ids)).all();
-
-    /** @type {Map<number, Record<string, any>>} */
-    const orgMap = new Map();
-    if (result.results) {
-        for (const org of result.results) {
-            parseJsonFields(orgEntity, org);
-            orgMap.set(/** @type {number} */ (org.id), org);
+        /** @type {Set<number>} */
+        const ids = new Set();
+        for (const row of rows) {
+            const pid = row[fk.name];
+            if (pid != null) ids.add(pid);
         }
-    }
+        if (ids.size === 0) return;
 
-    // Attach the org object to each row
-    for (const row of rows) {
-        const oid = row[orgFkField.name];
-        const org = orgMap.get(oid);
-        if (org) {
-            row.org = org;
+        const cols = getColumns(parent, pdbfe).map(c => selectColumn(parent.table, c, '', authenticated)).join(', '); // ap-ok: SQL construction
+        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS} AND "status" != 'deleted'`;
+        const result = await db.prepare(sql).bind(JSON.stringify([...ids])).all(); // ap-ok: cold path behind cachedQuery
+        const parents = result.results || [];
+        for (const p of parents) parseJsonFields(parent, p);
+
+        if (detail && depth >= 2) {
+            await expandDepth(db, parent, parents, depth - 1, authenticated, pdbfe, true);
         }
-    }
+
+        /** @type {Map<number, Record<string, any>>} */
+        const byId = new Map();
+        for (const p of parents) byId.set(/** @type {number} */ (p.id), p);
+        for (const row of rows) {
+            const p = byId.get(row[fk.name]);
+            if (p) row[parentTag] = p;
+        }
+    });
+
+    await Promise.all(tasks);
 }

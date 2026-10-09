@@ -42,7 +42,7 @@ api/
 ├── sync_state.js     Entity version tracking
 └── handlers/
     ├── index.js      Re-exports from handler modules
-    ├── list.js       handleList, executeListQuery, handleCount, prefetchPage
+    ├── list.js       handleList, executeListQuery, handlePaged, prefetchPage
     ├── detail.js     handleDetail, executeDetailQuery
     ├── as_set.js     handleAsSet
     ├── compare.js    handleCompare

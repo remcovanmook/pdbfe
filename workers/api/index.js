@@ -219,7 +219,7 @@ async function handleRequest(request, env, ctx) {
     // restricted entity) are shared: one cache entry and one public,
     // edge-cacheable response for every caller, without X-Auth-Status /
     // X-Auth-Id. See api/auth_scope.js.
-    const shared = !isAuthSensitive(entityTag, depth, filters);
+    const shared = !isAuthSensitive(entityTag, depth, filters, id > 0);
     const hEntity = shared ? H_API_SHARED : hApi;
 
     // Restricted entities (poc): no gate here. The WHERE builder

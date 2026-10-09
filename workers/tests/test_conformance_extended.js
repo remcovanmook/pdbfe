@@ -691,13 +691,10 @@ describe('Conformance: cross-endpoint extended', { concurrency: 1 }, () => {
         }
     });
 
-    it('net count via limit=0 matches netixlan distinct net_ids (spot check)', async () => {
-        // For a specific IX, count of distinct ASNs in netixlan should be plausible
+    it('limit=0 returns every AMS-IX netixlan (no limit, spot check)', async () => {
         const res = await fetchMirror(`/api/netixlan?ix_id=${WELL_KNOWN.ix_amsix_id}&depth=0&limit=0`);
-        if (res.body?.meta?.count) {
-            assert.ok(res.body.meta.count > 100,
-                `AMS-IX should have >100 netixlan records, got ${res.body.meta.count}`);
-        }
+        assert.ok(res.body.data.length > 100,
+            `AMS-IX should have >100 netixlan records, got ${res.body.data.length}`);
     });
 });
 

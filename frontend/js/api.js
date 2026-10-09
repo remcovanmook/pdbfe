@@ -394,19 +394,6 @@ export async function fetchByAsn(asn) {
 }
 
 /**
- * Fetches the total count of entities for a given type.
- * Uses the limit=0 API convention which returns
- * { data: [], meta: { count: N } }.
- *
- * @param {string} type - Entity type (e.g. "net", "ix", "fac", "org").
- * @returns {Promise<number>} Total entity count.
- */
-export async function fetchCount(type) {
-    const result = await cachedFetch(`/api/${type}`, { limit: 0 });
-    return result?.meta?.count ?? 0;
-}
-
-/**
  * Fetches entity overlap analysis between two entities.
  * Both entities are specified as "{tag}:{id}" strings.
  *

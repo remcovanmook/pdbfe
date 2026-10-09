@@ -10,6 +10,12 @@
  *   3. ix.fac_set / ixlan.net_set: upstream's sets through the link table
  *      (target ids at depth=1, target objects at depth=2), alongside the
  *      mirror's link-row sets.
+ *   4. limit=0 means no limit (every row), as upstream; it used to be a
+ *      count mode upstream never had.
+ *   5. Detail views expand every `<tag>_id` parent into a `<tag>` object at
+ *      depth≥1, and at depth=2 serialise those parents at depth 1 (their
+ *      sets as ids, their own parents as objects), as upstream. Lists keep
+ *      expanding org only. depth=2 child objects keep their FK back-reference.
  */
 
 import { describe, it, before, beforeEach } from 'node:test';
@@ -42,6 +48,8 @@ before(() => {
     sqlite.exec(`INSERT INTO "peeringdb_ix" (id, org_id, name, social_media, status, created, updated) VALUES (1, 1, 'IX One', '[]', 'ok', '${TS}', '${TS}')`);
     const fac = sqlite.prepare(`INSERT INTO "peeringdb_facility" (id, org_id, name, city, social_media, available_voltage_services, status, created, updated) VALUES (?, 1, ?, 'Amsterdam', '[]', '[]', 'ok', '${TS}', '${TS}')`);
     for (const id of [10, 11, 12]) fac.run(id, `Fac ${id}`);
+    sqlite.exec(`INSERT INTO "peeringdb_campus" (id, org_id, name, social_media, status, created, updated) VALUES (5, 1, 'Campus Five', '[]', 'ok', '${TS}', '${TS}')`);
+    sqlite.exec(`UPDATE "peeringdb_facility" SET campus_id = 5 WHERE id IN (10, 11)`);
     const ixfac = sqlite.prepare(`INSERT INTO "peeringdb_ix_facility" (id, ix_id, fac_id, status, created, updated) VALUES (?, 1, ?, ?, '${TS}', '${TS}')`);
     ixfac.run(501, 10, 'ok');
     ixfac.run(502, 11, 'ok');
@@ -144,5 +152,80 @@ describe('ix.fac_set / ixlan.net_set (upstream sets through the link table)', ()
     it('list depth=1 expands per parent', async () => {
         const { body } = await get(apiWorker, `${API}/ix?depth=1`);
         assert.deepEqual(body.data[0].fac_set, [10, 11]);
+    });
+});
+
+describe('limit=0 returns every row (as upstream)', () => {
+    it('api net?limit=0 → all networks, no count envelope', async () => {
+        const { status, body } = await get(apiWorker, `${API}/net?limit=0`);
+        assert.equal(status, 200);
+        assert.deepEqual(ids(body), [100, 101, 102, 103]);
+        assert.equal(body.meta.count, undefined);
+    });
+
+    it('limit=0 with a filter and with skip', async () => {
+        assert.deepEqual(ids((await get(apiWorker, `${API}/net?limit=0&asn__gte=64102`)).body), [102, 103]);
+        assert.deepEqual(ids((await get(apiWorker, `${API}/net?limit=0&skip=2`)).body), [102, 103]);
+    });
+});
+
+describe('detail views expand parent FKs (as upstream)', () => {
+    /** @param {any} o */
+    const sets = (o) => Object.keys(o).filter((k) => k.endsWith('_set')).sort();
+
+    it('depth=1: every <tag>_id parent becomes a plain <tag> object', async () => {
+        const fac = (await get(apiWorker, `${API}/fac/10?depth=1`)).body.data[0];
+        assert.equal(fac.campus.id, 5);
+        assert.equal(fac.campus.name, 'Campus Five');
+        assert.equal(fac.org.id, 1);
+        assert.deepEqual(sets(fac.campus), [], 'depth-0 parent: no sets');
+
+        const nix = (await get(apiWorker, `${API}/netixlan/901?depth=1`)).body.data[0];
+        assert.equal(nix.net.id, 100);
+        assert.equal(nix.ixlan.id, 1);
+        assert.equal('net_side' in nix || 'ix_side' in nix, false, 'side facilities are not expanded (not upstream)');
+
+        const ixfac = (await get(apiWorker, `${API}/ixfac/501?depth=1`)).body.data[0];
+        assert.deepEqual([ixfac.ix.id, ixfac.fac.id], [1, 10]);
+    });
+
+    it('depth=2: parents are serialised at depth 1 (sets as ids, own parents as objects)', async () => {
+        const fac = (await get(apiWorker, `${API}/fac/10?depth=2`)).body.data[0];
+        assert.deepEqual(fac.campus.fac_set, [10, 11]);
+        assert.equal(fac.campus.org.id, 1, "parent's parent as an object");
+        assert.deepEqual(fac.org.fac_set, [10, 11, 12]);
+        assert.deepEqual(fac.org.net_set, [100, 101, 102, 103]);
+
+        const ixfac = (await get(apiWorker, `${API}/ixfac/501?depth=2`)).body.data[0];
+        assert.deepEqual(ixfac.ix.fac_set, [10, 11]);
+        assert.deepEqual(ixfac.ix.ixlan_set, [1]);
+        assert.equal(ixfac.fac.campus.id, 5);
+
+        const nix = (await get(apiWorker, `${API}/netixlan/901?depth=2`)).body.data[0];
+        assert.deepEqual(nix.net.netixlan_set, [901, 902]);
+        assert.equal(nix.ixlan.ix.id, 1);
+        assert.deepEqual(nix.ixlan.net_set, [100, 101]);
+    });
+
+    it('lists still expand org only', async () => {
+        const fac = (await get(apiWorker, `${API}/fac?depth=1`)).body.data[0];
+        assert.equal(fac.org.id, 1);
+        assert.equal('campus' in fac, false);
+        const nix = (await get(apiWorker, `${API}/netixlan?depth=1`)).body.data[0];
+        assert.equal('net' in nix || 'ixlan' in nix, false);
+    });
+
+    it('rest detail views are unchanged (their own OpenAPI schema)', async () => {
+        const { status, body } = await get(restWorker, 'https://rest.pdbfe.dev/v1/fac/10?depth=1');
+        assert.equal(status, 200);
+        const fac = body.data?.[0] ?? body;
+        assert.equal('campus' in fac, false);
+    });
+
+    it('depth=2 child objects keep the FK back to the parent', async () => {
+        const ix = (await get(apiWorker, `${API}/ix/1?depth=2`)).body.data[0];
+        assert.equal(ix.ixfac_set[0].ix_id, 1);
+        const campus = (await get(apiWorker, `${API}/campus/5?depth=2`)).body.data[0];
+        assert.deepEqual(campus.fac_set.map((/** @type {any} */ f) => f.campus_id), [5, 5]);
     });
 });

@@ -1,20 +1,21 @@
 /**
  * @fileoverview List handler for GET /api/{entity}.
  *
- * Handles the list endpoint with pagination, pre-fetch, and count mode.
+ * Handles the list endpoint with pagination and pre-fetch. `limit=0` means
+ * no limit, as upstream (PeeringDB returns every row; it has no count mode).
  * Uses the zero-allocation hot path (json_group_array) for depth=0 and
  * falls back to row-level expansion for depth>0.
  */
 
 import { ENTITIES } from '../entities.js';
-import { buildRowQuery, buildCountQuery, nextPageParams } from '../query.js';
+import { buildRowQuery, nextPageParams } from '../query.js';
 import { expandDepth } from '../depth.js';
 import { queryJsonList } from '../json_list.js';
 import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
-import { getEntityCache, LIST_TTL, COUNT_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
+import { getEntityCache, LIST_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
-import { encoder, encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
+import { encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
 import { parseJsonFields, countRowsBytes } from './shared.js';
 
 /**
@@ -30,15 +31,10 @@ export async function handleList(hc) {
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
-    // Page-number pagination (?page=N) — takes precedence over count mode,
-    // as upstream: ?page=1&limit=0 paginates the full set.
+    // Page-number pagination (?page=N), as upstream: ?page=1&limit=0
+    // paginates the full set.
     if (hc.paging) {
         return handlePaged(hc, entity, hc.paging);
-    }
-
-    // Count mode: limit=0 with no skip returns {data:[], meta:{count:N}}
-    if (opts.limit === 0 && opts.skip === 0) {
-        return handleCount(hc, entity);
     }
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);
@@ -103,56 +99,6 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
-
-/**
- * Handles count requests (limit=0, skip=0).
- * Tries to derive count from a cached unfiltered list response first.
- * Falls back to withEdgeSWR() pipeline with SELECT COUNT(*).
- * Caches the count envelope with COUNT_TTL (15 min).
- *
- * @param {HandlerContext} hc - Common handler context.
- * @param {EntityMeta} entity - Resolved entity metadata.
- * @returns {Promise<Response>} JSON response with count in meta.
- */
-async function handleCount(hc, entity) {
-    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, hApi } = hc;
-    const cacheKey = normaliseCacheKey(rawPath, queryString);
-
-    // Try to derive count from a cached unfiltered list for this entity.
-    // Only possible when there are no user-supplied filters and no since param.
-    // This avoids a D1 query entirely when we already have the data.
-    // Note: this reads cache.get() directly — it's a cross-key optimisation
-    // (reading a *different* cache key) that doesn't fit the withEdgeSWR
-    // single-key model. The synchronous destructure is safe because we
-    // extract buf immediately.
-    if (filters.length === 0 && opts.since === 0) {
-        const cache = getEntityCache(entityTag);
-        const listKey = normaliseCacheKey(rawPath, '');
-        const listCached = cache.get(listKey); // ap-ok: cross-key optimization, synchronous destructure follows
-        const listBuf = listCached ? listCached.buf : null;
-        if (listBuf) {
-            const count = countRowsBytes(/** @type {Uint8Array} */(/** @type {unknown} */(listBuf)));
-            if (count > 0) {
-                const buf = encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
-                cache.add(cacheKey, buf, { entityTag }, Date.now());
-                return serveJSON(request, buf, { tier: 'L1', hits: 0 }, hApi, hc.entityVersionMs, hc.userId);
-            }
-        }
-    }
-
-    // Fall back to withEdgeSWR pipeline with COUNT(*) query
-    const { buf, tier, hits } = await withEdgeSWR(
-        entityTag, cacheKey, ctx, COUNT_TTL,
-        async () => {
-            const { sql, params } = buildCountQuery(entity, filters, opts);
-            const result = await db.prepare(sql).bind(...params).first();
-            const count = (result && typeof result.cnt === 'number') ? result.cnt : 0;
-            return encoder.encode(`{"data":[],"meta":{"count":${count}}}`);
-        }
-    );
-
-    return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits }, hApi, hc.entityVersionMs, hc.userId);
-}
 
 /**
  * Serves ?page=N&per_page=M with meta.pagination (see handlers/paged.js).

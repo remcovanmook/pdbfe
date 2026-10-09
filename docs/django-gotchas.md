@@ -150,17 +150,16 @@ handled it. But watch for edge cases on **nullable booleans** — Django's
 
 ---
 
-## 9. Empty result set with `limit=0` — count behavior
+## 9. `limit=0` — no limit
 
-**Django**: PeeringDB uses `limit=0` to return a count in `meta.count` with
-empty `data: []`. This is custom middleware, not standard DRF pagination.
-The count comes from `queryset.count()` which does `SELECT COUNT(*)`.
+**Django**: PeeringDB treats `limit=0` as "no limit": it returns every
+matching row (`/api/campus?limit=0` → all campuses, no `meta.count`). Sync
+clients rely on it to disable the default 250-row page at depth>0.
 
-**D1/SQLite**: `COUNT(*)` on large tables without a WHERE clause is **slow** on
-SQLite because it does a full table scan (no row-count metadata like InnoDB).
-Your loadtest showed two 30s timeouts on upstream for count queries, so you're
-actually faster here. But watch for count queries with complex WHERE clauses —
-D1 might be slower if indexes are missing.
+**Mirror**: the same since 2026-10-10. Until then the mirror answered
+`limit=0` with `{data:[], meta:{count:N}}` — a count mode upstream never had
+(it was documented here as upstream behaviour by mistake), so clients asking
+for everything got an empty list.
 
 ---
 
@@ -225,10 +224,10 @@ across large IX participant lists.
 | 3 | Default ORDER BY | **Covered** | All queries include `ORDER BY id ASC`. |
 | 4 | `__in` parameter limit | **Mitigated** | `validateQuery` rejects `__in` lists exceeding 500 values with a 400 error. |
 | 5 | Timestamp precision | **Covered** | `since` uses `datetime(?, 'unixepoch')`. Minor format mismatch (space vs T separator) is benign. |
-| 6 | Depth expansion | **Known divergence** | depth=2 resolves cross-entity name columns via JOINs but does not recursively expand child _set fields. |
+| 6 | Depth expansion | **Covered (superset)** | Detail views expand every `<tag>_id` parent into a `<tag>` object at depth≥1, serialised at depth 1 at depth=2, as upstream. The mirror adds child sets upstream omits (e.g. fac.netfac_set) and keeps FK back-references in depth=2 children. Lists expand org only. |
 | 7 | Cross-entity filters | **Covered** | Explicit (`fac__state=NSW`) and implicit (`net?country=NL`) filters both work via FK traversal. |
 | 8 | Boolean serialization | **Covered** | Hot path uses SQL CASE→json(); cold path coerces via `!!val`; depth=2 child objects now also coerced. |
-| 9 | limit=0 count | **Covered** | `handleCount` returns `{data:[], meta:{count:N}}`. |
+| 9 | limit=0 | **Covered** | No limit, as upstream (the former count mode was a mirror invention). |
 | 10 | Soft delete semantics | **Known divergence** | Sync worker hard-deletes records. `?status=deleted` queries return empty. |
 | 11 | Float precision | **Known divergence** | lat/lng stored as REAL (IEEE 754). May produce trailing precision digits in JSON. |
 | 12 | JSON fields | **Covered** | `json()` wrapper on hot path; `JSON.parse()` on cold path and depth=2 children. |
