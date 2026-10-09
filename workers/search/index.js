@@ -101,7 +101,7 @@ async function handleRequest(request, env, ctx) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
-    return handleSearch(request, queryString, db, env.VECTORIZE ?? null, ctx, authenticated);
+    return handleSearch(request, queryString, db, env.VECTORIZE ?? null, ctx);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-search');

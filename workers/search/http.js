@@ -8,8 +8,12 @@
  *
  * Search-specific additions:
  *   - serveSearch(buf, tier, hits) — standard search result response
- *     with Content-Type, CORS, X-Cache, and X-Cache-Hits headers.
+ *     with Content-Type, CORS, sync-aligned public Cache-Control, X-Cache,
+ *     and X-Cache-Hits headers.
  */
+
+import { SHARED_MARKER } from '../core/http.js';
+import { syncAlignedCacheControl } from '../api/http.js';
 
 export {
     encoder,
@@ -53,6 +57,14 @@ export function escapeLike(s) {
  * The same function handles the empty sentinel case — callers pass the
  * SEARCH_EMPTY_SENTINEL Uint8Array directly when the result set is empty.
  *
+ * Search results are auth-independent: only id/name/type/score for the
+ * public entity types (poc is rejected by parseSearchParams). So every
+ * response is a shared edge object — `public` with the API worker's
+ * sync-aligned expiry, no `Vary: Authorization`, and SHARED_MARKER so
+ * wrapHandler adds no X-Auth-Status (an edge hit replays the filling
+ * caller's headers to everyone). If search ever returns restricted
+ * entities, this must take its headers from an auth-scope decision instead.
+ *
  * Headers are constructed inline (no frozen-object spread on hot path).
  *
  * @param {Uint8Array} buf - Serialised search envelope (may be the empty sentinel).
@@ -66,6 +78,8 @@ export function serveSearch(buf, tier, hits) {
         headers: {
             'Content-Type': 'application/json; charset=utf-8',
             'Access-Control-Allow-Origin': '*',
+            'Cache-Control': syncAlignedCacheControl(),
+            [SHARED_MARKER]: '1',
             'X-Cache': tier,
             'X-Cache-Hits': String(hits),
         },
