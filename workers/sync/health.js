@@ -7,9 +7,12 @@
  * the mirror drifts: stale rows that upstream no longer lists, and rows
  * upstream lists that the mirror never received.
  *
- * Once a week, per entity: fetch upstream's id list (one request,
- * ?fields=id), diff it against D1, then repair — delete stale rows, fetch and
- * upsert missing ones (id__in, 150 per request), recount row_count — and make
+ * Once a week, per entity: fetch upstream's id + updated list (one request,
+ * ?fields=id,updated), diff it against D1, then repair — delete stale rows,
+ * fetch and upsert missing ones and outdated ones (upstream `updated` newer
+ * than ours: a change the incremental sync never received, e.g. rows that
+ * changed while a bootstrap dump was being imported) via id__in, 150 per
+ * request — recount row_count — and make
  * a lot of noise about it: console.error per repaired table, and a full
  * report in _health_runs that the mirror-health GitHub workflow turns into a
  * job summary, an issue and a failed run.
@@ -19,8 +22,8 @@
  *   - deleting more than max(STALE_ABS, STALE_PCT of the table) is refused
  *     and reported as an alert — a truncated upstream response must never
  *     wipe the mirror;
- *   - at most MISSING_FETCH_CAP missing rows are fetched per table per run
- *     (alert if more);
+ *   - at most MISSING_FETCH_CAP missing + outdated rows are fetched per table
+ *     per run, missing first (alert if more);
  *   - upstream requests are spaced UPSTREAM_GAP_MS apart (published limits:
  *     40/min authenticated, ≥2s between queries).
  */
@@ -37,7 +40,8 @@ const UPSTREAM_GAP_MS = 3500;
 
 /**
  * @typedef {{ tag: string, upstream: number|null, mirror: number|null,
- *   stale: number, missing: number, deleted: number[], inserted: number[],
+ *   stale: number, missing: number, outdated: number,
+ *   deleted: number[], inserted: number[], refreshed: number[],
  *   rowCount: number|null, action: 'ok'|'repaired'|'skipped'|'error',
  *   alerts: string[], error: string|null }} TableReport
  * @typedef {{ startedAt: string, finishedAt: string, repaired: number,
@@ -110,27 +114,38 @@ export async function runHealthCheck(env, opts = {}) {
 async function checkTable(env, tag, meta, upstream) {
     const db = env.PDB;
     /** @type {TableReport} */
-    const t = { tag, upstream: null, mirror: null, stale: 0, missing: 0, deleted: [], inserted: [], rowCount: null, action: 'ok', alerts: [], error: null };
+    const t = { tag, upstream: null, mirror: null, stale: 0, missing: 0, outdated: 0, deleted: [], inserted: [], refreshed: [], rowCount: null, action: 'ok', alerts: [], error: null };
 
     try {
-        const upRows = await upstream(`${tag}?fields=id&depth=0&limit=0`);
-        const upIds = new Set(upRows.map((r) => r.id).filter((id) => Number.isInteger(id) && id > 0));
-        const mirrorRes = await db.prepare(`SELECT id FROM "${meta.table}"`).all();
-        const mirrorIds = new Set((mirrorRes.results || []).map((r) => /** @type {number} */ (r.id)));
-        t.upstream = upIds.size;
-        t.mirror = mirrorIds.size;
+        const upRows = await upstream(`${tag}?fields=id,updated&depth=0&limit=0`);
+        /** @type {Map<number, number>} id → upstream updated (ms; NaN if absent) */
+        const upUpdated = new Map();
+        for (const r of upRows) {
+            if (Number.isInteger(r.id) && r.id > 0) upUpdated.set(r.id, Date.parse(r.updated));
+        }
+        const mirrorRes = await db.prepare(`SELECT id, updated FROM "${meta.table}"`).all();
+        /** @type {Map<number, number>} */
+        const mirrorUpdated = new Map((mirrorRes.results || []).map((r) => [/** @type {number} */ (r.id), Date.parse(/** @type {string} */ (r.updated))]));
+        t.upstream = upUpdated.size;
+        t.mirror = mirrorUpdated.size;
 
-        if (upIds.size === 0) throw new Error('upstream id list is empty — refusing to compare');
+        if (upUpdated.size === 0) throw new Error('upstream id list is empty — refusing to compare');
 
-        const stale = [...mirrorIds].filter((id) => !upIds.has(id)).sort((a, b) => a - b);
-        const missing = [...upIds].filter((id) => !mirrorIds.has(id)).sort((a, b) => a - b);
+        const stale = [...mirrorUpdated.keys()].filter((id) => !upUpdated.has(id)).sort((a, b) => a - b);
+        const missing = [...upUpdated.keys()].filter((id) => !mirrorUpdated.has(id)).sort((a, b) => a - b);
+        // Present on both sides, but upstream changed it after our copy. NaN
+        // on either side compares false, so unparseable timestamps never refetch.
+        const outdated = [...upUpdated].filter(([id, up]) => up > /** @type {number} */ (mirrorUpdated.get(id))).map(([id]) => id).sort((a, b) => a - b);
         t.stale = stale.length;
         t.missing = missing.length;
+        t.outdated = outdated.length;
 
-        t.deleted = await deleteStale(db, meta, stale, mirrorIds.size, t.alerts);
-        const fetched = await fetchMissing(tag, missing, upstream, t.alerts);
+        t.deleted = await deleteStale(db, meta, stale, mirrorUpdated.size, t.alerts);
+        const fetched = await fetchById(tag, missing, outdated, upstream, t.alerts);
         await upsertActiveRows(db, meta, fetched);
-        t.inserted = fetched.map((r) => r.id);
+        const missingSet = new Set(missing);
+        t.inserted = fetched.filter((r) => missingSet.has(r.id)).map((r) => r.id);
+        t.refreshed = fetched.filter((r) => !missingSet.has(r.id)).map((r) => r.id);
         await publishTasks(env.QUEUE, tag, fetched, t.deleted);
 
         // Weekly recount, so the sync's incremental row_count cannot drift.
@@ -138,7 +153,7 @@ async function checkTable(env, tag, meta, upstream) {
         t.rowCount = cnt ? /** @type {number} */ (cnt.cnt) : 0;
         await db.prepare('UPDATE "_sync_meta" SET row_count = ? WHERE entity = ?').bind(t.rowCount, tag).run();
 
-        if (t.deleted.length || t.inserted.length) t.action = 'repaired';
+        if (t.deleted.length || t.inserted.length || t.refreshed.length) t.action = 'repaired';
     } catch (err) {
         t.action = 'error';
         t.error = /** @type {Error} */ (err).message;
@@ -171,19 +186,22 @@ async function deleteStale(db, meta, stale, mirrorSize, alerts) {
 }
 
 /**
- * Fetches missing rows from upstream by id (ID_IN_CHUNK per request, at most
- * MISSING_FETCH_CAP per run), returning the non-deleted ones.
+ * Fetches missing and outdated rows from upstream by id (ID_IN_CHUNK per
+ * request, at most MISSING_FETCH_CAP per run, missing first), returning the
+ * non-deleted ones.
  *
  * @param {string} tag
  * @param {number[]} missing - Ids upstream lists but the mirror lacks.
+ * @param {number[]} outdated - Ids whose upstream `updated` is newer than ours.
  * @param {(path: string) => Promise<Record<string, any>[]>} upstream - Paced fetcher.
  * @param {string[]} alerts - Mutated.
  * @returns {Promise<Record<string, any>[]>}
  */
-async function fetchMissing(tag, missing, upstream, alerts) {
-    const toFetch = missing.slice(0, MISSING_FETCH_CAP);
-    if (missing.length > toFetch.length) {
-        alerts.push(`${missing.length} missing rows; fetched the first ${toFetch.length} (cap ${MISSING_FETCH_CAP})`);
+async function fetchById(tag, missing, outdated, upstream, alerts) {
+    const wanted = missing.concat(outdated);
+    const toFetch = wanted.slice(0, MISSING_FETCH_CAP);
+    if (wanted.length > toFetch.length) {
+        alerts.push(`${missing.length} missing + ${outdated.length} outdated rows; fetched the first ${toFetch.length} (cap ${MISSING_FETCH_CAP})`);
     }
     /** @type {Record<string, any>[]} */
     const fetched = [];
@@ -206,7 +224,7 @@ function logTable(t) {
     /** @param {number[]} xs */
     const sample = (xs) => `${xs.slice(0, 20).join(',')}${xs.length > 20 ? ',…' : ''}`;
     if (t.action === 'repaired') {
-        console.error(`[health] REPAIRED ${t.tag}: deleted ${t.deleted.length} stale (${sample(t.deleted)}), inserted ${t.inserted.length} missing (${sample(t.inserted)})`);
+        console.error(`[health] REPAIRED ${t.tag}: deleted ${t.deleted.length} stale (${sample(t.deleted)}), inserted ${t.inserted.length} missing (${sample(t.inserted)}), refreshed ${t.refreshed.length} outdated (${sample(t.refreshed)})`);
     }
     for (const a of t.alerts) console.error(`[health] ALERT ${t.tag}: ${a}`);
     if (t.error) console.error(`[health] ${t.tag}: ${t.error}`);

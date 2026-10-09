@@ -2,6 +2,7 @@
  * @fileoverview Weekly health check & repair (sync/health.js) on real SQLite
  * with a mocked upstream: repairs drift in both directions, refuses
  * suspicious mass deletions, never acts on an empty or failed upstream list,
+ * refreshes rows whose upstream `updated` is newer than the mirror's,
  * records a report row, publishes queue messages for repaired rows.
  */
 
@@ -15,6 +16,7 @@ const TS = '2026-01-01T00:00:00Z';
 /** @type {any} */ let db;
 /** @type {import('node:sqlite').DatabaseSync} */ let sqlite;
 /** @type {any[]} */ let sent;
+/** @type {string[]} */ let requests;
 
 /** @param {number[]} ids */
 function seedNets(ids) {
@@ -25,32 +27,38 @@ function seedNets(ids) {
 }
 
 /**
- * Mock upstream: `?fields=id` lists `upIds`; `?id__in=` returns those ids as full rows.
+ * Mock upstream: `?fields=id,updated` lists `upIds` (updated from `upUpdated`,
+ * default TS); `?id__in=` returns those ids as full rows, named after their
+ * updated value so a refresh is visible in the table.
  * @param {number[]|null} upIds - null → HTTP 500
+ * @param {Record<number, string>} [upUpdated] - Per-id upstream `updated`.
  */
-function upstreamMock(upIds) {
+function upstreamMock(upIds, upUpdated = {}) {
+    const updatedOf = (/** @type {number} */ id) => upUpdated[id] ?? TS;
     return /** @type {any} */ (async (/** @type {string} */ url) => {
+        requests.push(url);
         if (upIds === null) return new Response('boom', { status: 500 });
         const u = new URL(url);
-        if (u.searchParams.get('fields') === 'id') {
-            return new Response(JSON.stringify({ data: upIds.map((id) => ({ id })) }));
+        if (u.searchParams.get('fields') === 'id,updated') {
+            return new Response(JSON.stringify({ data: upIds.map((id) => ({ id, updated: updatedOf(id) })) }));
         }
         const ids = (u.searchParams.get('id__in') || '').split(',').map(Number);
         return new Response(JSON.stringify({ data: ids.map((id) => ({
-            id, org_id: 1, name: `Net ${id}`, asn: 64000 + id, social_media: [], info_types: [], status: 'ok', created: TS, updated: TS,
+            id, org_id: 1, name: `Net ${id} @${updatedOf(id)}`, asn: 64000 + id, social_media: [], info_types: [], status: 'ok', created: TS, updated: updatedOf(id),
         })) }));
     });
 }
 
-const run = (/** @type {number[]|null} */ upIds) => runHealthCheck(
+const run = (/** @type {number[]|null} */ upIds, /** @type {Record<number, string>} */ upUpdated = {}) => runHealthCheck(
     /** @type {any} */ ({ PDB: db, QUEUE: { sendBatch: async (/** @type {any[]} */ m) => { sent.push(...m); } } }),
-    { pauseMs: 0, fetchImpl: upstreamMock(upIds), tags: ['net'] },
+    { pauseMs: 0, fetchImpl: upstreamMock(upIds, upUpdated), tags: ['net'] },
 );
+const netName = (/** @type {number} */ id) => /** @type {any} */ (sqlite.prepare('SELECT name FROM "peeringdb_network" WHERE id = ?').get(id)).name;
 const netIds = () => sqlite.prepare('SELECT id FROM "peeringdb_network" ORDER BY id').all().map((/** @type {any} */ r) => r.id);
 const rowCount = () => /** @type {any} */ (sqlite.prepare(`SELECT row_count FROM "_sync_meta" WHERE entity = 'net'`).get()).row_count;
 const runs = () => sqlite.prepare('SELECT repaired, errors, alerts, report FROM "_health_runs" ORDER BY id').all();
 
-beforeEach(() => { ({ db, sqlite } = createSqliteD1()); sent = []; });
+beforeEach(() => { ({ db, sqlite } = createSqliteD1()); sent = []; requests = []; });
 
 describe('repair', () => {
     it('deletes stale rows, fetches missing ones, recounts, records the run', async () => {
@@ -81,6 +89,39 @@ describe('repair', () => {
         assert.equal(report.tables[0].action, 'ok');
         assert.equal(report.repaired, 0);
         assert.deepEqual(netIds(), [1, 2, 3]);
+        assert.equal(requests.length, 1, 'only the id,updated list — nothing to fetch');
+    });
+});
+
+describe('outdated rows (upstream updated newer than ours)', () => {
+    const LATER = '2026-04-08T22:46:00Z';
+
+    it('refetches and upserts them, reported as refreshed (not inserted)', async () => {
+        seedNets([1, 2, 3]);
+        const report = await run([1, 2, 3, 4], { 2: LATER });
+        const t = report.tables[0];
+        assert.equal(t.action, 'repaired');
+        assert.equal(t.outdated, 1);
+        assert.deepEqual(t.refreshed, [2]);
+        assert.deepEqual(t.inserted, [4]);
+        assert.equal(netName(2), `Net 2 @${LATER}`);
+        assert.equal(netName(1), 'Net 1', 'up-to-date rows are not rewritten');
+        assert.equal(report.repaired, 1);
+    });
+
+    it('leaves rows alone when ours is as new or newer', async () => {
+        seedNets([1, 2]);
+        const report = await run([1, 2], { 1: TS, 2: '2025-06-01T00:00:00Z' });
+        assert.equal(report.tables[0].action, 'ok');
+        assert.equal(report.tables[0].outdated, 0);
+        assert.equal(requests.length, 1);
+    });
+
+    it('never refetches on an unparseable upstream updated', async () => {
+        seedNets([1, 2]);
+        const report = await run([1, 2], { 2: 'not-a-date' });
+        assert.equal(report.tables[0].outdated, 0);
+        assert.equal(requests.length, 1);
     });
 });
 
@@ -138,7 +179,7 @@ describe('weekly cron wiring', async () => {
         } finally {
             globalThis.fetch = realFetch;
         }
-        assert.ok(urls.length > 0 && urls.every((u) => u.includes('fields=id')), 'only id-list requests (health check)');
+        assert.ok(urls.length > 0 && urls.every((u) => u.includes('fields=id,updated')), 'only id-list requests (health check)');
         assert.equal(runs().length, 1, 'one report row recorded');
     });
 });
