@@ -14,7 +14,6 @@ import {
     getEntityCache,
     LIST_TTL,
     DETAIL_TTL,
-    COUNT_TTL,
     NEGATIVE_TTL,
 } from '../../../api/cache.js';
 import { normaliseCacheKey } from '../../../core/cache.js';
@@ -126,9 +125,6 @@ describe('TTL constants', () => {
         assert.equal(DETAIL_TTL, 60 * 60 * 1000);
     });
 
-    it('COUNT_TTL is 60 minutes in ms', () => {
-        assert.equal(COUNT_TTL, 60 * 60 * 1000);
-    });
 
     it('NEGATIVE_TTL is 5 minutes in ms', () => {
         assert.equal(NEGATIVE_TTL, 5 * 60 * 1000);

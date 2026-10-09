@@ -462,13 +462,11 @@ describe('Conformance: query parameters', { concurrency: 1 }, () => {
         assert.equal(res.status, 200);
     });
 
-    it('?limit=0 returns count', async () => {
-        const res = await fetchMirror('/api/net?limit=0&skip=0&depth=0');
+    it('?limit=0 returns every row (no limit), as upstream', async () => {
+        const res = await fetchMirror('/api/campus?limit=0&depth=0');
         assert.equal(res.status, 200);
-        const body = res.body;
-        assert.ok('meta' in body, 'count response should have meta');
-        assert.ok(typeof body.meta.count === 'number', 'meta.count should be a number');
-        assert.ok(body.meta.count > 0, 'net count should be > 0');
+        assert.ok(Array.isArray(res.body.data) && res.body.data.length > 0, 'limit=0 returns rows');
+        assert.equal(res.body.meta?.count, undefined, 'no count envelope');
     });
 });
 

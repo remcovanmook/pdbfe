@@ -2,7 +2,6 @@
  * @fileoverview Unit tests for api/handlers/list.js.
  *
  * Covers:
- *   - Count mode (limit=0, skip=0): derived from cached list, and D1 fallback
  *   - executeListQuery depth>0 path (row-level expansion)
  *   - buildSortedQS: all optional fields included in the query string
  *   - prefetchPage: triggered when next page exists and is not cached
@@ -73,54 +72,6 @@ function makeHC(overrides = {}) {
         ...overrides,
     });
 }
-
-// ── Count mode ────────────────────────────────────────────────────────────────
-
-describe('handleList — count mode (limit=0, skip=0)', () => {
-    it('returns {data:[], meta:{count:N}} with 200', async () => {
-        // Provide a D1 mock that returns a count
-        const hc = makeHC({
-            opts: { depth: 0, limit: 0, skip: 0, since: 0, sort: '', fields: [], pdbfe: false },
-            db: mockDB({ firstResult: { cnt: 42 } }),
-        });
-        const res = await handleList(hc);
-        assert.equal(res.status, 200);
-        const body = await res.json();
-        assert.deepEqual(body.data, []);
-        assert.equal(body.meta.count, 42);
-    });
-
-    it('derives count from cached list when available', async () => {
-        const cache = getEntityCache('net');
-        // Pre-populate L1 with a list response containing 3 rows
-        const listKey = normaliseCacheKey('anon:api/net', '');
-        const listPayload = new TextEncoder().encode('{"data":[{"id":1},{"id":2},{"id":3}],"meta":{}}');
-        cache.add(listKey, listPayload, { entityTag: 'net' }, Date.now());
-
-        let dbCalled = false;
-        const hc = makeHC({
-            opts: { depth: 0, limit: 0, skip: 0, since: 0, sort: '', fields: [], pdbfe: false },
-            db: /** @type {any} */ ({
-                withSession() { return this; },
-                prepare() {
-                    return {
-                        bind() { return this; },
-                        first() { dbCalled = true; return Promise.resolve({ cnt: 99 }); },
-                        all() { return Promise.resolve({ success: true, results: [], meta: {} }); },
-                        run() { return Promise.resolve({ success: true, meta: {}, results: [] }); },
-                    };
-                },
-            }),
-        });
-
-        const res = await handleList(hc);
-        assert.equal(res.status, 200);
-        const body = await res.json();
-        // Count should come from the cached list (3), not from D1 (99)
-        assert.equal(body.meta.count, 3);
-        assert.equal(dbCalled, false, 'D1 COUNT(*) should not be called when cache hit');
-    });
-});
 
 // ── Depth > 0 (cold path) ──────────────────────────────────────────────────────
 

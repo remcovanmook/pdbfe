@@ -109,6 +109,9 @@ const SHARED = [
     [apiWorker, `${API}/api/netfac?net_id=1`],
     [apiWorker, `${API}/api/fac?depth=1`],
     [apiWorker, `${API}/api/org/1?depth=2`],
+    [apiWorker, `${API}/api/fac/1?depth=2`],          // parent org at depth 1 (sets as ids): nothing restricted
+    [apiWorker, `${API}/api/netfac/1?depth=1`],       // parent net at depth 0: no poc_set
+    [apiWorker, `${API}/api/netfac?net_id=1&depth=2`], // lists expand org only
     [apiWorker, `${API}/api/as_set/64500`],
     [restWorker, `${REST}/v1/net`],
     [restWorker, `${REST}/v1/net/1`],
@@ -123,6 +126,7 @@ const SENSITIVE = [
     [apiWorker, `${API}/api/net/1?depth=1`],
     [apiWorker, `${API}/api/net/1?depth=2`],
     [apiWorker, `${API}/api/net?depth=2`],
+    [apiWorker, `${API}/api/netfac/1?depth=2`],       // parent net at depth 1 → net.poc_set
     [restWorker, `${REST}/v1/poc`],
     [restWorker, `${REST}/v1/net/1?depth=2`],
     [restWorker, `${REST}/v1/net?depth=2`],
@@ -186,6 +190,23 @@ describe('isAuthSensitive / isRelationAuthSensitive', async () => {
         assert.equal(isAuthSensitive('net', 0, []), false);
         assert.equal(isAuthSensitive('net', 1, []), true);
         assert.equal(isAuthSensitive('net', 2, []), true);
+    });
+    it('detail views follow parent expansion; lists do not', () => {
+        // netixlan / ixpfx detail at depth≥1 carry an ixlan object (gated column)
+        assert.equal(isAuthSensitive('netixlan', 1, [], true), true);
+        assert.equal(isAuthSensitive('ixpfx', 1, [], true), true);
+        // netfac detail at depth 2 carries net serialised at depth 1 → poc_set
+        assert.equal(isAuthSensitive('netfac', 1, [], true), false);
+        assert.equal(isAuthSensitive('netfac', 2, [], true), true);
+        // depth is capped at 2
+        assert.equal(isAuthSensitive('netfac', 5, [], true), true);
+        // nothing restricted reachable
+        for (const tag of ['org', 'campus', 'fac', 'carrier', 'carrierfac']) {
+            assert.equal(isAuthSensitive(tag, 2, [], true), false, tag);
+        }
+        // lists unchanged
+        assert.equal(isAuthSensitive('netixlan', 1, []), false);
+        assert.equal(isAuthSensitive('netfac', 2, []), false);
     });
     it('entities without a restricted child set stay shared at depth 2', () => {
         for (const tag of ['org', 'fac', 'netixlan', 'netfac', 'carrier', 'campus']) {
