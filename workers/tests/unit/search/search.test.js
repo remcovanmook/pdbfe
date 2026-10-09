@@ -8,7 +8,8 @@
  *   - handleSearch (via worker.fetch): keyword path, graph-search gate (503),
  *     auto fallback to keyword, cache tier headers, 400 on bad params,
  *     rate limit rejection, SEARCH_EMPTY_SENTINEL on empty result
- *   - buildSearchKey: auth prefix partitioning, fast-path cache hit
+ *   - buildSearchKey: shared pub: partition, fast-path cache hit
+ *   - serveSearch headers: shared, edge-cacheable, no per-caller auth headers
  *   - withSearchSWR: L1 hit, stampede coalescing, MISS path
  */
 
@@ -73,37 +74,32 @@ const mockCtx = /** @type {ExecutionContext} */ ({
 // ── buildSearchKey ────────────────────────────────────────────────────────────
 
 describe('buildSearchKey', () => {
-    it('prefixes anon: for unauthenticated callers', async () => {
-        const key = await buildSearchKey('test', ['net'], 'keyword', 20, 0, false);
-        assert.ok(key.startsWith('anon:search/'));
-    });
-
-    it('prefixes auth: for authenticated callers', async () => {
-        const key = await buildSearchKey('test', ['net'], 'keyword', 20, 0, true);
-        assert.ok(key.startsWith('auth:search/'));
+    it('uses the shared pub: partition', async () => {
+        const key = await buildSearchKey('test', ['net'], 'keyword', 20, 0);
+        assert.ok(key.startsWith('pub:search/'));
     });
 
     it('returns different keys for different entity lists', async () => {
-        const k1 = await buildSearchKey('test', ['net'], 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('test', ['ix'], 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('test', ['net'], 'keyword', 20, 0);
+        const k2 = await buildSearchKey('test', ['ix'], 'keyword', 20, 0);
         assert.notEqual(k1, k2);
     });
 
     it('returns different keys for different queries', async () => {
-        const k1 = await buildSearchKey('cloudflare', ['net'], 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('fastly', ['net'], 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('cloudflare', ['net'], 'keyword', 20, 0);
+        const k2 = await buildSearchKey('fastly', ['net'], 'keyword', 20, 0);
         assert.notEqual(k1, k2);
     });
 
     it('returns same key for identical params (fast-path cache)', async () => {
-        const k1 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0);
+        const k2 = await buildSearchKey('repeat', ['net'], 'keyword', 20, 0);
         assert.equal(k1, k2);
     });
 
     it('returns same key regardless of entity list order', async () => {
-        const k1 = await buildSearchKey('cloud', ['net', 'ix', 'fac'], 'keyword', 20, 0, false);
-        const k2 = await buildSearchKey('cloud', ['fac', 'net', 'ix'], 'keyword', 20, 0, false);
+        const k1 = await buildSearchKey('cloud', ['net', 'ix', 'fac'], 'keyword', 20, 0);
+        const k2 = await buildSearchKey('cloud', ['fac', 'net', 'ix'], 'keyword', 20, 0);
         assert.equal(k1, k2);
     });
 });
@@ -221,6 +217,42 @@ describe('GET /search — parameter validation', () => {
         });
         const res = await worker.fetch(req, mockEnv(), mockCtx);
         assert.equal(res.status, 400);
+    });
+});
+
+describe('GET /search — edge cache headers', () => {
+    before(() => purgeSearchCache());
+
+    it('serves results as a shared, sync-aligned public edge object', async () => {
+        const env = mockEnv({ rows: [{ id: 1, name: 'EdgeNet', status: 'ok' }] });
+        const req = new Request('https://api.pdbfe.dev/search?q=edge&entity=net&mode=keyword', {
+            headers: { 'cf-connecting-ip': '10.251.0.1' },
+        });
+        const res = await worker.fetch(req, env, mockCtx);
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get('Cache-Control') ?? '', /^public, max-age=\d+, stale-while-revalidate=\d+$/);
+        // An edge hit replays these headers to every caller: nothing per-caller.
+        assert.equal(res.headers.get('Vary'), null);
+        assert.equal(res.headers.get('X-Auth-Status'), null);
+        assert.equal(res.headers.get('X-PDBFE-Shared'), null, 'internal marker stripped by wrapHandler');
+    });
+
+    it('serves the empty sentinel with the same shared headers', async () => {
+        const req = new Request('https://api.pdbfe.dev/search?q=nothing-matches&entity=net&mode=keyword', {
+            headers: { 'cf-connecting-ip': '10.251.0.2' },
+        });
+        const res = await worker.fetch(req, mockEnv(), mockCtx);
+        assert.equal(res.status, 200);
+        assert.match(res.headers.get('Cache-Control') ?? '', /^public, /);
+    });
+
+    it('never makes errors edge-cacheable', async () => {
+        const req = new Request('https://api.pdbfe.dev/search?q=test', {
+            headers: { 'cf-connecting-ip': '10.251.0.3' },
+        });
+        const res = await worker.fetch(req, mockEnv(), mockCtx);
+        assert.equal(res.status, 400);
+        assert.doesNotMatch(res.headers.get('Cache-Control') ?? '', /public/);
     });
 });
 
@@ -468,7 +500,7 @@ describe('withSearchSWR — stampede coalescing', () => {
         // queryFn call is made. All others await the same in-flight promise
         // via cache.pending (core/pipeline/query.js §7).
         let calls = 0;
-        const key = await buildSearchKey('stampede-test', ['net'], 'keyword', 20, 0, false);
+        const key = await buildSearchKey('stampede-test', ['net'], 'keyword', 20, 0);
         const ctx = /** @type {ExecutionContext} */ ({
             waitUntil(/** @type {Promise<any>} */ p) { p.catch(() => {}); },
         });
@@ -495,7 +527,7 @@ describe('withSearchSWR — stampede coalescing', () => {
         // After the coalesced miss populates L1, the next request should
         // be served from cache without calling queryFn again.
         let calls = 0;
-        const key = await buildSearchKey('stampede-l1', ['net'], 'keyword', 20, 0, false);
+        const key = await buildSearchKey('stampede-l1', ['net'], 'keyword', 20, 0);
         const ctx = /** @type {ExecutionContext} */ ({
             waitUntil(/** @type {Promise<any>} */ p) { p.catch(() => {}); },
         });

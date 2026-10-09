@@ -30,3 +30,12 @@ index_name = "<your-vectorize-index-name>"
 
 [vars]
 PDBFE_VERSION = "<your-version>"
+
+# Workers Cache — ON. Search results are auth-independent (public entity types
+# only; poc is rejected), so serveSearch marks every 200 `public` with the
+# sync-aligned expiry and no Vary: one edge object serves every caller.
+# Errors (400/403/429/503) are no-store and never edge-stored. Same
+# cross_version_cache stance as pdbfe-api: left at false so each deploy starts
+# from a cold edge cache that falls to the warm per-PoP L2.
+[cache]
+enabled = true

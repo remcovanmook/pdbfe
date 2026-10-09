@@ -116,13 +116,15 @@ const paramKeyCache = new Map();
 const PARAM_KEY_CACHE_LIMIT = 500;
 
 /**
- * Generates a deterministic, auth-scoped cache key for a search request.
+ * Generates a deterministic cache key for a search request.
  *
  * Parameters are serialised in a canonical order and hashed with SHA-256
- * to produce a URL-safe key. The key is scoped by authentication tier
- * (anon: vs auth:) so authenticated results never pollute the anonymous
- * cache (relevant if authenticated users gain access to restricted entities
- * in future).
+ * to produce a URL-safe key. Every key is in the shared `pub:` partition:
+ * search results cannot differ by auth state (public entity types only —
+ * poc is rejected by parseSearchParams), and the response is a shared edge
+ * object (see serveSearch). If search ever returns restricted entities, the
+ * prefix must come from an auth-scope decision (pub/auth/anon), as in
+ * api/auth_scope.js — never a fixed value.
  *
  * Fast path: if the same normalised parameter string has been seen before,
  * returns the previously computed hash without repeating the SHA-256 call.
@@ -133,18 +135,15 @@ const PARAM_KEY_CACHE_LIMIT = 500;
  * @param {string} mode - Resolved mode ("keyword" or "graph").
  * @param {number} limit - Result limit.
  * @param {number} skip - Pagination offset.
- * @param {boolean} authenticated - Whether the caller is authenticated.
- * @returns {Promise<string>} Cache key in the form "anon:search/{hex}" or "auth:search/{hex}".
+ * @returns {Promise<string>} Cache key in the form "pub:search/{hex}".
  */
-export async function buildSearchKey(q, entityList, mode, limit, skip, authenticated) {
+export async function buildSearchKey(q, entityList, mode, limit, skip) {
     // Sort the entity list so [net,ix] and [ix,net] map to the same cache entry.
     // Canonical serialisation: fixed key order, no extra whitespace.
     const entityKey = entityList.slice().sort((a, b) => a.localeCompare(b)).join(',');
     const paramStr = `${entityKey}\x00${mode}\x00${limit}\x00${skip}\x00${q}`;
-    const authPrefix = authenticated ? 'auth:' : 'anon:';
-
     const cached = paramKeyCache.get(paramStr);
-    if (cached) return authPrefix + cached;
+    if (cached) return 'pub:' + cached;
 
     const digest = await globalThis.crypto.subtle.digest('SHA-256', encoder.encode(paramStr));
     const arr = new Uint8Array(digest);
@@ -156,7 +155,7 @@ export async function buildSearchKey(q, entityList, mode, limit, skip, authentic
     }
     paramKeyCache.set(paramStr, baseKey);
 
-    return authPrefix + baseKey;
+    return 'pub:' + baseKey;
 }
 
 // ── SWR wrapper ───────────────────────────────────────────────────────────────

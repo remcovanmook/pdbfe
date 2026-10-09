@@ -289,10 +289,9 @@ async function runEntitySearch(db, vectorize, entityTag, q, effectiveMode, limit
  * @param {D1Database} db - D1 session (withSession already applied).
  * @param {any|null} vectorize - Vectorize binding, or null if absent.
  * @param {ExecutionContext} ctx - Worker execution context.
- * @param {boolean} authenticated - Whether the caller is authenticated.
  * @returns {Promise<Response>} Search results or error response.
  */
-export async function handleSearch(request, queryString, db, vectorize, ctx, authenticated) {
+export async function handleSearch(request, queryString, db, vectorize, ctx) {
     const { q, entityList, isMulti, mode, limit, skip, error } = parseSearchParams(queryString);
     if (error) return jsonError(400, error);
 
@@ -311,7 +310,7 @@ export async function handleSearch(request, queryString, db, vectorize, ctx, aut
     }
 
     // Cache key: buildSearchKey sorts entityList internally for canonical ordering.
-    const cacheKey = await buildSearchKey(q, entityList, effectiveMode, limit, skip, authenticated);
+    const cacheKey = await buildSearchKey(q, entityList, effectiveMode, limit, skip);
 
     const { buf, tier, hits } = await withSearchSWR(cacheKey, ctx, async () => {
         // §9: all D1 and Vectorize calls inside this queryFn closure.
