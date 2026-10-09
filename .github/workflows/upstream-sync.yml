@@ -44,6 +44,8 @@ jobs:
           npm ci --prefix workers --ignore-scripts
 
       - name: Run schema pipeline
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # GitHub API rate limit (tags lookup)
         id: pipeline
         run: |
           python scripts/parse_django_models.py 2>&1 | tee /tmp/pipeline.log
