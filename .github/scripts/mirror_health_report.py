@@ -60,8 +60,10 @@ def fmt(v):
 
 def table_row(t):
     action = "ok" if t["action"] == "ok" else f"**{t['action']}**"
+    # outdated/refreshed are absent from reports recorded before they existed.
     return (f"| {t['tag']} | {fmt(t['upstream'])} | {fmt(t['mirror'])} | {t['stale']} | {t['missing']} "
-            f"| {len(t['deleted'])} | {len(t['inserted'])} | {fmt(t['rowCount'])} | {action} |")
+            f"| {t.get('outdated', 0)} | {len(t['deleted'])} | {len(t['inserted'])} | {len(t.get('refreshed', []))} "
+            f"| {fmt(t['rowCount'])} | {action} |")
 
 
 def table_details(t):
@@ -70,6 +72,8 @@ def table_details(t):
         out.append(f"- **{t['tag']}** deleted stale: {ids(t['deleted'])}")
     if t["inserted"]:
         out.append(f"- **{t['tag']}** inserted missing: {ids(t['inserted'])}")
+    if t.get("refreshed"):
+        out.append(f"- **{t['tag']}** refreshed outdated: {ids(t['refreshed'])}")
     out.extend(f"- **{t['tag']}** ALERT: {a}" for a in t["alerts"])
     if t["error"]:
         out.append(f"- **{t['tag']}** ERROR: {t['error']}")
@@ -81,8 +85,8 @@ def render(title, run, report):
     if report:
         lines.extend([
             f"Run `#{run['id']}` started {report['startedAt']}, finished {report['finishedAt']}.\n",
-            "| table | upstream | mirror | stale | missing | deleted | inserted | row_count | action |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+            "| table | upstream | mirror | stale | missing | outdated | deleted | inserted | refreshed | row_count | action |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ])
         lines.extend(table_row(t) for t in report["tables"])
         details = [d for t in report["tables"] for d in table_details(t)]
