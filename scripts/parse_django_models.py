@@ -30,6 +30,7 @@ Usage:
 
 import ast
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -202,8 +203,17 @@ ENTITY_NAMING = {
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
 def fetch_url(url):
-    """Fetch a URL and return its content as a string."""
-    req = urllib.request.Request(url, headers={"User-Agent": "pdbfe-sync/1.0"})
+    """Fetch a URL and return its content as a string.
+
+    GitHub API calls send GITHUB_TOKEN when it is set: unauthenticated
+    requests are limited to 60/hour per IP, and shared CI runners exhaust
+    that, failing the job with HTTP 403 "rate limit exceeded".
+    """
+    headers = {"User-Agent": "pdbfe-sync/1.0"}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read().decode("utf-8")
 

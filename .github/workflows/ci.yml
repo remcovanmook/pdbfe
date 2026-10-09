@@ -172,6 +172,8 @@ jobs:
         working-directory: workers
 
       - name: Regenerate schema artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # GitHub API rate limit (tags lookup)
         run: |
           python scripts/parse_django_models.py --force
           python scripts/gen_graphql_schema.py
