@@ -688,6 +688,8 @@ interface HandlerContext {
     paging?: { page: string, perPage: string | null } | null;
     /** Auth resolution time (ms), reported in Server-Timing. */
     authMs?: number;
+    /** Per-request D1 counters for Server-Timing (core/d1stats.js). */
+    d1?: { calls: number, sqlMs: number, rowsRead: number };
     /** Pipeline result of the request (set by list/detail handlers) for tier metrics. */
     pipeline?: { tier: string, l2Ms?: number, dbMs?: number };
 }

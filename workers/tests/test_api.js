@@ -20,34 +20,19 @@ import handler from '../api/index.js';
  * @returns {D1Database} Mock D1 binding.
  */
 function mockD1(rows = []) {
+    /** As D1 returns them: envelope queries give one {payload} row; first() is all().results[0]. */
+    const resultsFor = (/** @type {string} */ sql) => (sql.includes('AS payload')
+        ? (rows.length > 0 ? [{ payload: JSON.stringify({ data: rows, meta: {} }) }] : [])
+        : rows);
     const db = /** @type {any} */({
-        prepare: (/** @type {string} */ sql) => ({
-            bind: (/** @type {any[]} */..._args) => {
-                const isJsonEnvelope = sql.includes('AS payload');
-                return {
-                    all: async () => ({ results: rows, success: true }),
-                    first: async () => {
-                        if (isJsonEnvelope) {
-                            // Simulate D1 returning the full JSON envelope as a string
-                            return rows.length > 0
-                                ? { payload: JSON.stringify({ data: rows, meta: {} }) }
-                                : null;
-                        }
-                        return rows[0] || null;
-                    }
-                };
-            },
-            first: async () => {
-                const isJsonEnvelope = sql.includes('AS payload');
-                if (isJsonEnvelope) {
-                    return rows.length > 0
-                        ? { payload: JSON.stringify({ data: rows, meta: {} }) }
-                        : null;
-                }
-                return rows[0] || null;
-            },
-            all: async () => ({ results: rows, success: true })
-        }),
+        prepare: (/** @type {string} */ sql) => {
+            const stmt = {
+                bind: (/** @type {any[]} */..._args) => stmt,
+                all: async () => ({ results: resultsFor(sql), success: true }),
+                first: async () => resultsFor(sql)[0] || null,
+            };
+            return stmt;
+        },
         /** Sessions API: returns itself since the mock already has .prepare(). */
         withSession() { return db; }
     });

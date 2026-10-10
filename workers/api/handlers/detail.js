@@ -36,7 +36,7 @@ export async function handleDetail(hc, id) {
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hc.hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**

@@ -11,6 +11,7 @@ import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOC
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
+import { withD1Stats } from '../core/d1stats.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
@@ -105,7 +106,11 @@ async function handleRequest(request, env, ctx) {
     // queries to hit any replica (including the primary). This is optimal for
     // read-only workloads where eventual consistency is acceptable.
     // Placed after OPTIONS/method checks to avoid the allocation on preflight.
-    const db = env.PDB.withSession("first-unconstrained");
+    const session = env.PDB.withSession("first-unconstrained");
+    // Request-path D1 calls go through the stats wrapper (Server-Timing d1);
+    // the background _sync_meta poll uses the bare session so it never
+    // counts toward a request.
+    const { db, stats: d1 } = withD1Stats(session);
 
     const { p0: topLevel, p1: apiCall } = tokenizeString(rawPath, '/', 2);
 
@@ -142,7 +147,7 @@ async function handleRequest(request, env, ctx) {
     // O(1) hot-path hook: trigger background D1 poll if 15s have passed.
     // Scoped to entity routes only — admin/health/status don't need it.
     const now = Date.now();
-    ensureSyncFreshness(db, ctx, now);
+    ensureSyncFreshness(session, ctx, now);
 
     // Write methods on API paths → 501 Not Implemented
     if (WRITE_METHODS.has(request.method)) {
@@ -262,7 +267,7 @@ async function handleRequest(request, env, ctx) {
     // serveJSON can bake Last-Modified and X-Auth-Id into the initial
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
-    const hc = { request, db, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
+    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
     const response = id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);

@@ -65,7 +65,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hc.hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, hc.entityVersionMs, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ async function handlePaged(hc, entity, paging) {
     const { buf, tier, hits } = result;
     hc.pipeline = result;
     if (!buf) return jsonError(404, 'Invalid page.');
-    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result) }, hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hApi, hc.entityVersionMs, hc.userId);
 }
 
 /**

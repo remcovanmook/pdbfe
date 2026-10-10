@@ -87,6 +87,9 @@ export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toob
             return {
                 all: async () => {
                     stats.queries++;
+                    // Count payload queries on both paths: the request-path D1
+                    // wrapper (core/d1stats.js) serves first() through all().
+                    if (isPayload) stats.payloadQueries++;
                     const results = stmt.all(...args);
                     for (const r of results) checkSize(r);
                     return { results, success: true, meta: {} };
