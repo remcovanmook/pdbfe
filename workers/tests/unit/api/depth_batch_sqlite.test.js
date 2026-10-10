@@ -87,3 +87,49 @@ describe('?fields= with depth (main query lacks id/FK columns)', () => {
         assert.deepEqual(fac.netfac_set, [700, 702]);
     });
 });
+
+// limit above the rows left = last page, so no background next-page prefetch adds calls
+describe('deep OFFSET pages: rows first, then one batch of expansions by id', async () => {
+    const { DEEP_SKIP } = await import('../../../api/handlers/list.js');
+    /** @type {any} */ let deepEnv;
+    before(() => {
+        const { sqlite, db } = createSqliteD1();
+        sqlite.exec(`INSERT INTO "peeringdb_organization" (id, name, social_media, status, created, updated) VALUES (1, 'Org', '[]', 'ok', '${TS}', '${TS}')`);
+        const net = sqlite.prepare(`INSERT INTO "peeringdb_network" (id, org_id, name, asn, social_media, info_types, ixp_update_exclude, status, created, updated) VALUES (?, 1, ?, ?, '[]', '[]', '[]', 'ok', '${TS}', '${TS}')`);
+        sqlite.exec('BEGIN');
+        for (let id = 1; id <= DEEP_SKIP + 2; id++) net.run(id, `Net ${id}`, 64000 + id);
+        sqlite.exec('COMMIT');
+        sqlite.exec(`INSERT INTO "peeringdb_network_facility" (id, net_id, fac_id, local_asn, status, created, updated) VALUES (900, ${DEEP_SKIP + 1}, 10, 1, 'ok', '${TS}', '${TS}')`);
+        deepEnv = envFor({
+            ...db,
+            withSession() { return this; },
+            batch: async (/** @type {any[]} */ stmts) => { calls.batch++; calls.batchStmts += stmts.length; return db.batch(stmts); },
+            prepare: (/** @type {string} */ sql) => {
+                const wrap = (/** @type {any} */ st) => ({
+                    ...st,
+                    bind: (/** @type {any[]} */ ...a) => wrap(st.bind(...a)),
+                    all: async () => { if (!sql.includes('_sync_meta')) calls.direct++; return st.all(); },
+                    first: async () => { if (!sql.includes('_sync_meta')) calls.direct++; return st.first(); },
+                });
+                return wrap(db.prepare(sql));
+            },
+        });
+    });
+
+    it(`skip >= ${DEEP_SKIP}: one main query + one expansion batch, sets correct`, async () => {
+        const res = await apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/net?depth=1&limit=5&skip=${DEEP_SKIP}`), deepEnv, mockCtx);
+        const rows = (await res.json()).data;
+        assert.deepEqual(rows.map((/** @type {any} */ r) => r.id), [DEEP_SKIP + 1, DEEP_SKIP + 2]);
+        assert.deepEqual(rows.map((/** @type {any} */ r) => r.netfac_set), [[900], []]);
+        assert.equal(rows[0].org.id, 1);
+        assert.equal(calls.direct, 1, 'the page query');
+        assert.equal(calls.batch, 1, 'the expansions');
+    });
+
+    it(`skip < ${DEEP_SKIP}: still a single batch`, async () => {
+        const res = await apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/net?depth=1&limit=5&skip=${DEEP_SKIP - 1}`), deepEnv, mockCtx);
+        assert.equal((await res.json()).data.length, 3);
+        assert.equal(calls.direct, 0);
+        assert.equal(calls.batch, 1);
+    });
+});
