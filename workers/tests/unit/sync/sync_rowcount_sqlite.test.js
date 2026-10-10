@@ -78,3 +78,27 @@ describe('fallback when no previous row_count exists', () => {
         assert.equal(fullCounts().length, 1);
     });
 });
+
+describe('D1 holds only status=ok rows', () => {
+    beforeEach(() => {
+        setup(5);
+        const row = (/** @type {number} */ id, /** @type {string} */ status) => ({
+            id, org_id: 1, name: `Net ${id}`, asn: 64500 + id, social_media: [], info_types: [],
+            status, created: TS, updated: '2026-10-07T13:00:00Z',
+        });
+        // 4 exists and turns pending; 8 is new but pending; 9 is new and ok
+        globalThis.fetch = /** @type {any} */ (async () => new Response(JSON.stringify({
+            data: [row(4, 'pending'), row(8, 'pending'), row(9, 'ok')],
+        })));
+    });
+
+    it('a non-ok status is a removal: existing rows deleted, new ones never inserted', async () => {
+        const result = await syncEntity(db, 'net', NET, '', null);
+        assert.ok(!result.error, String(result.error));
+        const ids = sqlite.prepare('SELECT id FROM "peeringdb_network" ORDER BY id').all().map((/** @type {any} */ r) => r.id);
+        assert.deepEqual(ids, [1, 2, 3, 5, 9]);
+        assert.deepEqual(result.deletedIds.sort((a, b) => a - b), [4, 8], "removed ids reported like deletions");
+        assert.equal(storedCount(), 5); // 5 + {9} - {4}
+        assert.equal(actualCount(), 5);
+    });
+});

@@ -6,6 +6,21 @@
 import { VECTOR_ENTITY_TAGS } from './entities.js';
 
 /**
+ * Whether an upstream row belongs in D1. The mirror serves only what
+ * upstream lists — status 'ok' — so D1 holds nothing else: 'deleted',
+ * 'pending' (e.g. campuses awaiting approval, which ?since= returns to an
+ * authenticated sync) and any other status are removals. A pending row that
+ * is approved later comes back via ?since= as 'ok' (approval saves the row
+ * and advances `updated`). Rows without a status field are kept.
+ *
+ * @param {Record<string, any>} row - Upstream API row.
+ * @returns {boolean}
+ */
+export function isListed(row) {
+    return row.status === undefined || row.status === 'ok';
+}
+
+/**
  * Coerces a single API field value to a D1-compatible SQL parameter.
  *
  * Django CharField(blank=True, null=False) stores "" not NULL. Coerce to ""
