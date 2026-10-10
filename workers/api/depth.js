@@ -249,7 +249,7 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
         const childEntity = childTag ? ENTITIES[childTag] : null;
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
-        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS} AND "status" != 'deleted'`;
+        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS} AND "status" = 'ok'`;
         /** @type {any[]} */
         const params = [JSON.stringify(parentIds)];
 
@@ -347,7 +347,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
                 joinParts.join('') +
                 ` WHERE t."${rel.fk}" ${IN_IDS}` +
-                ` AND t."status" != 'deleted'`;
+                ` AND t."status" = 'ok'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
         } else if (childColumns.length > 0) {
@@ -355,7 +355,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             const colExpr = childColumns.map(c => selectColumn(rel.table, c, '', authenticated)).join(", "); // ap-ok: SQL construction
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" ${IN_IDS}` +
-                ` AND "status" != 'deleted'`;
+                ` AND "status" = 'ok'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
         } else if (GATED_TABLES.has(rel.table)) {
@@ -365,7 +365,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +
                 ` WHERE "${rel.fk}" ${IN_IDS}` +
-                ` AND "status" != 'deleted'`;
+                ` AND "status" = 'ok'`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
         }
@@ -426,7 +426,7 @@ async function expandParents(db, entity, rows, depth, authenticated, pdbfe, deta
         if (ids.size === 0) return;
 
         const cols = getColumns(parent, pdbfe).map(c => selectColumn(parent.table, c, '', authenticated)).join(', '); // ap-ok: SQL construction
-        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS} AND "status" != 'deleted'`;
+        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS} AND "status" = 'ok'`;
         const result = await db.prepare(sql).bind(JSON.stringify([...ids])).all(); // ap-ok: cold path behind cachedQuery
         const parents = result.results || [];
         for (const p of parents) parseJsonFields(parent, p);
