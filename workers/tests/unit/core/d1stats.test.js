@@ -59,3 +59,69 @@ describe('serverTiming d1 segment', () => {
         assert.equal(serverTiming(0, { tier: 'L1' }, { calls: 0, sqlMs: 0, rowsRead: 0 }), 'cache;desc="L1", auth;dur=0');
     });
 });
+
+describe('riders (the sync poll sent with the request’s first D1 call)', () => {
+    /** Fake D1 that records batches; rows depend on the SQL. */
+    function recordingD1() {
+        /** @type {string[][]} */
+        const batches = [];
+        /** @type {string[]} */
+        const direct = [];
+        const stmt = (/** @type {string} */ sql) => ({
+            sql,
+            bind() { return this; },
+            all: async () => { direct.push(sql); return { results: [{ from: sql }], meta: { duration: 1, rows_read: 1 } }; },
+        });
+        return {
+            batches, direct,
+            db: {
+                prepare: stmt,
+                batch: async (/** @type {any[]} */ stmts) => {
+                    batches.push(stmts.map((s) => s.sql));
+                    return stmts.map((s) => ({ results: [{ from: s.sql }], meta: { duration: s.sql === 'POLL' ? 50 : 1, rows_read: s.sql === 'POLL' ? 99 : 1 } }));
+                },
+            },
+        };
+    }
+
+    it('all()/first() send the rider in the same batch; its rows go to apply, not the caller', async () => {
+        const f = recordingD1();
+        const { db, stats } = withD1Stats(f.db);
+        /** @type {any[]} */
+        let polled = [];
+        db.carry({ sql: 'POLL', apply: (rows) => { polled = rows; } });
+        const row = await db.prepare('MAIN').first();
+        assert.deepEqual(row, { from: 'MAIN' });
+        assert.deepEqual(f.batches, [['MAIN', 'POLL']]);
+        assert.deepEqual(f.direct, []);
+        assert.deepEqual(polled, [{ from: 'POLL' }]);
+        assert.deepEqual(stats, { calls: 1, sqlMs: 1, rowsRead: 1 }, 'rider meta not counted');
+        await db.prepare('NEXT').all();
+        assert.deepEqual(f.direct, ['NEXT'], 'only the first call carries it');
+    });
+
+    it('batch() appends the rider and strips its result', async () => {
+        const f = recordingD1();
+        const { db } = withD1Stats(f.db);
+        let polled = 0;
+        db.carry({ sql: 'POLL', apply: (rows) => { polled = rows.length; } });
+        const results = await db.batch([db.prepare('A'), db.prepare('B')]);
+        assert.deepEqual(f.batches, [['A', 'B', 'POLL']]);
+        assert.deepEqual(results.map((/** @type {any} */ r) => r.results[0].from), ['A', 'B']);
+        assert.equal(polled, 1);
+    });
+
+    it('takeRider() hands back an unsent rider, then nothing', () => {
+        const { db } = withD1Stats(recordingD1().db);
+        const r = { sql: 'POLL', apply: () => {} };
+        db.carry(r);
+        assert.equal(db.takeRider(), r);
+        assert.equal(db.takeRider(), null);
+    });
+
+    it('a failing apply does not fail the request', async () => {
+        const { db } = withD1Stats(recordingD1().db);
+        db.carry({ sql: 'POLL', apply: () => { throw new Error('boom'); } });
+        assert.deepEqual(await db.prepare('MAIN').first(), { from: 'MAIN' });
+    });
+});

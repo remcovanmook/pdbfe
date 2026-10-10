@@ -10,7 +10,7 @@ import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
-import { ensureSyncFreshness, getEntityVersion, handleStatus } from './sync_state.js';
+import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus } from './sync_state.js';
 import { withD1Stats } from '../core/d1stats.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
@@ -144,10 +144,7 @@ async function handleRequest(request, env, ctx) {
         return jsonError(404, "Not found");
     }
 
-    // O(1) hot-path hook: trigger background D1 poll if 15s have passed.
-    // Scoped to entity routes only — admin/health/status don't need it.
     const now = Date.now();
-    ensureSyncFreshness(session, ctx, now);
 
     // Write methods on API paths → 501 Not Implemented
     if (WRITE_METHODS.has(request.method)) {
@@ -268,9 +265,17 @@ async function handleRequest(request, env, ctx) {
     // header dict, avoiding a second Response + Headers allocation.
     /** @type {HandlerContext} */
     const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
+    // Sync freshness poll (every 15 s per isolate): rides along the
+    // request's first D1 call in the same batch — no extra round trip, and
+    // no separate query racing the request's own. A request that never
+    // reaches D1 (L1/L2 hit) runs it after the response instead.
+    const poll = claimSyncPoll(now);
+    if (poll) db.carry(poll);
     const response = id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
+    const unsent = db.takeRider();
+    if (unsent) ctx.waitUntil(runSyncPoll(session, unsent));
     recordCacheTier(env, hc, response.status, shared, since > 0);
     return response;
 }

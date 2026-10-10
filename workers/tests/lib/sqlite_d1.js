@@ -106,7 +106,9 @@ export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toob
                     return { success: true, meta: { changes: Number(info.changes) }, results: [] };
                 },
                 // D1 batch semantics: reads return rows, writes return meta.changes.
-                exec: async () => (isRead
+                // Batched reads count like all()/first() (requests may batch their
+                // main query with the freshness poll, core/d1stats.js riders).
+                exec: async () => (isRead && (stats.queries++, isPayload && stats.payloadQueries++, true)
                     ? { success: true, meta: {}, results: stmt.all(...args) }
                     : { success: true, meta: { changes: Number(stmt.run(...args).changes) }, results: [] }),
             };
