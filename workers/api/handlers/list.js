@@ -21,7 +21,7 @@ import { countRowsBytes } from './shared.js';
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
  * Checks the per-entity LRU cache first. On miss, delegates to
- * cachedQuery() which handles coalescing, L2, and D1.
+ * cachedQuery() which handles coalescing and D1.
  *
  * @param {HandlerContext} hc - Common handler context.
  * @returns {Promise<Response>} JSON response.
@@ -40,8 +40,7 @@ export async function handleList(hc) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
-        () => executeListQuery(db, entity, filters, opts, authenticated),
-        undefined, opts.since === 0 // ?since= keys carry a fresh timestamp: skip L2
+        () => executeListQuery(db, entity, filters, opts, authenticated)
     );
     const { buf, tier, hits } = result;
     hc.pipeline = result;
@@ -143,7 +142,7 @@ async function handlePaged(hc, entity, paging) {
 
 /**
  * Background pre-fetch for the next page of paginated results.
- * Delegates to cachedQuery() which handles coalescing, L2, and D1.
+ * Delegates to cachedQuery() which handles coalescing and D1.
  *
  * @param {D1Session} db - D1 database binding (session-wrapped for read replication).
  * @param {EntityMeta} entity - Entity metadata.
@@ -153,7 +152,7 @@ async function handlePaged(hc, entity, paging) {
  * @param {string} cacheKey - Cache key for the pre-fetched page.
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
- * @param {ExecutionContext} ctx - Worker execution context for L2 write-back.
+ * @param {ExecutionContext} ctx - Worker execution context.
  * @returns {Promise<void>}
  */
 async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated, ctx) {

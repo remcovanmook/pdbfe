@@ -234,7 +234,7 @@ copy[0] = 0x7B;
 ## 9. Querying D1 Outside `cachedQuery()`
 
 All API handler D1 queries must go through `cachedQuery()` (pipeline.js),
-which owns promise coalescing and the L1/L2 cache lifecycle.
+which owns promise coalescing and the L1 cache lifecycle.
 
 **Don't:**
 ```js
@@ -271,25 +271,11 @@ Exceptions:
 
 ---
 
-## 10. Awaiting L2 Cache Writes
+## 10. (Retired) Awaiting L2 Cache Writes
 
-`putL2()` stores payloads in the per-PoP Cache API. These writes are
-fire-and-forget — blocking the response on them adds latency for no gain.
-
-**Don't:**
-```js
-await putL2(key, buf, ttl);  // blocks the response
-return serveJSON(buf);
-```
-
-**Do:**
-```js
-putL2(key, buf, ttl);        // fire-and-forget, resolves in background
-return serveJSON(buf);
-```
-
-Exception: inside `ctx.waitUntil()` closures, awaiting is fine since
-the response has already been sent.
+The per-PoP L2 cache was removed: its Cache API lookup cost as much as the
+D1 round trip it saved, and the edge cache serves repeats in front of the
+worker. The number is kept so other § references stay valid.
 
 ---
 
@@ -365,7 +351,7 @@ return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits });
 `withEdgeSWR` handles cache resolution from `entityTag`, synchronous field
 extraction (§11), negative cache TTL override, and SWR background refresh.
 `cachedQuery()` is still the internal miss-resolution engine (coalescing,
-L2, D1 write) — it is not deprecated, just no longer called directly from
+D1, L1 write) — it is not deprecated, just no longer called directly from
 handler code.
 
 The only exception is `prefetchPage()` in `handlers/index.js`, which calls

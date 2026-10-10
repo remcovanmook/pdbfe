@@ -5,7 +5,7 @@
  * - SDL contains expected types, inputs, and queries
  * - whereToFilters translates GraphQL args to ParsedFilter format
  * - Resolver factories produce callable functions
- * - L2 cache key generation is deterministic
+ * - Cache key generation is deterministic
  */
 
 import { describe, it } from 'node:test';
@@ -260,7 +260,7 @@ describe('graphql-resolvers.js', () => {
     });
 });
 
-// ── L2 cache key tests ──────────────────────────────────────────────────────
+// ── Cache key tests ──────────────────────────────────────────────────────
 
 describe('graphqlCacheKey', () => {
     it('produces deterministic keys for the same input', async () => {

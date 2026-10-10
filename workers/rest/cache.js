@@ -60,14 +60,13 @@ export function purgeRestCache() {
     restCache.purge();
 }
 
-// ── Sync-state (background L1 invalidation + L2 version tagging) ──────────────
+// ── Sync-state (background L1 invalidation) ──────────────────────────────────
 
 /**
  * REST binding of the generic sync-state tracker. The REST worker uses a
  * single shared LRU (not per-entity caches), so on-change invalidation is
  * coarse: any entity change purges the whole cache. At most one purge per
- * ingest cadence (~15 min); SWR refills. getEntityVersion() feeds the L2
- * version-tagged keys so per-PoP L2 entries orphan on data change.
+ * ingest cadence (~15 min); SWR refills.
  *
  * The REST worker does not serve the sync /status endpoint (its /status
  * comes from core/admin.js), so no statusHeaders are injected.
@@ -90,12 +89,12 @@ export const getEntityVersion = _sync.getEntityVersion;
  * the REST cache, EMPTY_ENVELOPE sentinel, and TTL values.
  *
  * @param {string} entityTag - Entity tag (e.g. "net"). Used as the
- *        metadata tag for cache.add and for L2 key construction.
+ *        metadata tag for cache.add.
  * @param {string} cacheKey - Normalised cache key (e.g. "v1/net/123").
  * @param {ExecutionContext} ctx - Cloudflare worker execution context.
  * @param {() => Promise<Uint8Array|null>} queryFn - D1 query closure.
  *        Return Uint8Array for positive results, null for 404/empty.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number}>}
  */
 export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
     return withSWR({
@@ -106,6 +105,5 @@ export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
         negativeTtlMs: REST_NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-        getVersion: getEntityVersion,
     });
 }

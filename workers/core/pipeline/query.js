@@ -1,9 +1,9 @@
 /**
  * @fileoverview Shared query pipeline for all workers.
  *
- * Encapsulates the full cache-miss resolution flow:
+ * Encapsulates the cache-miss resolution flow:
  *
- *   coalesce → L2 check → queryFn → L1 + L2 write
+ *   coalesce → queryFn → L1 write
  *
  * By centralising this in one function:
  *   - Promise coalescing (cache stampede prevention) is guaranteed for every query
@@ -11,31 +11,27 @@
  *
  * Callers provide a queryFn closure that contains only the backend-specific
  * logic (D1 for the API worker, yoga.fetch for the GraphQL worker). Everything
- * else — coalescing, L2 lookups, cache writes, negative caching — is
- * handled here.
+ * else — coalescing, cache writes, negative caching — is handled here.
  *
- * Dependencies that vary per worker (entity version tracking, negative TTL,
- * sentinel value) are injected as parameters rather than imported, so each
- * worker can provide its own configuration.
+ * There is no per-PoP L2 tier any more: in front of the worker the edge cache
+ * serves repeats, and behind it a Cache API lookup (13–59 ms measured) cost as
+ * much as or more than the D1 round trip it was meant to save (~20 ms).
  */
 
-import { getL2, putL2 } from './l2cache.js';
 import { encoder } from '../http.js';
 
 /**
  * Default sentinel value representing a cached 404 / empty result.
- * Stored in L1 and L2 to prevent repeated queries for non-existent
- * entity IDs. Workers may supply their own sentinel via the
- * emptySentinel parameter.
+ * Stored in L1 to prevent repeated queries for non-existent entity IDs.
+ * Workers may supply their own sentinel via the emptySentinel parameter.
  * @type {Uint8Array}
  */
 export const EMPTY_ENVELOPE = encoder.encode('{"data":[],"meta":{}}');
 
 /**
- * Checks whether a Uint8Array matches a negative-cache sentinel.
- * Compares by reference first (fast path for L1 hits where the same
- * object is stored), then byte-for-byte (needed for L2, which returns
- * a copy).
+ * Checks whether a Uint8Array matches a negative-cache sentinel: by
+ * reference first (the L1 stores the sentinel object itself), then
+ * byte-for-byte.
  *
  * @internal Exported for unit testing. Production callers use cachedQuery().
  * @param {Uint8Array|ArrayBuffer} buf - Buffer to check.
@@ -54,26 +50,24 @@ export function isNegative(buf, sentinel = EMPTY_ENVELOPE) {
 }
 
 /**
- * @typedef {'L1' | 'L2' | 'MISS'} CacheTier
+ * @typedef {'L1' | 'MISS'} CacheTier
  * Indicates which cache tier served a request:
  *   - L1: per-isolate LRU (set by handler, not by cachedQuery)
- *   - L2: per-PoP caches.default
  *   - MISS: backend query (D1, yoga, etc.)
  */
 
 /**
- * @typedef {{buf: Uint8Array|null, tier: CacheTier, l2Ms?: number, dbMs?: number}} CachedResult
+ * @typedef {{buf: Uint8Array|null, tier: CacheTier, dbMs?: number}} CachedResult
  */
 
 /**
- * Executes a query through the full cache-miss resolution pipeline.
+ * Executes a query through the cache-miss resolution pipeline.
  *
  * Flow:
  *   1. Coalesce: if another request is already fetching this key, await
  *      that in-flight promise instead of issuing a duplicate query.
- *   2. Check L2 per-PoP cache (caches.default)
- *   3. On L2 miss: execute the caller's queryFn
- *   4. Write result to L1 (per-isolate LRU) and L2 (per-PoP, fire-and-forget)
+ *   2. Execute the caller's queryFn.
+ *   3. Write the result to L1 (per-isolate LRU).
  *
  * Promise coalescing:
  *   Uses cache.pending to ensure N concurrent requests for the same expired
@@ -82,38 +76,30 @@ export function isNegative(buf, sentinel = EMPTY_ENVELOPE) {
  *   in a .finally() handler.
  *
  * Negative caching:
- *   - If queryFn returns null, emptySentinel is stored with negativeTtlMs
- *   - If L2 returns a sentinel match, it's treated as a negative hit
+ *   If queryFn returns null, emptySentinel is stored in L1 (the caller's
+ *   negativeTtlMs governs its lifetime there) and buf is null.
  *
  * @param {Object} opts - Pipeline configuration.
  * @param {string} opts.cacheKey - Normalised cache key (e.g. "api/net/694?depth=2").
  * @param {LocalCache} opts.cache - Per-entity LRU cache instance from getEntityCache().
  * @param {string} opts.entityTag - Tag for cache metadata (e.g. "net", "graphql").
- * @param {number} opts.ttlMs - TTL in milliseconds for positive results (L1 addedAt, L2 max-age).
- * @param {number} opts.negativeTtlMs - TTL for negative (404) results in milliseconds.
+ * @param {number} [opts.ttlMs] - TTL for positive results (read by the L1 caller).
+ * @param {number} [opts.negativeTtlMs] - TTL for negative results (read by the L1 caller).
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - Backend query function to execute on
  *        cache miss. Must return a Uint8Array payload for positive results, or null for
  *        404/empty.
- * @param {(tag: string) => number} [opts.getVersion] - Optional function returning the
- *        entity's version number for L2 key tagging. When provided, L2 keys include the
- *        version so stale entries are automatically orphaned on data changes.
- * @param {ExecutionContext} [opts.ctx] - Worker execution context. When provided, L2 cache
- *        writes are wrapped in ctx.waitUntil() to ensure the async cache.put() completes
- *        before isolate recycling.
  * @param {Uint8Array} [opts.emptySentinel] - Sentinel buffer used for negative cache
  *        entries. Defaults to EMPTY_ENVELOPE. Workers with different empty-result
  *        shapes (e.g. GraphQL's {"data":null,"errors":[]}) inject their own.
- * @param {boolean} [opts.useL2=true] - Consult/populate the per-PoP L2 cache. False for
- *        keys that will not repeat (e.g. ?since= with a fresh timestamp).
- * @returns {Promise<CachedResult>} Cached or fresh payload with the tier that served it.
- *          buf is null for negative results (sentinel was stored, caller should 404).
+ * @returns {Promise<CachedResult>} Fresh payload; buf is null for negative results
+ *          (sentinel was stored, caller should 404).
  */
-export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel = EMPTY_ENVELOPE, useL2 = true }) {
+export async function cachedQuery({ cacheKey, cache, entityTag, queryFn, emptySentinel = EMPTY_ENVELOPE }) {
     // ── Promise coalescing ───────────────────────────────────────
     let inflight = cache.pending.get(cacheKey);
 
     if (!inflight) {
-        inflight = _resolve({ cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel, useL2 });
+        inflight = _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel);
         cache.pending.set(cacheKey, inflight);
         inflight.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
@@ -122,67 +108,29 @@ export async function cachedQuery({ cacheKey, cache, entityTag, ttlMs, negativeT
 }
 
 /**
- * Internal fetch pipeline — separated from cachedQuery so the coalescing
- * wrapper can store and share the single promise reference.
+ * Internal fetch — separated from cachedQuery so the coalescing wrapper can
+ * store and share the single promise reference.
  *
- * @param {object} opts - Resolve options (see cachedQuery).
- * @param {string} opts.cacheKey - Normalised cache key.
- * @param {LocalCache} opts.cache - Per-entity LRU cache instance.
- * @param {string} opts.entityTag - Tag for cache metadata.
- * @param {number} opts.ttlMs - TTL in milliseconds for positive results.
- * @param {number} opts.negativeTtlMs - TTL in milliseconds for negative results.
- * @param {() => Promise<Uint8Array|null>} opts.queryFn - Backend query closure.
- * @param {(tag: string) => number} [opts.getVersion] - Optional version getter.
- * @param {ExecutionContext} [opts.ctx] - Worker execution context for L2 write-back.
- * @param {Uint8Array} [opts.emptySentinel] - Sentinel buffer for negative entries.
- * @param {boolean} [opts.useL2=true] - Consult/populate the per-PoP L2 cache.
+ * @param {string} cacheKey
+ * @param {LocalCache} cache
+ * @param {string} entityTag
+ * @param {() => Promise<Uint8Array|null>} queryFn
+ * @param {Uint8Array} emptySentinel
  * @returns {Promise<CachedResult>}
  */
-async function _resolve({ cacheKey, cache, entityTag, ttlMs, negativeTtlMs, queryFn, getVersion, ctx, emptySentinel = EMPTY_ENVELOPE, useL2 = true }) {
-    // ── L2 per-PoP cache check ───────────────────────────────────
-    // L2 keys are version-tagged with the entity's last_modified_at.
-    // When data changes, the version advances and old L2 entries are
-    // orphaned — they expire via Cache-Control TTL without requiring
-    // enumeration or explicit deletion.
-    const version = getVersion ? getVersion(entityTag) : 0;
-    const l2Key = version ? `v/${version}/${cacheKey}` : cacheKey;
-
-    // Phase timings for Server-Timing. Workers clocks advance across I/O,
-    // which is exactly what these two awaits are.
-    // useL2=false: the key will not repeat (e.g. ?since= with a fresh
-    // timestamp), so the per-PoP lookup and write are pure cost.
-    const tL2 = Date.now();
-    const l2Buf = useL2 ? await getL2(l2Key) : null;
-    const l2Ms = useL2 ? Date.now() - tL2 : undefined;
-    if (l2Buf) {
-        if (isNegative(l2Buf, emptySentinel)) {
-            cache.add(cacheKey, emptySentinel, { entityTag }, Date.now());
-            return { buf: null, tier: 'L2', l2Ms };
-        }
-        cache.add(cacheKey, l2Buf, { entityTag }, Date.now());
-        return { buf: l2Buf, tier: 'L2', l2Ms };
-    }
-
-    // ── Backend query ────────────────────────────────────────────
+async function _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel) {
+    // Phase timing for Server-Timing. Workers clocks advance across I/O,
+    // which is exactly what this await is.
     const tDb = Date.now();
     const buf = await queryFn();
     const dbMs = Date.now() - tDb;
 
-    // ── Cache write-back ─────────────────────────────────────────
     if (buf === null) {
-        // Negative result: store sentinel with shorter TTL
+        // Negative result: store sentinel (the caller's negativeTtlMs applies)
         cache.add(cacheKey, emptySentinel, { entityTag }, Date.now());
-        if (useL2) {
-            const negWrite = putL2(l2Key, emptySentinel, negativeTtlMs / 1000);
-            if (ctx) ctx.waitUntil(negWrite);
-        }
-        return { buf: null, tier: 'MISS', l2Ms, dbMs };
+        return { buf: null, tier: 'MISS', dbMs };
     }
 
     cache.add(cacheKey, buf, { entityTag }, Date.now());
-    if (useL2) {
-        const posWrite = putL2(l2Key, buf, ttlMs / 1000);
-        if (ctx) ctx.waitUntil(posWrite);
-    }
-    return { buf, tier: 'MISS', l2Ms, dbMs };
+    return { buf, tier: 'MISS', dbMs };
 }

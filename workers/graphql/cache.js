@@ -10,7 +10,7 @@
  * The Cloudflare Cache API only supports GET requests. Since GraphQL
  * operations are POST-based, we hash the operation body to produce a
  * deterministic cache key (format: gql/{sha256-hex}), then rely on
- * core/pipeline/ for L2 get/put via caches.default.
+ * core/pipeline/ for coalescing and negative caching.
  */
 
 import { LRUCache } from '../core/cache.js';
@@ -77,7 +77,7 @@ export function purgeGqlCache() {
 // ── Cache key generation ─────────────────────────────────────────────────────
 
 /**
- * Generates a deterministic L2 cache key from a GraphQL operation.
+ * Generates a deterministic cache key from a GraphQL operation.
  *
  * The POST body properties (query string and variables object) are
  * serialised and hashed with SHA-256 to produce a URL-safe key that
@@ -104,7 +104,7 @@ export async function graphqlCacheKey(query, variables) {
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 
 /**
- * Performs the full L1 → SWR → coalesce → L2 → queryFn flow for a
+ * Performs the full L1 → SWR → coalesce → queryFn flow for a
  * GraphQL operation.
  *
  * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
@@ -112,14 +112,14 @@ export async function graphqlCacheKey(query, variables) {
  * provide the cache key, execution context, and yoga query closure.
  *
  * Unlike the API worker, GraphQL has no entity version tracking (queries
- * span multiple entity types), so getVersion is not provided.
+ * span multiple entity types).
  *
  * @param {string} cacheKey - Deterministic cache key from graphqlCacheKey().
  * @param {ExecutionContext} ctx - Worker execution context for waitUntil().
  * @param {() => Promise<Uint8Array|null>} queryFn - Closure that executes
  *        yoga.fetch() and returns the response as a Uint8Array, or null
  *        on error.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'L2'|'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'MISS', hits: number}>}
  */
 export async function withGqlSWR(cacheKey, ctx, queryFn) {
     return withSWR({

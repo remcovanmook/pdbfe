@@ -28,8 +28,7 @@ export async function handleDetail(hc, id) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, DETAIL_TTL,
-        () => executeDetailQuery(db, entity, filters, opts, id, authenticated),
-        undefined, opts.since === 0 // ?since= keys carry a fresh timestamp: skip L2
+        () => executeDetailQuery(db, entity, filters, opts, id, authenticated)
     );
     const { buf, tier, hits } = result;
     hc.pipeline = result;

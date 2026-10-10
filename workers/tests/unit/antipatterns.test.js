@@ -18,7 +18,6 @@
  *   §7  — pending map manipulation outside pipeline.js
  *   §8  — mutating cached Uint8Array buffers
  *   §9  — D1 .prepare() in files that must not touch D1
- *   §10 — await putL2() blocking response
  *   §12 — raw cachedQuery() / cache.get() in handler code
  *
  * Not statically detectable (require code review):
@@ -354,22 +353,6 @@ describe('§9 — no .prepare() in infrastructure modules', () => {
     for (const relPath of NO_D1_FILES) {
         it(`${relPath}`, () => {
             const { rel, lines } = readFile(relPath);
-            const v = scanLines(lines, pattern);
-            assert.equal(v.length, 0, formatViolations(rel, v));
-        });
-    }
-});
-
-// ═════════════════════════════════════════════════════════════════════
-// §10 — Awaiting L2 Cache Writes
-// putL2() is fire-and-forget. Awaiting it blocks the response.
-// ═════════════════════════════════════════════════════════════════════
-
-describe('§10 — no await on putL2() calls', () => {
-    const pattern = /await\s+putL2\s*\(/;
-
-    for (const [, { rel, lines }] of fileCache) {
-        it(`${rel}`, () => {
             const v = scanLines(lines, pattern);
             assert.equal(v.length, 0, formatViolations(rel, v));
         });

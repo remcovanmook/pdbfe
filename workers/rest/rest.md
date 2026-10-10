@@ -16,7 +16,6 @@ Client → wrapHandler (error trap + telemetry headers)
             → GET /v1/{entity}/{id} → handleDetail (handlers/detail.js)
             → GET /v1/{entity}/{id}/{relation} → sub-resource (subresource.js)
        → L1 Read + Stale While Revalidate (SWR)
-       → L2 Read
        → D1 Read
 ```
 

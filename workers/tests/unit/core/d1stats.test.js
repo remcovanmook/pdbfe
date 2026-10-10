@@ -52,8 +52,8 @@ describe('withD1Stats', () => {
 
 describe('serverTiming d1 segment', () => {
     it('appended when D1 was called', () => {
-        assert.equal(serverTiming(0, { tier: 'MISS', l2Ms: 3, dbMs: 40 }, { calls: 2, sqlMs: 4.34, rowsRead: 250 }),
-            'cache;desc="MISS", auth;dur=0, l2;dur=3, db;dur=40, d1;dur=4.3;desc="2 rt, 250 rows"');
+        assert.equal(serverTiming(0, { tier: 'MISS', dbMs: 40 }, { calls: 2, sqlMs: 4.34, rowsRead: 250 }),
+            'cache;desc="MISS", auth;dur=0, db;dur=40, d1;dur=4.3;desc="2 rt, 250 rows"');
     });
     it('omitted on cache hits (no D1 call)', () => {
         assert.equal(serverTiming(0, { tier: 'L1' }, { calls: 0, sqlMs: 0, rowsRead: 0 }), 'cache;desc="L1", auth;dur=0');

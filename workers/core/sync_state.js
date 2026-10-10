@@ -9,8 +9,7 @@
  *   If an entity's last_modified_at differs from the in-memory snapshot,
  *   `onEntityChange(tag)` is invoked so the caller can purge the right L1
  *   scope (per-entity cache in the API worker; the single shared LRU in the
- *   REST worker). The L2 per-PoP cache is invalidated implicitly via
- *   version-tagged keys (see pipeline/) using getEntityVersion().
+ *   REST worker). getEntityVersion() exposes the snapshot for Last-Modified.
  *
  * This module has no dependency on the api/ layer — callers inject the
  * entity tag list, the on-change hook, and (optionally) the /status header
@@ -22,7 +21,7 @@
  *                     step, to send with a query the request makes anyway
  *   runPoll(db, poll)                 — run a claimed poll on its own
  *   handleStatus(request, db, ctx)    — pre-encoded /status handler (needs statusHeaders)
- *   getEntityVersion(tag)             — returns last_modified_at for L2 key versioning
+ *   getEntityVersion(tag)             — returns last_modified_at (Last-Modified / If-Modified-Since)
  *   refresh(db)                       — force a synchronous poll (cold boot / tests)
  */
 
@@ -244,9 +243,8 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
 
     /**
      * Returns the current last_modified_at timestamp for an entity.
-     * Used by pipeline/ to construct versioned L2 cache keys — when the
-     * version changes, old L2 entries are orphaned without enumeration
-     * or explicit deletion. Zero allocations.
+     * Used for Last-Modified and the If-Modified-Since 304 shortcut.
+     * Zero allocations.
      *
      * @param {string} tag - Entity tag (e.g. "net").
      * @returns {number} The last_modified_at epoch, or 0 if not yet polled.
