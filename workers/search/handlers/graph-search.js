@@ -77,7 +77,7 @@ function idsFromResult(result) {
 async function lookupByAsn(db, asn, entityTag, limit) {
     if (entityTag !== 'net') return null;
     const result = await db.prepare(
-        `SELECT id FROM peeringdb_network WHERE asn = ? AND status = 'ok' LIMIT ?`
+        `SELECT id FROM peeringdb_network WHERE asn = ? LIMIT ?`
     ).bind(asn, limit).all();
     return idsFromResult(result);
 }
@@ -101,7 +101,7 @@ async function lookupByAsn(db, asn, entityTag, limit) {
  */
 async function filterByMetadata(db, entityTag, predicates, limit) {
     const table = tableFor(entityTag);
-    const conditions = [`status = 'ok'`];
+    const conditions = [];
     const bindings = [];
 
     if (predicates.country) {
@@ -122,7 +122,8 @@ async function filterByMetadata(db, entityTag, predicates, limit) {
     }
 
     bindings.push(limit);
-    const sql = `SELECT id FROM "${table}" WHERE ${conditions.join(' AND ')} LIMIT ?`;
+    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const sql = `SELECT id FROM "${table}"${where} LIMIT ?`;
     const result = await db.prepare(sql).bind(...bindings).all();
     return idsFromResult(result);
 }
@@ -146,14 +147,14 @@ async function resolveNameToId(db, name, preferTag) {
         const table = tableFor(tag);
         // Exact match first.
         let result = await db.prepare(
-            `SELECT id FROM "${table}" WHERE name = ? AND status = 'ok' LIMIT 1`
+            `SELECT id FROM "${table}" WHERE name = ? LIMIT 1`
         ).bind(name).all();
         if (result.success && result.results.length > 0) {
             return { id: result.results[0].id, tag };
         }
         // Prefix / substring match.
         result = await db.prepare(
-            String.raw`SELECT id FROM "${table}" WHERE name LIKE ? ESCAPE '\' AND status = 'ok' LIMIT 1`
+            String.raw`SELECT id FROM "${table}" WHERE name LIKE ? ESCAPE '\' LIMIT 1`
         ).bind(`%${escapeLike(name)}%`).all();
         if (result.success && result.results.length > 0) {
             return { id: result.results[0].id, tag };
@@ -189,7 +190,7 @@ async function traverseFromAnchor(db, anchorId, anchorTag, entityTag, traversalI
     if (anchorTag === 'ix' && entityTag === 'net') {
         // Networks at/members of an IX — via netixlan.
         sql = `SELECT DISTINCT net_id AS id FROM peeringdb_network_ixlan
-               WHERE ix_id = ? AND status = 'ok' LIMIT ?`;
+               WHERE ix_id = ? LIMIT ?`;
     } else if (anchorTag === 'fac' && entityTag === 'net') {
         // Networks present at a facility.
         sql = `SELECT DISTINCT net_id AS id FROM peeringdb_network_facility
@@ -205,7 +206,7 @@ async function traverseFromAnchor(db, anchorId, anchorTag, entityTag, traversalI
     } else if (anchorTag === 'net' && entityTag === 'ix') {
         // IXes a network is present at.
         sql = `SELECT DISTINCT ix_id AS id FROM peeringdb_network_ixlan
-               WHERE net_id = ? AND status = 'ok' LIMIT ?`;
+               WHERE net_id = ? LIMIT ?`;
     } else if (anchorTag === 'net' && entityTag === 'fac') {
         // Facilities a network is present at.
         sql = `SELECT DISTINCT fac_id AS id FROM peeringdb_network_facility
@@ -213,7 +214,7 @@ async function traverseFromAnchor(db, anchorId, anchorTag, entityTag, traversalI
     } else if (anchorTag === 'campus' && entityTag === 'fac') {
         // Facilities in a campus.
         sql = `SELECT DISTINCT id FROM peeringdb_facility
-               WHERE campus_id = ? AND status = 'ok' LIMIT ?`;
+               WHERE campus_id = ? LIMIT ?`;
     }
 
     if (!sql) return null;
@@ -288,7 +289,7 @@ async function keywordFallback(db, entityTag, raw, limit) {
     const term = `%${escapeLike(raw)}%`;
     const result = await db.prepare(
         String.raw`SELECT id FROM "${table}"
-         WHERE status = 'ok' AND (name LIKE ? ESCAPE '\' OR aka LIKE ? ESCAPE '\')
+         WHERE (name LIKE ? ESCAPE '\' OR aka LIKE ? ESCAPE '\')
          LIMIT ?`
     ).bind(term, term, limit).all();
     return idsFromResult(result);

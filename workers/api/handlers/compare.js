@@ -87,7 +87,7 @@ async function fetchEntityHeader(db, tag, id) {
     const meta = ENTITY_META[tag];
     const cols = ['id', meta.nameCol, ...(meta.extraCols || [])]; // ap-ok: cold path, max 4 cols per entity header
     const colList = cols.map(c => '"' + c + '"').join(', '); // ap-ok: avoids nested template literal (sonar rule)
-    const sql = `SELECT ${colList} FROM "${meta.table}" WHERE "id" = ? AND "status" = 'ok'`; // ap-ok: cold path, builds SQL once per header lookup
+    const sql = `SELECT ${colList} FROM "${meta.table}" WHERE "id" = ?`; // ap-ok: cold path, builds SQL once per header lookup
     const row = await db.prepare(sql).bind(id).first();
     if (!row) return null;
     return { tag, ...row };
@@ -131,8 +131,6 @@ async function overlapNetNet(db, idA, idB) {
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
         JOIN peeringdb_ix ix ON ixlan.ix_id = ix.id
         WHERE a.net_id = ? AND b.net_id = ?
-          AND a.status = 'ok' AND b.status = 'ok'
-          AND ix.status = 'ok'
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Shared facilities: networks present at the same facility
@@ -143,8 +141,6 @@ async function overlapNetNet(db, idA, idB) {
         JOIN peeringdb_network_facility b ON a.fac_id = b.fac_id
         JOIN peeringdb_facility f ON a.fac_id = f.id
         WHERE a.net_id = ? AND b.net_id = ?
-          AND a.status = 'ok' AND b.status = 'ok'
-          AND f.status = 'ok'
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Only-side IXPs (present for the first bind but not the second). Run twice
@@ -154,12 +150,12 @@ async function overlapNetNet(db, idA, idB) {
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
         JOIN peeringdb_ix ix ON ixlan.ix_id = ix.id
-        WHERE a.net_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+        WHERE a.net_id = ?
           AND ix.id NOT IN (
             SELECT ix2.id FROM peeringdb_network_ixlan b
             JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
             JOIN peeringdb_ix ix2 ON ixlan2.ix_id = ix2.id
-            WHERE b.net_id = ? AND b.status = 'ok'
+            WHERE b.net_id = ?
           )
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
@@ -169,10 +165,10 @@ async function overlapNetNet(db, idA, idB) {
                f.latitude, f.longitude
         FROM peeringdb_network_facility a
         JOIN peeringdb_facility f ON a.fac_id = f.id
-        WHERE a.net_id = ? AND a.status = 'ok' AND f.status = 'ok'
+        WHERE a.net_id = ?
           AND f.id NOT IN (
             SELECT b.fac_id FROM peeringdb_network_facility b
-            WHERE b.net_id = ? AND b.status = 'ok'
+            WHERE b.net_id = ?
           )
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
@@ -214,8 +210,6 @@ async function overlapIxIx(db, idA, idB) {
         JOIN peeringdb_ix_facility b ON a.fac_id = b.fac_id
         JOIN peeringdb_facility f ON a.fac_id = f.id
         WHERE a.ix_id = ? AND b.ix_id = ?
-          AND a.status = 'ok' AND b.status = 'ok'
-          AND f.status = 'ok'
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Shared member networks (present on both IXes via netixlan → ixlan → ix)
@@ -227,8 +221,6 @@ async function overlapIxIx(db, idA, idB) {
         JOIN peeringdb_ixlan ixlanB ON b.ixlan_id = ixlanB.id
         JOIN peeringdb_network n ON a.net_id = n.id
         WHERE ixlanA.ix_id = ? AND ixlanB.ix_id = ?
-          AND a.status = 'ok' AND b.status = 'ok'
-          AND n.status = 'ok'
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Only-side facilities — same SQL, swapped ids for only_a / only_b.
@@ -237,10 +229,10 @@ async function overlapIxIx(db, idA, idB) {
                f.latitude, f.longitude
         FROM peeringdb_ix_facility a
         JOIN peeringdb_facility f ON a.fac_id = f.id
-        WHERE a.ix_id = ? AND a.status = 'ok' AND f.status = 'ok'
+        WHERE a.ix_id = ?
           AND f.id NOT IN (
             SELECT b.fac_id FROM peeringdb_ix_facility b
-            WHERE b.ix_id = ? AND b.status = 'ok'
+            WHERE b.ix_id = ?
           )
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
@@ -250,11 +242,11 @@ async function overlapIxIx(db, idA, idB) {
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
         JOIN peeringdb_network n ON a.net_id = n.id
-        WHERE ixlan.ix_id = ? AND a.status = 'ok' AND n.status = 'ok'
+        WHERE ixlan.ix_id = ?
           AND n.id NOT IN (
             SELECT DISTINCT b.net_id FROM peeringdb_network_ixlan b
             JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
-            WHERE ixlan2.ix_id = ? AND b.status = 'ok'
+            WHERE ixlan2.ix_id = ?
           )
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
@@ -299,8 +291,6 @@ async function overlapIxNet(db, ixId, netId) {
         JOIN peeringdb_network_facility b ON a.fac_id = b.fac_id
         JOIN peeringdb_facility f ON a.fac_id = f.id
         WHERE a.ix_id = ? AND b.net_id = ?
-          AND a.status = 'ok' AND b.status = 'ok'
-          AND f.status = 'ok'
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(ixId, netId).all(),
 
@@ -309,10 +299,10 @@ async function overlapIxNet(db, ixId, netId) {
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
         FROM peeringdb_ix_facility a
         JOIN peeringdb_facility f ON a.fac_id = f.id
-        WHERE a.ix_id = ? AND a.status = 'ok' AND f.status = 'ok'
+        WHERE a.ix_id = ?
           AND f.id NOT IN (
             SELECT b.fac_id FROM peeringdb_network_facility b
-            WHERE b.net_id = ? AND b.status = 'ok'
+            WHERE b.net_id = ?
           )
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(ixId, netId).all(),
@@ -322,10 +312,10 @@ async function overlapIxNet(db, ixId, netId) {
         SELECT f.id AS fac_id, f.name AS fac_name, f.city, f.country, f.latitude, f.longitude
         FROM peeringdb_network_facility b
         JOIN peeringdb_facility f ON b.fac_id = f.id
-        WHERE b.net_id = ? AND b.status = 'ok' AND f.status = 'ok'
+        WHERE b.net_id = ?
           AND f.id NOT IN (
             SELECT a.fac_id FROM peeringdb_ix_facility a
-            WHERE a.ix_id = ? AND a.status = 'ok'
+            WHERE a.ix_id = ?
           )
         ORDER BY f.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(netId, ixId).all(),
@@ -336,7 +326,6 @@ async function overlapIxNet(db, ixId, netId) {
         FROM peeringdb_network_ixlan a
         JOIN peeringdb_ixlan ixlan ON a.ixlan_id = ixlan.id
         WHERE a.net_id = ? AND ixlan.ix_id = ?
-          AND a.status = 'ok' AND ixlan.status = 'ok'
         LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(netId, ixId).all(),
     ]);
@@ -368,7 +357,6 @@ async function overlapFacNet(db, facId, netId) {
         JOIN peeringdb_ixlan ixlan ON ixlan.ix_id = ix.id
         JOIN peeringdb_network_ixlan n ON n.ixlan_id = ixlan.id
         WHERE ixfac.fac_id = ? AND n.net_id = ?
-          AND ixfac.status = 'ok' AND ix.status = 'ok' AND ixlan.status = 'ok' AND n.status = 'ok'
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(facId, netId).all(),
 
@@ -376,11 +364,11 @@ async function overlapFacNet(db, facId, netId) {
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_ix_facility a
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+        WHERE a.fac_id = ?
           AND ix.id NOT IN (
             SELECT ixlan2.ix_id FROM peeringdb_network_ixlan b
             JOIN peeringdb_ixlan ixlan2 ON b.ixlan_id = ixlan2.id
-            WHERE b.net_id = ? AND b.status = 'ok'
+            WHERE b.net_id = ?
           )
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(facId, netId).all(),
@@ -391,10 +379,10 @@ async function overlapFacNet(db, facId, netId) {
         FROM peeringdb_network_ixlan b
         JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
         JOIN peeringdb_ix ix ON ixlan.ix_id = ix.id
-        WHERE b.net_id = ? AND b.status = 'ok' AND ix.status = 'ok' AND ixlan.status = 'ok'
+        WHERE b.net_id = ?
           AND ix.id NOT IN (
             SELECT a.ix_id FROM peeringdb_ix_facility a
-            WHERE a.fac_id = ? AND a.status = 'ok'
+            WHERE a.fac_id = ?
           )
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(netId, facId).all(),
@@ -425,7 +413,6 @@ async function overlapFacIx(db, facId, ixId) {
         JOIN peeringdb_network_ixlan b ON b.net_id = n.id
         JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
         WHERE a.fac_id = ? AND ixlan.ix_id = ?
-          AND a.status = 'ok' AND n.status = 'ok' AND b.status = 'ok' AND ixlan.status = 'ok'
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(facId, ixId).all(),
 
@@ -433,11 +420,11 @@ async function overlapFacIx(db, facId, ixId) {
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network n ON a.net_id = n.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
+        WHERE a.fac_id = ?
           AND n.id NOT IN (
             SELECT b.net_id FROM peeringdb_network_ixlan b
             JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
-            WHERE ixlan.ix_id = ? AND b.status = 'ok'
+            WHERE ixlan.ix_id = ?
           )
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(facId, ixId).all(),
@@ -447,10 +434,10 @@ async function overlapFacIx(db, facId, ixId) {
         FROM peeringdb_network_ixlan b
         JOIN peeringdb_ixlan ixlan ON b.ixlan_id = ixlan.id
         JOIN peeringdb_network n ON b.net_id = n.id
-        WHERE ixlan.ix_id = ? AND b.status = 'ok' AND ixlan.status = 'ok' AND n.status = 'ok'
+        WHERE ixlan.ix_id = ?
           AND n.id NOT IN (
             SELECT a.net_id FROM peeringdb_network_facility a
-            WHERE a.fac_id = ? AND a.status = 'ok'
+            WHERE a.fac_id = ?
           )
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}
     `).bind(ixId, facId).all(),
@@ -478,7 +465,6 @@ async function overlapFacFac(db, idA, idB) {
         JOIN peeringdb_network_facility b ON a.net_id = b.net_id
         JOIN peeringdb_network n ON a.net_id = n.id
         WHERE a.fac_id = ? AND b.fac_id = ?
-          AND a.status = 'ok' AND b.status = 'ok' AND n.status = 'ok'
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     const sharedIxpsSql = `
@@ -487,7 +473,6 @@ async function overlapFacFac(db, idA, idB) {
         JOIN peeringdb_ix_facility b ON a.ix_id = b.ix_id
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
         WHERE a.fac_id = ? AND b.fac_id = ?
-          AND a.status = 'ok' AND b.status = 'ok' AND ix.status = 'ok'
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
     // Only-side networks / ixps — same SQL, swapped ids for only_a / only_b.
@@ -495,7 +480,7 @@ async function overlapFacFac(db, idA, idB) {
         SELECT DISTINCT n.id AS net_id, n.name AS net_name, n.asn
         FROM peeringdb_network_facility a
         JOIN peeringdb_network n ON a.net_id = n.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND n.status = 'ok'
+        WHERE a.fac_id = ?
           AND n.id NOT IN (SELECT net_id FROM peeringdb_network_facility WHERE fac_id = ? AND status='ok')
         ORDER BY n.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 
@@ -503,7 +488,7 @@ async function overlapFacFac(db, idA, idB) {
         SELECT ix.id AS ix_id, ix.name AS ix_name, ix.country, ix.city
         FROM peeringdb_ix_facility a
         JOIN peeringdb_ix ix ON a.ix_id = ix.id
-        WHERE a.fac_id = ? AND a.status = 'ok' AND ix.status = 'ok'
+        WHERE a.fac_id = ?
           AND ix.id NOT IN (SELECT ix_id FROM peeringdb_ix_facility WHERE fac_id = ? AND status='ok')
         ORDER BY ix.name COLLATE NOCASE LIMIT ${COMPARE_ROW_LIMIT}`;
 

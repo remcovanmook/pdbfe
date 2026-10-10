@@ -62,7 +62,7 @@ export async function handleKeyword(db, entityTag, q, limit, skip) {
 
     const sql =
         `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
-        ` WHERE (${where}) AND status = 'ok'` +
+        ` WHERE (${where})` +
         ` ORDER BY name ASC LIMIT ? OFFSET ?`;
 
     const result = await db.prepare(sql).bind(...binds).all();
