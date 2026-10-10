@@ -32,11 +32,13 @@ function mockPDB(overrides = {}) {
             // Find a matching override by substring
             const match = Object.entries(overrides).find(([k]) => sql.includes(k));
             const override = match ? match[1] : null;
+            // As D1: first() is all().results[0] (core/d1stats.js serves first() through all()).
+            const rows = override == null ? [] : (Array.isArray(override) ? override : [override]);
             return {
                 bind() { return this; },
-                first() { return Promise.resolve(override ?? null); },
+                first() { return Promise.resolve(rows[0] ?? null); },
                 run() { return Promise.resolve({ success: true, meta: {}, results: [] }); },
-                all() { return Promise.resolve({ success: true, meta: {}, results: override ?? [] }); },
+                all() { return Promise.resolve({ success: true, meta: {}, results: rows }); },
             };
         },
         batch(/** @type {any[]} */ stmts) {
