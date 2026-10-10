@@ -12,8 +12,6 @@
  *      mirror's link-row sets.
  *   4. limit=0 means no limit (every row), as upstream; it used to be a
  *      count mode upstream never had.
- *   6. Expansions include only status='ok' rows, like the main queries and
- *      upstream (D1 also holds the pending rows ?since= returns).
  *   5. Detail views expand every `<tag>_id` parent into a `<tag>` object at
  *      depth≥1, and at depth=2 serialise those parents at depth 1 (their
  *      sets as ids, their own parents as objects), as upstream. Lists keep
@@ -45,20 +43,16 @@ before(() => {
     net.run(102, 'Net 102', 64102, '2026-10-07T10:30:00Z');
     net.run(103, 'Net 103', 64103, '2026-10-07T11:00:00Z');
 
-    // One IX with three facilities linked (one link deleted) and a LAN with
+    // One IX with two of three facilities linked and a LAN with
     // net 100 present twice (two addresses) and net 101 once.
     sqlite.exec(`INSERT INTO "peeringdb_ix" (id, org_id, name, social_media, status, created, updated) VALUES (1, 1, 'IX One', '[]', 'ok', '${TS}', '${TS}')`);
     const fac = sqlite.prepare(`INSERT INTO "peeringdb_facility" (id, org_id, name, city, social_media, available_voltage_services, status, created, updated) VALUES (?, 1, ?, 'Amsterdam', '[]', '[]', 'ok', '${TS}', '${TS}')`);
     for (const id of [10, 11, 12]) fac.run(id, `Fac ${id}`);
     sqlite.exec(`INSERT INTO "peeringdb_campus" (id, org_id, name, social_media, status, created, updated) VALUES (5, 1, 'Campus Five', '[]', 'ok', '${TS}', '${TS}')`);
     sqlite.exec(`UPDATE "peeringdb_facility" SET campus_id = 5 WHERE id IN (10, 11)`);
-    // A pending campus (D1 keeps what ?since= returns; upstream lists only ok)
-    sqlite.exec(`INSERT INTO "peeringdb_campus" (id, org_id, name, social_media, status, created, updated) VALUES (6, 1, 'Campus Pending', '[]', 'pending', '${TS}', '${TS}')`);
-    sqlite.exec(`UPDATE "peeringdb_facility" SET campus_id = 6 WHERE id = 12`);
     const ixfac = sqlite.prepare(`INSERT INTO "peeringdb_ix_facility" (id, ix_id, fac_id, status, created, updated) VALUES (?, 1, ?, ?, '${TS}', '${TS}')`);
     ixfac.run(501, 10, 'ok');
     ixfac.run(502, 11, 'ok');
-    ixfac.run(503, 12, 'deleted');
     sqlite.exec(`INSERT INTO "peeringdb_ixlan" (id, ix_id, name, ixf_ixp_member_list_url_visible, status, created, updated) VALUES (1, 1, '', 'Private', 'ok', '${TS}', '${TS}')`);
     const nix = sqlite.prepare(`INSERT INTO "peeringdb_network_ixlan" (id, net_id, ixlan_id, asn, speed, ipaddr4, status, created, updated) VALUES (?, ?, 1, ?, 10000, ?, 'ok', '${TS}', '${TS}')`);
     nix.run(901, 100, 64100, '192.0.2.1');
@@ -130,7 +124,7 @@ describe('unknown query parameters are ignored', () => {
 });
 
 describe('ix.fac_set / ixlan.net_set (upstream sets through the link table)', () => {
-    it('ix depth=1: fac_set = facility ids (deleted link excluded), ixfac_set kept', async () => {
+    it('ix depth=1: fac_set = facility ids, ixfac_set kept', async () => {
         const ix = (await get(apiWorker, `${API}/ix/1?depth=1`)).body.data[0];
         assert.deepEqual(ix.fac_set, [10, 11]);
         assert.deepEqual(ix.ixfac_set, [501, 502]);
@@ -232,25 +226,5 @@ describe('detail views expand parent FKs (as upstream)', () => {
         assert.equal(ix.ixfac_set[0].ix_id, 1);
         const campus = (await get(apiWorker, `${API}/campus/5?depth=2`)).body.data[0];
         assert.deepEqual(campus.fac_set.map((/** @type {any} */ f) => f.campus_id), [5, 5]);
-    });
-});
-
-describe("expansions include only status='ok' rows", () => {
-    it('a pending parent is not expanded', async () => {
-        const fac = (await get(apiWorker, `${API}/fac/12?depth=1`)).body.data[0];
-        assert.equal(fac.campus_id, 6);
-        assert.equal('campus' in fac, false);
-    });
-
-    it('a pending child is not in a set (ids or objects)', async () => {
-        assert.deepEqual((await get(apiWorker, `${API}/org/1?depth=1`)).body.data[0].campus_set, [5]);
-        const org2 = (await get(apiWorker, `${API}/org/1?depth=2`)).body.data[0];
-        assert.deepEqual(org2.campus_set.map((/** @type {any} */ c) => c.id), [5]);
-        const fac2 = (await get(apiWorker, `${API}/fac/10?depth=2`)).body.data[0];
-        assert.deepEqual(fac2.org.campus_set, [5], "parent's sets too");
-    });
-
-    it('the pending row stays hidden from lists, as before', async () => {
-        assert.deepEqual(ids((await get(apiWorker, `${API}/campus`)).body), [5]);
     });
 });

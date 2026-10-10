@@ -205,7 +205,7 @@ async function hydrateGraphIds(db, entityTag, idList, limit) {
     const inList = ids.join(',');
     const sql =
         `SELECT id, ${primaryField} AS name${extraSelect}, status FROM ${table}` +
-        ` WHERE id IN (${inList}) AND status = 'ok'` +
+        ` WHERE id IN (${inList})` +
         ` ORDER BY ${caseExpr} ASC LIMIT ?`;
 
     const result = await db.prepare(sql).bind(limit).all();

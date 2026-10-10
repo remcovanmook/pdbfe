@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for the SQL query builder.
  * Tests filter translation, parameter binding, injection prevention,
- * pagination, 'since' handling, and the default status=ok filter.
+ * pagination and 'since' handling (no default status filter: D1 holds only status='ok').
  */
 
 import { describe, it } from 'node:test';
@@ -101,28 +101,27 @@ const POC_RESTRICTED = {
     _anonFilter: { field: "visible", value: "Public" },
 };
 
-// Because the default status=ok filter is now injected, tests that previously
-// expected no WHERE clause will see one. Tests that provide an explicit
-// status filter will not get the default injected.
+// No default status filter is injected: D1 holds only status='ok' rows (the
+// sync removes any other status). An explicit ?status= filters like any field.
 
 describe("buildRowQuery", () => {
-    it("should build a basic SELECT with default status filter", () => {
+    it("should build a basic SELECT without a status filter", () => {
         const result = buildRowQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('SELECT "id", "name", "asn", "org_id", "status", "updated"'));
-        assert.ok(result.sql.includes('WHERE "status" = ?'));
+        assert.ok(!result.sql.includes('"status" = ?'));
         assert.ok(result.sql.includes('ORDER BY "id" ASC'));
-        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
+        assert.deepEqual(result.params, [MAX_PAGE_LIMIT]);
     });
 
-    it("should apply equality filter alongside default status", () => {
+    it("should apply an equality filter on its own", () => {
         const filters = [{ field: "asn", op: "eq", value: "13335" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
-        assert.ok(result.sql.includes('"status" = ?'));
-        assert.deepEqual(result.params, ["ok", 13335, MAX_PAGE_LIMIT]);
+        assert.ok(!result.sql.includes('"status" = ?'));
+        assert.deepEqual(result.params, [13335, MAX_PAGE_LIMIT]);
     });
 
-    it("should not inject default status when explicit status filter is provided", () => {
+    it("applies an explicit status filter like any field", () => {
         const filters = [{ field: "status", op: "eq", value: "deleted" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
         // Should have exactly one status = ? in the WHERE clause
@@ -169,16 +168,14 @@ describe("buildRowQuery", () => {
     it("should ignore unknown fields", () => {
         const filters = [{ field: "nonexistent", op: "eq", value: "foo" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        // Still has the default status filter
-        assert.ok(result.sql.includes('"status" = ?'));
-        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
+        assert.ok(!result.sql.includes('WHERE'));
+        assert.deepEqual(result.params, [MAX_PAGE_LIMIT]);
     });
 
     it("should ignore unknown operators", () => {
         const filters = [{ field: "name", op: "regex", value: ".*" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        // Only the default status filter
-        assert.deepEqual(result.params, ["ok", MAX_PAGE_LIMIT]);
+        assert.deepEqual(result.params, [MAX_PAGE_LIMIT]);
     });
 
     it("should handle single ID fetch", () => {
@@ -389,10 +386,10 @@ describe("buildJsonQuery omitempty", () => {
 });
 
 describe("buildCountQuery", () => {
-    it("should generate COUNT(*) query with default status filter", () => {
+    it("should generate an unfiltered COUNT(*) query", () => {
         const result = buildCountQuery(NET_ENTITY, [], { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.equal(result.sql, 'SELECT COUNT(*) AS cnt FROM "peeringdb_network" WHERE "status" = ?');
-        assert.deepEqual(result.params, ["ok"]);
+        assert.equal(result.sql, 'SELECT COUNT(*) AS cnt FROM "peeringdb_network"');
+        assert.deepEqual(result.params, []);
     });
 
     it("should apply explicit status filter to COUNT query", () => {

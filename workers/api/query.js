@@ -475,13 +475,9 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         params.push(since);
     }
 
-    // Default to status=ok if no explicit status filter is present
-    // (matches upstream PeeringDB behaviour — deleted records excluded by default)
-    const hasStatusFilter = filters.some(f => f.field === 'status');
-    if (!hasStatusFilter && getFilterType(entity, 'status')) {
-        clauses.push(`${pfx}"status" = ?`);
-        params.push('ok');
-    }
+    // No default status filter: D1 holds only status='ok' rows (the sync
+    // removes any other status, sync/rows.js isListed), which is upstream's
+    // default listing. An explicit ?status= still filters like any field.
 
     // Restricted-entity visibility (e.g. poc). Anonymous callers may only ever
     // see the allowed value (visible=Public). Enforced HERE — the single WHERE

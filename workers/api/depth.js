@@ -177,7 +177,7 @@ const THROUGH_SETS = {
 
 /**
  * Expands THROUGH_SETS for the parent rows: one query per set, joined from
- * the link table to the target table, both restricted to status='ok'.
+ * the link table to the target table (D1 holds only status='ok' rows).
  *
  * @param {D1Session} db - The D1 database binding.
  * @param {EntityMeta} entity - The parent entity metadata.
@@ -197,7 +197,7 @@ async function expandThroughSets(db, entity, rows, depth, authenticated, pdbfe) 
         const target = ENTITIES[ts.targetTag];
         const params = [JSON.stringify(parentIds)];
         const from = ` FROM "${ts.link}" AS l JOIN "${target.table}" AS t ON t."id" = l."${ts.targetFk}"` +
-            ` WHERE l."${ts.parentFk}" ${IN_IDS} AND l."status" = 'ok' AND t."status" = 'ok'`;
+            ` WHERE l."${ts.parentFk}" ${IN_IDS}`;
 
         if (depth >= 2) {
             const cols = getColumns(target, pdbfe).map(c => selectColumn(target.table, c, 't.', authenticated)).join(', '); // ap-ok: SQL construction
@@ -249,7 +249,7 @@ async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
         const childEntity = childTag ? ENTITIES[childTag] : null;
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
-        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS} AND "status" = 'ok'`;
+        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS}`;
         /** @type {any[]} */
         const params = [JSON.stringify(parentIds)];
 
@@ -346,16 +346,14 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
 
             sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
                 joinParts.join('') +
-                ` WHERE t."${rel.fk}" ${IN_IDS}` +
-                ` AND t."status" = 'ok'`;
+                ` WHERE t."${rel.fk}" ${IN_IDS}`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
         } else if (childColumns.length > 0) {
             // Standard path: no JOINs
             const colExpr = childColumns.map(c => selectColumn(rel.table, c, '', authenticated)).join(", "); // ap-ok: SQL construction
             sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" ${IN_IDS}` +
-                ` AND "status" = 'ok'`;
+                ` WHERE "${rel.fk}" ${IN_IDS}`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
         } else if (GATED_TABLES.has(rel.table)) {
@@ -364,8 +362,7 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
         } else {
             // Fallback: unknown child entity, select everything
             sql = `SELECT * FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" ${IN_IDS}` +
-                ` AND "status" = 'ok'`;
+                ` WHERE "${rel.fk}" ${IN_IDS}`;
 
             sql = appendFilterAndOrder(sql, params, anonFilter);
         }
@@ -426,7 +423,7 @@ async function expandParents(db, entity, rows, depth, authenticated, pdbfe, deta
         if (ids.size === 0) return;
 
         const cols = getColumns(parent, pdbfe).map(c => selectColumn(parent.table, c, '', authenticated)).join(', '); // ap-ok: SQL construction
-        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS} AND "status" = 'ok'`;
+        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS}`;
         const result = await db.prepare(sql).bind(JSON.stringify([...ids])).all(); // ap-ok: cold path behind cachedQuery
         const parents = result.results || [];
         for (const p of parents) parseJsonFields(parent, p);
