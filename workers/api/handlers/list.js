@@ -9,14 +9,14 @@
 
 import { ENTITIES } from '../entities.js';
 import { buildRowQuery, nextPageParams } from '../query.js';
-import { expandDepth } from '../depth.js';
+import { selectWithDepth } from '../depth.js';
 import { queryJsonList } from '../json_list.js';
 import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
 import { getEntityCache, LIST_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
-import { parseJsonFields, countRowsBytes } from './shared.js';
+import { countRowsBytes } from './shared.js';
 
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
@@ -85,11 +85,10 @@ export async function handleList(hc) {
  */
 async function executeListQuery(db, entity, filters, opts, authenticated) {
     if (opts.depth > 0) {
-        const { sql, params } = buildRowQuery(entity, filters, opts);
-        const result = await db.prepare(sql).bind(...params).all();
-        const rows = result.results || [];
-        for (const row of rows) { parseJsonFields(entity, row); }
-        await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe);
+        // Main query (all columns) + every expansion in one D1 batch
+        // (api/depth.js); ?fields= is applied after expansion.
+        const main = buildRowQuery(entity, filters, { ...opts, fields: [] });
+        const rows = await selectWithDepth(db, entity, main, opts.depth, authenticated, opts.pdbfe, false, opts.fields);
         return encodeJSON({ data: rows, meta: {} });
     }
 
