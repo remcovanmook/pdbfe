@@ -15,8 +15,17 @@
  * Lists expand only `org` (upstream expands none on lists; the mirror's
  * org has always been there), keeping 250-row pages cheap.
  *
- * Batches child queries per relationship across all parent rows
- * to avoid N+1 patterns.
+ * Batching: every expansion is planned up front as one statement plus an
+ * `apply` step, and all of them go to D1 in a single batch() — one round
+ * trip instead of one per expansion level. Statements don't bind parent ids
+ * from earlier results; they select the parents with a subquery over a
+ * *source* query (the main query itself, or `id IN (<ids>)`), e.g.
+ *   SELECT "id", "net_id" FROM netfac WHERE "net_id" IN (SELECT "id" FROM (<source>))
+ *   SELECT … FROM org WHERE "id" IN (SELECT "org_id" FROM (<source>))
+ * A batch runs as one transaction, so every statement sees the same rows;
+ * ORDER BY always ends on id, so LIMIT/OFFSET pick the same parents. Steps
+ * are applied in plan order, and nested steps (a parent's own sets and
+ * parents) are planned after the step that produces those parent rows.
  */
 
 import { GATED_TABLES, selectColumn } from './field_visibility.js';
@@ -52,44 +61,57 @@ function resolveAnonFilter(authenticated, childEntity) {
 }
 
 /**
- * Parent foreign keys expanded into objects, per entity tag: fields named
- * `<target>_id` → key `<target>` (netixlan.net_side_id / ix_side_id point
- * at fac but are not expanded upstream). DETAIL: all of them; LIST: org only.
+ * Parent foreign keys expanded into objects: fields named `<target>_id` →
+ * key `<target>` (netixlan.net_side_id / ix_side_id point at fac but are not
+ * expanded upstream). DETAIL: all of them; LIST: org only. Cached per
+ * entity object.
  *
- * @type {{ DETAIL: Map<string, FieldDef[]>, LIST: Map<string, FieldDef[]> }}
+ * @type {WeakMap<EntityMeta, { DETAIL: FieldDef[], LIST: FieldDef[] }>}
  */
-const PARENT_FKS = { DETAIL: new Map(), LIST: new Map() };
-for (const [tag, meta] of Object.entries(ENTITIES)) {
-    const fks = meta.fields.filter(f => f.foreignKey && ENTITIES[f.foreignKey] && f.name === `${f.foreignKey}_id`); // ap-ok: module init, once per isolate
-    PARENT_FKS.DETAIL.set(tag, fks);
-    PARENT_FKS.LIST.set(tag, fks.filter(f => f.foreignKey === 'org')); // ap-ok: module init, once per isolate
+const PARENT_FKS = new WeakMap();
+
+/** @param {EntityMeta} entity @param {boolean} detail @returns {FieldDef[]} */
+function parentFks(entity, detail) {
+    let fks = PARENT_FKS.get(entity);
+    if (!fks) {
+        const all = entity.fields.filter(f => f.foreignKey && ENTITIES[f.foreignKey] && f.name === `${f.foreignKey}_id`); // ap-ok: once per entity object
+        fks = { DETAIL: all, LIST: all.filter(f => f.foreignKey === 'org') }; // ap-ok: once per entity object
+        PARENT_FKS.set(entity, fks);
+    }
+    return detail ? fks.DETAIL : fks.LIST;
 }
 
 /**
- * Membership test against a JSON array of ids bound as a single parameter.
- * D1 caps bound parameters at 100 per statement, so one `?` per id fails
- * ("too many SQL variables") as soon as a list page has >100 parents.
- * Same pattern as the `__in` filter in query.js.
+ * A source query for a set of rows of one entity: a SELECT whose result
+ * carries "id" and every parent-FK column, used only inside subqueries.
+ * @typedef {{ sql: string, params: any[] }} Source
  */
-const IN_IDS = 'IN (SELECT value FROM json_each(?))';
 
 /**
- * Builds a Map from row.id → row for fast parent lookup, and
- * returns the list of parent IDs.
+ * One planned expansion: a statement for the batch, and the step that
+ * attaches its results to the parent rows.
+ * @typedef {{ stmt: any, apply: (results: Record<string, any>[]) => void }} Step
+ */
+
+/** @param {Source} src @param {string} [col='id'] @returns {string} */
+const selectFrom = (src, col = 'id') => `SELECT "${col}" FROM (${src.sql})`;
+
+/**
+ * Maps row.id → row.
  *
  * @param {Record<string, any>[]} rows - Parent rows.
- * @returns {{ rowMap: Map<number, Record<string, any>>, parentIds: number[] }}
+ * @returns {Map<number, Record<string, any>>}
  */
 function buildRowMap(rows) {
     /** @type {Map<number, Record<string, any>>} */
     const rowMap = new Map();
-    /** @type {number[]} */
-    const parentIds = [];
-    for (const row of rows) {
-        rowMap.set(row.id, row);
-        parentIds.push(row.id);
-    }
-    return { rowMap, parentIds };
+    for (const row of rows) rowMap.set(row.id, row);
+    return rowMap;
+}
+
+/** Initialises `field` to [] on every row (unless an earlier step did — fac has two netixlan_set relations). */
+function initSet(/** @type {Record<string, any>[]} */ rows, /** @type {string} */ field) {
+    for (const row of rows) if (!Array.isArray(row[field])) row[field] = [];
 }
 
 /**
@@ -111,20 +133,59 @@ function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
     return sql;
 }
 
+/**
+ * Runs the main query and every expansion in ONE D1 batch, returning the
+ * expanded rows (JSON columns parsed). Used by the /api list and detail
+ * handlers for depth>0.
+ *
+ * `main` must select every column (build it without `?fields=`): it is also
+ * the source the expansion statements select their parents through, and its
+ * rows need "id" and the FK columns to attach results. `fields` (the caller's
+ * ?fields=) is applied afterwards: base columns not listed are dropped, the
+ * expansion keys (sets, parent objects) stay.
+ *
+ * @param {D1Session} db - The D1 database binding.
+ * @param {EntityMeta} entity - Entity of the main rows.
+ * @param {Source} main - Main query, all columns.
+ * @param {number} depth - Depth level (1 or 2).
+ * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
+ * @param {boolean} detail - Detail view (GET /api/{tag}/{id}): expand every parent FK.
+ * @param {string[]} [fields] - ?fields= projection, applied after expansion.
+ * @returns {Promise<Record<string, any>[]>}
+ */
+export async function selectWithDepth(db, entity, main, depth, authenticated, pdbfe, detail, fields = []) {
+    /** @type {Record<string, any>[]} */
+    let rows = [];
+    /** @type {Step[]} */
+    const steps = [];
+    if (depth > 0) planExpansion(db, entity, main, () => rows, depth, authenticated, pdbfe, detail, steps);
+
+    const results = await db.batch([db.prepare(main.sql).bind(...main.params), ...steps.map(s => s.stmt)]); // ap-ok: cold path behind cachedQuery
+    rows = results[0]?.results || [];
+    for (const row of rows) parseJsonFields(entity, row);
+    if (rows.length === 0) return rows;
+    const baseKeys = Object.keys(rows[0]);
+    for (let i = 0; i < steps.length; i++) steps[i].apply(results[i + 1]?.results || []);
+
+    if (fields.length > 0) {
+        const keep = new Set(fields);
+        const drop = baseKeys.filter(k => !keep.has(k)); // ap-ok: once per request, cold path
+        for (const row of rows) for (const k of drop) delete row[k];
+    }
+    return rows;
+}
 
 /**
- * Expands _set fields and parent org on result rows based on
- * the requested depth level. Mutates the rows in-place.
+ * Expands _set fields and parents on rows that are already fetched
+ * (mutates them in place); all expansions in one batch. Used by the REST
+ * worker, which fetches its rows first.
  *
- * Child _set expansion:
- * - depth=0: No expansion. _set fields are omitted entirely.
- * - depth=1: Each _set field contains an array of child IDs.
- * - depth=2: Each _set field contains full child objects (all columns
- *   except the FK back to the parent).
- *
- * Parent expansion (depth≥1): see the file overview. `detail` selects
- * upstream's detail-view behaviour (every `<tag>_id` parent, recursing one
- * level at depth=2); lists expand org only.
+ * - depth=0: no expansion.
+ * - depth=1: each _set is an array of child ids.
+ * - depth=2: each _set holds full child objects (FK back to the parent kept).
+ * - Parents: see the file overview (`detail` selects upstream's detail-view
+ *   behaviour; lists expand org only).
  *
  * For restricted child entities (e.g. poc), anonymous callers only
  * see records matching the entity's anonFilter (visible=Public).
@@ -135,30 +196,47 @@ function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
  * @param {number} depth - Depth level (0, 1, or 2).
  * @param {boolean} [authenticated=false] - Whether the caller is authenticated.
  * @param {boolean} [pdbfe=false] - Whether to include pdbfe-local extension columns.
- * @param {boolean} [detail=false] - Detail view (GET /api/{tag}/{id}): expand every parent FK.
+ * @param {boolean} [detail=false] - Detail view: expand every parent FK.
  * @returns {Promise<void>} Resolves when expansion is complete.
  */
 export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false, detail = false) {
-    if (depth === 0 || rows.length === 0) {
-        return;
-    }
+    if (depth === 0 || rows.length === 0) return;
 
-    // Child _set expansion (only when relationships exist)
+    const fkCols = parentFks(entity, true).map(f => `, "${f.name}"`).join(''); // ap-ok: cold path behind cachedQuery
+    const ids = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
+    /** @type {Source} */
+    const src = { sql: `SELECT "id"${fkCols} FROM "${entity.table}" WHERE "id" IN (SELECT value FROM json_each(?))`, params: [JSON.stringify(ids)] };
+
+    /** @type {Step[]} */
+    const steps = [];
+    planExpansion(db, entity, src, () => rows, depth, authenticated, pdbfe, detail, steps);
+    if (steps.length === 0) return;
+    const results = await db.batch(steps.map(s => s.stmt)); // ap-ok: cold path behind cachedQuery
+    for (let i = 0; i < steps.length; i++) steps[i].apply(results[i]?.results || []);
+}
+
+/**
+ * Plans every expansion of the rows produced by `src`: child sets, sets
+ * through a link table, and parents (recursing into parents on a detail at
+ * depth=2). Appends to `steps` in apply order.
+ *
+ * @param {D1Session} db
+ * @param {EntityMeta} entity - Entity of the rows.
+ * @param {Source} src - Source query for the rows.
+ * @param {() => Record<string, any>[]} getRows - The rows, once fetched (read at apply time).
+ * @param {number} depth - Depth level (≥1).
+ * @param {boolean} authenticated
+ * @param {boolean} pdbfe
+ * @param {boolean} detail
+ * @param {Step[]} steps - Mutated.
+ */
+function planExpansion(db, entity, src, getRows, depth, authenticated, pdbfe, detail, steps) {
     if (entity.relationships.length > 0) {
-        if (depth >= 2) {
-            await expandDepthTwo(db, entity, rows, authenticated, pdbfe);
-        } else {
-            await expandDepthOne(db, entity, rows, authenticated, pdbfe);
-        }
+        if (depth >= 2) planDepthTwo(db, entity, src, getRows, authenticated, pdbfe, steps);
+        else planDepthOne(db, entity, src, getRows, authenticated, steps);
     }
-
-    // Upstream many-to-many sets through a link table (ix.fac_set, ixlan.net_set)
-    if (THROUGH_SETS[entity.tag]) {
-        await expandThroughSets(db, entity, rows, depth, authenticated, pdbfe);
-    }
-
-    // Parent expansion (depth≥1): every parent on a detail, org on a list
-    await expandParents(db, entity, rows, depth, authenticated, pdbfe, detail);
+    if (THROUGH_SETS[entity.tag]) planThroughSets(db, entity, src, getRows, depth, authenticated, pdbfe, steps);
+    planParents(db, entity, src, getRows, depth, authenticated, pdbfe, detail, steps);
 }
 
 /**
@@ -176,156 +254,133 @@ const THROUGH_SETS = {
 };
 
 /**
- * Expands THROUGH_SETS for the parent rows: one query per set, joined from
- * the link table to the target table (D1 holds only status='ok' rows).
+ * Plans THROUGH_SETS: one statement per set, joined from the link table to
+ * the target table.
  *
- * @param {D1Session} db - The D1 database binding.
- * @param {EntityMeta} entity - The parent entity metadata.
- * @param {Record<string, any>[]} rows - The parent result rows.
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {Source} src
+ * @param {() => Record<string, any>[]} getRows
  * @param {number} depth - 1 (ids) or 2 (objects).
  * @param {boolean} authenticated - Caller auth state (gated target columns).
- * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
- * @returns {Promise<void>}
+ * @param {boolean} pdbfe
+ * @param {Step[]} steps
  */
-async function expandThroughSets(db, entity, rows, depth, authenticated, pdbfe) {
-    const { rowMap, parentIds } = buildRowMap(rows);
-    if (parentIds.length === 0) return;
-
-    const tasks = THROUGH_SETS[entity.tag].map(async (ts) => { // ap-ok: cold path behind cachedQuery
-        for (const row of rows) row[ts.field] = [];
-
+function planThroughSets(db, entity, src, getRows, depth, authenticated, pdbfe, steps) {
+    for (const ts of THROUGH_SETS[entity.tag]) {
         const target = ENTITIES[ts.targetTag];
-        const params = [JSON.stringify(parentIds)];
         const from = ` FROM "${ts.link}" AS l JOIN "${target.table}" AS t ON t."id" = l."${ts.targetFk}"` +
-            ` WHERE l."${ts.parentFk}" ${IN_IDS}`;
+            ` WHERE l."${ts.parentFk}" IN (${selectFrom(src)})`;
 
         if (depth >= 2) {
             const cols = getColumns(target, pdbfe).map(c => selectColumn(target.table, c, 't.', authenticated)).join(', '); // ap-ok: SQL construction
             const sql = `SELECT DISTINCT l."${ts.parentFk}" AS "__parent", ${cols}${from} ORDER BY t."id" ASC`;
-            const result = await db.prepare(sql).bind(...params).all();
-            for (const child of result.results || []) {
-                const parentRow = rowMap.get(/** @type {number} */ (child.__parent));
-                if (!parentRow) continue;
-                delete child.__parent;
-                parseJsonFields(target, child);
-                parentRow[ts.field].push(child);
-            }
+            steps.push({
+                stmt: db.prepare(sql).bind(...src.params),
+                apply: (results) => {
+                    const rows = getRows();
+                    initSet(rows, ts.field);
+                    const rowMap = buildRowMap(rows);
+                    for (const child of results) {
+                        const parentRow = rowMap.get(/** @type {number} */ (child.__parent));
+                        if (!parentRow) continue;
+                        delete child.__parent;
+                        parseJsonFields(target, child);
+                        parentRow[ts.field].push(child);
+                    }
+                },
+            });
         } else {
             const sql = `SELECT DISTINCT l."${ts.parentFk}" AS "p", t."id" AS "c"${from} ORDER BY t."id" ASC`;
-            const result = await db.prepare(sql).bind(...params).all();
-            for (const r of result.results || []) {
-                rowMap.get(/** @type {number} */ (r.p))?.[ts.field].push(r.c);
-            }
+            steps.push({
+                stmt: db.prepare(sql).bind(...src.params),
+                apply: (results) => {
+                    const rows = getRows();
+                    initSet(rows, ts.field);
+                    const rowMap = buildRowMap(rows);
+                    for (const r of results) rowMap.get(/** @type {number} */ (r.p))?.[ts.field].push(r.c);
+                },
+            });
         }
-    });
-    await Promise.all(tasks);
+    }
 }
 
 /**
- * Depth=1 expansion: for each relationship defined on the entity,
- * queries the child table for all IDs matching the parent rows,
- * then attaches an array of child IDs to each parent row.
+ * Depth=1: per relationship, the child ids of all parent rows (one
+ * statement each; an index-only lookup on the FK index).
  *
- * Uses a single batched IN query per relationship (not per row)
- * to avoid N+1 query patterns.
- *
- * @param {D1Session} db - The D1 database binding.
- * @param {EntityMeta} entity - The parent entity metadata.
- * @param {Record<string, any>[]} rows - The parent result rows.
- * @param {boolean} authenticated - Whether the caller is authenticated.
- * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
- * @returns {Promise<void>}
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {Source} src
+ * @param {() => Record<string, any>[]} getRows
+ * @param {boolean} authenticated
+ * @param {Step[]} steps
  */
-async function expandDepthOne(db, entity, rows, authenticated, pdbfe) {
-    const { rowMap, parentIds } = buildRowMap(rows);
-    if (parentIds.length === 0) return;
-
-    const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
-        for (const row of rows) {
-            row[rel.field] = [];
-        }
-
+function planDepthOne(db, entity, src, getRows, authenticated, steps) {
+    for (const rel of entity.relationships) {
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
-        let sql = `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" ${IN_IDS}`;
         /** @type {any[]} */
-        const params = [JSON.stringify(parentIds)];
+        const params = [...src.params]; // ap-ok: cold path behind cachedQuery
+        const sql = appendFilterAndOrder(
+            `SELECT "id", "${rel.fk}" FROM "${rel.table}" WHERE "${rel.fk}" IN (${selectFrom(src)})`,
+            params, anonFilter);
 
-        sql = appendFilterAndOrder(sql, params, anonFilter);
-
-        const result = await db.prepare(sql).bind(...params).all();
-
-        if (result.results) {
-            for (const child of result.results) {
-                const parentRow = rowMap.get(/** @type {number} */(child[rel.fk]));
-                if (parentRow) {
-                    parentRow[rel.field].push(child.id);
+        steps.push({
+            stmt: db.prepare(sql).bind(...params),
+            apply: (results) => {
+                const rows = getRows();
+                initSet(rows, rel.field);
+                const rowMap = buildRowMap(rows);
+                for (const child of results) {
+                    rowMap.get(/** @type {number} */ (child[rel.fk]))?.[rel.field].push(child.id);
                 }
-            }
-        }
-    });
-
-    await Promise.all(tasks);
+            },
+        });
+    }
 }
 
 /**
- * Depth=2 expansion: for each relationship, queries the child table
- * for all columns matching the parent rows, then attaches full child
- * objects (with the FK column excluded) to each parent row.
+ * Depth=2: per relationship, full child objects of all parent rows (with
+ * cross-entity name columns via LEFT JOINs where the relationship has
+ * joinColumns). JSON-stored TEXT columns are parsed back to native values.
  *
  * Child objects keep the FK pointing back to the parent. Upstream keeps it
  * on some sets (campus.fac_set[].campus_id, carrier.carrierfac_set[].
  * carrier_id) and omits it on others; always keeping it is a superset.
  *
- * JSON-stored TEXT columns (social_media, info_types, etc.) are parsed
- * back to native arrays/objects via parseJsonFields.
- *
  * For restricted child entities (e.g. poc), anonymous callers only
  * see records matching the entity's anonFilter.
  *
- * @param {D1Session} db - The D1 database binding.
- * @param {EntityMeta} entity - The parent entity metadata.
- * @param {Record<string, any>[]} rows - The parent result rows.
- * @param {boolean} authenticated - Whether the caller is authenticated.
- * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
- * @returns {Promise<void>}
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {Source} src
+ * @param {() => Record<string, any>[]} getRows
+ * @param {boolean} authenticated
+ * @param {boolean} pdbfe
+ * @param {Step[]} steps
  */
-async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
-    const { rowMap, parentIds } = buildRowMap(rows);
-    if (parentIds.length === 0) return;
-
-    const tasks = entity.relationships.map(async (rel) => { // ap-ok: cold path behind cachedQuery
-        // Initialise empty arrays
-        for (const row of rows) {
-            row[rel.field] = [];
-        }
-
-        // Determine child columns from the entity registry.
-        // If the child table isn't registered (unexpected), fall back to SELECT *.
+function planDepthTwo(db, entity, src, getRows, authenticated, pdbfe, steps) {
+    for (const rel of entity.relationships) {
+        // Child columns from the entity registry; fall back to SELECT * for an
+        // unregistered (unexpected) child table.
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
-
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
 
-        // Build column list, excluding the FK back to the parent
         /** @type {string[]} */
-        let childColumns;
-        if (childEntity) {
-            childColumns = getColumns(childEntity, pdbfe).filter(c => c !== rel.fk); // ap-ok: SQL construction
-        } else {
-            childColumns = [];
-        }
+        const childColumns = childEntity ? getColumns(childEntity, pdbfe).filter(c => c !== rel.fk) : []; // ap-ok: SQL construction
 
         /** @type {any[]} */
-        const params = [JSON.stringify(parentIds)];
+        const params = [...src.params]; // ap-ok: cold path behind cachedQuery
+        const parentIds = selectFrom(src);
         let sql;
 
         if (rel.joinColumns && rel.joinColumns.length > 0 && childColumns.length > 0) {
             // JOIN path: alias the child table, add LEFT JOINs for cross-entity names
             const baseCols = childColumns.map(c => selectColumn(rel.table, c, 't.', authenticated)).join(", "); // ap-ok: SQL construction
-
             /** @type {string[]} */
             const joinParts = [];
             /** @type {string[]} */
@@ -333,113 +388,94 @@ async function expandDepthTwo(db, entity, rows, authenticated, pdbfe) {
             for (let i = 0; i < rel.joinColumns.length; i++) {
                 const j = rel.joinColumns[i];
                 const alias = `j${i}`;
-                joinParts.push(
-                    ` LEFT JOIN "${j.table}" AS ${alias} ON t."${j.localFk}" = ${alias}."id"`
-                );
+                joinParts.push(` LEFT JOIN "${j.table}" AS ${alias} ON t."${j.localFk}" = ${alias}."id"`);
                 for (const [srcCol, aliasName] of Object.entries(j.columns)) {
                     joinCols.push(`${alias}."${srcCol}" AS "${aliasName}"`);
                 }
             }
-
-            const allCols = `t."${rel.fk}", ${baseCols}` +
-                (joinCols.length > 0 ? `, ${joinCols.join(", ")}` : '');
-
-            sql = `SELECT ${allCols} FROM "${rel.table}" AS t` +
-                joinParts.join('') +
-                ` WHERE t."${rel.fk}" ${IN_IDS}`;
-
-            sql = appendFilterAndOrder(sql, params, anonFilter, 't.');
+            const allCols = `t."${rel.fk}", ${baseCols}` + (joinCols.length > 0 ? `, ${joinCols.join(", ")}` : '');
+            sql = appendFilterAndOrder(
+                `SELECT ${allCols} FROM "${rel.table}" AS t${joinParts.join('')} WHERE t."${rel.fk}" IN (${parentIds})`,
+                params, anonFilter, 't.');
         } else if (childColumns.length > 0) {
-            // Standard path: no JOINs
             const colExpr = childColumns.map(c => selectColumn(rel.table, c, '', authenticated)).join(", "); // ap-ok: SQL construction
-            sql = `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" ${IN_IDS}`;
-
-            sql = appendFilterAndOrder(sql, params, anonFilter);
+            sql = appendFilterAndOrder(
+                `SELECT "${rel.fk}", ${colExpr} FROM "${rel.table}" WHERE "${rel.fk}" IN (${parentIds})`,
+                params, anonFilter);
         } else if (GATED_TABLES.has(rel.table)) {
             // Never SELECT * from a table with visibility-gated columns.
             throw new Error(`expandDepthTwo: no column list for gated table ${rel.table}`);
         } else {
-            // Fallback: unknown child entity, select everything
-            sql = `SELECT * FROM "${rel.table}"` +
-                ` WHERE "${rel.fk}" ${IN_IDS}`;
-
-            sql = appendFilterAndOrder(sql, params, anonFilter);
+            sql = appendFilterAndOrder(
+                `SELECT * FROM "${rel.table}" WHERE "${rel.fk}" IN (${parentIds})`,
+                params, anonFilter);
         }
 
-        const result = await db.prepare(sql).bind(...params).all();
-
-        if (result.results) {
-            for (const child of result.results) {
-                const parentRow = rowMap.get(/** @type {number} */(child[rel.fk]));
-                if (!parentRow) continue;
-
-                // Parse JSON, coerce booleans, nullify empty strings
-                if (childEntity) {
-                    parseJsonFields(childEntity, child);
+        steps.push({
+            stmt: db.prepare(sql).bind(...params),
+            apply: (results) => {
+                const rows = getRows();
+                initSet(rows, rel.field);
+                const rowMap = buildRowMap(rows);
+                for (const child of results) {
+                    const parentRow = rowMap.get(/** @type {number} */ (child[rel.fk]));
+                    if (!parentRow) continue;
+                    if (childEntity) parseJsonFields(childEntity, child);
+                    parentRow[rel.field].push(child);
                 }
-
-                parentRow[rel.field].push(child);
-            }
-        }
-    });
-
-    await Promise.all(tasks);
+            },
+        });
+    }
 }
 
 /**
- * Expands parent foreign keys into objects (`row.<tag>` next to
- * `row.<tag>_id`): one batched query per FK across all rows. On a detail at
- * depth=2, the fetched parents are themselves expanded at depth 1 (their
- * sets as id lists, their own parents as objects), as upstream does.
+ * Plans parent expansion (`row.<tag>` next to `row.<tag>_id`): one statement
+ * per FK, selecting the parents through the source query. On a detail at
+ * depth=2 the parents are expanded at depth 1 (their sets as id lists, their
+ * own parents as objects), as upstream does — planned right after the parent
+ * statement, with a source of their own.
  *
  * Gated parent columns (ixlan.ixf_ixp_member_list_url) go through
  * selectColumn, so anonymous callers get them nulled; api/auth_scope.js
  * marks those responses auth-sensitive.
  *
- * @param {D1Session} db - The D1 database binding.
- * @param {EntityMeta} entity - The entity metadata for the current rows.
- * @param {Record<string, any>[]} rows - Result rows to expand in-place.
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {Source} src
+ * @param {() => Record<string, any>[]} getRows
  * @param {number} depth - Requested depth (≥1).
- * @param {boolean} authenticated - Caller auth state (gated columns, restricted sets).
- * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
+ * @param {boolean} authenticated
+ * @param {boolean} pdbfe
  * @param {boolean} detail - Detail view: every parent FK, recursing at depth=2.
- * @returns {Promise<void>}
+ * @param {Step[]} steps
  */
-async function expandParents(db, entity, rows, depth, authenticated, pdbfe, detail) {
-    const fks = (detail ? PARENT_FKS.DETAIL : PARENT_FKS.LIST).get(entity.tag) ?? [];
-    if (fks.length === 0) return;
-
-    const tasks = fks.map(async (fk) => { // ap-ok: cold path behind cachedQuery
+function planParents(db, entity, src, getRows, depth, authenticated, pdbfe, detail, steps) {
+    for (const fk of parentFks(entity, detail)) {
         const parentTag = /** @type {string} */ (fk.foreignKey);
         const parent = ENTITIES[parentTag];
+        const parentIds = selectFrom(src, fk.name);
 
-        /** @type {Set<number>} */
-        const ids = new Set();
-        for (const row of rows) {
-            const pid = row[fk.name];
-            if (pid != null) ids.add(pid);
-        }
-        if (ids.size === 0) return;
-
+        /** @type {Record<string, any>[]} */
+        let parents = [];
         const cols = getColumns(parent, pdbfe).map(c => selectColumn(parent.table, c, '', authenticated)).join(', '); // ap-ok: SQL construction
-        const sql = `SELECT ${cols} FROM "${parent.table}" WHERE "id" ${IN_IDS}`;
-        const result = await db.prepare(sql).bind(JSON.stringify([...ids])).all(); // ap-ok: cold path behind cachedQuery
-        const parents = result.results || [];
-        for (const p of parents) parseJsonFields(parent, p);
+        steps.push({
+            stmt: db.prepare(`SELECT ${cols} FROM "${parent.table}" WHERE "id" IN (${parentIds})`).bind(...src.params),
+            apply: (results) => {
+                parents = results;
+                for (const p of parents) parseJsonFields(parent, p);
+                const byId = buildRowMap(parents);
+                for (const row of getRows()) {
+                    const p = byId.get(row[fk.name]);
+                    if (p) row[parentTag] = p;
+                }
+            },
+        });
 
         if (detail && depth >= 2) {
-            await expandDepth(db, parent, parents, depth - 1, authenticated, pdbfe, true);
+            const parentFkCols = parentFks(parent, true).map(f => `, "${f.name}"`).join(''); // ap-ok: SQL construction
+            /** @type {Source} */
+            const parentSrc = { sql: `SELECT "id"${parentFkCols} FROM "${parent.table}" WHERE "id" IN (${parentIds})`, params: src.params };
+            planExpansion(db, parent, parentSrc, () => parents, depth - 1, authenticated, pdbfe, true, steps);
         }
-
-        /** @type {Map<number, Record<string, any>>} */
-        const byId = new Map();
-        for (const p of parents) byId.set(/** @type {number} */ (p.id), p);
-        for (const row of rows) {
-            const p = byId.get(row[fk.name]);
-            if (p) row[parentTag] = p;
-        }
-    });
-
-    await Promise.all(tasks);
+    }
 }

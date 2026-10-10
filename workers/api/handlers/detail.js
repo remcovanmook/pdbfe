@@ -7,11 +7,10 @@
 
 import { ENTITIES } from '../entities.js';
 import { buildJsonQuery, buildRowQuery } from '../query.js';
-import { expandDepth } from '../depth.js';
+import { selectWithDepth } from '../depth.js';
 import { DETAIL_TTL, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { encoder, encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
-import { parseJsonFields } from './shared.js';
 
 /**
  * Handles a detail request for a single entity (GET /api/{entity}/{id}).
@@ -54,15 +53,12 @@ export async function handleDetail(hc, id) {
  */
 async function executeDetailQuery(db, entity, filters, opts, id, authenticated) {
     if (opts.depth > 0) {
-        const { sql, params } = buildRowQuery(entity, filters, opts, id);
-        const result = await db.prepare(sql).bind(...params).all();
-        const rows = result.results || [];
-
+        // Main row (all columns) + every expansion in one D1 batch
+        // (api/depth.js); detail=true: every parent FK as an object, as
+        // upstream's detail views; ?fields= is applied after expansion.
+        const main = buildRowQuery(entity, filters, { ...opts, fields: [] }, id);
+        const rows = await selectWithDepth(db, entity, main, opts.depth, authenticated, opts.pdbfe, true, opts.fields);
         if (rows.length === 0) return null;
-
-        for (const row of rows) { parseJsonFields(entity, row); }
-        // detail=true: every parent FK as an object, as upstream's detail views
-        await expandDepth(db, entity, rows, opts.depth, authenticated, opts.pdbfe, true);
         return encodeJSON({ data: rows, meta: {} });
     }
 

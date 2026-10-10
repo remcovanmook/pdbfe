@@ -19,6 +19,8 @@ function mockD1(responses) {
     /** @type {string[]} */
     const queries = [];
     const db = {
+        // D1 batch(): one round trip, results in statement order.
+        batch: async (/** @type {any[]} */ stmts) => Promise.all(stmts.map((s) => s.all())),
         prepare: (/** @type {string} */ sql) => {
             queries.push(sql);
             return {

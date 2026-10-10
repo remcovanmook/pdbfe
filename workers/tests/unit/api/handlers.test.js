@@ -90,8 +90,10 @@ function mockD1({ hotPayload = null, rows = [], count = 0, asSetResult = null } 
                 },
             };
         },
+        // D1 batch(): statements run in order, one result each (depth>0 sends
+        // the main query first; expansion statements see the same mock rows).
         batch(/** @type {any[]} */ stmts) {
-            return Promise.resolve(stmts.map(() => ({ success: true, meta: {}, results: [] })));
+            return Promise.all(stmts.map((s) => s.all()));
         },
     });
 }
