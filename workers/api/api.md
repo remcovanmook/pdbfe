@@ -87,7 +87,7 @@ Handlers use `withEdgeSWR()` from `cache.js` instead of raw `cache.get()` + `cac
 1. L1 cache hit with synchronous field extraction (respects the shared `_ret` contract)
 2. Fresh entry → serve immediately
 3. Stale entry (within SWR window) → serve stale, fire `ctx.waitUntil()` background refresh
-4. Expired/miss → block on `cachedQuery()` (L2 → D1 fallback)
+4. Expired/miss → block on `cachedQuery()` (D1)
 5. Negative cache TTL override for 404 entries
 
 `cachedQuery()` is also in `cache.js` — a thin wrapper around `core/pipeline.js` that injects the API worker's `NEGATIVE_TTL` and `getEntityVersion`.

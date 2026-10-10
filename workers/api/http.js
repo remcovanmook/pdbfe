@@ -86,7 +86,7 @@ export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "un
 
 /**
  * Builds a Server-Timing value for a served response: auth resolution, the
- * per-PoP L2 lookup and the D1 query (the latter two only on L1 misses).
+ * and the D1 query (only on L1 misses).
  * Note: the edge cache stores this header with the response, so on an edge
  * HIT it describes the request that filled the cache (as X-Timer does).
  *
@@ -95,14 +95,13 @@ export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "un
  * read. `db` minus `d1` is network/round-trip overhead plus JS work.
  *
  * @param {number|undefined} authMs - Auth resolution time.
- * @param {{tier: string, l2Ms?: number, dbMs?: number}} r - Pipeline result.
+ * @param {{tier: string, dbMs?: number}} r - Pipeline result.
  * @param {import('../core/d1stats.js').D1Stats} [d1] - Per-request D1 counters.
  * @returns {string}
  */
 export function serverTiming(authMs, r, d1) {
     let v = `cache;desc="${r.tier}"`;
     if (authMs !== undefined) v += `, auth;dur=${authMs}`;
-    if (r.l2Ms !== undefined) v += `, l2;dur=${r.l2Ms}`;
     if (r.dbMs !== undefined) v += `, db;dur=${r.dbMs}`;
     if (d1 && d1.calls > 0) v += `, d1;dur=${Math.round(d1.sqlMs * 10) / 10};desc="${d1.calls} rt, ${d1.rowsRead} rows"`;
     return v;

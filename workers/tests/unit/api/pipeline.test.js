@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for the cachedQuery pipeline (pipeline.js).
- * Tests the isNegative helper and cachedQuery behaviour with mocked
- * L2 cache dependencies.
+ * Tests the isNegative helper and cachedQuery behaviour (coalescing,
+ * L1 write, negative caching).
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -77,9 +77,7 @@ describe("EMPTY_ENVELOPE", () => {
 });
 
 // ── cachedQuery tests ────────────────────────────────────────────────────────
-// These test the pipeline function directly. The L2 cache (l2cache.js) and
-// L2 silently returns null in Node.js (no caches.default available),
-// so all queries go straight to the D1 path.
+// These test the pipeline function directly: a miss goes straight to queryFn.
 
 describe("cachedQuery", () => {
     /** @type {ReturnType<typeof LRUCache>} */

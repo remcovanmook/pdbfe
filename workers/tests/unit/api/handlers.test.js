@@ -6,8 +6,7 @@
  *
  * Uses mock D1 databases that return pre-canned JSON payloads for
  * both the hot path (json_group_array → single string) and cold path
- * (row-level → expandDepth). The L2 cache (caches.default) is
- * unavailable in Node.js so all miss paths go straight to queryFn.
+ * (row-level → expandDepth). Miss paths go straight to queryFn.
  */
 
 import { describe, it, beforeEach } from 'node:test';

@@ -15,7 +15,7 @@
  *     ctx.waitUntil().
  *
  * cachedQuery() (query.js) remains the internal miss-resolution engine
- * — withSWR delegates to it for coalescing, L2 cache, and negative caching.
+ * — withSWR delegates to it for coalescing and negative caching.
  *
  * Worker-specific modules (api/swr.js, graphql/swr.js) are thin wrappers
  * that call withSWR with pre-filled configuration.
@@ -28,7 +28,7 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
  *
  * The caller provides a pre-resolved cache instance, TTL configuration,
  * and a query closure. Everything else — L1 resolution, synchronous field
- * extraction, SWR background refresh, promise coalescing, L2, and negative
+ * extraction, SWR background refresh, promise coalescing, and negative
  * caching — is handled internally.
  *
  * Flow:
@@ -54,29 +54,22 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
  * @param {string} opts.tag - Metadata tag for cache.add (e.g. "net", "graphql").
  * @param {Uint8Array} [opts.emptySentinel] - Sentinel buffer for negative
  *        cache entries. Defaults to EMPTY_ENVELOPE.
- * @param {(tag: string) => number} [opts.getVersion] - Optional function
- *        returning the entity's version number for L2 key tagging.
  * @param {number} [opts.staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
- * @param {boolean} [opts.useL2=true] - Consult/populate the per-PoP L2 cache on a miss.
- *        False for keys that will not repeat (e.g. ?since= with a fresh timestamp).
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number, l2Ms?: number, dbMs?: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number, dbMs?: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
  */
 export async function withSWR({
     cache, cacheKey, ctx, ttlMs, negativeTtlMs,
-    queryFn, tag, emptySentinel = EMPTY_ENVELOPE,
-    getVersion, staleMs, useL2 = true,
+    queryFn, tag, emptySentinel = EMPTY_ENVELOPE, staleMs,
 }) {
     const effectiveStaleMs = staleMs !== undefined ? staleMs : Math.floor(ttlMs * 0.8);
 
     /** @type {Parameters<typeof cachedQuery>[0]} */
     const pipelineOpts = {
-        cacheKey, cache, entityTag: tag, ttlMs,
-        negativeTtlMs, queryFn, getVersion, ctx,
-        emptySentinel, useL2,
+        cacheKey, cache, entityTag: tag, queryFn, emptySentinel,
     };
 
     // ── SYNCHRONOUS DESTRUCTURE ──────────────────────────────────────
@@ -119,5 +112,5 @@ export async function withSWR({
 
     // ── CACHE MISS (blocking) ────────────────────────────────────────
     const result = await cachedQuery(pipelineOpts);
-    return { buf: result.buf, tier: result.tier, hits: 0, l2Ms: result.l2Ms, dbMs: result.dbMs };
+    return { buf: result.buf, tier: result.tier, hits: 0, dbMs: result.dbMs };
 }

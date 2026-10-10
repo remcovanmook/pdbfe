@@ -1,5 +1,5 @@
 /**
- * @fileoverview Sync-aligned edge TTL, L2 skip for ?since=, and the
+ * @fileoverview Sync-aligned edge TTL, no L2 phase, and the
  * cache-tier Analytics Engine data points.
  */
 
@@ -65,11 +65,13 @@ describe('API responses', () => {
         assert.ok(Number(m[1]) >= 1 && Number(m[1]) <= SYNC_INTERVAL_S + SYNC_GRACE_S);
     });
 
-    it('?since= skips the L2 lookup (no l2 phase); plain requests keep it', async () => {
-        const since = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net?since=1700000000'), env, mockCtx);
-        assert.doesNotMatch(since.headers.get('Server-Timing') ?? '', /l2;dur/);
-        const plain = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net?asn=64500'), env, mockCtx);
-        assert.match(plain.headers.get('Server-Timing') ?? '', /l2;dur=\d+/);
+    it('a miss goes straight to D1: no l2 phase in Server-Timing', async () => {
+        for (const path of ['net?since=1700000000', 'net?asn=64500&limit=3']) {
+            const res = await apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`), env, mockCtx);
+            const st = res.headers.get('Server-Timing') ?? '';
+            assert.doesNotMatch(st, /l2;dur/, path);
+            assert.match(st, /db;dur=\d+/, path);
+        }
     });
 
     it('writes one cache-tier data point per request', async () => {
@@ -77,7 +79,7 @@ describe('API responses', () => {
         await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net?since=1700000000'), env, mockCtx);
         assert.equal(points.length, 2);
         assert.deepEqual(points[0].blobs, ['MISS', 'shared', 'net', 'since', '200']);
-        assert.equal(points[0].doubles[1], -1, 'no L2 phase for since');
+        assert.equal(points[0].doubles[1], -1, 'double2 (the former L2 time) stays -1');
         assert.ok(points[0].doubles[2] >= 0, 'db phase timed');
         assert.equal(points[1].blobs[0], 'L1');
         assert.deepEqual(points[0].indexes, ['net']);

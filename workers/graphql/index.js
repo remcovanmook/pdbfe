@@ -11,7 +11,6 @@
  *   - cache.js            — LRU cache, cache key generation, SWR wrapper
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
- *   - L2 cache via core/pipeline/ with SHA-256 hashed keys
  *
  * Route: graphql.pdbfe.dev/*
  */
@@ -20,7 +19,6 @@ import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
-import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';
@@ -43,7 +41,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  * Handles incoming requests to the GraphQL worker.
  *
  * Flow:
- *   1. L2 cache initialisation (needs origin URL for key prefix)
  *   2. CORS preflight handling
  *   3. Admin endpoints (health, robots.txt, cache stats)
  *   4. Static assets (GraphiQL, fonts)
@@ -57,7 +54,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  * @returns {Promise<Response>} The HTTP response.
  */
 async function handleRequest(request, env, ctx) {
-    initL2(request.url);
     const { rawPath } = parseURL(request);
 
     // Validate request method and path
