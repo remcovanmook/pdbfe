@@ -18,6 +18,9 @@
  *
  * Factory returns:
  *   ensureSyncFreshness(db, ctx, now) — O(1) hot-path hook
+ *   claimPoll(now) → {sql, apply} | null — the due poll as a statement + result
+ *                     step, to send with a query the request makes anyway
+ *   runPoll(db, poll)                 — run a claimed poll on its own
  *   handleStatus(request, db, ctx)    — pre-encoded /status handler (needs statusHeaders)
  *   getEntityVersion(tag)             — returns last_modified_at for L2 key versioning
  *   refresh(db)                       — force a synchronous poll (cold boot / tests)
@@ -40,6 +43,8 @@ import { encoder, jsonError } from './http.js';
  * @returns {{
  *   refresh: (db: D1Session) => Promise<void>,
  *   ensureSyncFreshness: (db: D1Session, ctx: ExecutionContext, now: number) => void,
+ *   claimPoll: (now: number) => ({ sql: string, apply: (results: Record<string, any>[]) => void } | null),
+ *   runPoll: (db: D1Session, poll: { sql: string, apply: (results: Record<string, any>[]) => void }) => Promise<void>,
  *   handleStatus: (request: Request, db: D1Session, ctx: ExecutionContext) => Promise<Response>,
  *   getEntityVersion: (tag: string) => number,
  * }}
@@ -61,11 +66,12 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
     /** Pre-encoded JSON response for /status. @type {Uint8Array|null} */
     let statusPayload = null;
 
+    /** The poll statement (tiny: one row per entity). */
+    const POLL_SQL = 'SELECT entity, last_sync, row_count, updated_at, last_modified_at FROM "_sync_meta" ORDER BY entity';
+
     /**
-     * Background task: queries _sync_meta via D1 read-replication.
-     * Compares each entity's last_modified_at against the in-memory snapshot
-     * and calls onEntityChange for the ones that moved. Rebuilds the
-     * pre-encoded /status payload when statusHeaders is configured.
+     * Background task: queries _sync_meta via D1 read-replication and
+     * applies the result (see applyPoll).
      *
      * Runs inside ctx.waitUntil() — allocations here do not affect the
      * response path.
@@ -75,17 +81,30 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
      */
     async function refresh(db) {
         try {
-            const rows = await db.prepare(
-                'SELECT entity, last_sync, row_count, updated_at, last_modified_at FROM "_sync_meta" ORDER BY entity'
-            ).all();
+            const rows = await db.prepare(POLL_SQL).all();
+            if (rows && rows.results) applyPoll(rows.results);
+        } catch (err) {
+            // Background D1 errors must not crash the isolate.
+            // The previous statusPayload and knownModifiedAt remain valid.
+            console.error('[sync] background poll failed:', err);
+        }
+    }
 
-            if (!rows || !rows.results) return;
-
+    /**
+     * Applies a _sync_meta result: compares each entity's last_modified_at
+     * against the in-memory snapshot and calls onEntityChange for the ones
+     * that moved; rebuilds the pre-encoded /status payload when statusHeaders
+     * is configured.
+     *
+     * @param {Record<string, any>[]} results - _sync_meta rows.
+     */
+    function applyPoll(results) {
+        try {
             // Build a lookup from the D1 results for fast access.
             // Use a Map to avoid dynamic-key objects.
             /** @type {Map<string, {last_sync: number, row_count: number, updated_at: string, last_modified_at: number}>} */
             const dbState = new Map();
-            for (const row of rows.results) {
+            for (const row of results) {
                 dbState.set(
                     /** @type {string} */ (row.entity),
                     {
@@ -133,8 +152,38 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
             }
 
         } catch (err) {
-            // Background D1 errors must not crash the isolate.
-            // The previous statusPayload and knownModifiedAt remain valid.
+            // A malformed result must not crash the isolate.
+            console.error('[sync] applying poll result failed:', err);
+        }
+    }
+
+    /**
+     * Claims the poll if checkIntervalMs has elapsed (and marks it taken):
+     * the statement and its result step, for the caller to send in the same
+     * D1 call as a query it makes anyway — no extra round trip. null when
+     * not due. A claimed poll the caller never sends must go to runPoll.
+     *
+     * @param {number} now
+     * @returns {{ sql: string, apply: (results: Record<string, any>[]) => void } | null}
+     */
+    function claimPoll(now) {
+        if (now - lastCheck <= checkIntervalMs) return null;
+        lastCheck = now;
+        return { sql: POLL_SQL, apply: applyPoll };
+    }
+
+    /**
+     * Runs a claimed poll on its own (when the request made no D1 call).
+     *
+     * @param {D1Session} db
+     * @param {{ sql: string, apply: (results: Record<string, any>[]) => void }} poll
+     * @returns {Promise<void>}
+     */
+    async function runPoll(db, poll) {
+        try {
+            const rows = await db.prepare(poll.sql).all();
+            if (rows && rows.results) poll.apply(rows.results);
+        } catch (err) {
             console.error('[sync] background poll failed:', err);
         }
     }
@@ -206,5 +255,5 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
         return knownModifiedAt.get(tag) || 0;
     }
 
-    return { refresh, ensureSyncFreshness, handleStatus, getEntityVersion };
+    return { refresh, ensureSyncFreshness, claimPoll, runPoll, handleStatus, getEntityVersion };
 }

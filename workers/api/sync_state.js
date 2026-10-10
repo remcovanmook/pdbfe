@@ -30,5 +30,7 @@ const _sync = createSyncState({
 });
 
 export const ensureSyncFreshness = _sync.ensureSyncFreshness;
+export const claimSyncPoll = _sync.claimPoll;
+export const runSyncPoll = _sync.runPoll;
 export const handleStatus = _sync.handleStatus;
 export const getEntityVersion = _sync.getEntityVersion;
