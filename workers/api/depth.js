@@ -152,21 +152,35 @@ function appendFilterAndOrder(sql, params, anonFilter, prefix = '') {
  * @param {boolean} pdbfe - Whether to include pdbfe-local extension columns.
  * @param {boolean} detail - Detail view (GET /api/{tag}/{id}): expand every parent FK.
  * @param {string[]} [fields] - ?fields= projection, applied after expansion.
+ * @param {boolean} [inline=true] - Expansions select their parents through
+ *        the main query (one round trip). false: fetch the rows first, then
+ *        expand by their ids (two round trips) — for deep OFFSET pages, where
+ *        re-running the main query in every statement would re-scan the
+ *        skipped rows each time.
  * @returns {Promise<Record<string, any>[]>}
  */
-export async function selectWithDepth(db, entity, main, depth, authenticated, pdbfe, detail, fields = []) {
+export async function selectWithDepth(db, entity, main, depth, authenticated, pdbfe, detail, fields = [], inline = true) {
     /** @type {Record<string, any>[]} */
     let rows = [];
     /** @type {Step[]} */
     const steps = [];
-    if (depth > 0) planExpansion(db, entity, main, () => rows, depth, authenticated, pdbfe, detail, steps);
-
-    const results = await db.batch([db.prepare(main.sql).bind(...main.params), ...steps.map(s => s.stmt)]); // ap-ok: cold path behind cachedQuery
-    rows = results[0]?.results || [];
+    /** @type {any[]} */
+    let results;
+    let offset = 1;
+    if (inline) {
+        if (depth > 0) planExpansion(db, entity, main, () => rows, depth, authenticated, pdbfe, detail, steps);
+        results = await db.batch([db.prepare(main.sql).bind(...main.params), ...steps.map(s => s.stmt)]); // ap-ok: cold path behind cachedQuery
+        rows = results[0]?.results || [];
+    } else {
+        rows = (await db.prepare(main.sql).bind(...main.params).all()).results || [];
+        if (rows.length > 0 && depth > 0) planExpansion(db, entity, idSource(entity, rows), () => rows, depth, authenticated, pdbfe, detail, steps);
+        results = steps.length > 0 ? await db.batch(steps.map(s => s.stmt)) : []; // ap-ok: cold path behind cachedQuery
+        offset = 0;
+    }
     for (const row of rows) parseJsonFields(entity, row);
     if (rows.length === 0) return rows;
     const baseKeys = Object.keys(rows[0]);
-    for (let i = 0; i < steps.length; i++) steps[i].apply(results[i + 1]?.results || []);
+    for (let i = 0; i < steps.length; i++) steps[i].apply(results[i + offset]?.results || []);
 
     if (fields.length > 0) {
         const keep = new Set(fields);
@@ -202,17 +216,26 @@ export async function selectWithDepth(db, entity, main, depth, authenticated, pd
 export async function expandDepth(db, entity, rows, depth, authenticated = false, pdbfe = false, detail = false) {
     if (depth === 0 || rows.length === 0) return;
 
-    const fkCols = parentFks(entity, true).map(f => `, "${f.name}"`).join(''); // ap-ok: cold path behind cachedQuery
-    const ids = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
-    /** @type {Source} */
-    const src = { sql: `SELECT "id"${fkCols} FROM "${entity.table}" WHERE "id" IN (SELECT value FROM json_each(?))`, params: [JSON.stringify(ids)] };
-
     /** @type {Step[]} */
     const steps = [];
-    planExpansion(db, entity, src, () => rows, depth, authenticated, pdbfe, detail, steps);
+    planExpansion(db, entity, idSource(entity, rows), () => rows, depth, authenticated, pdbfe, detail, steps);
     if (steps.length === 0) return;
     const results = await db.batch(steps.map(s => s.stmt)); // ap-ok: cold path behind cachedQuery
     for (let i = 0; i < steps.length; i++) steps[i].apply(results[i]?.results || []);
+}
+
+/**
+ * A source over already-fetched rows: their ids bound as one JSON parameter
+ * (D1 caps bound parameters at 100 per statement).
+ *
+ * @param {EntityMeta} entity
+ * @param {Record<string, any>[]} rows
+ * @returns {Source}
+ */
+function idSource(entity, rows) {
+    const fkCols = parentFks(entity, true).map(f => `, "${f.name}"`).join(''); // ap-ok: cold path behind cachedQuery
+    const ids = rows.map(r => r.id); // ap-ok: cold path behind cachedQuery
+    return { sql: `SELECT "id"${fkCols} FROM "${entity.table}" WHERE "id" IN (SELECT value FROM json_each(?))`, params: [JSON.stringify(ids)] };
 }
 
 /**

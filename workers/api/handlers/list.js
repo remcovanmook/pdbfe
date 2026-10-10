@@ -71,6 +71,15 @@ export async function handleList(hc) {
 // ── D1 query functions ───────────────────────────────────────────────────────
 
 /**
+ * From this OFFSET on, a depth>0 list page fetches its rows first and then
+ * expands them by id (two round trips) rather than in one batch: there every
+ * expansion statement re-runs the main query, re-scanning the skipped rows
+ * (measured: skip=30000 at depth=1 went from 161 to 237 ms of D1 time). A
+ * judgment call — one scan past ~2000 rows starts to cost a few ms.
+ */
+export const DEEP_SKIP = 2000;
+
+/**
  * Executes a list query against D1. Uses the hot path (json_group_array)
  * for depth=0, or the cold path (row-level + expandDepth) for depth>0.
  *
@@ -86,9 +95,12 @@ export async function handleList(hc) {
 async function executeListQuery(db, entity, filters, opts, authenticated) {
     if (opts.depth > 0) {
         // Main query (all columns) + every expansion in one D1 batch
-        // (api/depth.js); ?fields= is applied after expansion.
+        // (api/depth.js); ?fields= is applied after expansion. Deep pages
+        // fetch first and expand by id instead: each batched statement re-runs
+        // the main query, and OFFSET re-scans every skipped row each time.
         const main = buildRowQuery(entity, filters, { ...opts, fields: [] });
-        const rows = await selectWithDepth(db, entity, main, opts.depth, authenticated, opts.pdbfe, false, opts.fields);
+        const inline = (opts.skip || 0) < DEEP_SKIP;
+        const rows = await selectWithDepth(db, entity, main, opts.depth, authenticated, opts.pdbfe, false, opts.fields, inline);
         return encodeJSON({ data: rows, meta: {} });
     }
 
