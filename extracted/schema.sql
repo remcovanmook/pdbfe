@@ -346,6 +346,7 @@ CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_net_id_idx" ON "peeringdb_ne
 CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_ixlan_id_idx" ON "peeringdb_network_ixlan" ("ixlan_id");
 CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_net_side_id_idx" ON "peeringdb_network_ixlan" ("net_side_id");
 CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_ix_side_id_idx" ON "peeringdb_network_ixlan" ("ix_side_id");
+CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_ix_id_idx" ON "peeringdb_network_ixlan" ("ix_id");
 CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_name_nocase_idx" ON "peeringdb_network_ixlan" ("name" COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS "peeringdb_network_ixlan_updated_idx" ON "peeringdb_network_ixlan" ("updated");
 

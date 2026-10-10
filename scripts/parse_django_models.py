@@ -951,7 +951,10 @@ def generate_schema_sql(entities, schema_version="unknown"):
         indexes = []
         for field in entity["fields"]:
             name = field["name"]
-            if name.endswith("_id") and "foreignKey" in field:
+            # Every *_id column: the foreign keys, plus denormalised ids that
+            # are filtered on (netixlan.ix_id — netixlan?ix_id=N, the IX member
+            # list — has no foreignKey, so it used to get no index).
+            if name.endswith("_id"):
                 indexes.append(
                     f'CREATE INDEX IF NOT EXISTS "{table}_{name}_idx" '
                     f'ON "{table}" ("{name}");'
