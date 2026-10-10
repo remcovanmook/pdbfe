@@ -27,7 +27,7 @@
 
 import { ENTITIES } from './entities.js';
 import { parseURL } from '../core/utils.js';
-import { upsertActiveRows, publishTasks } from './rows.js';
+import { upsertActiveRows, publishTasks, isListed } from './rows.js';
 import { runHealthCheck } from './health.js';
 
 export { buildUpsert, ensureColumns } from './rows.js';
@@ -158,11 +158,12 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             return result;
         }
 
-        // Split active/deleted, dropping rows without a usable integer id — a
-        // malformed upstream record would otherwise INSERT a null primary key
-        // (a junk auto-rowid row) or DELETE/publish an `undefined` id.
-        const activeRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && r.status !== 'deleted');
-        const deletedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && r.status === 'deleted');
+        // Split listed (status 'ok') from removed (any other status — see
+        // isListed), dropping rows without a usable integer id — a malformed
+        // upstream record would otherwise INSERT a null primary key (a junk
+        // auto-rowid row) or DELETE/publish an `undefined` id.
+        const activeRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && isListed(r));
+        const deletedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && !isListed(r));
         const skipped = rows.length - activeRows.length - deletedRows.length;
         if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
 

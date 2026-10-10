@@ -29,7 +29,7 @@
  */
 
 import { ENTITIES } from './entities.js';
-import { upsertActiveRows, publishTasks } from './rows.js';
+import { upsertActiveRows, publishTasks, isListed } from './rows.js';
 
 const API_BASE = 'https://www.peeringdb.com/api';
 export const STALE_ABS = 50;
@@ -210,7 +210,7 @@ async function fetchById(tag, missing, outdated, upstream, alerts) {
         // Sequential on purpose: upstream requests must be paced (published rate limits).
         const rows = await upstream(`${tag}?id__in=${chunk.join(',')}&depth=0&limit=0`); // NOSONAR
         for (const r of rows) {
-            if (Number.isInteger(r.id) && r.id > 0 && r.status !== 'deleted') fetched.push(r);
+            if (Number.isInteger(r.id) && r.id > 0 && isListed(r)) fetched.push(r);
         }
     }
     return fetched;
