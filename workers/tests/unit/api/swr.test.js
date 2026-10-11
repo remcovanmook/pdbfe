@@ -1,9 +1,8 @@
 /**
  * @fileoverview Unit tests for the withEdgeSWR wrapper (api/swr.js).
  *
- * Tests the full L1 → SWR → cachedQuery flow with mocked cache instances.
- * L2 cache (caches.default) is not available in Node.js, so all miss-path
- * queries go straight to D1 (via queryFn).
+ * Tests the full L1 → SWR → cachedQuery flow with mocked cache instances;
+ * miss-path queries go straight to the backend (queryFn).
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -76,7 +75,7 @@ describe('withEdgeSWR', () => {
         assert.notStrictEqual(result.buf, null);
 
         // Should have fired a background refresh via ctx.waitUntil
-        assert.ok(waitUntilCalls.length >= 1, 'should fire background refresh (+ L2 write-back)');
+        assert.equal(waitUntilCalls.length, 1, 'one background refresh');
 
         // Wait for background refresh to complete
         await waitUntilCalls[0];
@@ -108,10 +107,7 @@ describe('withEdgeSWR', () => {
         assert.notEqual(result.tier, 'L1', 'should not report as L1 hit');
         assert.notStrictEqual(result.buf, null);
         assert.equal(result.hits, 0);
-        // L2 write-back fires via ctx.waitUntil (even though the Cache API
-        // is unavailable in Node.js, the putL2 promise is still registered).
-        // No SWR background refresh is issued — just the L2 write.
-        assert.ok(waitUntilCalls.length <= 1, 'only L2 write-back, no SWR refresh');
+        assert.equal(waitUntilCalls.length, 0, 'a blocking miss schedules nothing in the background');
 
         // Clean up
         cache.purge('test/expired');

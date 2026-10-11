@@ -1,6 +1,6 @@
 /**
  * @fileoverview Server-Timing on api list/detail responses: cache tier plus
- * auth / L2 / D1 phase durations, so the cache-miss path can be measured
+ * auth / D1 phase durations, so the cache-miss path can be measured
  * from outside (see the perf/bench analysis of small-shape latency).
  */
 
@@ -30,10 +30,10 @@ const timing = async (url) => (await apiWorker.fetch(new Request(url), env, mock
 
 describe('Server-Timing', () => {
     for (const url of ['https://api.pdbfe.dev/api/net?asn=64500', 'https://api.pdbfe.dev/api/net/1', 'https://api.pdbfe.dev/api/net?page=1']) {
-        it(`${url.slice(26)}: miss reports auth/l2/db, repeat reports L1 without db`, async () => {
+        it(`${url.slice(26)}: miss reports auth/db, repeat reports L1 without db`, async () => {
             const miss = await timing(url);
             assert.match(miss, /cache;desc="MISS"/);
-            for (const phase of ['auth', 'l2', 'db']) assert.match(miss, new RegExp(`${phase};dur=\\d+`), phase);
+            for (const phase of ['auth', 'db']) assert.match(miss, new RegExp(`${phase};dur=\\d+`), phase);
 
             const hit = await timing(url);
             assert.match(hit, /cache;desc="L1"/);

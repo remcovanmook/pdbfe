@@ -58,7 +58,7 @@ describe('ensureSyncFreshness', () => {
     });
 });
 
-describe('L2 version tagging', () => {
+describe('entity version (Last-Modified)', () => {
 
     it('getEntityVersion returns same value for same entity (no allocation)', () => {
         // Verify zero-allocation property: Map.get returns existing string

@@ -16,7 +16,6 @@ import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFi
 import { getCacheStats, purgeAllCaches } from './cache.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { resolveAuth } from '../core/auth.js';
-import { initL2 } from '../core/pipeline/index.js';
 
 /**
  * Rate limiter for API requests.
@@ -66,7 +65,6 @@ function validateQueryOrError(entity, filters, hNocache) {
  * @returns {Promise<Response>} The HTTP response.
  */
 async function handleRequest(request, env, ctx) {
-    initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
     const tAuth = Date.now();
@@ -268,7 +266,7 @@ async function handleRequest(request, env, ctx) {
     // Sync freshness poll (every 15 s per isolate): rides along the
     // request's first D1 call in the same batch — no extra round trip, and
     // no separate query racing the request's own. A request that never
-    // reaches D1 (L1/L2 hit) runs it after the response instead.
+    // reaches D1 (L1 hit) runs it after the response instead.
     const poll = claimSyncPoll(now);
     if (poll) db.carry(poll);
     const response = id > 0
@@ -283,12 +281,13 @@ async function handleRequest(request, env, ctx) {
 /**
  * One Analytics Engine data point per entity request that reached the
  * worker (edge hits never do; Cloudflare's cache analytics cover those):
- * which tier answered, for which scope and entity, and the L2 / D1 phase
- * times. Used to decide whether the per-PoP L2 layer earns its lookup cost.
+ * which tier answered, for which scope and entity, and the D1 phase time.
  * No-op when the METRICS binding is absent (tests, local dev).
  *
  * blobs:   [tier, scope, entity, since|plain, status]
- * doubles: [1, l2Ms, dbMs]   (-1 when the phase did not run)
+ * doubles: [1, -1, dbMs]     (dbMs -1 when the phase did not run; double2 was
+ *                             the L2 lookup time, kept at -1 so the column
+ *                             layout and scripts/dev/cache-tiers.mjs still line up)
  *
  * @param {PdbApiEnv} env
  * @param {HandlerContext} hc
@@ -303,7 +302,7 @@ function recordCacheTier(env, hc, status, shared, isSince) {
     const p = hc.pipeline;
     env.METRICS.writeDataPoint({
         blobs: [p ? p.tier : 'none', scope, hc.entityTag, isSince ? 'since' : 'plain', String(status)],
-        doubles: [1, p?.l2Ms ?? -1, p?.dbMs ?? -1],
+        doubles: [1, -1, p?.dbMs ?? -1],
         indexes: [hc.entityTag],
     });
 }

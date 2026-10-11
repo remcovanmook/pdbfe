@@ -30,7 +30,7 @@ export async function handleListRequest(request, entity, filters, opts, rawPath,
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     // Partitioned by auth state where it matters (poc lists, depth>0
     // poc_set): authenticated responses include non-public contacts and must
-    // never reach an anonymous caller from L1/L2. Shared responses use one
+    // never reach an anonymous caller from L1. Shared responses use one
     // 'pub' partition. The router picks qc.cachePrefix (api/auth_scope.js).
     const cacheKey = normaliseCacheKey(`${qc.cachePrefix}:${rawPath}`, queryString);
 

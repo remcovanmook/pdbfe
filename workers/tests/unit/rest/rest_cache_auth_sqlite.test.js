@@ -1,5 +1,5 @@
 /**
- * @fileoverview Regression: REST L1/L2 cache keys must be partitioned by
+ * @fileoverview Regression: REST L1 cache keys must be partitioned by
  * auth state.
  *
  * The rest list/detail handlers keyed their cache on path + query only, so

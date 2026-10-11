@@ -38,7 +38,6 @@
 import { LRUCache } from '../core/cache.js';
 import { withSWR, cachedQuery as _cachedQuery } from '../core/pipeline/index.js';
 import { ENTITY_TAGS, CACHE_TIERS, DEFAULT_TIER } from './entities.js';
-import { getEntityVersion } from './sync_state.js';
 
 const MB = 1024 * 1024;
 
@@ -147,12 +146,11 @@ export function purgeAllCaches() {
  * Performs the full L1 read → SWR → cachedQuery miss flow for an API entity.
  *
  * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
- * the API worker's entity cache, version tracker, sentinel, and negative
- * TTL. The caller only needs to provide the entity tag, cache key,
+ * the API worker's entity cache, sentinel, and negative TTL. The caller only needs to provide the entity tag, cache key,
  * execution context, TTL, and query closure.
  *
  * @param {string} entityTag - Entity tag (e.g. "net"). Used to resolve the
- *        per-entity LRU cache instance and entity version for L2 keys.
+ *        per-entity LRU cache instance.
  * @param {string} cacheKey - Normalised cache key (e.g. "api/net?depth=0").
  * @param {ExecutionContext} ctx - Cloudflare worker execution context. Used
  *        for ctx.waitUntil() on SWR background refreshes.
@@ -163,13 +161,12 @@ export function purgeAllCaches() {
  *        null for 404/empty.
  * @param {number} [staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
- * @param {boolean} [useL2=true] - Consult/populate L2 on a miss (false for non-repeating keys).
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'L2' | 'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
  */
-export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs, useL2 = true) {
+export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs) {
     return withSWR({
         cache: getEntityCache(entityTag),
         cacheKey,
@@ -178,10 +175,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
         negativeTtlMs: NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
-
-        getVersion: getEntityVersion,
         staleMs,
-        useL2,
     });
 }
 
@@ -191,8 +185,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
 /** @typedef {import('../core/pipeline/query.js').CachedResult} CachedResult */
 
 /**
- * API-worker cachedQuery wrapper. Pre-fills `getVersion` with the
- * API worker's entity version tracker and `negativeTtlMs` with the
+ * API-worker cachedQuery wrapper. Pre-fills `negativeTtlMs` with the
  * API worker's NEGATIVE_TTL constant.
  *
  * Call sites in api/handlers/*.js continue to work unchanged —
@@ -211,7 +204,6 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
 export async function cachedQuery(opts) {
     return _cachedQuery({
         negativeTtlMs: NEGATIVE_TTL,
-        getVersion: getEntityVersion,
         ...opts,
     });
 }

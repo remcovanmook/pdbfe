@@ -14,7 +14,7 @@
  *   - Query building via the shared api/query.js module
  *   - Auth via core/auth.js (API keys + session cookies)
  *   - Rate limiting via core/ratelimit.js factory
- *   - L2 cache via core/pipeline/ with /v1/ path keys
+ *   - L1 cache + coalescing via core/pipeline/ with /v1/ path keys
  *
  * Route: rest.pdbfe.dev/*
  */
@@ -27,7 +27,6 @@ import { handlePreflight, jsonError } from '../core/http.js';
 import { H_API_AUTH, H_API_ANON, H_API_SHARED } from '../api/http.js';
 import { isAuthSensitive, isRelationAuthSensitive } from '../api/auth_scope.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
-import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getRestCacheStats, purgeRestCache, ensureSyncFreshness } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';
@@ -63,7 +62,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  * @returns {Promise<Response>} The HTTP response.
  */
 async function handleRequest(request, env, ctx) {
-    initL2(request.url);
     const { rawPath, queryString } = parseURL(request);
 
     const validationError = validateRequest(request, rawPath);

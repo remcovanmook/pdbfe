@@ -1,7 +1,7 @@
 /**
  * @fileoverview GraphQL query handler with SWR caching.
  *
- * Handles POST requests by wrapping yoga.fetch() in the L1→SWR→L2
+ * Handles POST requests by wrapping yoga.fetch() in the L1→SWR
  * cache pipeline. The query body is parsed, normalised, and SHA-256
  * hashed to produce a deterministic cache key. Auth tier is appended
  * to the key so authenticated and anonymous results are cached
@@ -72,7 +72,7 @@ const BODY_KEY_CACHE_LIMIT = 500;
  *   2. Fast-path: check bodyKeyCache for a previously resolved cache key.
  *      On hit, skip JSON.parse + SHA-256 entirely.
  *   3. Slow-path: parse body, normalise query + variables, SHA-256 hash
- *   4. withGqlSWR → L1 check → coalesce → L2 → yoga.fetch
+ *   4. withGqlSWR → L1 check → coalesce → yoga.fetch
  *   5. On cache hit: return pre-encoded response with cache headers
  *   6. On negative hit: fall through to yoga for fresh error response
  *

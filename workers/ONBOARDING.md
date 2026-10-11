@@ -93,29 +93,21 @@ Total: ~59 MB. Remaining ~69 MB of the 128 MB isolate budget is for working memo
 
 **TTLs:** `LIST_TTL` = 5 min, `DETAIL_TTL` = 15 min, `COUNT_TTL` = 15 min, `NEGATIVE_TTL` = 5 min, `ERROR_TTL` = 5 min.
 
-### L2: Per-PoP Cache API (`caches.default`)
-
-`l2cache.js` stores `Uint8Array` payloads in Cloudflare's per-PoP `caches.default` Cache API. Multiple isolates at the same PoP share this cache, so a cold isolate can skip D1 if another isolate at the same PoP already fetched the same key.
-
-- Keys are synthetic URLs under `https://pdbfe-l2.internal/`
-- TTL is set via `Cache-Control` headers on stored `Response` objects
-- Errors silently degrade to D1 fallback (L2 is best-effort)
-
-### L3: D1 (Global)
+### D1 (Global)
 
 SQLite-backed Cloudflare D1. The source of truth. Updated every 15 minutes by the sync worker via delta sync (`?since=<epoch>`).
 
 ### Negative and Error Caching
 
-- **404s:** Non-existent entity IDs are cached at L1 and L2 using `EMPTY_ENVELOPE` as a sentinel. Negative TTL is 5 minutes (shorter than detail TTL since entities can be created).
-- **400s:** Invalid query errors (unknown fields, bad operators) are cached in L1 and L2 per-entity. The error body is deterministic for the same query string, so caching prevents repeated validation.
+- **404s:** Non-existent entity IDs are cached at L1 using `EMPTY_ENVELOPE` as a sentinel. Negative TTL is 5 minutes (shorter than detail TTL since entities can be created).
+- **400s:** Invalid query errors (unknown fields, bad operators) are cached in L1 per-entity. The error body is deterministic for the same query string, so caching prevents repeated validation.
 
 ## 6. The `ctx.waitUntil()` Pattern
 
 We use `ctx.waitUntil()` for:
 
 1. **SWR pre-fetch:** When a paginated list response fills its limit, the handler fires a background D1 query for the next page. The result is encoded and stored in the entity cache.
-2. **Non-blocking cache updates:** L2 writes are fire-and-forget. See `putL2()` in `l2cache.js`.
+2. **Sync freshness poll:** when no request D1 call carried it (cache hit), the claimed `_sync_meta` poll runs after the response.
 
 **Danger:** `waitUntil` executes *after* the client socket closes. Do not reference short-lived request objects (like reading a request stream) inside a `waitUntil` closure.
 
@@ -134,9 +126,8 @@ Every API request follows this hierarchy:
    - **L1 miss / expired:** Fall through to `cachedQuery()` pipeline.
 7. **`cachedQuery()` pipeline** (pipeline.js):
    - **Coalesce:** Is the same cache key in `cache.pending`? Await the in-flight promise.
-   - **L2 PoP cache:** Is it in `caches.default`? Populate L1 from L2, return.
    - **D1:** Execute the handler's `queryFn` closure.
-   - **Write-back:** Store result in L1 + L2 (fire-and-forget), return.
+   - **Write-back:** Store result in L1, return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
 8. **Last-Modified:** Entity responses get a `Last-Modified` header derived from the per-entity `last_modified_at` in `_sync_meta`.
 9. **Background:** If paginated, `waitUntil` to pre-fetch next page.
@@ -172,7 +163,7 @@ Run locally with mock D1 bindings. No real database needed.
 | `swr.test.js` | 10 | withEdgeSWR: fresh/stale/miss paths, negative cache, background refresh, error handling |
 | `visibility.test.js` | 5 | Anonymous visibility filters: enforceAnonFilter, depth expansion poc filtering |
 | `poc_visibility_sqlite.test.js` | 24 | Anonymous poc visibility end-to-end against real SQLite (node:sqlite): api, rest and GraphQL routes never return a non-Public contact |
-| `sync_state.test.js` | 5 | sync_state.js: getEntityVersion, L2 version tagging, ensureSyncFreshness |
+| `sync_state.test.js` | 5 | sync_state.js: getEntityVersion, ensureSyncFreshness |
 | `status.test.js` | 4 | /status endpoint: sync metadata, Content-Type, CORS |
 
 ### Integration tests (`npm run test:integration`) — 24 tests

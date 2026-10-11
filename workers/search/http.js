@@ -53,7 +53,7 @@ export function escapeLike(s) {
 /**
  * Returns a 200 JSON response for a search result buffer.
  *
- * Used for both cache hits (tier='L1'/'L2') and cache misses (tier='MISS').
+ * Used for both cache hits (tier='L1') and cache misses (tier='MISS').
  * The same function handles the empty sentinel case — callers pass the
  * SEARCH_EMPTY_SENTINEL Uint8Array directly when the result set is empty.
  *
@@ -68,7 +68,7 @@ export function escapeLike(s) {
  * Headers are constructed inline (no frozen-object spread on hot path).
  *
  * @param {Uint8Array} buf - Serialised search envelope (may be the empty sentinel).
- * @param {string} tier - Cache tier label: 'L1', 'L2', or 'MISS'.
+ * @param {string} tier - Cache tier label: 'L1' or 'MISS'.
  * @param {number} hits - L1 hit counter from the SWR pipeline.
  * @returns {Response} HTTP 200 response with search headers.
  */

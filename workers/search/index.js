@@ -22,7 +22,6 @@ import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from './http.js';
 import { parseURL } from '../core/utils.js';
-import { initL2 } from '../core/pipeline/index.js';
 import { createRateLimiter } from '../core/ratelimit.js';
 import { getSearchCacheStats, purgeSearchCache } from './cache.js';
 import { initGraphSearch } from './handlers/graph.js';
@@ -49,15 +48,14 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  * Handles incoming requests to the search worker.
  *
  * Flow:
- *   1. L2 cache initialisation
- *   2. Semantic binding probe (once per isolate lifetime)
- *   3. URL parsing (§1: no new URL())
- *   4. Method and path validation
- *   5. CORS preflight
- *   6. Admin endpoints (health, robots.txt, cache stats)
- *   7. Auth resolution
- *   8. Rate limiting
- *   9. Dispatch to handleSearch
+ *   1. Semantic binding probe (once per isolate lifetime)
+ *   2. URL parsing (§1: no new URL())
+ *   3. Method and path validation
+ *   4. CORS preflight
+ *   5. Admin endpoints (health, robots.txt, cache stats)
+ *   6. Auth resolution
+ *   7. Rate limiting
+ *   8. Dispatch to handleSearch
  *
  * @param {Request} request - Inbound HTTP request.
  * @param {PdbSearchEnv} env - Cloudflare environment bindings.
@@ -65,7 +63,6 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  * @returns {Promise<Response>} HTTP response.
  */
 async function handleRequest(request, env, ctx) {
-    initL2(request.url);
     // Probe VECTORIZE binding once per isolate. Subsequent calls are no-ops.
     initGraphSearch(/** @type {any} */ (env));
 

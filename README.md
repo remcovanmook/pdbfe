@@ -16,8 +16,7 @@ pdbfe/
 │   │   ├── pipeline.js            # D1 query pipeline, cache stampede prevention
 │   │   ├── query.js               # Dual query builder (JSON + row modes)
 │   │   ├── depth.js               # Depth 0/1/2 expansion
-│   │   ├── cache.js               # Per-entity LRU cache config (3 tiers)
-│   │   └── l2cache.js             # Per-PoP L2 cache (Cache API)
+│   │   └── cache.js               # Per-entity LRU cache config (3 tiers)
 │   ├── graphql/                   # GraphQL worker — GraphQL Yoga API
 │   │   └── index.js               # Resolvers and schema loading
 │   ├── rest/                      # REST API worker — Versioned standard API

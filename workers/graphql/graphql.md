@@ -14,7 +14,6 @@ Client → wrapHandler (error trap + telemetry headers)
            → GET / → GraphiQL UI (handlers/static.js)
            → POST/GET → graphql-yoga pipeline (handlers/query.js)
                → L1 Read + SWR (SHA-256 keyed)
-               → L2 Read
                → yoga.fetch() → Resolver Map → D1
 ```
 
@@ -71,12 +70,11 @@ Because GraphQL requests generally employ query bodies over `POST`, cache keys a
 - Keys are partitioned by authentication scope prefixed with either `auth:` or `anon:`.
 - This ensures authenticated queries (which can retrieve private points of contact) never poison the cache for anonymous users attempting the same query body.
 
-### L1 / L2 Architecture
+### L1 Cache
 1. **L1 LRU**: A 2000-slot LRU cache in `cache.js`. Due to the high combinatorial possibility of uniquely shaped GraphQL queries, a GraphQL request retains a ~10% capacity isolation ratio.
-2. **L2 PoP Cache**: Utilizes the `Cache API` to broadcast responses to the edge network for identical GraphQL queries via `core/l2cache.js`.
 
 ### SWR (Stale-While-Revalidate)
-`withGqlSWR()` in `cache.js` wraps `core/swr.js`, injecting the GraphQL-specific cache, TTL, and sentinel. The flow matches the API worker pattern: L1 hit → stale-serve + background refresh → L2 → miss.
+`withGqlSWR()` in `cache.js` wraps `core/swr.js`, injecting the GraphQL-specific cache, TTL, and sentinel. The flow matches the API worker pattern: L1 hit → stale-serve + background refresh → miss.
 
 ## Interactive UI (GraphiQL)
 

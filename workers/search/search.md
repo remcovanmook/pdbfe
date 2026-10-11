@@ -20,7 +20,6 @@ Client → wrapHandler (core/admin.js)
            → withSearchSWR (cache.js)
                → L1 LRU read
                → coalesce (cache.pending — §7 stampede prevention)
-               → L2 Cache API read
                → queryFn:
                    graph-search → resolveGraphIds → executeGraphSearch → hydrateGraphIds (D1 CASE sort)
                    keyword      → handleKeyword (D1 LIKE)  §3: for loops, §4: single encode
@@ -69,10 +68,10 @@ Search requests carry parameters that cannot be keyed by URL path alone, so resu
 - Auth prefix: `anon:search/...` vs `auth:search/...`
 - Fast-path: `paramKeyCache` Map skips hashing for repeat queries
 
-### L1 / L2
+### L1
 
 - **L1 LRU**: 1024 slots, 32 MB. Single instance for all entity types and modes.
-- **L2 PoP Cache**: Cloudflare Cache API via `core/pipeline/`. Results propagate to the edge PoP.
+- **Edge cache**: responses are public and sync-aligned, so Cloudflare's edge serves repeats before the worker runs.
 - **TTL**: 30 minutes for hits; 60 seconds for negative (empty / error) results.
 
 ### SWR
@@ -151,4 +150,4 @@ Graph-structural queries require a Vectorize round-trip for similarity searches 
 | §7 No stampede | `withSearchSWR` → `withSWR` → `cachedQuery` coalesces concurrent misses via `cache.pending` |
 | §9 No raw D1 outside pipeline | All D1/Vectorize calls inside `queryFn` closures |
 | §11 No holding LRU results | Fields extracted synchronously before any further `get()` call |
-| §12 No manual L1 boilerplate | `withSearchSWR` owns the full L1 → SWR → L2 flow |
+| §12 No manual L1 boilerplate | `withSearchSWR` owns the full L1 → SWR flow |

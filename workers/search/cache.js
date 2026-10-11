@@ -161,23 +161,22 @@ export async function buildSearchKey(q, entityList, mode, limit, skip) {
 // ── SWR wrapper ───────────────────────────────────────────────────────────────
 
 /**
- * Performs the full L1 → SWR → coalesce → L2 → queryFn flow for a
+ * Performs the full L1 → SWR → coalesce → queryFn flow for a
  * search operation.
  *
  * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
  * the search cache, sentinel, and TTL values. The caller only needs to
  * provide the cache key, execution context, and search query closure.
  *
- * Unlike the API worker, the search worker does not use per-entity version
- * tracking for L2 invalidation — the 30-minute TTL provides sufficient
- * freshness given the 15-minute sync cadence.
+ * The search worker has no per-entity invalidation — the 30-minute TTL
+ * provides sufficient freshness given the 15-minute sync cadence.
  *
  * @param {string} cacheKey - Deterministic key from buildSearchKey().
  * @param {ExecutionContext} ctx - Worker execution context for waitUntil().
  * @param {() => Promise<Uint8Array|null>} queryFn - Closure that executes
  *        the keyword or graph-structural search and returns a serialised Uint8Array,
  *        or null on error.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'L2'|'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1'|'MISS', hits: number}>}
  */
 export async function withSearchSWR(cacheKey, ctx, queryFn) {
     return withSWR({
