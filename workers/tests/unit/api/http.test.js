@@ -16,6 +16,7 @@ import {
     H_API_ANON,
     H_NOCACHE_AUTH,
     H_NOCACHE_ANON,
+    NO_TRANSFORM_MAX_BYTES,
     encoder,
 } from '../../../api/http.js';
 
@@ -47,6 +48,18 @@ describe('serveJSON', () => {
         });
         const resp2 = serveJSON(req2, buf);
         assert.equal(resp2.status, 304);
+    });
+
+    it('marks bodies below the first-flight threshold no-transform', () => {
+        const req = new Request('https://example.com/api/net');
+        assert.match(serveJSON(req, buf).headers.get('Cache-Control'), /^public, .*, no-transform$/);
+        assert.match(serveJSON(req, buf, undefined, H_API_AUTH).headers.get('Cache-Control'), /^private, .*, no-transform$/);
+    });
+
+    it('leaves larger bodies compressible', () => {
+        const req = new Request('https://example.com/api/net');
+        const big = new Uint8Array(NO_TRANSFORM_MAX_BYTES);
+        assert.doesNotMatch(serveJSON(req, big).headers.get('Cache-Control'), /no-transform/);
     });
 
     it('includes X-Cache header from meta', () => {

@@ -60,7 +60,7 @@ describe('API responses', () => {
     it('public responses use the aligned TTL', async () => {
         const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net?asn=64500'), env, mockCtx);
         const cc = res.headers.get('Cache-Control') ?? '';
-        const m = cc.match(/^public, max-age=(\d+), stale-while-revalidate=\d+$/);
+        const m = cc.match(/^public, max-age=(\d+), stale-while-revalidate=\d+(, no-transform)?$/);
         assert.ok(m, cc);
         assert.ok(Number(m[1]) >= 1 && Number(m[1]) <= SYNC_INTERVAL_S + SYNC_GRACE_S);
     });
