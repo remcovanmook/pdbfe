@@ -78,29 +78,26 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// The signed-in profile loads in the background (see initAuth). Apply what
-// it changed once it lands: a new language needs the whole chrome redrawn,
-// anything else just the current page. Not awaited, like the footer loads
-// below, so none of them holds up the others.
-/** Re-renders the page once the background profile fetch has changed something. */
+/**
+ * Applies what the background profile fetch (see initAuth) changed once it
+ * lands: a new language needs the whole chrome redrawn, anything else just
+ * the current page.
+ */
 async function applyProfile() {
     const effect = await profileReady();
     if (effect === 'reload') globalThis.location.reload();
     else if (effect === 'redispatch') redispatch();
 }
-void applyProfile();
 
-// Populate footer selectors and sync status independently (non-blocking),
-// so a slow /status never holds up the selectors. Both are non-critical —
-// failures are silently ignored.
-/** Fetches the preference options and fills the footer selectors. */
+/**
+ * Fetches the preference options and fills the footer selectors.
+ * Non-critical — failures are silently ignored.
+ */
 async function loadPreferenceSelectors() {
     try {
         renderPreferenceSelectors(await fetchPreferenceOptions());
     } catch { /* non-critical */ }
 }
-void loadPreferenceSelectors();
-void loadSyncStatus();
 
 // ── Preference selectors ─────────────────────────────────────────────
 /**
@@ -333,3 +330,10 @@ globalThis.addEventListener('pdbfe:ratelimit', () => {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 });
+
+// ── Background loads ─────────────────────────────────────────────────
+// Last in the module, after every listener above is registered: the page is
+// already routed, and nothing imports boot.js, so awaiting here holds up
+// nothing. The three run in parallel, so a slow /status or profile never
+// delays the footer selectors.
+await Promise.all([applyProfile(), loadPreferenceSelectors(), loadSyncStatus()]);
