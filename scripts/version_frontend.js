@@ -38,8 +38,12 @@ const FRONTEND_DIR = path.resolve(__dirname, '../frontend');
 /** `from './x.js'` / `from "../y.js"` in import and re-export statements. */
 const FROM_SPECIFIER = /(\bfrom\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/g;
 
-/** Side-effect imports at the start of a line: `import './x.js';`. */
-const BARE_IMPORT = /^(\s*import\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/gm;
+/**
+ * Side-effect imports at the start of a line: `import './x.js';`. Only
+ * spaces and tabs around `import`: `\s` would also match newlines, so a run
+ * of blank lines could be matched from every line start inside it.
+ */
+const BARE_IMPORT = /^([ \t]*import[ \t]*)(['"])(\.\.?\/[^'"?]+\.js)\2/gm;
 
 /** /js/*.js in src= or href= attributes. */
 const HTML_JS = /((?:src|href)=")(\/js\/[^"?]+\.js)"/g;

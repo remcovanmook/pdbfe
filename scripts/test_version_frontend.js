@@ -57,12 +57,12 @@ describe('buildVersionedFrontend (real frontend/)', () => {
         assert.equal(token, `0.0.0-${assetHash(FRONTEND_DIR)}`);
     });
 
-    it('leaves no relative import without the token', () => {
+    it('leaves no relative import (from or side-effect) without the token', () => {
         const files = fs.readdirSync(path.join(out, 'js'), { withFileTypes: true, recursive: true })
             .filter((e) => e.isFile() && e.name.endsWith('.js'));
         for (const e of files) {
             const src = fs.readFileSync(path.join(e.parentPath, e.name), 'utf8');
-            for (const m of src.matchAll(/\bfrom\s*['"](\.\.?\/[^'"]+)['"]/g)) {
+            for (const m of src.matchAll(/(?:\bfrom[ \t]*|^[ \t]*import[ \t]*)['"](\.\.?\/[^'"]+)['"]/gm)) {
                 assert.ok(m[1].endsWith(`?v=${token}`), `${e.name}: ${m[1]}`);
             }
         }
