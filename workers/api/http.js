@@ -149,6 +149,15 @@ export function syncAlignedCacheControl(nowMs = Date.now()) {
     return `public, max-age=${secondsUntilFreshData(Math.floor(nowMs / 1000))}, stale-while-revalidate=${SWR_S}`;
 }
 
+/**
+ * Bodies below this size get `no-transform`, which stops the edge from
+ * compressing them on the fly. A body this small already goes out in the
+ * first flight (QUIC's initial window is about 10 × 1200 B; TCP's is at
+ * least that, and the headers need room too), so compressing saves no round
+ * trip. It only adds a few ms of compression work before the first byte.
+ */
+export const NO_TRANSFORM_MAX_BYTES = 8192;
+
 /** Default cache metadata for responses that bypassed all cache tiers. */
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
@@ -179,6 +188,9 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
     if (meta.timing) extra['Server-Timing'] = meta.timing;
     // Public responses expire just after the next sync, not after a fixed 60s.
     if (baseHeaders['Cache-Control'].startsWith('public')) extra['Cache-Control'] = syncAlignedCacheControl();
+    if (buf.byteLength < NO_TRANSFORM_MAX_BYTES) {
+        extra['Cache-Control'] = (extra['Cache-Control'] ?? baseHeaders['Cache-Control']) + ', no-transform';
+    }
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable
