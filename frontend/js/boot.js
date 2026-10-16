@@ -23,7 +23,7 @@ import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
-import { initAuth, fetchPreferenceOptions } from './auth.js';
+import { initAuth, fetchPreferenceOptions, profileReady } from './auth.js';
 import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
@@ -78,17 +78,27 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// Populate footer selectors and sync status in parallel (non-blocking).
-// Both are non-critical — failures are silently ignored.
-const [prefResult, syncResult] = await Promise.allSettled([
-    fetchPreferenceOptions(),
-    fetchSyncStatus(),
-]);
+// The signed-in profile loads in the background (see initAuth). Apply what
+// it changed once it lands: a new language needs the whole chrome redrawn,
+// anything else just the current page.
+void profileReady().then((effect) => {
+    if (effect === 'reload') globalThis.location.reload();
+    else if (effect === 'redispatch') redispatch();
+});
+
+// Populate footer selectors and sync status independently (non-blocking),
+// so a slow /status never holds up the selectors. Both are non-critical —
+// failures are silently ignored.
+fetchPreferenceOptions().then(renderPreferenceSelectors, () => { /* non-critical */ });
+fetchSyncStatus().then(renderSyncStatus, () => { /* non-critical */ });
 
 // ── Preference selectors ─────────────────────────────────────────────
-if (prefResult.status === 'fulfilled') {
-    const prefOptions = prefResult.value;
-
+/**
+ * Fills the footer language, theme and timezone selectors.
+ *
+ * @param {Awaited<ReturnType<typeof fetchPreferenceOptions>>} prefOptions - Allowed values per preference.
+ */
+function renderPreferenceSelectors(prefOptions) {
     // Language
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
     if (langSelect) {
@@ -256,10 +266,6 @@ function renderSyncStatus(sync) {
             ticker.replaceChildren(fragment);
         }
     }
-}
-
-if (syncResult.status === 'fulfilled') {
-    renderSyncStatus(syncResult.value);
 }
 
 /**

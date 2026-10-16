@@ -101,6 +101,14 @@ let _cachedSid = null;
 let _cachedUser = null;
 
 /**
+ * What a finished profile fetch requires of the page.
+ * @typedef {'reload'|'redispatch'|null} ProfileEffect
+ */
+
+/** @type {Promise<ProfileEffect>} Background profile fetch started by initAuth(). */
+let _profileReady = Promise.resolve(null);
+
+/**
  * In-memory favorites cache. Populated from localStorage (anonymous)
  * or from the profile fetch (authenticated). Updated optimistically
  * on add/remove. Keyed as "type:id" strings for O(1) lookups.
@@ -336,9 +344,11 @@ export async function initAuth() {
             // Auth state changed — flush stale anonymous API responses
             clearCache();
 
-            // Fetch the D1-backed profile to pick up preferences and favorites.
-            // This enriches _cachedUser with server-side data not in the KV session.
-            await _fetchProfile(_cachedSid);
+            // Fetch the D1-backed profile (preferences, favorites) without
+            // holding up the first render: a slow D1 round trip would
+            // otherwise leave the page blank. boot.js awaits profileReady()
+            // after routing and re-renders if the profile changed anything.
+            _profileReady = _fetchProfile(_cachedSid);
         } else {
             // Session expired or invalid — clear it
             localStorage.removeItem(STORAGE_KEY);
@@ -352,6 +362,18 @@ export async function initAuth() {
     }
 
     renderAuthUI();
+}
+
+/**
+ * Resolves once the background profile fetch started by initAuth() has
+ * finished: 'reload' when it applied a server-side language (the chrome
+ * outside the router needs the new dictionary), 'redispatch' when it
+ * applied a theme/timezone or loaded server favorites, null otherwise.
+ *
+ * @returns {Promise<ProfileEffect>}
+ */
+export function profileReady() {
+    return _profileReady;
 }
 
 /**
@@ -640,8 +662,11 @@ async function validateSession(sid) {
  * on the server). After merging, the localStorage copy is cleared.
  *
  * @param {string} sid - The session ID.
+ * @returns {Promise<ProfileEffect>} What the page must do to reflect the profile.
  */
 async function _fetchProfile(sid) {
+    /** @type {ProfileEffect} */
+    let effect = null;
     try {
         const [profileRes, favsRes] = await Promise.all([
             fetch(`${AUTH_ORIGIN}/account/profile`, {
@@ -667,6 +692,7 @@ async function _fetchProfile(sid) {
                 if (serverLang && serverLang in LANGUAGES && !localLang && serverLang !== getCurrentLang()) {
                     await setLanguage(serverLang);
                     localStorage.setItem('pdbfe-lang', serverLang);
+                    effect = 'reload';
                 }
 
                 // Apply server-side theme as a default (same pattern)
@@ -674,6 +700,7 @@ async function _fetchProfile(sid) {
                 const localTheme = localStorage.getItem('pdbfe-theme');
                 if (serverTheme && (serverTheme === 'dark' || serverTheme === 'light' || serverTheme === 'auto') && !localTheme) {
                     setTheme(serverTheme);
+                    effect ??= 'redispatch';
                 }
 
                 // Apply server-side timezone as a default (same pattern)
@@ -681,6 +708,7 @@ async function _fetchProfile(sid) {
                 const localTz = localStorage.getItem('pdbfe-tz');
                 if (serverTz && !localTz) {
                     setTimezone(serverTz);
+                    effect ??= 'redispatch';
                 }
             }
         }
@@ -693,6 +721,7 @@ async function _fetchProfile(sid) {
             for (const f of _favoritesList) {
                 _favoritesSet.add(`${f.entity_type}:${f.entity_id}`);
             }
+            if (_favoritesList.length > 0) effect ??= 'redispatch';
         }
 
         // Merge localStorage favorites into server (one-time on login)
@@ -701,6 +730,7 @@ async function _fetchProfile(sid) {
     } catch (err) {
         console.warn('Profile/favorites fetch failed:', err);
     }
+    return effect;
 }
 
 /**
