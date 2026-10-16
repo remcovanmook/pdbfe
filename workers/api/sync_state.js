@@ -5,6 +5,7 @@
  *   - ENTITY_TAGS         — the tracked entity list
  *   - onEntityChange      — per-entity L1 purge via getEntityCache()
  *   - statusHeaders (H_API) — the API worker serves the sync /status endpoint
+ *   - statusCacheControl  — sync-aligned expiry (+ no-transform), as entity responses
  *
  * Re-exports the resulting closures with the same names the rest of the
  * API worker already imports, so no call sites change.
@@ -18,7 +19,7 @@
 import { createSyncState } from '../core/sync_state.js';
 import { getEntityCache } from './cache.js';
 import { ENTITY_TAGS } from './entities.js';
-import { H_API } from './http.js';
+import { H_API, syncAlignedCacheControl, withNoTransform } from './http.js';
 
 const _sync = createSyncState({
     entityTags: ENTITY_TAGS,
@@ -27,6 +28,9 @@ const _sync = createSyncState({
         if (cache) cache.purge();
     },
     statusHeaders: H_API,
+    // /status only changes when the sync runs, so it expires with the sync
+    // schedule like entity responses instead of every 60s.
+    statusCacheControl: (byteLength) => withNoTransform(syncAlignedCacheControl(), byteLength),
 });
 
 export const ensureSyncFreshness = _sync.ensureSyncFreshness;

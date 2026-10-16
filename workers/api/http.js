@@ -158,6 +158,18 @@ export function syncAlignedCacheControl(nowMs = Date.now()) {
  */
 export const NO_TRANSFORM_MAX_BYTES = 8192;
 
+/**
+ * Appends `no-transform` to a Cache-Control value when the body is below
+ * NO_TRANSFORM_MAX_BYTES.
+ *
+ * @param {string} cacheControl - Cache-Control value.
+ * @param {number} byteLength - Response body size in bytes.
+ * @returns {string}
+ */
+export function withNoTransform(cacheControl, byteLength) {
+    return byteLength < NO_TRANSFORM_MAX_BYTES ? cacheControl + ', no-transform' : cacheControl;
+}
+
 /** Default cache metadata for responses that bypassed all cache tiers. */
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
@@ -188,9 +200,7 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
     if (meta.timing) extra['Server-Timing'] = meta.timing;
     // Public responses expire just after the next sync, not after a fixed 60s.
     if (baseHeaders['Cache-Control'].startsWith('public')) extra['Cache-Control'] = syncAlignedCacheControl();
-    if (buf.byteLength < NO_TRANSFORM_MAX_BYTES) {
-        extra['Cache-Control'] = (extra['Cache-Control'] ?? baseHeaders['Cache-Control']) + ', no-transform';
-    }
+    extra['Cache-Control'] = withNoTransform(extra['Cache-Control'] ?? baseHeaders['Cache-Control'], buf.byteLength);
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable

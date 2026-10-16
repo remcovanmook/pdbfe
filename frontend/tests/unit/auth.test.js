@@ -309,3 +309,55 @@ describe('initAuth — code exchange (PKCE hand-off)', () => {
         assert.ok(!setItems.some(([k]) => k === 'pdbfe_sid'), 'malformed sid from exchange not stored');
     });
 });
+
+// ── initAuth — background profile fetch ──────────────────────────────────────
+
+describe('initAuth — profile loads without blocking', () => {
+    beforeEach(setup);
+
+    /**
+     * Signed-in fetch mock: /auth/me succeeds at once; /account/* waits for
+     * the returned release() so a test can hold the profile back.
+     *
+     * @param {any[]} favorites - Server favorites to return.
+     */
+    function signedIn(favorites) {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/', pathname: '/', search: '' });
+        localStorage.setItem('pdbfe_sid', 'a'.repeat(64));
+        /** @type {() => void} */
+        let release = () => {};
+        const gate = new Promise((r) => { release = () => r(undefined); });
+        globalThis.fetch = /** @type {any} */ (async (url) => {
+            const u = String(url);
+            if (u.includes('/auth/me')) {
+                return { ok: true, status: 200, json: async () => ({ authenticated: true, user: { id: 1, name: 'T' } }) };
+            }
+            await gate;
+            if (u.includes('/account/favorites')) return { ok: true, status: 200, json: async () => ({ favorites }) };
+            return { ok: true, status: 200, json: async () => ({ preferences: {} }) };
+        });
+        return { release: () => release() };
+    }
+
+    it('resolves before the profile arrives, then reports favorites as redispatch', async () => {
+        const { release } = signedIn([{ entity_type: 'net', entity_id: 694, label: 'x', created_at: '' }]);
+        const { initAuth, profileReady, isFavorite, isAuthenticated } = await import('../../js/auth.js');
+
+        await initAuth();
+        assert.equal(isAuthenticated(), true, 'session is known before the profile');
+        assert.equal(isFavorite('net', 694), false, 'favorites not loaded yet');
+
+        release();
+        assert.equal(await profileReady(), 'redispatch');
+        assert.equal(isFavorite('net', 694), true);
+    });
+
+    it('reports nothing to do when the profile changes nothing', async () => {
+        const { release } = signedIn([]);
+        const { initAuth, profileReady } = await import('../../js/auth.js');
+
+        await initAuth();
+        release();
+        assert.equal(await profileReady(), null);
+    });
+});

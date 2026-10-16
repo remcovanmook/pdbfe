@@ -23,7 +23,7 @@ import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
-import { initAuth, fetchPreferenceOptions } from './auth.js';
+import { initAuth, fetchPreferenceOptions, profileReady } from './auth.js';
 import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
@@ -78,17 +78,34 @@ initRouter(document.getElementById('app'));
 // Register Ctrl+Shift+D diagnostic overlay (no DOM footprint until triggered)
 initDebugger();
 
-// Populate footer selectors and sync status in parallel (non-blocking).
-// Both are non-critical — failures are silently ignored.
-const [prefResult, syncResult] = await Promise.allSettled([
-    fetchPreferenceOptions(),
-    fetchSyncStatus(),
-]);
+/**
+ * Applies what the background profile fetch (see initAuth) changed once it
+ * lands: a new language needs the whole chrome redrawn, anything else just
+ * the current page.
+ */
+async function applyProfile() {
+    const effect = await profileReady();
+    if (effect === 'reload') globalThis.location.reload();
+    else if (effect === 'redispatch') redispatch();
+}
+
+/**
+ * Fetches the preference options and fills the footer selectors.
+ * Non-critical — failures are silently ignored.
+ */
+async function loadPreferenceSelectors() {
+    try {
+        renderPreferenceSelectors(await fetchPreferenceOptions());
+    } catch { /* non-critical */ }
+}
 
 // ── Preference selectors ─────────────────────────────────────────────
-if (prefResult.status === 'fulfilled') {
-    const prefOptions = prefResult.value;
-
+/**
+ * Fills the footer language, theme and timezone selectors.
+ *
+ * @param {Awaited<ReturnType<typeof fetchPreferenceOptions>>} prefOptions - Allowed values per preference.
+ */
+function renderPreferenceSelectors(prefOptions) {
     // Language
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
     if (langSelect) {
@@ -258,27 +275,25 @@ function renderSyncStatus(sync) {
     }
 }
 
-if (syncResult.status === 'fulfilled') {
-    renderSyncStatus(syncResult.value);
-}
-
 /**
  * Re-renders the footer so the relative time and freshness state are
  * recalculated. fetchSyncStatus goes through cachedFetch, so this only
  * hits the network once the cached /status is stale.
  */
-function refreshSyncStatus() {
-    fetchSyncStatus().then(renderSyncStatus, () => { /* non-critical */ });
+async function loadSyncStatus() {
+    try {
+        renderSyncStatus(await fetchSyncStatus());
+    } catch { /* non-critical */ }
 }
 
 // On every SPA navigation (the router fires pdbfe:navigate per dispatch),
 // and once a minute so an idle tab's "x minutes ago" doesn't freeze.
-globalThis.addEventListener('pdbfe:navigate', refreshSyncStatus);
+globalThis.addEventListener('pdbfe:navigate', () => { void loadSyncStatus(); });
 setInterval(() => {
-    if (!document.hidden) refreshSyncStatus();
+    if (!document.hidden) void loadSyncStatus();
 }, 60_000);
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshSyncStatus();
+    if (!document.hidden) void loadSyncStatus();
 });
 
 // ── Rate-limit modal ─────────────────────────────────────────────────
@@ -315,3 +330,10 @@ globalThis.addEventListener('pdbfe:ratelimit', () => {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 });
+
+// ── Background loads ─────────────────────────────────────────────────
+// Last in the module, after every listener above is registered: the page is
+// already routed, and nothing imports boot.js, so awaiting here holds up
+// nothing. The three run in parallel, so a slow /status or profile never
+// delays the footer selectors.
+await Promise.all([applyProfile(), loadPreferenceSelectors(), loadSyncStatus()]);
