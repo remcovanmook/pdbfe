@@ -347,8 +347,16 @@ done
 section "Frontend"
 
 if [[ -n "$REMOTE" ]]; then
+    # Deploy a copy with ?v=<version> on every /js and /css URL, so those can
+    # be served immutable (see scripts/version_frontend.js). The working tree
+    # keeps plain URLs for local dev and e2e.
+    FRONTEND_DIST="$REPO_ROOT/.wrangler/frontend-dist"
+    PDBFE_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/VERSION")"
+    node "$REPO_ROOT/scripts/version_frontend.js" "$FRONTEND_DIST" "$PDBFE_VERSION" || \
+        fail "Frontend versioning failed"
+
     echo "  Deploying frontend to Cloudflare Pages..."
-    npx wrangler pages deploy "$REPO_ROOT/frontend/" --project-name=pdbfe-frontend 2>&1 || \
+    npx wrangler pages deploy "$FRONTEND_DIST/" --project-name=pdbfe-frontend 2>&1 || \
         fail "Frontend deploy failed"
     pass "Frontend deployed"
 else
