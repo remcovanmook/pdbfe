@@ -23,7 +23,8 @@ import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
 import { attachTypeahead } from './typeahead.js';
-import { initAuth, fetchPreferenceOptions, profileReady } from './auth.js';
+import { initAuth, profileReady } from './auth.js';
+import { PREFERENCE_OPTIONS } from './preference-options.js';
 import { initI18n, setLanguage, LANGUAGES, t } from './i18n.js';
 import { initDebugger } from './debug.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
@@ -89,29 +90,19 @@ async function applyProfile() {
     else if (effect === 'redispatch') redispatch();
 }
 
-/**
- * Fetches the preference options and fills the footer selectors.
- * Non-critical — failures are silently ignored.
- */
-async function loadPreferenceSelectors() {
-    try {
-        renderPreferenceSelectors(await fetchPreferenceOptions());
-    } catch { /* non-critical */ }
-}
 
 // ── Preference selectors ─────────────────────────────────────────────
 /**
- * Fills the footer language, theme and timezone selectors.
- *
- * @param {Awaited<ReturnType<typeof fetchPreferenceOptions>>} prefOptions - Allowed values per preference.
+ * Fills the footer language, theme and timezone selectors from the
+ * built-in PREFERENCE_OPTIONS (no request needed).
  */
-function renderPreferenceSelectors(prefOptions) {
+function renderPreferenceSelectors() {
     // Language
     const langSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('lang-select'));
     if (langSelect) {
         const storedLang = localStorage.getItem('pdbfe-lang');
         const activeLang = storedLang || 'auto';
-        const langCodes = prefOptions.language || ['auto', ...Object.keys(LANGUAGES)];
+        const langCodes = PREFERENCE_OPTIONS.language;
         for (const code of langCodes) {
             const opt = document.createElement('option');
             opt.value = code;
@@ -133,7 +124,7 @@ function renderPreferenceSelectors(prefOptions) {
         const activeTheme = getTheme();
         /** @type {Record<string, string>} */
         const themeLabels = { auto: 'Auto', dark: 'Dark', light: 'Light' };
-        const themeValues = prefOptions.theme || ['auto', 'dark', 'light'];
+        const themeValues = PREFERENCE_OPTIONS.theme;
         for (const value of themeValues) {
             const opt = document.createElement('option');
             opt.value = value;
@@ -152,7 +143,7 @@ function renderPreferenceSelectors(prefOptions) {
     const tzSelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('tz-select'));
     if (tzSelect) {
         const activeTz = getTimezonePreference();
-        const tzValues = prefOptions.timezone || ['auto', 'UTC'];
+        const tzValues = PREFERENCE_OPTIONS.timezone;
         for (const value of tzValues) {
             const opt = document.createElement('option');
             opt.value = value;
@@ -167,6 +158,8 @@ function renderPreferenceSelectors(prefOptions) {
         });
     }
 }
+
+renderPreferenceSelectors();
 
 // ── Sync status indicator ────────────────────────────────────────────
 /**
@@ -334,6 +327,5 @@ globalThis.addEventListener('pdbfe:ratelimit', () => {
 // ── Background loads ─────────────────────────────────────────────────
 // Last in the module, after every listener above is registered: the page is
 // already routed, and nothing imports boot.js, so awaiting here holds up
-// nothing. The three run in parallel, so a slow /status or profile never
-// delays the footer selectors.
-await Promise.all([applyProfile(), loadPreferenceSelectors(), loadSyncStatus()]);
+// nothing. The two run in parallel, so neither delays the other.
+await Promise.all([applyProfile(), loadSyncStatus()]);

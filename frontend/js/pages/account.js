@@ -1,5 +1,6 @@
 import { AUTH_ORIGIN } from '../config.js';
-import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, fetchPreferenceOptions, startLogin } from '../auth.js';
+import { getSessionId, isAuthenticated, getUser, getFavorites, removeFavorite, reorderFavorites, startLogin } from '../auth.js';
+import { PREFERENCE_OPTIONS } from '../preference-options.js';
 import { formatLocaleDate as formatDate, createLink, createEntityBadge } from '../render.js';
 import { fetchEntity } from '../api.js';
 import { t, setLanguage, LANGUAGES } from '../i18n.js';
@@ -166,41 +167,39 @@ export async function renderAccount(_params) {
     tzField.appendChild(tzValue);
     profileGroup.appendChild(tzField);
 
-    // Populate selectors from API (non-blocking)
-    fetchPreferenceOptions().then(prefOptions => {
-        const storedLang = localStorage.getItem('pdbfe-lang');
-        const activeLang = storedLang || 'auto';
-        const langCodes = prefOptions.language || ['auto', 'en', ...Object.keys(LANGUAGES)];
-        for (const code of langCodes) {
-            const opt = document.createElement('option');
-            opt.value = code;
-            opt.textContent = code === 'auto' ? t('Auto') : /** @type {string} */ (LANGUAGES[code] || code);
-            opt.selected = code === activeLang;
-            langSelect.appendChild(opt);
-        }
+    // Populate selectors from the built-in option lists
+    const storedLang = localStorage.getItem('pdbfe-lang');
+    const activeLang = storedLang || 'auto';
+    const langCodes = PREFERENCE_OPTIONS.language;
+    for (const code of langCodes) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = code === 'auto' ? t('Auto') : /** @type {string} */ (LANGUAGES[code] || code);
+        opt.selected = code === activeLang;
+        langSelect.appendChild(opt);
+    }
 
-        const currentTheme = getTheme();
-        /** @type {Record<string, string>} */
-        const themeLabels = { auto: t('Auto'), dark: t('Dark'), light: t('Light') };
-        const themeValues = prefOptions.theme || ['auto', 'dark', 'light'];
-        for (const value of themeValues) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = themeLabels[value] || value;
-            opt.selected = value === currentTheme;
-            themeSelect.appendChild(opt);
-        }
+    const currentTheme = getTheme();
+    /** @type {Record<string, string>} */
+    const themeLabels = { auto: t('Auto'), dark: t('Dark'), light: t('Light') };
+    const themeValues = PREFERENCE_OPTIONS.theme;
+    for (const value of themeValues) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = themeLabels[value] || value;
+        opt.selected = value === currentTheme;
+        themeSelect.appendChild(opt);
+    }
 
-        const activeTz = getTimezonePreference();
-        const tzValues = prefOptions.timezone || ['auto', 'UTC'];
-        for (const value of tzValues) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = value === 'auto' ? t('Auto') : value.replaceAll('_', ' ');
-            opt.selected = value === activeTz;
-            tzSelect.appendChild(opt);
-        }
-    }).catch(() => { /* Non-critical */ });
+    const activeTz = getTimezonePreference();
+    const tzValues = PREFERENCE_OPTIONS.timezone;
+    for (const value of tzValues) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value === 'auto' ? t('Auto') : value.replaceAll('_', ' ');
+        opt.selected = value === activeTz;
+        tzSelect.appendChild(opt);
+    }
 
     // PeeringDB upstream profile link
     const pdbField = el('div', { className: 'info-field' });
