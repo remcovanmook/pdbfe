@@ -38,6 +38,11 @@ import { encoder, jsonError } from './http.js';
  * @param {Record<string, string>} [opts.statusHeaders] - Header set for the
  *        pre-encoded /status payload. Omit to disable status payload building
  *        (a worker that does not serve the sync /status endpoint).
+ * @param {(byteLength: number) => string} [opts.statusCacheControl] - Builds
+ *        the /status Cache-Control value per response, overriding the one in
+ *        statusHeaders (e.g. a sync-aligned expiry).
+ * @param {number} [opts.statusColdTimeoutMs] - How long a cold-isolate
+ *        /status waits for its first D1 poll before answering 503 (default 2s).
  * @param {number} [opts.checkIntervalMs] - Poll interval (default 15s).
  * @returns {{
  *   refresh: (db: D1Session) => Promise<void>,
@@ -48,7 +53,7 @@ import { encoder, jsonError } from './http.js';
  *   getEntityVersion: (tag: string) => number,
  * }}
  */
-export function createSyncState({ entityTags, onEntityChange, statusHeaders, checkIntervalMs = 15_000 }) {
+export function createSyncState({ entityTags, onEntityChange, statusHeaders, statusCacheControl, statusColdTimeoutMs = 2_000, checkIntervalMs = 15_000 }) {
     /**
      * Per-entity last_modified_at snapshot. Initialised from entityTags
      * with zero — no dynamic keys, no dictionary mode.
@@ -209,7 +214,10 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
     /**
      * Hot-path handler for GET /status. Requires statusHeaders.
      * Returns the pre-encoded Uint8Array from RAM. If the payload doesn't
-     * exist yet (cold boot), blocks on a single D1 query to generate it.
+     * exist yet (cold boot), waits up to statusColdTimeoutMs for a single
+     * D1 query to generate it. A D1 round trip can stall for many seconds
+     * while the SQL itself takes milliseconds; past the limit the caller gets
+     * a 503 and the poll finishes in the background for the next request.
      *
      * @param {Request} request - Inbound HTTP request.
      * @param {D1Session} db - Session-wrapped D1 database.
@@ -221,8 +229,19 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
             throw new Error('handleStatus called without statusHeaders configured');
         }
         if (!statusPayload) {
-            // Cold boot: block on first poll to generate payload.
-            await refresh(db);
+            // Cold boot: wait (bounded) for the first poll to generate the payload.
+            const poll = refresh(db);
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let timer;
+            const timedOut = await Promise.race([
+                poll.then(() => false),
+                new Promise((resolve) => { timer = setTimeout(() => resolve(true), statusColdTimeoutMs); }),
+            ]);
+            clearTimeout(timer);
+            if (timedOut) {
+                ctx.waitUntil(poll);
+                return jsonError(503, 'Sync status temporarily unavailable');
+            }
             if (!statusPayload) {
                 // refresh() couldn't build a payload — D1 was unavailable (the
                 // error is swallowed inside refresh) or _sync_meta returned no
@@ -235,9 +254,16 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, che
             ensureSyncFreshness(db, ctx, Date.now());
         }
 
+        /** @type {HeadersInit} */
+        let headers = statusHeaders;
+        if (statusCacheControl) {
+            const h = new Headers(statusHeaders);
+            h.set('Cache-Control', statusCacheControl(statusPayload.byteLength));
+            headers = h;
+        }
         return new Response(
             /** @type {BodyInit} */ (/** @type {unknown} */ (statusPayload)),
-            { status: 200, headers: statusHeaders }
+            { status: 200, headers }
         );
     }
 

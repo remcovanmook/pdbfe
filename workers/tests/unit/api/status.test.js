@@ -100,6 +100,11 @@ describe('/status endpoint', () => {
         assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
     });
 
+    it('expires with the sync schedule and skips edge compression', async () => {
+        const res = await get('/status', { PDB: mockDB([]) });
+        assert.match(res.headers.get('Cache-Control') ?? '', /^public, max-age=\d+, stale-while-revalidate=\d+, no-transform$/);
+    });
+
     it('includes all ENTITY_TAGS in the response', async () => {
         const env = { PDB: mockDB([]) };
 
