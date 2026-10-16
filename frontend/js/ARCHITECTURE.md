@@ -136,10 +136,10 @@ As the codebase matures, please strictly avoid the following identified anti-pat
    - **Good**: `import { fetchEntity } from '../api.js'; fetchEntity('net', 1);`
    - **Why**: Raw fetches completely bypass the centralized configuration inside `api.js`. This breaks cross-origin Cloudflare Pages routing, strips D1 API synchronization state, ignores SWR (Stale-While-Revalidate) local caching (causing extreme network thrashing), and drops edge diagnostic telemetry. *Exception*: Static asset payloads (Markdown, CSS, `i18n` Locales) appropriately use direct `fetch()`.
 
-2. **Hardcoded HTML Cache Busters**
-   - **Bad**: Editing foundational layout code in `index.css` without updating the loader.
-   - **Good**: Bumping the CSS cache signature `<link rel="stylesheet" href="/css/index.css?v={N}">` inside `frontend/index.html`.
-   - **Why**: Cloudflare Pages heavily caches edge assets. If the CSS relies on a hardcoded signature but structural layout classes randomly change, clients will download the new `JS` components but drop layout rules entirely resulting in floating, unstyled UI anomalies.
+2. **Hand-maintained cache busters**
+   - **Bad**: Adding `?v=N` to a `/js` or `/css` URL by hand, or loading a module by an absolute path the deploy doesn't rewrite.
+   - **Good**: Plain relative imports (`import { x } from './x.js'`) and plain `/js`, `/css` URLs in `index.html`. The deploy (`scripts/version_frontend.js`) rewrites them all to `?v=<release>-<hash>`, and serves those paths `immutable`.
+   - **Why**: A module loaded under two different URLs runs twice, with two copies of its state (auth session, caches). The deploy only versions what it can see: relative static imports and the `/js`, `/css` URLs in `index.html`.
 
 3. **Mixing Box Models in Flex Row Alignment**
    - **Bad**: Allowing `<button>` and `<a>` siblings inside a `.detail-header` flex-container without neutralizing box-models.
