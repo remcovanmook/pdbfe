@@ -80,17 +80,27 @@ initDebugger();
 
 // The signed-in profile loads in the background (see initAuth). Apply what
 // it changed once it lands: a new language needs the whole chrome redrawn,
-// anything else just the current page.
-void profileReady().then((effect) => {
+// anything else just the current page. Not awaited, like the footer loads
+// below, so none of them holds up the others.
+/** Re-renders the page once the background profile fetch has changed something. */
+async function applyProfile() {
+    const effect = await profileReady();
     if (effect === 'reload') globalThis.location.reload();
     else if (effect === 'redispatch') redispatch();
-});
+}
+void applyProfile();
 
 // Populate footer selectors and sync status independently (non-blocking),
 // so a slow /status never holds up the selectors. Both are non-critical —
 // failures are silently ignored.
-fetchPreferenceOptions().then(renderPreferenceSelectors, () => { /* non-critical */ });
-fetchSyncStatus().then(renderSyncStatus, () => { /* non-critical */ });
+/** Fetches the preference options and fills the footer selectors. */
+async function loadPreferenceSelectors() {
+    try {
+        renderPreferenceSelectors(await fetchPreferenceOptions());
+    } catch { /* non-critical */ }
+}
+void loadPreferenceSelectors();
+void loadSyncStatus();
 
 // ── Preference selectors ─────────────────────────────────────────────
 /**
@@ -273,18 +283,20 @@ function renderSyncStatus(sync) {
  * recalculated. fetchSyncStatus goes through cachedFetch, so this only
  * hits the network once the cached /status is stale.
  */
-function refreshSyncStatus() {
-    fetchSyncStatus().then(renderSyncStatus, () => { /* non-critical */ });
+async function loadSyncStatus() {
+    try {
+        renderSyncStatus(await fetchSyncStatus());
+    } catch { /* non-critical */ }
 }
 
 // On every SPA navigation (the router fires pdbfe:navigate per dispatch),
 // and once a minute so an idle tab's "x minutes ago" doesn't freeze.
-globalThis.addEventListener('pdbfe:navigate', refreshSyncStatus);
+globalThis.addEventListener('pdbfe:navigate', () => { void loadSyncStatus(); });
 setInterval(() => {
-    if (!document.hidden) refreshSyncStatus();
+    if (!document.hidden) void loadSyncStatus();
 }, 60_000);
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshSyncStatus();
+    if (!document.hidden) void loadSyncStatus();
 });
 
 // ── Rate-limit modal ─────────────────────────────────────────────────
