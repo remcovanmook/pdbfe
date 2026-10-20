@@ -17,6 +17,8 @@ Env: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, D1_DATABASE_ID,
 import datetime as dt
 import json
 import os
+import sys
+import urllib.error
 import urllib.request
 
 MAX_AGE_DAYS = 8
@@ -24,13 +26,21 @@ SQL = 'SELECT id, started_at, repaired, errors, alerts, report FROM "_health_run
 
 
 def latest_run():
+    # Empty secrets (e.g. the job lost its `environment:`) would otherwise
+    # surface as an unexplained 404 from a malformed URL.
+    missing = [k for k in ("CLOUDFLARE_ACCOUNT_ID", "D1_DATABASE_ID", "CLOUDFLARE_API_TOKEN") if not os.environ.get(k)]
+    if missing:
+        sys.exit(f"missing or empty: {', '.join(missing)} (is the job's environment set?)")
     url = (f"https://api.cloudflare.com/client/v4/accounts/{os.environ['CLOUDFLARE_ACCOUNT_ID']}"
            f"/d1/database/{os.environ['D1_DATABASE_ID']}/query")
     req = urllib.request.Request(url, data=json.dumps({"sql": SQL}).encode(), headers={
         "Authorization": f"Bearer {os.environ['CLOUDFLARE_API_TOKEN']}",
         "Content-Type": "application/json",
     })
-    body = json.load(urllib.request.urlopen(req, timeout=60))
+    try:
+        body = json.load(urllib.request.urlopen(req, timeout=60))
+    except urllib.error.HTTPError as err:
+        sys.exit(f"D1 query failed: HTTP {err.code}: {err.read(500).decode(errors='replace')}")
     rows = body["result"][0]["results"]
     return rows[0] if rows else None
 
