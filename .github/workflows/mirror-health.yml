@@ -19,6 +19,9 @@ permissions:
 jobs:
   report:
     runs-on: ubuntu-latest
+    # The Cloudflare secrets live in this environment, not at repo level.
+    # Without it they are empty and the D1 query URL 404s.
+    environment: deploy env
     steps:
       - uses: actions/checkout@v4
 
