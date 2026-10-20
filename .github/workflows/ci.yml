@@ -105,6 +105,9 @@ jobs:
       - name: XSS lint self-test
         run: node --test scripts/test_lint_xss.js
 
+      - name: Frontend asset versioning self-test
+        run: node --test scripts/test_version_frontend.js
+
   # ── Integrity: cross-component consistency checks ────────────────
   integrity:
     name: Integrity
