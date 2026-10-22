@@ -1,26 +1,32 @@
 /**
  * @fileoverview Builds the deployable copy of the frontend with versioned
- * asset URLs, so /js and /css can be served `immutable`.
+ * asset URLs, so the static assets can be served `immutable`.
  *
  * Copies frontend/ (minus node_modules) into an output directory and appends
- * `?v=<version>` to:
+ * `?v=<token>` to:
  *   - every relative static import/export specifier in js/**\/*.js
  *     (`from './x.js'`, `import './x.js'`)
- *   - the /js/*.js module and modulepreload URLs in index.html
- *   - the /css/*.css stylesheet URLs in index.html (replacing any ?v=N)
+ *   - the /js, /css and listed /third_party URLs in src=/href= attributes of
+ *     index.html and api/*.html (replacing any hand-written ?v=N)
+ *   - the font URLs in third_party/inter/inter.css
+ *   - the locale URL in js/i18n.js (`/locales/${lang}.json`)
  *
- * and appends an `immutable` Cache-Control rule for /js/* and /css/* to the
- * output's _headers. That rule lives only in the build: `wrangler pages dev`
- * on frontend/ (local dev, e2e) serves plain URLs, where it would pin stale
- * modules in the browser for a year.
+ * It then sets `Cache-Control: public, max-age=31536000, immutable` on the
+ * matching rules in the output's _headers (see setImmutableRules). That
+ * lives only in the build: `wrangler pages dev` on frontend/ (local dev, e2e)
+ * serves plain URLs, where it would pin stale files in the browser for a
+ * year.
  *
- * Every release changes every URL, so a browser never mixes module versions,
- * and between releases repeat loads need no network for JS or CSS. The
- * working tree keeps plain URLs: local dev and e2e run against frontend/
- * directly. deploy.sh uploads the output directory instead.
+ * Every release changes every URL, so a browser never mixes versions, and
+ * between releases repeat loads need no network for these assets. deploy.sh
+ * uploads the output directory.
+ *
+ * Leaflet's images (third_party/leaflet/images) stay unversioned: leaflet.js
+ * finds its icon path by matching `marker-icon.png)` at the end of the CSS
+ * url(), which a ?v= would break.
  *
  * The token is `<version>-<hash>`: the release version plus a short hash of
- * the js/ and css/ contents, so a redeploy with changed files but an
+ * every versioned directory, so a redeploy with changed files but an
  * unchanged VERSION still gets new URLs.
  *
  * Usage:
@@ -35,6 +41,34 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.resolve(__dirname, '../frontend');
 
+/** Directories whose contents go into the version hash. */
+const HASHED_DIRS = ['js', 'css', 'locales', 'third_party'];
+
+/** Third-party files served under a versioned URL (Leaflet images excluded, see above). */
+export const VERSIONED_THIRD_PARTY = Object.freeze([
+    '/third_party/inter/inter.css',
+    '/third_party/inter/inter-latin.woff2',
+    '/third_party/inter/inter-latin-ext.woff2',
+    '/third_party/leaflet/leaflet.css',
+    '/third_party/leaflet/leaflet.js',
+]);
+
+/**
+ * _headers rules made immutable in the build. Each matches only versioned
+ * URLs; the frontend/_headers.example rules for them must not overlap
+ * (Pages joins the values of every rule that matches a path).
+ */
+export const IMMUTABLE_RULES = Object.freeze([
+    '/js/*',
+    '/css/*',
+    '/locales/*',
+    '/third_party/inter/*',
+    '/third_party/leaflet/leaflet.css',
+    '/third_party/leaflet/leaflet.js',
+]);
+
+export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
 /** `from './x.js'` / `from "../y.js"` in import and re-export statements. */
 const FROM_SPECIFIER = /(\bfrom\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/g;
 
@@ -45,83 +79,175 @@ const FROM_SPECIFIER = /(\bfrom\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/g;
  */
 const BARE_IMPORT = /^([ \t]*import[ \t]*)(['"])(\.\.?\/[^'"?]+\.js)\2/gm;
 
-/** /js/*.js in src= or href= attributes. */
-const HTML_JS = /((?:src|href)=")(\/js\/[^"?]+\.js)"/g;
+/** /js/*.js and /css/*.css in src= or href= attributes, with or without an existing ?v=. */
+const HTML_ASSET = /((?:src|href)=")(\/(?:js\/[^"?]+\.js|css\/[^"?]+\.css))(?:\?v=[^"]*)?"/g;
 
-/** /css/*.css in href= attributes, with or without an existing ?v=. */
-const HTML_CSS = /(href=")(\/css\/[^"?]+\.css)(?:\?v=[^"]*)?"/g;
+/** /third_party/... in src= or href= attributes; only VERSIONED_THIRD_PARTY URLs are rewritten. */
+const HTML_THIRD_PARTY = /((?:src|href)=")(\/third_party\/[^"?]+)"/g;
 
-/** Pages _headers rules for the versioned asset paths. */
-export const IMMUTABLE_HEADERS = `
-# Added by scripts/version_frontend.js: every /js and /css URL carries the
-# release version (?v=), so a cached copy can never be out of date.
-/js/*
-  Cache-Control: public, max-age=31536000, immutable
+/** url('/third_party/...') in CSS; only VERSIONED_THIRD_PARTY URLs are rewritten. */
+const CSS_THIRD_PARTY = /url\((['"]?)(\/third_party\/[^'"()?\s]+)\1\)/g;
 
-/css/*
-  Cache-Control: public, max-age=31536000, immutable
-`;
+/** The locale fetch URL in js/i18n.js, exactly as written there. */
+export const LOCALE_URL = '`/locales/${lang}.json`';
+
+/** @param {string} token */
+const query = (token) => `?v=${encodeURIComponent(token)}`;
 
 /**
- * Appends `?v=<version>` to every relative import/export specifier.
+ * Appends `?v=<token>` to every relative import/export specifier.
  *
  * @param {string} src - JavaScript module source.
- * @param {string} version - Release version.
+ * @param {string} token - Version token.
  * @returns {string}
  */
-export function versionModuleSpecifiers(src, version) {
-    const q = `?v=${encodeURIComponent(version)}`;
+export function versionModuleSpecifiers(src, token) {
+    const q = query(token);
     return src
         .replace(FROM_SPECIFIER, (_, pre, quote, spec) => `${pre}${quote}${spec}${q}${quote}`)
         .replace(BARE_IMPORT, (_, pre, quote, spec) => `${pre}${quote}${spec}${q}${quote}`);
 }
 
 /**
- * Appends `?v=<version>` to the /js and /css URLs in index.html.
+ * Appends `?v=<token>` to the /js, /css and versioned /third_party URLs in
+ * an HTML page's src= and href= attributes.
  *
- * @param {string} html - index.html source.
- * @param {string} version - Release version.
+ * @param {string} html - Page source.
+ * @param {string} token - Version token.
  * @returns {string}
  */
-export function versionIndexHtml(html, version) {
-    const q = `?v=${encodeURIComponent(version)}`;
+export function versionHtml(html, token) {
+    const q = query(token);
     return html
-        .replace(HTML_JS, (_, attr, url) => `${attr}${url}${q}"`)
-        .replace(HTML_CSS, (_, attr, url) => `${attr}${url}${q}"`);
+        .replace(HTML_ASSET, (_, attr, url) => `${attr}${url}${q}"`)
+        .replace(HTML_THIRD_PARTY, (m, attr, url) => (VERSIONED_THIRD_PARTY.includes(url) ? `${attr}${url}${q}"` : m));
 }
 
 /**
- * Lists every .js file under a directory, recursively.
+ * Appends `?v=<token>` to versioned /third_party URLs inside CSS url().
  *
- * @param {string} dir
+ * @param {string} css - Stylesheet source.
+ * @param {string} token - Version token.
+ * @returns {string}
+ */
+export function versionCssUrls(css, token) {
+    const q = query(token);
+    return css.replace(CSS_THIRD_PARTY, (m, quote, url) => (
+        VERSIONED_THIRD_PARTY.includes(url) ? `url(${quote}${url}${q}${quote})` : m
+    ));
+}
+
+/**
+ * Versions the locale fetch URL in js/i18n.js. Throws if the expected
+ * template literal is missing, so a refactor of i18n.js fails the build
+ * instead of shipping immutable, unversioned locales.
+ *
+ * @param {string} src - js/i18n.js source.
+ * @param {string} token - Version token.
+ * @returns {string}
+ */
+export function versionLocaleUrl(src, token) {
+    if (!src.includes(LOCALE_URL)) {
+        throw new Error(`js/i18n.js no longer contains ${LOCALE_URL}; update LOCALE_URL in scripts/version_frontend.js`);
+    }
+    return src.replaceAll(LOCALE_URL, `\`/locales/\${lang}.json${query(token)}\``);
+}
+
+/**
+ * Sets the immutable Cache-Control on each IMMUTABLE_RULES path in a Pages
+ * _headers file: replaces the Cache-Control of an existing rule for that
+ * exact path (or adds one to it), and appends a rule for paths it lacks.
+ * Throws if another rule with a Cache-Control would also match one of these
+ * paths, because Pages would join the two values.
+ *
+ * @param {string} headers - _headers source.
+ * @returns {string}
+ */
+export function setImmutableRules(headers) {
+    const lines = headers.split('\n');
+    /** @type {string|null} */
+    let rule = null;
+    const seen = new Set();
+    /** @type {string[]} */
+    const out = [];
+    /** @type {string[]} */
+    const cacheRules = [];
+    for (const line of lines) {
+        const isRule = line.length > 0 && !/^[\s#]/.test(line);
+        if (isRule) {
+            rule = line.trim();
+            out.push(line);
+            if (IMMUTABLE_RULES.includes(rule)) {
+                seen.add(rule);
+                out.push(`  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`);
+            }
+            continue;
+        }
+        if (rule && /^\s+cache-control\s*:/i.test(line)) {
+            if (IMMUTABLE_RULES.includes(rule)) continue; // replaced above
+            cacheRules.push(rule);
+        }
+        out.push(line);
+    }
+    for (const other of cacheRules) {
+        const prefix = other.endsWith('*') ? other.slice(0, -1) : null;
+        const overlaps = IMMUTABLE_RULES.filter((r) => r === other || (prefix !== null && r.startsWith(prefix)));
+        if (overlaps.length) {
+            throw new Error(`_headers rule ${other} sets Cache-Control and overlaps ${overlaps.join(', ')}; Pages would join the values`);
+        }
+    }
+    const missing = IMMUTABLE_RULES.filter((r) => !seen.has(r));
+    if (missing.length) {
+        out.push('', '# Added by scripts/version_frontend.js: these URLs carry the release version (?v=).');
+        for (const r of missing) out.push(r, `  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`, '');
+    }
+    return out.join('\n');
+}
+
+/**
+ * Lists the files under a directory, recursively, as paths relative to root.
+ *
+ * @param {string} root
+ * @param {string} sub
  * @returns {string[]}
  */
-function jsFiles(dir) {
+function filesUnder(root, sub) {
+    const dir = path.join(root, sub);
+    if (!fs.existsSync(dir)) return [];
     return fs.readdirSync(dir, { withFileTypes: true, recursive: true })
-        .filter((e) => e.isFile() && e.name.endsWith('.js'))
-        .map((e) => path.join(e.parentPath, e.name));
+        .filter((e) => e.isFile())
+        .map((e) => path.relative(root, path.join(e.parentPath, e.name)))
+        .sort();
 }
 
 /**
- * Short content hash of every file under js/ and css/ (paths and bytes).
+ * Short content hash of every file in HASHED_DIRS (paths and bytes).
  *
  * @param {string} srcDir - The frontend directory.
  * @returns {string} 10 hex characters.
  */
 export function assetHash(srcDir) {
     const h = crypto.createHash('sha256');
-    for (const sub of ['js', 'css']) {
-        const dir = path.join(srcDir, sub);
-        const files = fs.readdirSync(dir, { withFileTypes: true, recursive: true })
-            .filter((e) => e.isFile())
-            .map((e) => path.relative(srcDir, path.join(e.parentPath, e.name)))
-            .sort();
-        for (const rel of files) {
+    for (const sub of HASHED_DIRS) {
+        for (const rel of filesUnder(srcDir, sub)) {
             h.update(rel + '\0');
             h.update(fs.readFileSync(path.join(srcDir, rel)));
         }
     }
     return h.digest('hex').slice(0, 10);
+}
+
+/**
+ * Rewrites a file in place with fn, if it exists.
+ *
+ * @param {string} file
+ * @param {(src: string) => string} fn
+ */
+function rewrite(file, fn) {
+    if (!fs.existsSync(file)) return;
+    const src = fs.readFileSync(file, 'utf8');
+    const out = fn(src);
+    if (out !== src) fs.writeFileSync(file, out);
 }
 
 /**
@@ -141,16 +267,19 @@ export function buildVersionedFrontend(srcDir, outDir, version) {
         filter: (p) => path.basename(p) !== 'node_modules',
     });
 
-    for (const file of jsFiles(path.join(outDir, 'js'))) {
-        const src = fs.readFileSync(file, 'utf8');
-        const out = versionModuleSpecifiers(src, token);
-        if (out !== src) fs.writeFileSync(file, out);
+    for (const rel of filesUnder(outDir, 'js').filter((f) => f.endsWith('.js'))) {
+        rewrite(path.join(outDir, rel), (src) => versionModuleSpecifiers(src, token));
     }
+    rewrite(path.join(outDir, 'js', 'i18n.js'), (src) => versionLocaleUrl(src, token));
 
-    const index = path.join(outDir, 'index.html');
-    fs.writeFileSync(index, versionIndexHtml(fs.readFileSync(index, 'utf8'), token));
+    const pages = ['index.html', ...filesUnder(outDir, 'api').filter((f) => f.endsWith('.html'))];
+    for (const rel of pages) rewrite(path.join(outDir, rel), (src) => versionHtml(src, token));
 
-    fs.appendFileSync(path.join(outDir, '_headers'), IMMUTABLE_HEADERS);
+    rewrite(path.join(outDir, 'third_party', 'inter', 'inter.css'), (src) => versionCssUrls(src, token));
+
+    const headersFile = path.join(outDir, '_headers');
+    const headers = fs.existsSync(headersFile) ? fs.readFileSync(headersFile, 'utf8') : '';
+    fs.writeFileSync(headersFile, setImmutableRules(headers));
     return token;
 }
 

@@ -11,7 +11,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { versionModuleSpecifiers, versionIndexHtml, buildVersionedFrontend, assetHash, IMMUTABLE_HEADERS } from './version_frontend.js';
+import {
+    versionModuleSpecifiers, versionHtml, versionCssUrls, versionLocaleUrl, setImmutableRules,
+    buildVersionedFrontend, assetHash, IMMUTABLE_RULES, IMMUTABLE_CACHE_CONTROL, LOCALE_URL,
+} from './version_frontend.js';
 
 const FRONTEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../frontend');
 
@@ -36,16 +39,66 @@ describe('versionModuleSpecifiers', () => {
     });
 });
 
-describe('versionIndexHtml', () => {
+describe('versionHtml', () => {
     it('versions /js and /css URLs and replaces an existing ?v=', () => {
         const html = '<link rel="modulepreload" href="/js/boot.js">\n<script type="module" src="/js/boot.js"></script>\n<link rel="stylesheet" href="/css/index.css?v=7">';
-        const out = versionIndexHtml(html, '9');
+        const out = versionHtml(html, '9');
         assert.equal(out, '<link rel="modulepreload" href="/js/boot.js?v=9">\n<script type="module" src="/js/boot.js?v=9"></script>\n<link rel="stylesheet" href="/css/index.css?v=9">');
     });
 
-    it('leaves /third_party URLs alone', () => {
-        const html = '<script defer src="/third_party/leaflet/leaflet.js"></script>';
-        assert.equal(versionIndexHtml(html, '9'), html);
+    it('versions listed /third_party URLs, including preloads', () => {
+        const html = '<link rel="preload" href="/third_party/inter/inter-latin.woff2" as="font"><script defer src="/third_party/leaflet/leaflet.js"></script>';
+        assert.equal(versionHtml(html, '9'), '<link rel="preload" href="/third_party/inter/inter-latin.woff2?v=9" as="font"><script defer src="/third_party/leaflet/leaflet.js?v=9"></script>');
+    });
+
+    it('leaves unlisted /third_party URLs alone (Leaflet images)', () => {
+        const html = '<img src="/third_party/leaflet/images/marker-icon.png">';
+        assert.equal(versionHtml(html, '9'), html);
+    });
+});
+
+describe('versionCssUrls', () => {
+    it('versions listed font URLs, quoted or not', () => {
+        const css = "src: url('/third_party/inter/inter-latin.woff2') format('woff2'); x: url(/third_party/inter/inter-latin-ext.woff2);";
+        assert.equal(versionCssUrls(css, '9'), "src: url('/third_party/inter/inter-latin.woff2?v=9') format('woff2'); x: url(/third_party/inter/inter-latin-ext.woff2?v=9);");
+    });
+
+    it('leaves relative and unlisted url() alone (Leaflet icon-path detection)', () => {
+        const css = '.leaflet-default-icon-path { background-image: url(images/marker-icon.png); }';
+        assert.equal(versionCssUrls(css, '9'), css);
+    });
+});
+
+describe('versionLocaleUrl', () => {
+    it('versions the locale fetch URL', () => {
+        const src = `const res = await fetch(${LOCALE_URL}, { cache: 'force-cache' });`;
+        assert.equal(versionLocaleUrl(src, '9'), "const res = await fetch(`/locales/${lang}.json?v=9`, { cache: 'force-cache' });");
+    });
+
+    it('fails loudly when i18n.js no longer has the expected URL', () => {
+        assert.throws(() => versionLocaleUrl("fetch('/l/' + lang)", '9'), /no longer contains/);
+    });
+});
+
+describe('setImmutableRules', () => {
+    it('replaces the Cache-Control of matching rules and keeps other headers', () => {
+        const out = setImmutableRules('/js/*\n  Cache-Control: no-cache\n  X-Foo: bar\n');
+        assert.match(out, new RegExp(`/js/\\*\\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}\\n  X-Foo: bar`));
+        assert.doesNotMatch(out, /no-cache/);
+    });
+
+    it('appends a rule for every immutable path the file lacks', () => {
+        const out = setImmutableRules('/*\n  X-Frame-Options: DENY\n');
+        for (const r of IMMUTABLE_RULES) assert.ok(out.includes(`${r}\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`), r);
+    });
+
+    it('refuses an overlapping catch-all with its own Cache-Control', () => {
+        assert.throws(() => setImmutableRules('/third_party/*\n  Cache-Control: public, max-age=604800\n'), /overlaps/);
+    });
+
+    it('leaves non-overlapping rules alone', () => {
+        const out = setImmutableRules('/third_party/leaflet/images/*\n  Cache-Control: public, max-age=604800\n');
+        assert.match(out, /images\/\*\n  Cache-Control: public, max-age=604800/);
     });
 });
 
@@ -68,16 +121,31 @@ describe('buildVersionedFrontend (real frontend/)', () => {
         }
     });
 
-    it('versions every /js and /css URL in index.html', () => {
-        const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
-        for (const m of html.matchAll(/(?:src|href)="(\/(?:js|css)\/[^"]+)"/g)) {
-            assert.ok(m[1].endsWith(`?v=${token}`), m[1]);
+    it('versions every /js, /css and listed /third_party URL in the HTML pages', () => {
+        for (const page of ['index.html', 'api/graphql.html', 'api/rest.html']) {
+            const html = fs.readFileSync(path.join(out, page), 'utf8');
+            for (const m of html.matchAll(/(?:src|href)="(\/(?:js|css)\/[^"]+|\/third_party\/(?:inter\/[^"]+|leaflet\/leaflet\.(?:css|js)[^"]*))"/g)) {
+                assert.ok(m[1].endsWith(`?v=${token}`), `${page}: ${m[1]}`);
+            }
         }
     });
 
-    it('adds the immutable rule to the build only, not to frontend/', () => {
-        assert.ok(fs.readFileSync(path.join(out, '_headers'), 'utf8').endsWith(IMMUTABLE_HEADERS));
-        assert.ok(!fs.readFileSync(path.join(FRONTEND_DIR, '_headers.example'), 'utf8').includes('max-age=31536000'));
+    it('preloads the font under exactly the URL inter.css requests', () => {
+        const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
+        const css = fs.readFileSync(path.join(out, 'third_party/inter/inter.css'), 'utf8');
+        const preloads = [...html.matchAll(/<link rel="preload" href="([^"]+\.woff2[^"]*)"/g)].map((m) => m[1]);
+        assert.ok(preloads.length > 0, 'a font preload exists');
+        for (const url of preloads) assert.ok(css.includes(`url('${url}')`), url);
+    });
+
+    it('versions the locale URL in i18n.js', () => {
+        assert.ok(fs.readFileSync(path.join(out, 'js/i18n.js'), 'utf8').includes(`/locales/\${lang}.json?v=${token}`));
+    });
+
+    it('makes the versioned paths immutable in the build only', () => {
+        const built = fs.readFileSync(path.join(out, '_headers'), 'utf8');
+        for (const r of IMMUTABLE_RULES) assert.ok(built.includes(`${r}\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`), r);
+        assert.ok(!fs.readFileSync(path.join(FRONTEND_DIR, '_headers.example'), 'utf8').includes(IMMUTABLE_CACHE_CONTROL));
     });
 
     it('does not copy node_modules', () => {

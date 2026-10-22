@@ -7,11 +7,28 @@
   Referrer-Policy: strict-origin-when-cross-origin
 
 # Vendored libraries (Leaflet, Inter): change only on a deliberate upgrade.
-# /js and /css are left at the Pages default (short-lived, ETag-revalidated)
-# here, which is what local dev and e2e serve. The deployed build adds
-# `immutable` for them (scripts/version_frontend.js), where every URL carries
-# the release version. /locales stays at the default everywhere.
-/third_party/*
+# /js, /css and /locales are left at the Pages default (short-lived,
+# ETag-revalidated) here, which is what local dev and e2e serve.
+#
+# The deployed build (scripts/version_frontend.js) versions every /js, /css,
+# /locales and listed /third_party URL and makes those paths immutable: it
+# rewrites the Cache-Control of the rules below rather than adding new ones,
+# because Pages joins the values of every rule that matches a path. So keep
+# these rules non-overlapping (no /third_party/* catch-all).
+#
+# Leaflet's images stay unversioned: leaflet.js finds its icon path by
+# matching `marker-icon.png)` at the end of the CSS url(), which a ?v= would
+# break.
+/third_party/inter/*
+  Cache-Control: public, max-age=604800
+
+/third_party/leaflet/leaflet.css
+  Cache-Control: public, max-age=604800
+
+/third_party/leaflet/leaflet.js
+  Cache-Control: public, max-age=604800
+
+/third_party/leaflet/images/*
   Cache-Control: public, max-age=604800
 
 # No Content-Security-Policy yet: Cloudflare injects a per-request inline
