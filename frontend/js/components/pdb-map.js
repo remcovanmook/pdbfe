@@ -51,6 +51,55 @@ async function processGeocodeQueue() {
     isGeocoding = false;
 }
 
+/**
+ * Leaflet's files, loaded the first time a map is shown instead of on every
+ * page: most pages have no map, and a deferred Leaflet <script> in
+ * index.html held up boot.js (deferred and module scripts run in document
+ * order). The deploy versions these URLs like the rest of /third_party
+ * (scripts/version_frontend.js).
+ */
+const LEAFLET_CSS = '/third_party/leaflet/leaflet.css';
+const LEAFLET_JS = '/third_party/leaflet/leaflet.js';
+
+/** @type {Promise<void>|null} */
+let _leafletLoad = null;
+
+/**
+ * Adds an element to <head> and resolves once it has loaded.
+ *
+ * @param {HTMLLinkElement|HTMLScriptElement} el
+ * @returns {Promise<void>}
+ */
+function appendAndWait(el) {
+    return new Promise((resolve, reject) => {
+        el.addEventListener('load', () => resolve(), { once: true });
+        el.addEventListener('error', () => reject(new Error(`failed to load ${'href' in el ? el.href : el.src}`)), { once: true });
+        document.head.appendChild(el);
+    });
+}
+
+/**
+ * Loads Leaflet's stylesheet and script once, for every map on the page.
+ * The stylesheet must be in place before a map is created: Leaflet sizes
+ * its panes and finds its marker icon path through it. A failed load is
+ * forgotten, so the next map tries again.
+ *
+ * @returns {Promise<void>}
+ */
+export function loadLeaflet() {
+    if (/** @type {any} */ (globalThis).L) return Promise.resolve();
+    if (_leafletLoad !== null) return _leafletLoad;
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = LEAFLET_CSS;
+    const js = document.createElement('script');
+    js.src = LEAFLET_JS;
+    _leafletLoad = (async () => {
+        await Promise.all([appendAndWait(css), appendAndWait(js)]);
+    })().catch((err) => { _leafletLoad = null; throw err; });
+    return _leafletLoad;
+}
+
 export class PdbMap extends HTMLElement {
     constructor() {
         super();
@@ -67,9 +116,12 @@ export class PdbMap extends HTMLElement {
         }
 
         // Initialize leaflet map slightly deferred to ensure DOM layout is complete
-        // and dimensions are available for Leaflet's tile engine.
+        // and dimensions are available for Leaflet's tile engine. Leaflet itself
+        // loads on first use; skip if the element left the page meanwhile.
         globalThis.requestAnimationFrame(() => {
-            this._initMap();
+            loadLeaflet().then(() => {
+                if (this.isConnected && !this._map) this._initMap();
+            }, (err) => console.error('Leaflet failed to load:', err));
         });
     }
 
