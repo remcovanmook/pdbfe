@@ -226,25 +226,47 @@ export function validateQuery(entity, filters) {
 }
 
 /**
+ * Known fields whose filters upstream ignores rather than applies, so the
+ * mirror drops them like unknown fields instead of rejecting them (400).
+ * `queryable: false` alone doesn't say which: upstream still applies some
+ * non-queryable filters (net.logo, net.info_type, netixlan.ix_id, JSON
+ * fields), and those keep the 400 in validateQuery.
+ *
+ * Checked against upstream 2.84 on 2026-10-22 (a non-matching filter still
+ * returned rows): net.notes_private, net.rtbh_community,
+ * net.preferred_ip_mtu, ixlan.ixf_ixp_member_list_url. The poc fields became
+ * non-queryable in 2.84 alongside notes_private and the member-list URL;
+ * upstream lists no POCs anonymously, so they could not be checked there.
+ *
+ * @type {ReadonlyMap<string, ReadonlySet<string>>}
+ */
+export const UPSTREAM_IGNORED_FILTERS = new Map([
+    ['net', new Set(['notes_private', 'rtbh_community', 'preferred_ip_mtu'])],
+    ['ixlan', new Set(['ixf_ixp_member_list_url'])],
+    ['poc', new Set(['email', 'name', 'phone', 'url'])],
+]);
+
+/**
  * Removes filters that refer to nothing on this entity, in place: unknown
  * fields (`?zzz=1`, `?pk=26`), unknown operators (`?name__bogus=x`, which
  * parses as a cross-entity ref), and cross-entity filters whose FK chain or
  * field does not resolve. Upstream ignores unknown query parameters rather
  * than failing the request, and clients rely on that (peeringdb-py sends
- * `?pk=`). Known-but-not-filterable fields are kept so validateQuery can
- * reject them.
+ * `?pk=`). Fields in UPSTREAM_IGNORED_FILTERS are dropped too. Other
+ * known-but-not-filterable fields are kept so validateQuery can reject them.
  *
  * @param {EntityMeta} entity
  * @param {ParsedFilter[]} filters - Mutated in place.
  */
 export function dropUnknownFilters(entity, filters) {
     const fieldNames = getFieldNames(entity);
+    const ignored = UPSTREAM_IGNORED_FILTERS.get(entity.tag);
     let w = 0;
     // Compact in place; the write index never passes the read position.
     for (const f of filters) {
         const known = VALID_OPS.has(f.op) && (f.entity
             ? typeof resolveCrossEntityFilter(entity, f.entity, f.field) !== 'string'
-            : fieldNames.has(f.field));
+            : fieldNames.has(f.field) && !ignored?.has(f.field));
         if (known) filters[w++] = f;
     }
     filters.length = w;
