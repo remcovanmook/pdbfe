@@ -3,7 +3,7 @@
   "info": {
     "title": "PeeringDB REST API",
     "description": "REST API for the PeeringDB dataset. Provides list and detail endpoints for all PeeringDB entity types with full filter support matching the upstream PeeringDB API conventions.",
-    "version": "3.7.0+2.83.0",
+    "version": "3.7.0+2.84.0",
     "contact": {
       "name": "PDBFE",
       "url": "https://pdbfe.dev"
@@ -3698,42 +3698,6 @@
               "type": "string"
             },
             "description": "Filter by notes (in operator) \u2014 comma-separated values"
-          },
-          {
-            "name": "notes_private",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by notes_private"
-          },
-          {
-            "name": "notes_private__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by notes_private (contains operator)"
-          },
-          {
-            "name": "notes_private__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by notes_private (startswith operator)"
-          },
-          {
-            "name": "notes_private__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by notes_private (in operator) \u2014 comma-separated values"
           },
           {
             "name": "info_traffic",
@@ -7907,42 +7871,6 @@
             "description": "Filter by arp_sponge (in operator) \u2014 comma-separated values"
           },
           {
-            "name": "ixf_ixp_member_list_url",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by ixf_ixp_member_list_url"
-          },
-          {
-            "name": "ixf_ixp_member_list_url__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by ixf_ixp_member_list_url (contains operator)"
-          },
-          {
-            "name": "ixf_ixp_member_list_url__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by ixf_ixp_member_list_url (startswith operator)"
-          },
-          {
-            "name": "ixf_ixp_member_list_url__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by ixf_ixp_member_list_url (in operator) \u2014 comma-separated values"
-          },
-          {
             "name": "ixf_ixp_member_list_url_visible",
             "in": "query",
             "required": false,
@@ -8811,150 +8739,6 @@
               "type": "string"
             },
             "description": "Filter by visible (in operator) \u2014 comma-separated values"
-          },
-          {
-            "name": "name",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by name"
-          },
-          {
-            "name": "name__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by name (contains operator)"
-          },
-          {
-            "name": "name__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by name (startswith operator)"
-          },
-          {
-            "name": "name__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by name (in operator) \u2014 comma-separated values"
-          },
-          {
-            "name": "phone",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by phone"
-          },
-          {
-            "name": "phone__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by phone (contains operator)"
-          },
-          {
-            "name": "phone__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by phone (startswith operator)"
-          },
-          {
-            "name": "phone__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by phone (in operator) \u2014 comma-separated values"
-          },
-          {
-            "name": "email",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by email"
-          },
-          {
-            "name": "email__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by email (contains operator)"
-          },
-          {
-            "name": "email__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by email (startswith operator)"
-          },
-          {
-            "name": "email__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by email (in operator) \u2014 comma-separated values"
-          },
-          {
-            "name": "url",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by url"
-          },
-          {
-            "name": "url__contains",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by url (contains operator)"
-          },
-          {
-            "name": "url__startswith",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by url (startswith operator)"
-          },
-          {
-            "name": "url__in",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by url (in operator) \u2014 comma-separated values"
           },
           {
             "name": "net_id",

@@ -716,15 +716,6 @@ input NetworkWhere {
   notes_notIn: [String]
   notes_containsFold: String
   notes_equalFold: String
-  notes_private: String
-  notes_private_contains: String
-  notes_private_startswith: String
-  notes_private_endswith: String
-  notes_private_in: [String]
-  notes_private_not: String
-  notes_private_notIn: [String]
-  notes_private_containsFold: String
-  notes_private_equalFold: String
   info_traffic: String
   info_traffic_contains: String
   info_traffic_startswith: String
@@ -1392,16 +1383,6 @@ input ExchangeLanWhere {
   arp_sponge_containsFold: String
   arp_sponge_equalFold: String
   arp_sponge_isNil: Boolean
-  ixf_ixp_member_list_url: String
-  ixf_ixp_member_list_url_contains: String
-  ixf_ixp_member_list_url_startswith: String
-  ixf_ixp_member_list_url_endswith: String
-  ixf_ixp_member_list_url_in: [String]
-  ixf_ixp_member_list_url_not: String
-  ixf_ixp_member_list_url_notIn: [String]
-  ixf_ixp_member_list_url_containsFold: String
-  ixf_ixp_member_list_url_equalFold: String
-  ixf_ixp_member_list_url_isNil: Boolean
   ixf_ixp_member_list_url_visible: String
   ixf_ixp_member_list_url_visible_contains: String
   ixf_ixp_member_list_url_visible_startswith: String
@@ -1512,42 +1493,6 @@ input PointOfContactWhere {
   visible_notIn: [String]
   visible_containsFold: String
   visible_equalFold: String
-  name: String
-  name_contains: String
-  name_startswith: String
-  name_endswith: String
-  name_in: [String]
-  name_not: String
-  name_notIn: [String]
-  name_containsFold: String
-  name_equalFold: String
-  phone: String
-  phone_contains: String
-  phone_startswith: String
-  phone_endswith: String
-  phone_in: [String]
-  phone_not: String
-  phone_notIn: [String]
-  phone_containsFold: String
-  phone_equalFold: String
-  email: String
-  email_contains: String
-  email_startswith: String
-  email_endswith: String
-  email_in: [String]
-  email_not: String
-  email_notIn: [String]
-  email_containsFold: String
-  email_equalFold: String
-  url: String
-  url_contains: String
-  url_startswith: String
-  url_endswith: String
-  url_in: [String]
-  url_not: String
-  url_notIn: [String]
-  url_containsFold: String
-  url_equalFold: String
   net_id: Int
   net_id_lt: Int
   net_id_gt: Int

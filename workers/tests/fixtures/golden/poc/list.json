@@ -1,18 +1,4 @@
 {
-  "data": [
-    {
-      "id": 100,
-      "role": "",
-      "visible": "",
-      "name": "Golden poc",
-      "phone": "",
-      "email": "",
-      "url": "",
-      "net_id": 0,
-      "created": "2025-01-01T00:00:00Z",
-      "updated": "2025-01-01T00:00:00Z",
-      "status": ""
-    }
-  ],
+  "data": [],
   "meta": {}
 }
