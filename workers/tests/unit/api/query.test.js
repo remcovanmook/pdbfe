@@ -470,6 +470,22 @@ describe("validateQuery", () => {
         assert.ok(err?.includes("not filterable"));
     });
 
+    it("drops filters upstream ignores (UPSTREAM_IGNORED_FILTERS) instead of rejecting them", () => {
+        for (const [tag, field] of [['net', 'notes_private'], ['ixlan', 'ixf_ixp_member_list_url'], ['poc', 'email']]) {
+            const filters = [{ field, op: "contains", value: "x" }, { field: "id", op: "eq", value: "1" }];
+            dropUnknownFilters(ENTITIES[tag], filters);
+            assert.deepEqual(filters.map(f => f.field), ["id"], `${tag}.${field}`);
+            assert.equal(validateQuery(ENTITIES[tag], filters), null, `${tag}.${field}`);
+        }
+    });
+
+    it("still rejects non-queryable fields upstream applies (net.logo)", () => {
+        const filters = [{ field: "logo", op: "eq", value: "x" }];
+        dropUnknownFilters(ENTITIES.net, filters);
+        assert.equal(filters.length, 1);
+        assert.ok(validateQuery(ENTITIES.net, filters)?.includes("not filterable"));
+    });
+
     it("should drop unknown operators", () => {
         const filters = [{ field: "name", op: "regex", value: ".*" }];
         dropUnknownFilters(NET_ENTITY, filters);

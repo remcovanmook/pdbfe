@@ -114,21 +114,31 @@ describe('member-list URL never leaks past its visibility', () => {
 });
 
 describe('filters and sorts on the URL see only visible values', () => {
-    const cases = [
-        ['ixlan?ixf_ixp_member_list_url__contains=users', 0, 1],
-        ['ixlan?ixf_ixp_member_list_url__contains=private', 0, 0],
-        [`ixlan?ixf_ixp_member_list_url=${encodeURIComponent(URL_USERS)}`, 0, 1],
-        ['ixlan?ixf_ixp_member_list_url__startswith=https', 1, 2],
-        ['ixpfx?ixlan__ixf_ixp_member_list_url__contains=users', 0, 1],
-        ['ixpfx?ixlan__ixf_ixp_member_list_url__contains=private', 0, 0],
+    // Since PeeringDB 2.84 the URL is not queryable (`queryable: false`), and
+    // upstream ignores filters on it. So does the mirror: a filter returns
+    // the unfiltered listing, which can't reveal anything about hidden URLs.
+    const paths = [
+        'ixlan?ixf_ixp_member_list_url__contains=users',
+        'ixlan?ixf_ixp_member_list_url__contains=private',
+        `ixlan?ixf_ixp_member_list_url=${encodeURIComponent(URL_USERS)}`,
+        'ixlan?ixf_ixp_member_list_url__startswith=https',
+        'ixpfx?ixlan__ixf_ixp_member_list_url__contains=users',
+        'ixpfx?ixlan__ixf_ixp_member_list_url__contains=private',
     ];
-    for (const [path, anonRows, authRows] of cases) {
-        it(`${path} → anon ${anonRows} / auth ${authRows}`, async () => {
-            const anon = await get(apiWorker, `${API}/${path}`, false);
-            const auth = await get(apiWorker, `${API}/${path}`, true);
-            assert.equal(anon.status, 200, anon.text);
-            assert.equal(anon.body.data.length, anonRows, 'anon');
-            assert.equal(auth.body.data.length, authRows, 'auth');
+    for (const path of paths) {
+        it(`${path} is ignored: same rows as unfiltered, anon and auth`, async () => {
+            const base = path.slice(0, path.indexOf('?'));
+            for (const authed of [false, true]) {
+                const filtered = await get(apiWorker, `${API}/${path}`, authed);
+                const all = await get(apiWorker, `${API}/${base}`, authed);
+                assert.equal(filtered.status, 200, filtered.text);
+                assert.deepEqual(
+                    filtered.body.data.map((/** @type {any} */ r) => r.id),
+                    all.body.data.map((/** @type {any} */ r) => r.id),
+                    authed ? 'auth' : 'anon',
+                );
+                assertNoHiddenUrls(filtered.text, authed, path);
+            }
         });
     }
 
