@@ -136,9 +136,19 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: frontend
 
+      # Browsers are cached per locked Playwright version. Only the headless
+      # shell, which headless tests use, and no --with-deps: the runner
+      # image already has Chrome's system libraries, and the apt step took
+      # most of this job (5+ minutes on a slow mirror).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+
       # The locked Playwright, not npx (which could fetch another version).
-      - name: Install Chromium
-        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Install Chromium headless shell
+        run: ./node_modules/.bin/playwright install --only-shell chromium
         working-directory: frontend
 
       # The e2e suite calls the live API, so config.js needs the real domain
