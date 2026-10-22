@@ -1,6 +1,7 @@
 /**
- * @fileoverview Unit tests for core/sync_state.js handleStatus: the
- * bounded cold-isolate wait and the injected Cache-Control builder.
+ * @fileoverview Unit tests for core/sync_state.js: handleStatus (the
+ * bounded cold-isolate wait and the injected Cache-Control builder) and the
+ * onPollApplied hook.
  */
 
 import { describe, it } from 'node:test';
@@ -72,5 +73,26 @@ describe('createSyncState handleStatus', () => {
         assert.equal(res.headers.get('Cache-Control'), 'public, max-age=5');
         assert.equal(res.headers.get('Content-Type'), 'application/json');
         assert.equal(sizes[0], (await res.arrayBuffer()).byteLength);
+    });
+});
+
+describe('createSyncState onPollApplied', () => {
+    it('reports every entity on the first poll, then only the ones whose version moved', () => {
+        /** @type {Array<[Array<[string, number]>, boolean]>} */
+        const calls = [];
+        const s = createSyncState({ entityTags: ['net', 'org'], onEntityChange() {}, onPollApplied: (c, initial) => { calls.push([c, initial]); } });
+        const meta = (/** @type {number} */ net, /** @type {number} */ org) => [
+            { entity: 'net', last_sync: 1, row_count: 1, updated_at: '', last_modified_at: net },
+            { entity: 'org', last_sync: 1, row_count: 1, updated_at: '', last_modified_at: org },
+        ];
+        let t = Date.now();
+        const apply = (/** @type {any[]} */ rows) => /** @type {any} */ (s.claimPoll(t += 60_000)).apply(rows);
+        apply(meta(10, 20));
+        apply(meta(10, 20));
+        apply(meta(15, 20));
+        assert.deepEqual(calls, [
+            [[['net', 10], ['org', 20]], true],
+            [[['net', 15]], false],
+        ]);
     });
 });
