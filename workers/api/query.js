@@ -475,9 +475,10 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
         params.push(since);
     }
 
-    // No default status filter: D1 holds only status='ok' rows (the sync
-    // removes any other status, sync/rows.js isListed), which is upstream's
-    // default listing. An explicit ?status= still filters like any field.
+    // No default status filter: D1 holds only the statuses upstream's default
+    // listing returns ('ok', plus 'not-operational' for netixlan; the sync
+    // removes any other, sync/rows.js isListed). An explicit ?status= still
+    // filters like any field.
 
     // Restricted-entity visibility (e.g. poc). Anonymous callers may only ever
     // see the allowed value (visible=Public). Enforced HERE — the single WHERE

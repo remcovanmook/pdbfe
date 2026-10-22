@@ -158,7 +158,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             return result;
         }
 
-        // Split listed (status 'ok') from removed (any other status — see
+        // Split listed (see LISTED_STATUSES) from removed (any other status — see
         // isListed), dropping rows without a usable integer id — a malformed
         // upstream record would otherwise INSERT a null primary key (a junk
         // auto-rowid row) or DELETE/publish an `undefined` id.
