@@ -31,6 +31,7 @@
 import { GATED_TABLES, selectColumn } from './field_visibility.js';
 import { ENTITIES, getColumns } from './entities.js';
 import { parseJsonFields } from './handlers/shared.js';
+import { THROUGH_SETS, isParentFk } from '../core/relations.js';
 
 /**
  * Reverse lookup: maps a D1 table name to the EntityMeta tag.
@@ -74,7 +75,7 @@ const PARENT_FKS = new WeakMap();
 function parentFks(entity, detail) {
     let fks = PARENT_FKS.get(entity);
     if (!fks) {
-        const all = entity.fields.filter(f => f.foreignKey && ENTITIES[f.foreignKey] && f.name === `${f.foreignKey}_id`); // ap-ok: once per entity object
+        const all = entity.fields.filter(f => isParentFk(ENTITIES, f)); // ap-ok: once per entity object
         fks = { DETAIL: all, LIST: all.filter(f => f.foreignKey === 'org') }; // ap-ok: once per entity object
         PARENT_FKS.set(entity, fks);
     }
@@ -263,21 +264,7 @@ function planExpansion(db, entity, src, getRows, depth, authenticated, pdbfe, de
 }
 
 /**
- * Upstream PeeringDB sets that reach the *other* side of a link table:
- * ix.fac_set lists facilities (via ixfac), ixlan.net_set lists networks (via
- * netixlan). depth=1 → distinct target ids, depth=2 → full target objects.
- * The mirror's own link-row sets (ixfac_set, netixlan_set) stay alongside as
- * extensions; the frontend uses them.
- *
- * @type {Record<string, Array<{field: string, link: string, parentFk: string, targetFk: string, targetTag: string}>>}
- */
-const THROUGH_SETS = {
-    ix: [{ field: 'fac_set', link: 'peeringdb_ix_facility', parentFk: 'ix_id', targetFk: 'fac_id', targetTag: 'fac' }],
-    ixlan: [{ field: 'net_set', link: 'peeringdb_network_ixlan', parentFk: 'ixlan_id', targetFk: 'net_id', targetTag: 'net' }],
-};
-
-/**
- * Plans THROUGH_SETS: one statement per set, joined from the link table to
+ * Plans THROUGH_SETS (core/relations.js): one statement per set, joined from the link table to
  * the target table.
  *
  * @param {D1Session} db

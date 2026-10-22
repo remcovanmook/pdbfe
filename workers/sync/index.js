@@ -29,6 +29,7 @@ import { ENTITIES } from './entities.js';
 import { parseURL } from '../core/utils.js';
 import { upsertActiveRows, publishTasks, isListed } from './rows.js';
 import { runHealthCheck } from './health.js';
+import { readMembership, recordRowChanges, pruneRowChanges } from './row_changes.js';
 
 export { buildUpsert, ensureColumns } from './rows.js';
 
@@ -55,23 +56,6 @@ async function deleteRows(db, table, deletedRows) {
     let removed = 0;
     for (const r of results || []) removed += Number(r?.meta?.changes ?? 0);
     return removed;
-}
-
-/**
- * How many of `ids` already exist in `table` — one json_each probe that reads
- * only those ids (a COUNT(*) of the whole table bills every row).
- *
- * @param {D1Database} db
- * @param {string} table
- * @param {Set<number>} ids
- * @returns {Promise<number>}
- */
-async function countExisting(db, table, ids) {
-    if (ids.size === 0) return 0;
-    const probe = await db.prepare(
-        `SELECT COUNT(*) as cnt FROM "${table}" WHERE id IN (SELECT value FROM json_each(?))`
-    ).bind(JSON.stringify([...ids])).first();
-    return probe ? /** @type {number} */ (probe.cnt) : 0;
 }
 
 /**
@@ -167,12 +151,16 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         const skipped = rows.length - activeRows.length - deletedRows.length;
         if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
 
-        // How many incoming active ids already exist, read BEFORE the upsert so
-        // row_count can be advanced by the genuinely new rows. One json_each
-        // probe reads only those ids — a COUNT(*) of the whole table instead
-        // bills every row (66k for netixlan) on every run.
+        // The incoming ids that already exist, with their parent FKs, read
+        // BEFORE the write: row_count advances by the genuinely new rows, and
+        // a moved or deleted row's old parents are marked changed too
+        // (row_changes.js). One json_each probe reads only those ids — a
+        // COUNT(*) of the whole table instead bills every row (66k for
+        // netixlan) on every run.
         const activeIds = new Set(activeRows.map(r => r.id));
-        const existingActive = prevCount === null ? 0 : await countExisting(db, meta.table, activeIds);
+        const deletedIds = deletedRows.map(r => r.id);
+        const before = await readMembership(db, tag, [...activeIds, ...deletedIds]);
+        const existingActive = before.filter(r => activeIds.has(r.id)).length;
 
         await upsertActiveRows(db, meta, activeRows);
         result.updated = activeRows.length;
@@ -180,8 +168,17 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         const actuallyDeleted = await deleteRows(db, meta.table, deletedRows);
         if (deletedRows.length > 0) {
             result.deleted = deletedRows.length;
-            result.deletedIds = deletedRows.map(row => row.id);
+            result.deletedIds = deletedIds;
         }
+
+        // Per-object change marks for If-Modified-Since: after the data,
+        // before _sync_meta advances (a failure here retries next cron).
+        await recordRowChanges(db, tag, now, {
+            ids: [...activeIds, ...deletedIds],
+            deletedIds,
+            before,
+            after: activeRows,
+        });
 
         // ── Publish Queue messages ─────────────────────────────────────────────
         // Must happen BEFORE _sync_meta is advanced so that a Queue publish
@@ -280,6 +277,12 @@ export default {
         const apiKey = env.PEERINGDB_API_KEY || '';
         const queue  = env.QUEUE;
         const results = [];
+
+        try {
+            await pruneRowChanges(env.PDB, Math.floor(Date.now() / 1000));
+        } catch (err) {
+            console.error('[sync] pruning _row_changes failed:', err);
+        }
 
         for (const [tag, meta] of Object.entries(ENTITIES)) {
             const syncResult = await syncEntity(env.PDB, tag, meta, apiKey, queue);
