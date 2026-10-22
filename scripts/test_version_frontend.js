@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
     versionModuleSpecifiers, versionHtml, versionCssUrls, versionLocaleUrl, setImmutableRules,
     buildVersionedFrontend, assetHash, IMMUTABLE_RULES, IMMUTABLE_CACHE_CONTROL, LOCALE_URL,
+    linkEntries, addToRule, assertUniqueRules, setLinkHeader, NO_LINK_PATHS,
 } from './version_frontend.js';
 
 const FRONTEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../frontend');
@@ -102,6 +103,45 @@ describe('setImmutableRules', () => {
     });
 });
 
+describe('linkEntries', () => {
+    it('lists preload and modulepreload tags in page order, as Pages formats them', () => {
+        const html = '<link rel="stylesheet" href="/a.css"><link rel="preload" href="/f.woff2" as="font" type="font/woff2" crossorigin><link rel="modulepreload" href="/js/b.js"><link rel="preload" href="/c.css" as="style">';
+        assert.deepEqual(linkEntries(html), [
+            '</f.woff2>; rel="preload"; as=font; type="font/woff2"; crossorigin',
+            '</js/b.js>; rel="modulepreload"',
+            '</c.css>; rel="preload"; as=style',
+        ]);
+    });
+});
+
+describe('addToRule / assertUniqueRules / setLinkHeader', () => {
+    it('adds a line inside an existing rule instead of a second block', () => {
+        const out = addToRule('/*\n  X-Frame-Options: DENY\n', '/*', 'Link: <x>');
+        assert.equal(out, '/*\n  Link: <x>\n  X-Frame-Options: DENY\n');
+        assert.doesNotThrow(() => assertUniqueRules(out));
+    });
+
+    it('appends a rule that does not exist yet', () => {
+        assert.equal(addToRule('/*\n  X: y', '/js/*', '! Link'), '/*\n  X: y\n\n/js/*\n  ! Link\n');
+    });
+
+    it('refuses two blocks for the same path', () => {
+        assert.throws(() => assertUniqueRules('/*\n  A: 1\n\n/*\n  B: 2\n'), /two blocks for \/\*/);
+    });
+
+    it('sets Link on /* and detaches it from every asset path, keeping existing headers', () => {
+        const out = setLinkHeader('/*\n  X-Frame-Options: DENY\n\n/js/*\n  Cache-Control: c\n', '<link rel="modulepreload" href="/js/b.js">');
+        assert.match(out, /\/\*\n  Link: <\/js\/b\.js>; rel="modulepreload"\n  X-Frame-Options: DENY/);
+        assert.match(out, /\/js\/\*\n  ! Link\n  Cache-Control: c/);
+        for (const p of NO_LINK_PATHS) assert.ok(out.includes(`${p}\n  ! Link`), p);
+        assert.doesNotThrow(() => assertUniqueRules(out));
+    });
+
+    it('leaves the file alone for a page without preloads', () => {
+        assert.equal(setLinkHeader('/*\n  X: y\n', '<p>no preloads</p>'), '/*\n  X: y\n');
+    });
+});
+
 describe('buildVersionedFrontend (real frontend/)', () => {
     const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pdbfe-dist-'));
     const token = buildVersionedFrontend(FRONTEND_DIR, out, '0.0.0');
@@ -142,9 +182,24 @@ describe('buildVersionedFrontend (real frontend/)', () => {
         assert.ok(fs.readFileSync(path.join(out, 'js/i18n.js'), 'utf8').includes(`/locales/\${lang}.json?v=${token}`));
     });
 
+    it('puts the full Link header, font included, in the single /* rule with the security headers', () => {
+        const built = fs.readFileSync(path.join(out, '_headers'), 'utf8');
+        assert.doesNotThrow(() => assertUniqueRules(built));
+        const rule = built.slice(built.indexOf('/*\n'));
+        const link = rule.split('\n').find((l) => l.startsWith('  Link: ')) ?? '';
+        const html = fs.readFileSync(path.join(out, 'index.html'), 'utf8');
+        assert.equal(link, `  Link: ${linkEntries(html).join(', ')}`);
+        assert.match(link, /inter-latin\.woff2\?v=[^>]+>; rel="preload"; as=font/);
+        assert.match(rule, /X-Frame-Options: DENY/);
+    });
+
     it('makes the versioned paths immutable in the build only', () => {
         const built = fs.readFileSync(path.join(out, '_headers'), 'utf8');
-        for (const r of IMMUTABLE_RULES) assert.ok(built.includes(`${r}\n  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`), r);
+        for (const r of IMMUTABLE_RULES) {
+            const start = built.indexOf(`\n${r}\n`) + 1;
+            const block = built.slice(start, built.indexOf('\n\n', start));
+            assert.ok(block.includes(`  Cache-Control: ${IMMUTABLE_CACHE_CONTROL}`), r);
+        }
         assert.ok(!fs.readFileSync(path.join(FRONTEND_DIR, '_headers.example'), 'utf8').includes(IMMUTABLE_CACHE_CONTROL));
     });
 
