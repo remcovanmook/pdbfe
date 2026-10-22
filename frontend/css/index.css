@@ -267,13 +267,14 @@ body[data-page="home"] .site-logo {
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-subtle);
     font-size: 0.6875rem;
+    line-height: 1.5;
     color: var(--text-muted);
     white-space: nowrap;
     overflow-x: auto;
-}
-
-.stats-ticker:empty {
-    display: none;
+    /* Reserve the filled height (one line + padding + border) from the
+       start: the counts arrive with /status after boot, and a ticker that
+       appears then pushes the whole page down. */
+    min-height: calc(0.6875rem * 1.5 + 0.5rem + 1px);
 }
 
 .stats-ticker__item strong {
@@ -656,6 +657,11 @@ body[data-page="home"] .site-logo {
     max-width: var(--content-max);
     margin: 0 auto;
     padding: var(--space-xl) var(--space-lg);
+    /* At least one viewport below the header, so the footer starts below the
+       fold. Otherwise it sits at the bottom of the screen while #app holds
+       only the loading placeholder, and jumps when the page renders (a
+       layout shift charged to .site-footer__copyright). */
+    min-height: calc(100dvh - var(--header-height));
 }
 
 /* ── Page transitions ──────────────────────────────────────────── */
