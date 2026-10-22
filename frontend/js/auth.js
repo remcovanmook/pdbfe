@@ -32,6 +32,18 @@ import { setTimezone } from './timezone.js';
 const STORAGE_KEY = 'pdbfe_sid';
 
 /**
+ * localStorage key for the fields of the last validated user that pages
+ * render (see USER_CACHE_FIELDS). With it, a reload routes at once and
+ * confirms the session in the background instead of waiting for /auth/me.
+ * Cleared on logout and whenever the session is rejected.
+ * @type {string}
+ */
+const USER_CACHE_KEY = 'pdbfe_user';
+
+/** @type {ReadonlyArray<keyof SessionData>} */
+const USER_CACHE_FIELDS = ['id', 'username', 'name', 'given_name', 'email', 'networks'];
+
+/**
  * sessionStorage key holding the PKCE verifier for an in-flight login. Set
  * before redirecting to /auth/login; consumed once when the callback returns
  * `?code=`. It never leaves this browser, which is what binds the exchange
@@ -309,22 +321,35 @@ export async function initAuth() {
     // Load cached session ID
     _cachedSid = localStorage.getItem(STORAGE_KEY);
 
-    // Validate session if we have one
     if (_cachedSid) {
-        _cachedUser = await validateSession(_cachedSid);
-        if (_cachedUser) {
-            // Auth state changed — flush stale anonymous API responses
+        const cached = code ? null : _readCachedUser();
+        if (cached) {
+            // Seen this user before: render as signed in right away and
+            // confirm the session in the background, instead of holding the
+            // first render on the /auth/me round trip. An API request with
+            // a session that turns out invalid is served anonymously (no
+            // 401), and _confirmSession re-renders if it was rejected.
+            _cachedUser = cached;
             clearCache();
-
-            // Fetch the D1-backed profile (preferences, favorites) without
-            // holding up the first render: a slow D1 round trip would
-            // otherwise leave the page blank. boot.js awaits profileReady()
-            // after routing and re-renders if the profile changed anything.
-            _profileReady = _fetchProfile(_cachedSid);
+            _profileReady = _confirmSession(_cachedSid);
         } else {
-            // Session expired or invalid — clear it
-            localStorage.removeItem(STORAGE_KEY);
-            _cachedSid = null;
+            // First load for this session (just logged in, or no cached
+            // user yet): wait for /auth/me as before.
+            const user = await validateSession(_cachedSid);
+            if (user) {
+                _cachedUser = user;
+                _writeCachedUser(user);
+                // Auth state changed — flush stale anonymous API responses
+                clearCache();
+                // Fetch the D1-backed profile (preferences, favorites) without
+                // holding up the first render. boot.js awaits profileReady()
+                // after routing and re-renders if the profile changed anything.
+                _profileReady = _fetchProfile(_cachedSid);
+            } else {
+                // Session expired or invalid (or /auth/me unreachable) — clear it
+                localStorage.removeItem(STORAGE_KEY);
+                _cachedSid = null;
+            }
         }
     }
 
@@ -572,6 +597,7 @@ export function reorderFavorites(orderedKeys) {
 export function logout() {
     const sid = _cachedSid;
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(USER_CACHE_KEY);
     _cachedSid = null;
     _cachedUser = null;
     _favoritesSet.clear();
@@ -599,10 +625,13 @@ export function logout() {
 
 /**
  * Validates a session ID by calling the auth worker's /auth/me endpoint.
- * Returns the user profile on success, or null if the session is invalid.
+ * Returns the user profile on success, null if the session was rejected
+ * (401/403, or `authenticated: false`), and undefined when the answer is
+ * unknown (network failure, 5xx, 429): the caller decides whether that
+ * should end the session.
  *
  * @param {string} sid - The session ID to validate.
- * @returns {Promise<SessionData|null>} User profile or null.
+ * @returns {Promise<SessionData|null|undefined>}
  */
 async function validateSession(sid) {
     try {
@@ -610,7 +639,8 @@ async function validateSession(sid) {
             headers: { 'Authorization': `Bearer ${sid}` },
         });
 
-        if (!response.ok) return null;
+        if (response.status === 401 || response.status === 403) return null;
+        if (!response.ok) return undefined;
 
         const data = await response.json();
         if (data.authenticated && data.user) {
@@ -619,6 +649,75 @@ async function validateSession(sid) {
         return null;
     } catch (err) {
         console.warn('Session validation failed:', err);
+        return undefined;
+    }
+}
+
+/**
+ * Background half of an optimistic start (see initAuth): confirms the
+ * session, then loads the profile. A rejected session is cleared and the
+ * page switched to the anonymous view; an unknown answer (network/server
+ * error) keeps the session, as the API keeps serving it.
+ *
+ * @param {string} sid - The session ID rendered as signed in.
+ * @returns {Promise<ProfileEffect>}
+ */
+async function _confirmSession(sid) {
+    const user = await validateSession(sid);
+    if (_cachedSid !== sid) return null; // logged out (or replaced) meanwhile
+    if (user === undefined) return null;
+    if (user === null) {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(USER_CACHE_KEY);
+        _cachedSid = null;
+        _cachedUser = null;
+        clearCache();
+        _loadLocalFavorites();
+        renderAuthUI();
+        return 'redispatch';
+    }
+    const changed = _userSummary(user) !== _userSummary(_cachedUser);
+    _cachedUser = user;
+    _writeCachedUser(user);
+    if (changed) renderAuthUI();
+    const effect = await _fetchProfile(sid);
+    return effect ?? (changed ? 'redispatch' : null);
+}
+
+/**
+ * The cached fields of a user, as JSON (for storage and comparison).
+ *
+ * @param {SessionData|null} user
+ * @returns {string}
+ */
+function _userSummary(user) {
+    if (!user) return '';
+    /** @type {Record<string, unknown>} */
+    const out = {};
+    for (const k of USER_CACHE_FIELDS) if (user[k] !== undefined) out[k] = user[k];
+    return JSON.stringify(out);
+}
+
+/** @param {SessionData} user */
+function _writeCachedUser(user) {
+    try { localStorage.setItem(USER_CACHE_KEY, _userSummary(user)); } catch { /* storage full or blocked */ }
+}
+
+/**
+ * Reads the cached user. Treated as untrusted (localStorage can be edited):
+ * anything without a numeric id and string name is ignored.
+ *
+ * @returns {SessionData|null}
+ */
+function _readCachedUser() {
+    try {
+        const raw = localStorage.getItem(USER_CACHE_KEY);
+        if (!raw) return null;
+        const u = JSON.parse(raw);
+        if (!u || typeof u.id !== 'number' || typeof u.name !== 'string') return null;
+        if (!Array.isArray(u.networks)) u.networks = [];
+        return /** @type {SessionData} */ (u);
+    } catch {
         return null;
     }
 }
