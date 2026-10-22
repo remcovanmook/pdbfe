@@ -13,7 +13,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 400;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin-ext.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
                    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
@@ -26,7 +26,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 400;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
                    U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
@@ -39,7 +39,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 600;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin-ext.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
                    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
@@ -52,7 +52,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 600;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
                    U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
@@ -65,7 +65,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 700;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin-ext.woff2') format('woff2');
     unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
                    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
@@ -78,7 +78,7 @@
     font-family: 'Inter';
     font-style: normal;
     font-weight: 700;
-    font-display: swap;
+    font-display: optional;
     src: url('/third_party/inter/inter-latin.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC,
                    U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
