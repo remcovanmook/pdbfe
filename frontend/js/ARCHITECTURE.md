@@ -138,7 +138,7 @@ As the codebase matures, please strictly avoid the following identified anti-pat
 
 2. **Hand-maintained cache busters, and imports the bundler can't see**
    - **Bad**: Adding `?v=N` to a `/js` or `/css` URL by hand; loading a module by an absolute path or a computed `import()` specifier.
-   - **Good**: Plain relative imports (`import { x } from './x.js'`), `import('./pages/x.js')` with a literal path for lazy routes (`addLazyRoute` in `router.js`), and plain `/js`, `/css` URLs in `index.html`. The deploy (`scripts/version_frontend.js`) bundles `boot.js` with esbuild (minified, code-split, `--keep-names`, source maps), versions `boot.js` and the `/css` URLs with `?v=<release>-<hash>`, and serves them `immutable`; chunks are named by content hash.
+   - **Good**: Plain relative imports (`import { x } from './x.js'`), `import('./pages/x.js')` with a literal path for lazy routes (`addLazyRoute` in `router.js`), and plain `/js`, `/css` URLs in `index.html`. The deploy (`scripts/version_frontend.js`) bundles `boot.js` with esbuild (minified, code-split, `--keep-names`, source maps), versions `boot.js`, the `/css` URLs and the quoted `/third_party` URLs it lists (e.g. Leaflet, which `pdb-map` loads on first use) with `?v=<release>-<hash>`, and serves them `immutable`; chunks are named by content hash.
    - **Why**: Production runs the bundle, local dev and the pre-push e2e run the source modules. The bundler only follows imports it can resolve statically, and CI's "Frontend build e2e" job runs the e2e suite against the bundle to catch the difference.
 
 3. **Mixing Box Models in Flex Row Alignment**

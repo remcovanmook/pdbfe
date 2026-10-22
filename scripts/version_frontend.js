@@ -9,6 +9,7 @@
  *   - the /js, /css and listed /third_party URLs in src=/href= attributes of
  *     index.html and api/*.html (replacing any hand-written ?v=N)
  *   - the font URLs in third_party/inter/inter.css
+ *   - quoted listed /third_party URLs in js/ (the Leaflet files pdb-map loads)
  *   - the locale URL in js/i18n.js (`/locales/${lang}.json`)
  *
  * It then sets `Cache-Control: public, max-age=31536000, immutable` on the
@@ -86,6 +87,9 @@ const HTML_THIRD_PARTY = /((?:src|href)=")(\/third_party\/[^"?]+)"/g;
 /** url('/third_party/...') in CSS; only VERSIONED_THIRD_PARTY URLs are rewritten. */
 const CSS_THIRD_PARTY = /url\((['"]?)(\/third_party\/[^'"()?\s]+)\1\)/g;
 
+/** A quoted /third_party URL in JS source; only VERSIONED_THIRD_PARTY URLs are rewritten. */
+const JS_THIRD_PARTY = /(['"])(\/third_party\/[^'"?]+)\1/g;
+
 /** The locale fetch URL in js/i18n.js, exactly as written there. */
 export const LOCALE_URL = '`/locales/${lang}.json`';
 
@@ -128,6 +132,19 @@ export function versionCssUrls(css, token) {
     return css.replace(CSS_THIRD_PARTY, (m, quote, url) => (
         VERSIONED_THIRD_PARTY.includes(url) ? `url(${quote}${url}${q}${quote})` : m
     ));
+}
+
+/**
+ * Appends `?v=<token>` to quoted VERSIONED_THIRD_PARTY URLs in JS source,
+ * e.g. the Leaflet files pdb-map loads on demand.
+ *
+ * @param {string} src - JavaScript source.
+ * @param {string} token - Version token.
+ * @returns {string}
+ */
+export function versionJsThirdParty(src, token) {
+    const q = query(token);
+    return src.replace(JS_THIRD_PARTY, (m, quote, url) => (VERSIONED_THIRD_PARTY.includes(url) ? `${quote}${url}${q}${quote}` : m));
 }
 
 /**
@@ -418,8 +435,11 @@ export function buildVersionedFrontend(srcDir, outDir, version) {
         filter: (p) => path.basename(p) !== 'node_modules',
     });
 
-    // Before bundling: minification changes that line beyond recognition.
+    // Before bundling: minification changes these lines beyond recognition.
     rewrite(path.join(outDir, 'js', 'i18n.js'), (src) => versionLocaleUrl(src, token));
+    for (const rel of filesUnder(outDir, 'js').filter((f) => f.endsWith('.js'))) {
+        rewrite(path.join(outDir, rel), (src) => versionJsThirdParty(src, token));
+    }
     const chunkPreloads = bundleJs(srcDir, outDir, token);
 
     const pages = ['index.html', ...filesUnder(outDir, 'api').filter((f) => f.endsWith('.html'))];
