@@ -2,10 +2,10 @@
  * @fileoverview Builds the deployable copy of the frontend with versioned
  * asset URLs, so the static assets can be served `immutable`.
  *
- * Copies frontend/ (minus node_modules) into an output directory and appends
+ * Copies frontend/ (minus node_modules) into an output directory, replaces
+ * js/ with a minified, code-split bundle (see bundleJs): js/boot.js plus
+ * content-hashed js/chunks/*, with source maps. Then it appends
  * `?v=<token>` to:
- *   - every relative static import/export specifier in js/**\/*.js
- *     (`from './x.js'`, `import './x.js'`)
  *   - the /js, /css and listed /third_party URLs in src=/href= attributes of
  *     index.html and api/*.html (replacing any hand-written ?v=N)
  *   - the font URLs in third_party/inter/inter.css
@@ -42,6 +42,7 @@
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,16 +77,6 @@ export const IMMUTABLE_RULES = Object.freeze([
 
 export const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
-/** `from './x.js'` / `from "../y.js"` in import and re-export statements. */
-const FROM_SPECIFIER = /(\bfrom\s*)(['"])(\.\.?\/[^'"?]+\.js)\2/g;
-
-/**
- * Side-effect imports at the start of a line: `import './x.js';`. Only
- * spaces and tabs around `import`: `\s` would also match newlines, so a run
- * of blank lines could be matched from every line start inside it.
- */
-const BARE_IMPORT = /^([ \t]*import[ \t]*)(['"])(\.\.?\/[^'"?]+\.js)\2/gm;
-
 /** /js/*.js and /css/*.css in src= or href= attributes, with or without an existing ?v=. */
 const HTML_ASSET = /((?:src|href)=")(\/(?:js\/[^"?]+\.js|css\/[^"?]+\.css))(?:\?v=[^"]*)?"/g;
 
@@ -104,22 +95,11 @@ const LINK_TAG = /<link\s[^>]*>/g;
 /** One attribute in a tag: name, optionally ="value". */
 const TAG_ATTR = /([a-z][a-z-]*)(?:="([^"]*)")?/g;
 
+/** A whole line holding a `<link rel="modulepreload">` for a /js module. */
+const MODULEPRELOAD_LINE = /^[ \t]*<link rel="modulepreload" href="\/js\/[^"]*">[ \t]*\n/gm;
+
 /** @param {string} token */
 const query = (token) => `?v=${encodeURIComponent(token)}`;
-
-/**
- * Appends `?v=<token>` to every relative import/export specifier.
- *
- * @param {string} src - JavaScript module source.
- * @param {string} token - Version token.
- * @returns {string}
- */
-export function versionModuleSpecifiers(src, token) {
-    const q = query(token);
-    return src
-        .replace(FROM_SPECIFIER, (_, pre, quote, spec) => `${pre}${quote}${spec}${q}${quote}`)
-        .replace(BARE_IMPORT, (_, pre, quote, spec) => `${pre}${quote}${spec}${q}${quote}`);
-}
 
 /**
  * Appends `?v=<token>` to the /js, /css and versioned /third_party URLs in
@@ -298,6 +278,72 @@ export function setLinkHeader(headers, html) {
 }
 
 /**
+ * Replaces js/ in outDir with a minified, code-split ES module bundle of
+ * js/boot.js: modules that boot.js loads with import() (the lazy routes)
+ * and code shared between them become chunks under js/chunks/, named by
+ * content hash, so they need no ?v. Names are kept (--keep-names) and each
+ * file gets a linked source map. The entry's map reference gets the ?v
+ * token, as the entry's own name carries no hash.
+ *
+ * esbuild comes from frontend/package.json (the deploy installs it there).
+ *
+ * @param {string} srcDir - The frontend directory (resolves esbuild).
+ * @param {string} outDir - Build directory whose js/ is replaced.
+ * @param {string} token - Version token.
+ * @returns {string[]} The chunk URLs boot.js imports statically, for preloading.
+ */
+export function bundleJs(srcDir, outDir, token) {
+    const esbuild = createRequire(path.join(srcDir, 'package.json'))('esbuild');
+    const jsDir = path.join(outDir, 'js');
+    const tmp = path.join(outDir, '.js-bundle');
+    const result = esbuild.buildSync({
+        entryPoints: [path.join(jsDir, 'boot.js')],
+        outdir: tmp,
+        bundle: true,
+        splitting: true,
+        format: 'esm',
+        minify: true,
+        keepNames: true,
+        sourcemap: 'linked',
+        charset: 'utf8',
+        entryNames: '[name]',
+        chunkNames: 'chunks/[name]-[hash]',
+        metafile: true,
+        logLevel: 'error',
+    });
+    fs.rmSync(jsDir, { recursive: true, force: true });
+    fs.renameSync(tmp, jsDir);
+
+    const entry = path.join(jsDir, 'boot.js');
+    const src = fs.readFileSync(entry, 'utf8');
+    const mapRef = '//# sourceMappingURL=boot.js.map';
+    if (!src.includes(mapRef)) throw new Error('bundled boot.js has no source map reference');
+    fs.writeFileSync(entry, src.replace(mapRef, `${mapRef}${query(token)}`));
+
+    const out = Object.entries(result.metafile.outputs).find(([, o]) => o.entryPoint);
+    if (!out) throw new Error('esbuild produced no entry output');
+    return out[1].imports
+        .filter((i) => i.kind === 'import-statement')
+        .map((i) => '/js/' + path.relative(tmp, path.resolve(i.path)).split(path.sep).join('/'));
+}
+
+/**
+ * Replaces the page's /js modulepreload tags with tags for the given URLs,
+ * where the first of them stood (or before </head>).
+ *
+ * @param {string} html - Page source.
+ * @param {string[]} urls - Module URLs to preload, in order.
+ * @returns {string}
+ */
+export function setModulePreloads(html, urls) {
+    const first = html.search(MODULEPRELOAD_LINE);
+    const stripped = html.replace(MODULEPRELOAD_LINE, '');
+    const at = first === -1 ? stripped.indexOf('</head>') : first;
+    const tags = urls.map((u) => `    <link rel="modulepreload" href="${u}">\n`).join('');
+    return stripped.slice(0, at) + tags + stripped.slice(at);
+}
+
+/**
  * Lists the files under a directory, recursively, as paths relative to root.
  *
  * @param {string} root
@@ -360,13 +406,13 @@ export function buildVersionedFrontend(srcDir, outDir, version) {
         filter: (p) => path.basename(p) !== 'node_modules',
     });
 
-    for (const rel of filesUnder(outDir, 'js').filter((f) => f.endsWith('.js'))) {
-        rewrite(path.join(outDir, rel), (src) => versionModuleSpecifiers(src, token));
-    }
+    // Before bundling: minification changes that line beyond recognition.
     rewrite(path.join(outDir, 'js', 'i18n.js'), (src) => versionLocaleUrl(src, token));
+    const chunkPreloads = bundleJs(srcDir, outDir, token);
 
     const pages = ['index.html', ...filesUnder(outDir, 'api').filter((f) => f.endsWith('.html'))];
     for (const rel of pages) rewrite(path.join(outDir, rel), (src) => versionHtml(src, token));
+    rewrite(path.join(outDir, 'index.html'), (src) => setModulePreloads(src, [`/js/boot.js${query(token)}`, ...chunkPreloads]));
 
     rewrite(path.join(outDir, 'third_party', 'inter', 'inter.css'), (src) => versionCssUrls(src, token));
 

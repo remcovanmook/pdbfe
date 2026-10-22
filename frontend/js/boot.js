@@ -5,7 +5,7 @@
  * bootstraps OAuth session state, and initializes i18n.
  */
 
-import { addRoute, initRouter, navigate, redispatch } from './router.js';
+import { addRoute, addLazyRoute, initRouter, navigate, redispatch } from './router.js';
 import { renderHome } from './pages/home.js';
 import { renderSearch } from './pages/search.js';
 import { renderNet } from './pages/net.js';
@@ -16,9 +16,6 @@ import { renderCarrier } from './pages/carrier.js';
 import { renderCampus } from './pages/campus.js';
 import { renderAbout } from './pages/about.js';
 import { renderAsn } from './pages/asn.js';
-import { renderAccount } from './pages/account.js';
-import { renderCompare } from './pages/compare.js';
-import { renderAdvancedSearch } from './pages/advanced-search.js';
 import { renderFavorites } from './pages/favorites.js';
 import { fetchSyncStatus } from './api.js';
 import { formatDate } from './render.js';
@@ -46,10 +43,10 @@ addRoute('/org/:id', renderOrg);
 addRoute('/carrier/:id', renderCarrier);
 addRoute('/campus/:id', renderCampus);
 addRoute('/asn/:asn', renderAsn);
-addRoute('/account', renderAccount);
+addLazyRoute('/account', () => import('./pages/account.js').then((m) => m.renderAccount));
 addRoute('/about', renderAbout);
-addRoute('/compare', renderCompare);
-addRoute('/advanced_search', renderAdvancedSearch);
+addLazyRoute('/compare', () => import('./pages/compare.js').then((m) => m.renderCompare));
+addLazyRoute('/advanced_search', () => import('./pages/advanced-search.js').then((m) => m.renderAdvancedSearch));
 addRoute('/favorites', renderFavorites);
 
 // Expose navigate for the homepage search box

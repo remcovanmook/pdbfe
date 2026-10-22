@@ -136,10 +136,10 @@ As the codebase matures, please strictly avoid the following identified anti-pat
    - **Good**: `import { fetchEntity } from '../api.js'; fetchEntity('net', 1);`
    - **Why**: Raw fetches completely bypass the centralized configuration inside `api.js`. This breaks cross-origin Cloudflare Pages routing, strips D1 API synchronization state, ignores SWR (Stale-While-Revalidate) local caching (causing extreme network thrashing), and drops edge diagnostic telemetry. *Exception*: Static asset payloads (Markdown, CSS, `i18n` Locales) appropriately use direct `fetch()`.
 
-2. **Hand-maintained cache busters**
-   - **Bad**: Adding `?v=N` to a `/js` or `/css` URL by hand, or loading a module by an absolute path the deploy doesn't rewrite.
-   - **Good**: Plain relative imports (`import { x } from './x.js'`) and plain `/js`, `/css` URLs in `index.html`. The deploy (`scripts/version_frontend.js`) rewrites them all to `?v=<release>-<hash>`, and serves those paths `immutable`.
-   - **Why**: A module loaded under two different URLs runs twice, with two copies of its state (auth session, caches). The deploy only versions what it can see: relative static imports and the `/js`, `/css` URLs in `index.html`.
+2. **Hand-maintained cache busters, and imports the bundler can't see**
+   - **Bad**: Adding `?v=N` to a `/js` or `/css` URL by hand; loading a module by an absolute path or a computed `import()` specifier.
+   - **Good**: Plain relative imports (`import { x } from './x.js'`), `import('./pages/x.js')` with a literal path for lazy routes (`addLazyRoute` in `router.js`), and plain `/js`, `/css` URLs in `index.html`. The deploy (`scripts/version_frontend.js`) bundles `boot.js` with esbuild (minified, code-split, `--keep-names`, source maps), versions `boot.js` and the `/css` URLs with `?v=<release>-<hash>`, and serves them `immutable`; chunks are named by content hash.
+   - **Why**: Production runs the bundle, local dev and the pre-push e2e run the source modules. The bundler only follows imports it can resolve statically, and CI's "Frontend build e2e" job runs the e2e suite against the bundle to catch the difference.
 
 3. **Mixing Box Models in Flex Row Alignment**
    - **Bad**: Allowing `<button>` and `<a>` siblings inside a `.detail-header` flex-container without neutralizing box-models.

@@ -73,6 +73,8 @@ jobs:
         run: |
           pip install --only-binary :all: 'pyyaml==6.0.2'
           npm ci --prefix workers --ignore-scripts
+          # esbuild, for the frontend bundle (scripts/version_frontend.js)
+          npm ci --prefix frontend --ignore-scripts
 
       # Next version = latest v* tag + bump. `auto` picks the level from
       # conventional-commit prefixes in the commits since that tag

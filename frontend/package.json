@@ -9,6 +9,7 @@
     "typecheck": "../workers/node_modules/.bin/tsc --noEmit"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1"
+    "@playwright/test": "^1.59.1",
+    "esbuild": "0.25.10"
   }
 }
