@@ -15,7 +15,7 @@
  */
 export const VERSIONS = Object.freeze({
     django_peeringdb: "3.7.0",
-    api_schema: "2.83.0",
+    api_schema: "2.84.0",
 });
 
 /** @type {EntityMeta} */
@@ -194,7 +194,7 @@ const _entity_net = {
         { name: "looking_glass", type: "string" },
         { name: "route_server", type: "string" },
         { name: "notes", type: "string" },
-        { name: "notes_private", type: "string" },
+        { name: "notes_private", type: "string", queryable: false },
         { name: "info_traffic", type: "string" },
         { name: "info_ratio", type: "string" },
         { name: "info_scope", type: "string" },
@@ -246,7 +246,7 @@ const _entity_net = {
     _nullableColumns: new Set(["info_prefixes4", "info_prefixes6", "logo", "preferred_ip_mtu", "rir_status", "rir_status_updated", "status_dashboard"]),
     _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["__logo_migrated", "__vector_embedded", "aka", "allow_ixp_update", "asn", "created", "fac_count", "id", "info_ipv6", "info_multicast", "info_never_via_route_servers", "info_prefixes4", "info_prefixes6", "info_ratio", "info_scope", "info_traffic", "info_type", "info_types", "info_unicast", "irr_as_set", "ix_count", "ixp_update_exclude", "ixp_update_exclude_is_rs_peer", "ixp_update_exclude_operational", "ixp_update_exclude_speed", "logo", "looking_glass", "name", "name_long", "netfac_updated", "netixlan_updated", "notes", "notes_private", "org_id", "poc_updated", "policy_contracts", "policy_general", "policy_locations", "policy_ratio", "policy_url", "preferred_ip_mtu", "rir_status", "rir_status_updated", "route_server", "rtbh_community", "social_media", "status", "status_dashboard", "updated", "website"]),
-    _filterTypes: new Map([["id", "number"], ["asn", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["irr_as_set", "string"], ["website", "string"], ["looking_glass", "string"], ["route_server", "string"], ["notes", "string"], ["notes_private", "string"], ["info_traffic", "string"], ["info_ratio", "string"], ["info_scope", "string"], ["info_prefixes4", "number"], ["info_prefixes6", "number"], ["info_unicast", "boolean"], ["info_multicast", "boolean"], ["info_ipv6", "boolean"], ["info_never_via_route_servers", "boolean"], ["policy_url", "string"], ["policy_general", "string"], ["policy_locations", "string"], ["policy_ratio", "boolean"], ["policy_contracts", "string"], ["status_dashboard", "string"], ["rir_status", "string"], ["rir_status_updated", "datetime"], ["org_id", "number"], ["ix_count", "number"], ["fac_count", "number"], ["netixlan_updated", "datetime"], ["netfac_updated", "datetime"], ["poc_updated", "datetime"], ["allow_ixp_update", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
+    _filterTypes: new Map([["id", "number"], ["asn", "number"], ["name", "string"], ["aka", "string"], ["name_long", "string"], ["irr_as_set", "string"], ["website", "string"], ["looking_glass", "string"], ["route_server", "string"], ["notes", "string"], ["info_traffic", "string"], ["info_ratio", "string"], ["info_scope", "string"], ["info_prefixes4", "number"], ["info_prefixes6", "number"], ["info_unicast", "boolean"], ["info_multicast", "boolean"], ["info_ipv6", "boolean"], ["info_never_via_route_servers", "boolean"], ["policy_url", "string"], ["policy_general", "string"], ["policy_locations", "string"], ["policy_ratio", "boolean"], ["policy_contracts", "string"], ["status_dashboard", "string"], ["rir_status", "string"], ["rir_status_updated", "datetime"], ["org_id", "number"], ["ix_count", "number"], ["fac_count", "number"], ["netixlan_updated", "datetime"], ["netfac_updated", "datetime"], ["poc_updated", "datetime"], ["allow_ixp_update", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
 /** @type {EntityMeta} */
@@ -420,7 +420,7 @@ const _entity_ixlan = {
         { name: "dot1q_support", type: "boolean" },
         { name: "rs_asn", type: "number", nullable: true },
         { name: "arp_sponge", type: "string", nullable: true },
-        { name: "ixf_ixp_member_list_url", type: "string", nullable: true, omitempty: true },
+        { name: "ixf_ixp_member_list_url", type: "string", queryable: false, nullable: true, omitempty: true },
         { name: "ixf_ixp_member_list_url_visible", type: "string" },
         { name: "ix_id", type: "number", foreignKey: "ix" },
         { name: "ixf_ixp_import_enabled", type: "boolean" },
@@ -439,7 +439,7 @@ const _entity_ixlan = {
     _nullableColumns: new Set(["arp_sponge", "ixf_ixp_member_list_url", "rs_asn", "vlan"]),
     _omitEmptyColumns: new Set(["ixf_ixp_member_list_url", "vlan"]),
     _fieldNames: new Set(["arp_sponge", "created", "descr", "dot1q_support", "id", "ix_id", "ixf_ixp_import_enabled", "ixf_ixp_member_list_url", "ixf_ixp_member_list_url_visible", "mtu", "name", "rs_asn", "status", "updated", "vlan"]),
-    _filterTypes: new Map([["id", "number"], ["name", "string"], ["descr", "string"], ["mtu", "number"], ["vlan", "number"], ["dot1q_support", "boolean"], ["rs_asn", "number"], ["arp_sponge", "string"], ["ixf_ixp_member_list_url", "string"], ["ixf_ixp_member_list_url_visible", "string"], ["ix_id", "number"], ["ixf_ixp_import_enabled", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
+    _filterTypes: new Map([["id", "number"], ["name", "string"], ["descr", "string"], ["mtu", "number"], ["vlan", "number"], ["dot1q_support", "boolean"], ["rs_asn", "number"], ["arp_sponge", "string"], ["ixf_ixp_member_list_url_visible", "string"], ["ix_id", "number"], ["ixf_ixp_import_enabled", "boolean"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
 /** @type {EntityMeta} */
@@ -482,10 +482,10 @@ const _entity_poc = {
         { name: "id", type: "number" },
         { name: "role", type: "string" },
         { name: "visible", type: "string" },
-        { name: "name", type: "string" },
-        { name: "phone", type: "string" },
-        { name: "email", type: "string" },
-        { name: "url", type: "string" },
+        { name: "name", type: "string", queryable: false },
+        { name: "phone", type: "string", queryable: false },
+        { name: "email", type: "string", queryable: false },
+        { name: "url", type: "string", queryable: false },
         { name: "net_id", type: "number", foreignKey: "net" },
         { name: "created", type: "datetime" },
         { name: "updated", type: "datetime" },
@@ -499,7 +499,7 @@ const _entity_poc = {
     _nullableColumns: new Set([]),
     _omitEmptyColumns: new Set([]),
     _fieldNames: new Set(["created", "email", "id", "name", "net_id", "phone", "role", "status", "updated", "url", "visible"]),
-    _filterTypes: new Map([["id", "number"], ["role", "string"], ["visible", "string"], ["name", "string"], ["phone", "string"], ["email", "string"], ["url", "string"], ["net_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
+    _filterTypes: new Map([["id", "number"], ["role", "string"], ["visible", "string"], ["net_id", "number"], ["created", "datetime"], ["updated", "datetime"], ["status", "string"]]),
 };
 
 /** @type {EntityMeta} */
