@@ -88,7 +88,7 @@ function appendAndWait(el) {
  */
 export function loadLeaflet() {
     if (/** @type {any} */ (globalThis).L) return Promise.resolve();
-    if (_leafletLoad) return _leafletLoad;
+    if (_leafletLoad !== null) return _leafletLoad;
     const css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = LEAFLET_CSS;
