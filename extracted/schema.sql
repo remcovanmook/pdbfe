@@ -16,6 +16,16 @@ CREATE TABLE IF NOT EXISTS "_migrations" (
     "applied_at" TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS "_row_changes" (
+    "entity" TEXT NOT NULL,
+    "id" INTEGER NOT NULL,
+    "d0_at" INTEGER NOT NULL DEFAULT 0,
+    "d1_at" INTEGER NOT NULL DEFAULT 0,
+    "d2_at" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY ("entity", "id")
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS "_row_changes_d2_at_idx" ON "_row_changes" ("d2_at");
+
 CREATE TABLE IF NOT EXISTS "_health_runs" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "started_at" TEXT NOT NULL,

@@ -32,6 +32,7 @@
 
 import { ENTITIES } from './entities.js';
 import { upsertActiveRows, publishTasks, isListed } from './rows.js';
+import { readMembership, recordRowChanges } from './row_changes.js';
 
 const API_BASE = 'https://www.peeringdb.com/api';
 export const STALE_ABS = 50;
@@ -142,18 +143,36 @@ async function checkTable(env, tag, meta, upstream) {
         t.missing = missing.length;
         t.outdated = outdated.length;
 
+        // Set membership (parent FKs, visibility) before the repair overwrites it (row_changes.js).
+        const ts = Math.floor(Date.now() / 1000);
+        const staleBefore = await readMembership(db, tag, stale);
         t.deleted = await deleteStale(db, meta, stale, mirrorUpdated.size, t.alerts);
         const fetched = await fetchById(tag, missing, outdated, upstream, t.alerts);
+        const fetchedBefore = await readMembership(db, tag, fetched.map((r) => r.id));
         await upsertActiveRows(db, meta, fetched);
         const missingSet = new Set(missing);
         t.inserted = fetched.filter((r) => missingSet.has(r.id)).map((r) => r.id);
         t.refreshed = fetched.filter((r) => !missingSet.has(r.id)).map((r) => r.id);
         await publishTasks(env.QUEUE, tag, fetched, t.deleted);
 
+        // A repair changes served data like a sync does: mark the objects and
+        // advance last_modified_at, or caches and If-Modified-Since keep the
+        // old copies.
+        const changed = t.deleted.concat(fetched.map((r) => r.id));
+        if (changed.length > 0) {
+            await recordRowChanges(db, tag, ts, {
+                ids: changed,
+                deletedIds: t.deleted,
+                before: (t.deleted.length > 0 ? staleBefore : []).concat(fetchedBefore),
+                after: fetched,
+            });
+        }
+
         // Weekly recount, so the sync's incremental row_count cannot drift.
         const cnt = await db.prepare(`SELECT COUNT(*) AS cnt FROM "${meta.table}"`).first();
         t.rowCount = cnt ? /** @type {number} */ (cnt.cnt) : 0;
-        await db.prepare('UPDATE "_sync_meta" SET row_count = ? WHERE entity = ?').bind(t.rowCount, tag).run();
+        await db.prepare('UPDATE "_sync_meta" SET row_count = ?, last_modified_at = max(last_modified_at, ?) WHERE entity = ?')
+            .bind(t.rowCount, changed.length > 0 ? ts : 0, tag).run();
 
         if (t.deleted.length || t.inserted.length || t.refreshed.length) t.action = 'repaired';
     } catch (err) {
