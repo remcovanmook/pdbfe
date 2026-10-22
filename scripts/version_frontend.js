@@ -25,6 +25,13 @@
  * finds its icon path by matching `marker-icon.png)` at the end of the CSS
  * url(), which a ?v= would break.
  *
+ * The build's _headers also carries the page's full `Link:` header (see
+ * setLinkHeader), which Cloudflare sends as 103 Early Hints. Pages would generate
+ * one from the preload tags, but leaves out the font preload (as="font" with
+ * crossorigin), and any Link set in _headers replaces its generated one
+ * entirely (checked on a preview deployment), so the build lists every
+ * preload and modulepreload tag itself.
+ *
  * The token is `<version>-<hash>`: the release version plus a short hash of
  * every versioned directory, so a redeploy with changed files but an
  * unchanged VERSION still gets new URLs.
@@ -90,6 +97,12 @@ const CSS_THIRD_PARTY = /url\((['"]?)(\/third_party\/[^'"()?\s]+)\1\)/g;
 
 /** The locale fetch URL in js/i18n.js, exactly as written there. */
 export const LOCALE_URL = '`/locales/${lang}.json`';
+
+/** Any <link ...> tag. */
+const LINK_TAG = /<link\s[^>]*>/g;
+
+/** One attribute in a tag: name, optionally ="value". */
+const TAG_ATTR = /([a-z][a-z-]*)(?:="([^"]*)")?/g;
 
 /** @param {string} token */
 const query = (token) => `?v=${encodeURIComponent(token)}`;
@@ -205,6 +218,86 @@ export function setImmutableRules(headers) {
 }
 
 /**
+ * The Link header entries for a page's preload and modulepreload tags, in
+ * page order, formatted as Pages formats its generated ones.
+ *
+ * @param {string} html - Versioned page.
+ * @returns {string[]}
+ */
+export function linkEntries(html) {
+    /** @type {string[]} */
+    const entries = [];
+    for (const [tag] of html.matchAll(LINK_TAG)) {
+        /** @type {Record<string, string>} */
+        const attrs = {};
+        for (const [, name, value] of tag.slice(5).matchAll(TAG_ATTR)) attrs[name] = value ?? '';
+        if (!attrs.href || (attrs.rel !== 'preload' && attrs.rel !== 'modulepreload')) continue;
+        let entry = `<${attrs.href}>; rel="${attrs.rel}"`;
+        if (attrs.as) entry += `; as=${attrs.as}`;
+        if (attrs.type) entry += `; type="${attrs.type}"`;
+        if ('crossorigin' in attrs) entry += '; crossorigin';
+        entries.push(entry);
+    }
+    return entries;
+}
+
+/** Asset paths that must not carry the page's Link header (`! Link` detaches it). */
+export const NO_LINK_PATHS = Object.freeze(['/js/*', '/css/*', '/locales/*', '/third_party/*', '/content/*', '/api/*']);
+
+/**
+ * Adds a header line to the rule for rulePath: inside the existing rule if
+ * there is one, otherwise as a new rule at the end. Never a second block for
+ * the same path: Pages keeps only one of them (on a preview deployment a
+ * second `/*` block dropped X-Frame-Options, a second `/js/*` the immutable
+ * Cache-Control).
+ *
+ * @param {string} headers - _headers source.
+ * @param {string} rulePath - Rule path, e.g. '/*'.
+ * @param {string} line - Header line without indentation, e.g. '! Link'.
+ * @returns {string}
+ */
+export function addToRule(headers, rulePath, line) {
+    const lines = headers.split('\n');
+    const at = lines.findIndex((l) => l.length > 0 && !/^[\s#]/.test(l) && l.trim() === rulePath);
+    if (at === -1) return [...lines, '', rulePath, `  ${line}`, ''].join('\n');
+    lines.splice(at + 1, 0, `  ${line}`);
+    return lines.join('\n');
+}
+
+/**
+ * Throws if any rule path appears in more than one block (see addToRule).
+ *
+ * @param {string} headers - _headers source.
+ */
+export function assertUniqueRules(headers) {
+    const seen = new Set();
+    for (const l of headers.split('\n')) {
+        if (l.length === 0 || /^[\s#]/.test(l)) continue;
+        const rule = l.trim();
+        if (seen.has(rule)) throw new Error(`_headers has two blocks for ${rule}; Pages would keep only one`);
+        seen.add(rule);
+    }
+}
+
+/**
+ * Sets the page's full Link header on every path (the SPA serves index.html
+ * under every route) and detaches it from the asset paths (NO_LINK_PATHS)
+ * so only pages carry it. A page without preloads leaves the file as is,
+ * and Pages' generated header in place.
+ *
+ * @param {string} headers - _headers source.
+ * @param {string} html - Versioned index.html.
+ * @returns {string}
+ */
+export function setLinkHeader(headers, html) {
+    const entries = linkEntries(html);
+    if (!entries.length) return headers;
+    let out = addToRule(headers, '/*', `Link: ${entries.join(', ')}`);
+    for (const p of NO_LINK_PATHS) out = addToRule(out, p, '! Link');
+    return out;
+}
+
+/**
  * Lists the files under a directory, recursively, as paths relative to root.
  *
  * @param {string} root
@@ -279,7 +372,10 @@ export function buildVersionedFrontend(srcDir, outDir, version) {
 
     const headersFile = path.join(outDir, '_headers');
     const headers = fs.existsSync(headersFile) ? fs.readFileSync(headersFile, 'utf8') : '';
-    fs.writeFileSync(headersFile, setImmutableRules(headers));
+    const index = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
+    const built = setLinkHeader(setImmutableRules(headers), index);
+    assertUniqueRules(built);
+    fs.writeFileSync(headersFile, built);
     return token;
 }
 
