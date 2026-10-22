@@ -68,7 +68,7 @@ export function addRoute(pattern, handler) {
  */
 export function addLazyRoute(pattern, load) {
     addRoute(pattern, /** @type {any} */ (null));
-    _routes[_routes.length - 1].load = load;
+    /** @type {Route} */ (_routes.at(-1)).load = load;
 }
 
 /**

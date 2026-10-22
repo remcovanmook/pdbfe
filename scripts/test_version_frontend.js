@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import {
     versionHtml, setModulePreloads, versionCssUrls, versionLocaleUrl, setImmutableRules,
     buildVersionedFrontend, assetHash, IMMUTABLE_RULES, IMMUTABLE_CACHE_CONTROL, LOCALE_URL,
-    linkEntries, addToRule, assertUniqueRules, setLinkHeader, NO_LINK_PATHS,
+    linkEntries, addToRule, assertUniqueRules, setLinkHeader, NO_LINK_PATHS, VERSIONED_THIRD_PARTY,
 } from './version_frontend.js';
 
 const FRONTEND_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../frontend');
@@ -157,14 +157,15 @@ describe('buildVersionedFrontend (real frontend/)', () => {
         const boot = fs.readFileSync(path.join(out, 'js', 'boot.js'), 'utf8');
         for (const page of ['account', 'advanced-search', 'compare']) {
             assert.ok(jsFiles.some((f) => path.basename(f).startsWith(`${page}-`)), `${page} chunk exists`);
-            assert.match(boot, new RegExp(`import\\("\\./chunks/${page}-[A-Z0-9]{8}\\.js"\\)`), `${page} is a dynamic import`);
+            assert.match(boot, new RegExp(String.raw`import\("\./chunks/${page}-[A-Z0-9]{8}\.js"\)`), `${page} is a dynamic import`);
         }
     });
 
     it('every relative import in the bundle points at a file that exists', () => {
         for (const f of jsFiles) {
             const src = fs.readFileSync(f, 'utf8');
-            for (const m of src.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)"(\.\.?\/[^"]+)"/g)) {
+            // Minified output has no whitespace: from"./x", import"./x", import("./x").
+            for (const m of src.matchAll(/(?:\bfrom|\bimport\(?)"(\.\.?\/[^"]+)"/g)) {
                 assert.ok(fs.existsSync(path.resolve(path.dirname(f), m[1])), `${path.basename(f)} imports missing ${m[1]}`);
             }
         }
@@ -182,9 +183,13 @@ describe('buildVersionedFrontend (real frontend/)', () => {
     it('versions every /js (except hashed chunks), /css and listed /third_party URL in the HTML pages', () => {
         for (const page of ['index.html', 'api/graphql.html', 'api/rest.html']) {
             const html = fs.readFileSync(path.join(out, page), 'utf8');
-            for (const m of html.matchAll(/(?:src|href)="(\/(?:js\/(?!chunks\/)|css\/)[^"]+|\/third_party\/(?:inter\/[^"]+|leaflet\/leaflet\.(?:css|js)[^"]*))"/g)) {
-                assert.ok(m[1].endsWith(`?v=${token}`), `${page}: ${m[1]}`);
-            }
+            const urls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+            const versioned = urls.filter((u) => {
+                const p = u.split('?')[0];
+                return p.startsWith('/css/') || (p.startsWith('/js/') && !p.startsWith('/js/chunks/')) || VERSIONED_THIRD_PARTY.includes(p);
+            });
+            assert.ok(versioned.length > 0, page);
+            for (const u of versioned) assert.ok(u.endsWith(`?v=${token}`), `${page}: ${u}`);
         }
     });
 
@@ -202,7 +207,7 @@ describe('buildVersionedFrontend (real frontend/)', () => {
 
     it('versions the locale URL inside the bundle', () => {
         const all = jsFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
-        assert.match(all, new RegExp(`/locales/\\$\\{\\w+\\}\\.json\\?v=${token.replaceAll('.', '\\.')}`));
+        assert.match(all, new RegExp(String.raw`/locales/\$\{\w+\}\.json\?v=` + token.replaceAll('.', String.raw`\.`)));
     });
 
     it('puts the full Link header, font included, in the single /* rule with the security headers', () => {

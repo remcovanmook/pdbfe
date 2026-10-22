@@ -130,12 +130,15 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # No lifecycle scripts: esbuild and @playwright/test don't need them
+      # (the browser comes from `playwright install` below).
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: frontend
 
+      # The locked Playwright, not npx (which could fetch another version).
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium
         working-directory: frontend
 
       # The e2e suite calls the live API, so config.js needs the real domain
@@ -148,7 +151,7 @@ jobs:
         run: node scripts/version_frontend.js "$RUNNER_TEMP/frontend-dist" ci
 
       - name: E2E against the build
-        run: npx playwright test --reporter=line
+        run: ./node_modules/.bin/playwright test --reporter=line
         working-directory: frontend
         env:
           CI: "true"
