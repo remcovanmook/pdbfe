@@ -24,7 +24,12 @@
          the one in inter.css (the deploy versions both the same way). -->
     <link rel="preload" href="/third_party/inter/inter.css" as="style">
     <link rel="preload" href="/third_party/inter/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- latin-ext too: every page needs it (the footer's language names, e.g.
+         Čeština, Lietuvių, Română, and much of the PeeringDB data), but
+         without a preload the browser only finds out after layout. -->
+    <link rel="preload" href="/third_party/inter/inter-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/third_party/leaflet/leaflet.css" as="style">
+    <link rel="preload" href="/css/index.css" as="style">
 
     <!-- Fonts (self-hosted) -->
     <link rel="stylesheet" href="/third_party/inter/inter.css">

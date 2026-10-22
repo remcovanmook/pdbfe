@@ -201,6 +201,14 @@ export function setImmutableRules(headers) {
  * The Link header entries for a page's preload and modulepreload tags, in
  * page order, formatted as Pages formats its generated ones.
  *
+ * modulepreload tags become `rel="preload"; as=script; crossorigin`:
+ * Cloudflare forwards only rel=preload (and preconnect) in the 103 Early
+ * Hints, so a modulepreload entry never reaches the browser early. With
+ * crossorigin the preload matches the module's CORS-mode request and is
+ * reused (checked in Chromium: each module fetched once, no warning).
+ * Without it, it would not match, which is how Rocket Loader's injected
+ * preload made boot.js download twice.
+ *
  * @param {string} html - Versioned page.
  * @returns {string[]}
  */
@@ -212,6 +220,10 @@ export function linkEntries(html) {
         const attrs = {};
         for (const [, name, value] of tag.slice(5).matchAll(TAG_ATTR)) attrs[name] = value ?? '';
         if (!attrs.href || (attrs.rel !== 'preload' && attrs.rel !== 'modulepreload')) continue;
+        if (attrs.rel === 'modulepreload') {
+            entries.push(`<${attrs.href}>; rel="preload"; as=script; crossorigin`);
+            continue;
+        }
         let entry = `<${attrs.href}>; rel="${attrs.rel}"`;
         if (attrs.as) entry += `; as=${attrs.as}`;
         if (attrs.type) entry += `; type="${attrs.type}"`;
