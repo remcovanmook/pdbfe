@@ -66,9 +66,10 @@ initTheme();
 await initI18n();
 
 // Bootstrap OAuth session state before routing, so isAuthenticated()
-// returns the correct value when page handlers run. initAuth() also
-// fetches the user profile and may apply a server-side language preference,
-// which updates getCurrentLang().
+// returns the right value when page handlers run. For a returning user
+// this is synchronous: the session is confirmed in the background, and
+// profileReady() (handled below) re-renders if it was rejected or the
+// profile changed anything.
 await initAuth().catch(() => {
     // Non-critical — auth UI will show "Sign in" on failure
 });

@@ -361,3 +361,92 @@ describe('initAuth — profile loads without blocking', () => {
         assert.equal(await profileReady(), null);
     });
 });
+
+// ── initAuth — optimistic start for a returning user ─────────────────────────
+
+describe('initAuth — routes before /auth/me for a returning user', () => {
+    beforeEach(setup);
+
+    const USER = { id: 7, username: 'u7', name: 'Seven', email: 's@example.invalid', networks: [{ id: 1, asn: 64500, name: 'N' }] };
+
+    /**
+     * Returning-user mock: a stored sid and cached user; /auth/me answers
+     * only after release(), with `me` (a status code, or 'network' to throw).
+     *
+     * @param {number|'network'} me
+     */
+    function returning(me) {
+        globalThis.location = /** @type {any} */ ({ href: 'http://localhost/', pathname: '/', search: '' });
+        localStorage.setItem('pdbfe_sid', 'b'.repeat(64));
+        localStorage.setItem('pdbfe_user', JSON.stringify(USER));
+        /** @type {() => void} */
+        let release = () => {};
+        const gate = new Promise((r) => { release = () => r(undefined); });
+        globalThis.fetch = /** @type {any} */ (async (url) => {
+            const u = String(url);
+            if (u.includes('/auth/me')) {
+                await gate;
+                if (me === 'network') throw new TypeError('fetch failed');
+                if (me === 200) return { ok: true, status: 200, json: async () => ({ authenticated: true, user: USER }) };
+                return { ok: false, status: me, json: async () => ({}) };
+            }
+            return { ok: true, status: 200, json: async () => (u.includes('favorites') ? { favorites: [] } : { preferences: {} }) };
+        });
+        return { release: () => release() };
+    }
+
+    it('is signed in from the cached user before /auth/me answers', async () => {
+        const { release } = returning(200);
+        const { initAuth, isAuthenticated, getUser, getSessionId, profileReady } = await import('../../js/auth.js');
+        await initAuth();
+        assert.equal(isAuthenticated(), true);
+        assert.equal(getUser()?.name, 'Seven');
+        assert.equal(getSessionId(), 'b'.repeat(64));
+        release();
+        assert.equal(await profileReady(), null, 'confirmed and unchanged: nothing to re-render');
+    });
+
+    it('clears a rejected session and asks for a re-render', async () => {
+        const { release } = returning(401);
+        const { initAuth, isAuthenticated, profileReady } = await import('../../js/auth.js');
+        await initAuth();
+        assert.equal(isAuthenticated(), true, 'optimistic until /auth/me answers');
+        release();
+        assert.equal(await profileReady(), 'redispatch');
+        assert.equal(isAuthenticated(), false);
+        assert.equal(localStorage.getItem('pdbfe_sid'), null);
+        assert.equal(localStorage.getItem('pdbfe_user'), null);
+    });
+
+    it('keeps the session when /auth/me is unreachable', async () => {
+        const { release } = returning('network');
+        const { initAuth, isAuthenticated, profileReady } = await import('../../js/auth.js');
+        await initAuth();
+        release();
+        assert.equal(await profileReady(), null);
+        assert.equal(isAuthenticated(), true);
+        assert.equal(localStorage.getItem('pdbfe_sid'), 'b'.repeat(64));
+    });
+
+    it('ignores a malformed cached user and waits for /auth/me instead', async () => {
+        const { release } = returning(200);
+        localStorage.setItem('pdbfe_user', '{"id":"x"}');
+        const { initAuth, isAuthenticated } = await import('../../js/auth.js');
+        let done = false;
+        const p = initAuth().then(() => { done = true; });
+        await new Promise((r) => setTimeout(r, 10));
+        assert.equal(done, false, 'still waiting for /auth/me');
+        release();
+        await p;
+        assert.equal(isAuthenticated(), true);
+        assert.equal(JSON.parse(localStorage.getItem('pdbfe_user') ?? '{}').name, 'Seven', 'cached after validation');
+    });
+
+    it('logout clears the cached user', async () => {
+        returning(200);
+        const { initAuth, logout } = await import('../../js/auth.js');
+        await initAuth();
+        logout();
+        assert.equal(localStorage.getItem('pdbfe_user'), null);
+    });
+});
