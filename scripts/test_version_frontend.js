@@ -95,11 +95,11 @@ describe('setModulePreloads', () => {
 });
 
 describe('linkEntries', () => {
-    it('lists preload and modulepreload tags in page order, as Pages formats them', () => {
+    it('lists preload and modulepreload tags in page order; modules as crossorigin script preloads', () => {
         const html = '<link rel="stylesheet" href="/a.css"><link rel="preload" href="/f.woff2" as="font" type="font/woff2" crossorigin><link rel="modulepreload" href="/js/b.js"><link rel="preload" href="/c.css" as="style">';
         assert.deepEqual(linkEntries(html), [
             '</f.woff2>; rel="preload"; as=font; type="font/woff2"; crossorigin',
-            '</js/b.js>; rel="modulepreload"',
+            '</js/b.js>; rel="preload"; as=script; crossorigin',
             '</c.css>; rel="preload"; as=style',
         ]);
     });
@@ -122,7 +122,7 @@ describe('addToRule / assertUniqueRules / setLinkHeader', () => {
 
     it('sets Link on /* and detaches it from every asset path, keeping existing headers', () => {
         const out = setLinkHeader('/*\n  X-Frame-Options: DENY\n\n/js/*\n  Cache-Control: c\n', '<link rel="modulepreload" href="/js/b.js">');
-        assert.match(out, /\/\*\n  Link: <\/js\/b\.js>; rel="modulepreload"\n  X-Frame-Options: DENY/);
+        assert.match(out, /\/\*\n  Link: <\/js\/b\.js>; rel="preload"; as=script; crossorigin\n  X-Frame-Options: DENY/);
         assert.match(out, /\/js\/\*\n  ! Link\n  Cache-Control: c/);
         for (const p of NO_LINK_PATHS) assert.ok(out.includes(`${p}\n  ! Link`), p);
         assert.doesNotThrow(() => assertUniqueRules(out));
