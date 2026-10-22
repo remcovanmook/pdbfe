@@ -7,10 +7,18 @@
 import { createError } from './render.js';
 
 /**
+ * @typedef {function(Record<string, string>): Promise<void>} Handler
+ */
+
+/**
  * @typedef {Object} Route
  * @property {RegExp} pattern - URL pattern to match.
- * @property {function(Record<string, string>): Promise<void>} handler - Page renderer.
+ * @property {Handler|null} handler - Page renderer (null until a lazy route loads).
+ * @property {(() => Promise<Handler>)|null} load - Loads the renderer for a lazy route.
  */
+
+/** sessionStorage key: the path a failed lazy load last reloaded for (loop guard). */
+const LAZY_RELOAD_KEY = 'pdbfe-lazy-reload';
 
 /** @type {Route[]} */
 const _routes = [];
@@ -45,8 +53,48 @@ export function addRoute(pattern, handler) {
         });
     _routes.push({
         pattern: new RegExp(String.raw`^${regexStr}\/?$`),
-        handler
+        handler,
+        load: null,
     });
+}
+
+/**
+ * Registers a route whose page module is loaded on first visit, for pages
+ * that are rarely used and shouldn't weigh on every page load. `load`
+ * returns the renderer, e.g. `() => import('./pages/x.js').then((m) => m.renderX)`.
+ *
+ * @param {string} pattern - URL pattern with :param placeholders.
+ * @param {() => Promise<Handler>} load - Imports the page and returns its renderer.
+ */
+export function addLazyRoute(pattern, load) {
+    addRoute(pattern, /** @type {any} */ (null));
+    _routes[_routes.length - 1].load = load;
+}
+
+/**
+ * Returns a lazy route's renderer, loading its module on first use.
+ * If the module can't be fetched, the open tab most likely predates a
+ * release (the old chunk is gone from the new deployment), so the page is
+ * reloaded once for that path to pick up the current release.
+ *
+ * @param {Route} route
+ * @param {string} fullPath - The path being dispatched.
+ * @returns {Promise<Handler|null>} null when a reload was started instead.
+ */
+async function resolveHandler(route, fullPath) {
+    if (route.handler) return route.handler;
+    try {
+        route.handler = await /** @type {() => Promise<Handler>} */ (route.load)();
+        try { sessionStorage.removeItem(LAZY_RELOAD_KEY); } catch { /* unavailable */ }
+        return route.handler;
+    } catch (err) {
+        let reloaded = null;
+        try { reloaded = sessionStorage.getItem(LAZY_RELOAD_KEY); } catch { /* unavailable */ }
+        if (reloaded === fullPath) throw err; // already reloaded once: show the error
+        try { sessionStorage.setItem(LAZY_RELOAD_KEY, fullPath); } catch { /* unavailable */ }
+        globalThis.location.assign(fullPath);
+        return null;
+    }
 }
 
 /**
@@ -174,7 +222,12 @@ async function dispatch(fullPath) {
             } catch { /* sessionStorage may be unavailable */ }
 
             try {
-                await route.handler(params);
+                // Regular routes start right away; only a lazy route that
+                // still has to load its module waits, and a newer navigation
+                // during that load wins.
+                const handler = route.handler ?? await resolveHandler(route, fullPath);
+                if (!handler || gen !== _navGen) return;
+                await handler(params);
                 // Bail out if a newer navigation fired while we were awaiting.
                 // Without this guard, a slow page fetch can resolve after the
                 // router has already rendered a different route and overwrite it.

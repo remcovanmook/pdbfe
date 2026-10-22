@@ -47,9 +47,11 @@ export default defineConfig({
      * Starts `wrangler pages dev` to serve the static frontend.
      * Playwright waits for the URL to respond before running tests.
      * `--no-bundle` is not needed — wrangler pages dev serves static files as-is.
+     * E2E_SERVE_DIR serves another directory instead, e.g. the deploy build
+     * (scripts/version_frontend.js output) in CI.
      */
     webServer: {
-        command: 'npx wrangler pages dev . --port 8788 --log-level error',
+        command: `npx wrangler pages dev ${JSON.stringify(process.env.E2E_SERVE_DIR ?? '.')} --port 8788 --log-level error`,
         url: 'http://localhost:8788',
         reuseExistingServer: !process.env.CI,
         timeout: 30_000,

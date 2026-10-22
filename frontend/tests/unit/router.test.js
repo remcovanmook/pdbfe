@@ -244,3 +244,84 @@ describe('addRoute — pattern compilation', () => {
         assert.deepEqual(dispatchedEvents, ['pdbfe:navigate', 'pdbfe:navigate']);
     });
 });
+
+describe('addLazyRoute', () => {
+    beforeEach(() => setupMocks());
+
+    /** A container whose replaceChildren calls are recorded (error renders). */
+    function trackedContainer() {
+        const replaced = /** @type {any[]} */ ([]);
+        return {
+            replaced,
+            container: /** @type {any} */ ({
+                innerHTML: '',
+                classList: { add: () => {}, remove: () => {} },
+                replaceChildren: (...n) => { replaced.push(n); },
+            }),
+        };
+    }
+
+    /** sessionStorage that actually stores (the lazy reload guard uses it). */
+    function realSessionStorage() {
+        /** @type {Record<string, string>} */
+        const store = {};
+        globalThis.sessionStorage = /** @type {any} */ ({
+            getItem: (k) => store[k] ?? null,
+            setItem: (k, v) => { store[k] = v; },
+            removeItem: (k) => { delete store[k]; },
+        });
+    }
+
+    const tick = () => new Promise((r) => setTimeout(r, 10));
+
+    /** navigate() as the browser would see it (the mock pushState doesn't move location). */
+    async function go(navigate, path) {
+        globalThis.location.pathname = path;
+        globalThis.location.search = '';
+        navigate(path);
+        await tick();
+    }
+
+    it('loads the page module on first visit only, then reuses it', async () => {
+        const { addLazyRoute, initRouter, navigate } = await import('../../js/router.js');
+        let loads = 0; let renders = 0;
+        addLazyRoute('/lazy-once', async () => { loads++; return async () => { renders++; }; });
+        initRouter(trackedContainer().container);
+        await go(navigate, '/lazy-once');
+        await go(navigate, '/lazy-once');
+        assert.equal(loads, 1);
+        assert.equal(renders, 2);
+    });
+
+    it('does not render a page that finished loading after a newer navigation', async () => {
+        const { addRoute, addLazyRoute, initRouter, navigate } = await import('../../js/router.js');
+        let release = /** @type {Function} */ (() => {});
+        let lazyRendered = false;
+        addLazyRoute('/lazy-slow', () => new Promise((r) => { release = () => r(async () => { lazyRendered = true; }); }));
+        addRoute('/lazy-other', async () => {});
+        initRouter(trackedContainer().container);
+        await go(navigate, '/lazy-slow');
+        await go(navigate, '/lazy-other');
+        release(); await tick();
+        assert.equal(lazyRendered, false);
+    });
+
+    it('reloads once when the module fails to load, then shows the error', async () => {
+        realSessionStorage();
+        const assigned = /** @type {string[]} */ ([]);
+        globalThis.location.assign = (u) => { assigned.push(u); };
+        const { addLazyRoute, initRouter, navigate } = await import('../../js/router.js');
+        addLazyRoute('/lazy-gone', async () => { throw new TypeError('Failed to fetch dynamically imported module'); });
+        const { container, replaced } = trackedContainer();
+        initRouter(container);
+        replaced.length = 0;
+
+        await go(navigate, '/lazy-gone');
+        assert.deepEqual(assigned, ['/lazy-gone'], 'first failure reloads the page');
+        assert.equal(replaced.length, 0, 'no error rendered before the reload');
+
+        await go(navigate, '/lazy-gone'); // the reloaded page fails again
+        assert.deepEqual(assigned, ['/lazy-gone'], 'no second reload');
+        assert.equal(replaced.length, 1, 'the error is shown');
+    });
+});

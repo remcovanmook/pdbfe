@@ -105,8 +105,54 @@ jobs:
       - name: XSS lint self-test
         run: node --test scripts/test_lint_xss.js
 
+      # The versioning self-test builds the real frontend, which bundles
+      # with esbuild from frontend/package.json.
+      - name: Install frontend build dependencies
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
       - name: Frontend asset versioning self-test
         run: node --test scripts/test_version_frontend.js
+
+  # ── Frontend build: e2e against what the deploy ships ─────────────
+  # Production serves the minified, code-split bundle that
+  # scripts/version_frontend.js builds, not the source modules that local
+  # dev and the pre-push e2e run. This job runs the e2e suite against it.
+  frontend-build-e2e:
+    name: Frontend build e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      # The e2e suite calls the live API, so config.js needs the real domain
+      # (the example's placeholders make every API call fail).
+      - name: Create config
+        run: sed 's|<your-domain>|pdbfe.dev|g' js/config.js.example > js/config.js
+        working-directory: frontend
+
+      - name: Build the deploy output
+        run: node scripts/version_frontend.js "$RUNNER_TEMP/frontend-dist" ci
+
+      - name: E2E against the build
+        run: npx playwright test --reporter=line
+        working-directory: frontend
+        env:
+          CI: "true"
+          E2E_SERVE_DIR: ${{ runner.temp }}/frontend-dist
 
   # ── Integrity: cross-component consistency checks ────────────────
   integrity:
