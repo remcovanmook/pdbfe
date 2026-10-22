@@ -6,9 +6,18 @@
 import { VECTOR_ENTITY_TAGS } from './entities.js';
 
 /**
- * Whether an upstream row belongs in D1. The mirror serves only what
- * upstream lists — status 'ok' — so D1 holds nothing else: 'deleted',
- * 'pending' (e.g. campuses awaiting approval, which ?since= returns to an
+ * Statuses upstream's default listing returns, so the mirror keeps them.
+ * 'not-operational' is a netixlan status (PeeringDB #1742): a port that is
+ * connected but inactive. Upstream lists those rows by default, so they are
+ * peers, not removals. Checked against every entity's default listing on
+ * 2026-10-22: only netixlan has a status other than 'ok'.
+ */
+export const LISTED_STATUSES = new Set(['ok', 'not-operational']);
+
+/**
+ * Whether an upstream row belongs in D1. The mirror serves what upstream
+ * lists (LISTED_STATUSES), so D1 holds nothing else: 'deleted', 'pending'
+ * (e.g. campuses awaiting approval, which ?since= returns to an
  * authenticated sync) and any other status are removals. A pending row that
  * is approved later comes back via ?since= as 'ok' (approval saves the row
  * and advances `updated`). Rows without a status field are kept.
@@ -17,7 +26,7 @@ import { VECTOR_ENTITY_TAGS } from './entities.js';
  * @returns {boolean}
  */
 export function isListed(row) {
-    return row.status === undefined || row.status === 'ok';
+    return row.status === undefined || LISTED_STATUSES.has(row.status);
 }
 
 /**

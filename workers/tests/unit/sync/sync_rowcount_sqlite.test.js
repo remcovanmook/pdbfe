@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { createSqliteD1 } from '../../lib/sqlite_d1.js';
 import { ENTITIES } from '../../../api/entities.js';
 import { syncEntity } from '../../../sync/index.js';
+import { isListed } from '../../../sync/rows.js';
 
 const TS = '2026-01-01T00:00:00Z';
 const NET = ENTITIES.net;
@@ -79,7 +80,7 @@ describe('fallback when no previous row_count exists', () => {
     });
 });
 
-describe('D1 holds only status=ok rows', () => {
+describe('D1 holds only listed rows', () => {
     beforeEach(() => {
         setup(5);
         const row = (/** @type {number} */ id, /** @type {string} */ status) => ({
@@ -100,5 +101,44 @@ describe('D1 holds only status=ok rows', () => {
         assert.deepEqual(result.deletedIds.sort((a, b) => a - b), [4, 8], "removed ids reported like deletions");
         assert.equal(storedCount(), 5); // 5 + {9} - {4}
         assert.equal(actualCount(), 5);
+    });
+});
+
+describe("'not-operational' is listed, not a removal", () => {
+    beforeEach(() => {
+        setup(5);
+        const row = (/** @type {number} */ id, /** @type {string} */ status) => ({
+            id, org_id: 1, name: `Net ${id}`, asn: 64500 + id, social_media: [], info_types: [],
+            status, created: TS, updated: '2026-10-07T13:00:00Z',
+        });
+        // 4 exists and turns not-operational; 8 is new and not-operational
+        globalThis.fetch = /** @type {any} */ (async () => new Response(JSON.stringify({
+            data: [row(4, 'not-operational'), row(8, 'not-operational')],
+        })));
+    });
+
+    it('keeps an existing row, inserts a new one, and stores the status', async () => {
+        const result = await syncEntity(db, 'net', NET, '', null);
+        assert.ok(!result.error, String(result.error));
+        const rows = sqlite.prepare('SELECT id, status FROM "peeringdb_network" ORDER BY id').all();
+        assert.deepEqual(rows.map((/** @type {any} */ r) => r.id), [1, 2, 3, 4, 5, 8]);
+        assert.equal(/** @type {any} */ (rows.find((/** @type {any} */ r) => r.id === 4)).status, 'not-operational');
+        assert.deepEqual(result.deletedIds, []);
+        assert.equal(storedCount(), 6); // 5 + {8}
+        assert.equal(actualCount(), 6);
+    });
+});
+
+describe('isListed', () => {
+    it("lists 'ok', 'not-operational' and rows without a status", () => {
+        assert.equal(isListed({ status: 'ok' }), true);
+        assert.equal(isListed({ status: 'not-operational' }), true);
+        assert.equal(isListed({}), true);
+    });
+
+    it('treats deleted, pending and unknown statuses as removals', () => {
+        for (const status of ['deleted', 'pending', 'something-new']) {
+            assert.equal(isListed({ status }), false, status);
+        }
     });
 });

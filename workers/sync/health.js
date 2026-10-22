@@ -1,10 +1,12 @@
 /**
  * @fileoverview Weekly mirror health check and repair (pdbfe-sync).
  *
- * Incremental ?since= syncs cannot see every upstream change: PeeringDB
- * hard-deletes some rows (pdb_rir_status removes netixlans with a QuerySet
- * .delete()) and some status changes do not advance `updated`. Over months
- * the mirror drifts: stale rows that upstream no longer lists, and rows
+ * Incremental ?since= syncs cannot see every upstream change. Until
+ * PeeringDB 2.84 (#2057, fixed 2026-10-20), the RIR-status cleanup
+ * hard-deleted netixlans with a QuerySet .delete() and soft-deleted some
+ * networks without advancing `updated`; rows lost that way stay invisible to
+ * ?since= and are still here to clean up. Any similar gap would drift the
+ * mirror the same way: stale rows that upstream no longer lists, and rows
  * upstream lists that the mirror never received.
  *
  * Once a week, per entity: fetch upstream's id + updated list (one request,
@@ -15,7 +17,7 @@
  * request — recount row_count — and make
  * a lot of noise about it: console.error per repaired table, and a full
  * report in _health_runs that the mirror-health GitHub workflow turns into a
- * job summary, an issue and a failed run.
+ * job summary, a warning and an issue.
  *
  * Guards (repair deletes data):
  *   - a failed or empty upstream id list skips the table (error);
