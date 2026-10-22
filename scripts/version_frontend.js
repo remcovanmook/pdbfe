@@ -370,8 +370,14 @@ export function buildVersionedFrontend(srcDir, outDir, version) {
 
     rewrite(path.join(outDir, 'third_party', 'inter', 'inter.css'), (src) => versionCssUrls(src, token));
 
+    // _headers is generated (deploy.sh --generate-configs copies the
+    // example); start from the example when it hasn't been, so the build
+    // comes out the same either way.
     const headersFile = path.join(outDir, '_headers');
-    const headers = fs.existsSync(headersFile) ? fs.readFileSync(headersFile, 'utf8') : '';
+    const exampleFile = path.join(outDir, '_headers.example');
+    let headers = '';
+    if (fs.existsSync(headersFile)) headers = fs.readFileSync(headersFile, 'utf8');
+    else if (fs.existsSync(exampleFile)) headers = fs.readFileSync(exampleFile, 'utf8');
     const index = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
     const built = setLinkHeader(setImmutableRules(headers), index);
     assertUniqueRules(built);
