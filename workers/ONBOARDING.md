@@ -129,7 +129,7 @@ Every API request follows this hierarchy:
    - **D1:** Execute the handler's `queryFn` closure.
    - **Write-back:** Store result in L1, return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
-8. **Last-Modified:** Entity responses get a `Last-Modified` header derived from the per-entity `last_modified_at` in `_sync_meta`.
+8. **Last-Modified:** Entity responses get a `Last-Modified` header derived from the per-entity `last_modified_at` in `_sync_meta`. If-Modified-Since on a detail request is answered per object from `_row_changes` (`api/row_changes.js`): a 304 unless that object, at the requested depth, changed at or after the IMS (within 24h). Lists, and details before the marks are loaded, use the per-entity version.
 9. **Background:** If paginated, `waitUntil` to pre-fetch next page.
 
 Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix) to prevent cache poisoning between authenticated and anonymous responses.

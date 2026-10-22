@@ -144,7 +144,6 @@ async function checkTable(env, tag, meta, upstream) {
         t.outdated = outdated.length;
 
         // Set membership (parent FKs, visibility) before the repair overwrites it (row_changes.js).
-        const ts = Math.floor(Date.now() / 1000);
         const staleBefore = await readMembership(db, tag, stale);
         t.deleted = await deleteStale(db, meta, stale, mirrorUpdated.size, t.alerts);
         const fetched = await fetchById(tag, missing, outdated, upstream, t.alerts);
@@ -158,8 +157,14 @@ async function checkTable(env, tag, meta, upstream) {
         // A repair changes served data like a sync does: mark the objects and
         // advance last_modified_at, or caches and If-Modified-Since keep the
         // old copies.
+        // Readers fetch marks from the new last_modified_at on, so the marks'
+        // time must be past the current one (a sync may have set it later
+        // than this clock reading).
         const changed = t.deleted.concat(fetched.map((r) => r.id));
+        let ts = 0;
         if (changed.length > 0) {
+            const cur = await db.prepare('SELECT last_modified_at FROM "_sync_meta" WHERE entity = ?').bind(tag).first();
+            ts = Math.max(Math.floor(Date.now() / 1000), Number(cur?.last_modified_at ?? 0) + 1);
             await recordRowChanges(db, tag, ts, {
                 ids: changed,
                 deletedIds: t.deleted,
@@ -172,7 +177,7 @@ async function checkTable(env, tag, meta, upstream) {
         const cnt = await db.prepare(`SELECT COUNT(*) AS cnt FROM "${meta.table}"`).first();
         t.rowCount = cnt ? /** @type {number} */ (cnt.cnt) : 0;
         await db.prepare('UPDATE "_sync_meta" SET row_count = ?, last_modified_at = max(last_modified_at, ?) WHERE entity = ?')
-            .bind(t.rowCount, changed.length > 0 ? ts : 0, tag).run();
+            .bind(t.rowCount, ts, tag).run();
 
         if (t.deleted.length || t.inserted.length || t.refreshed.length) t.action = 'repaired';
     } catch (err) {

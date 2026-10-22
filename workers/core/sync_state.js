@@ -35,6 +35,10 @@ import { encoder, jsonError } from './http.js';
  * @param {Iterable<string>} opts.entityTags - Entity tags to track.
  * @param {(tag: string) => void} opts.onEntityChange - Called for each entity
  *        whose last_modified_at changed. Perform the L1 purge here.
+ * @param {(changes: Array<[string, number]>, initial: boolean) => void} [opts.onPollApplied] -
+ *        Called after a poll with the entities whose last_modified_at changed
+ *        and their new values; `initial` on the first successful poll (every
+ *        entity, from an empty snapshot). Not called when nothing changed.
  * @param {Record<string, string>} [opts.statusHeaders] - Header set for the
  *        pre-encoded /status payload. Omit to disable status payload building
  *        (a worker that does not serve the sync /status endpoint).
@@ -53,7 +57,7 @@ import { encoder, jsonError } from './http.js';
  *   getEntityVersion: (tag: string) => number,
  * }}
  */
-export function createSyncState({ entityTags, onEntityChange, statusHeaders, statusCacheControl, statusColdTimeoutMs = 2_000, checkIntervalMs = 15_000 }) {
+export function createSyncState({ entityTags, onEntityChange, onPollApplied, statusHeaders, statusCacheControl, statusColdTimeoutMs = 2_000, checkIntervalMs = 15_000 }) {
     /**
      * Per-entity last_modified_at snapshot. Initialised from entityTags
      * with zero — no dynamic keys, no dictionary mode.
@@ -66,6 +70,9 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
 
     /** Timestamp of the last background D1 poll. @type {number} */
     let lastCheck = 0;
+
+    /** Whether a poll has been applied yet (the next one is the initial one). */
+    let polled = false;
 
     /** Pre-encoded JSON response for /status. @type {Uint8Array|null} */
     let statusPayload = null;
@@ -121,6 +128,8 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
             }
 
             // Granular invalidation: check each known entity against D1 state.
+            /** @type {Array<[string, number]>} */
+            const changes = [];
             for (const tag of entityTags) {
                 const entry = dbState.get(tag);
                 if (!entry) continue;
@@ -130,8 +139,12 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
                     console.log(`[sync] ${tag} data changed (${known} → ${entry.last_modified_at}). Purging L1.`);
                     onEntityChange(tag);
                 }
+                if (!polled || entry.last_modified_at !== known) changes.push([tag, entry.last_modified_at]);
                 knownModifiedAt.set(tag, entry.last_modified_at);
             }
+            const initial = !polled;
+            polled = true;
+            if (onPollApplied && (initial || changes.length > 0)) onPollApplied(changes, initial);
 
             // Rebuild pre-encoded /status payload only when the worker serves it.
             if (statusHeaders) {
