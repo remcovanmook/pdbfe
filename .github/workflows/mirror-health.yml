@@ -2,10 +2,11 @@ name: Mirror health
 
 # The sync worker runs a weekly health check & repair (workers/sync/health.js,
 # cron "7 3 * * SUN") and records a report in D1 (_health_runs). This workflow
-# runs half an hour later and makes noise about it: job summary, a
-# `mirror-health` issue (opened or commented) and a FAILED run whenever
+# runs half an hour later and makes noise about it: job summary, a warning
+# annotation and a `mirror-health` issue (opened or commented) whenever
 # anything was repaired, errored, alerted — or the weekly run is missing.
-# A clean run comments on and closes any open mirror-health issue.
+# A clean run comments on and closes any open mirror-health issue. The run
+# itself fails only when the report can't be read.
 
 on:
   schedule:
@@ -61,10 +62,10 @@ jobs:
             gh issue close "$ISSUE" --reason completed
           fi
 
-      - name: Fail the run when the mirror needed attention
+      # The issue is the notification; a warning annotation keeps the run
+      # green. The run fails only when the report itself can't be read.
+      - name: Flag the run when the mirror needed attention
         if: steps.report.outputs.attention == 'true'
         env:
           TITLE: ${{ steps.report.outputs.title }}
-        run: |
-          echo "::error::$TITLE"
-          exit 1
+        run: echo "::warning::$TITLE"
