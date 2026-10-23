@@ -161,12 +161,15 @@ export function purgeAllCaches() {
  *        null for 404/empty.
  * @param {number} [staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number}>}
+ * @param {{ stamp: number }} [stampOf] - The request's D1 stats: their
+ *        `stamp` (the sync run's as-of time, read with the query) is kept
+ *        with the entry and returned on hits (Last-Modified).
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number, stamp: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
  */
-export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs) {
+export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, staleMs, stampOf) {
     return withSWR({
         cache: getEntityCache(entityTag),
         cacheKey,
@@ -176,6 +179,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
         queryFn,
         tag: entityTag,
         staleMs,
+        getStamp: stampOf ? () => stampOf.stamp : undefined,
     });
 }
 
@@ -199,6 +203,7 @@ export async function withEdgeSWR(entityTag, cacheKey, ctx, ttlMs, queryFn, stal
  * @param {number} opts.ttlMs - TTL for positive results in milliseconds.
  * @param {() => Promise<Uint8Array|null>} opts.queryFn - D1 query closure.
  * @param {ExecutionContext} [opts.ctx] - Worker execution context.
+ * @param {() => number} [opts.getStamp] - See core/pipeline/query.js.
  * @returns {Promise<import('../core/pipeline/query.js').CachedResult>}
  */
 export async function cachedQuery(opts) {

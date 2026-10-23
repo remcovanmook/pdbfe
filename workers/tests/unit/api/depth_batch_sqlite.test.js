@@ -122,8 +122,8 @@ describe('deep OFFSET pages: rows first, then one batch of expansions by id', as
         assert.deepEqual(rows.map((/** @type {any} */ r) => r.id), [DEEP_SKIP + 1, DEEP_SKIP + 2]);
         assert.deepEqual(rows.map((/** @type {any} */ r) => r.netfac_set), [[900], []]);
         assert.equal(rows[0].org.id, 1);
-        assert.equal(calls.direct, 1, 'the page query');
-        assert.equal(calls.batch, 1, 'the expansions');
+        assert.equal(calls.direct, 0);
+        assert.equal(calls.batch, 2, 'the page query (with the sync run stamp), then the expansions');
     });
 
     it(`skip < ${DEEP_SKIP}: still a single batch`, async () => {

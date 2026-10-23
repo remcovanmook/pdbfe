@@ -284,6 +284,8 @@ export default {
             console.error('[sync] pruning _row_changes failed:', err);
         }
 
+        // Registry order, always: the API worker sends the last entity's
+        // last_sync as Last-Modified (the run is complete once it moves).
         for (const [tag, meta] of Object.entries(ENTITIES)) {
             const syncResult = await syncEntity(env.PDB, tag, meta, apiKey, queue);
             results.push(syncResult);

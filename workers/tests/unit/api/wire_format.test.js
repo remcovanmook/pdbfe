@@ -158,7 +158,6 @@ describe('Wire format: required fields', () => {
                 rawPath: `anon:api/${tag}`,
                 queryString: '',
                 authenticated: false,
-                entityVersionMs: 0,
                 userId: null,
             });
 
@@ -206,7 +205,6 @@ describe('Wire format: internal fields excluded', () => {
                 rawPath: `anon:api/${tag}`,
                 queryString: '',
                 authenticated: false,
-                entityVersionMs: 0,
                 userId: null,
             });
 

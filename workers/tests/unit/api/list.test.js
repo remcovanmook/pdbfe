@@ -67,7 +67,6 @@ function makeHC(overrides = {}) {
         rawPath: 'anon:api/net',
         queryString: '',
         authenticated: false,
-        entityVersionMs: 0,
         userId: null,
         ...overrides,
     });

@@ -56,20 +56,22 @@ import { cachedQuery, isNegative, EMPTY_ENVELOPE } from './query.js';
  *        cache entries. Defaults to EMPTY_ENVELOPE.
  * @param {number} [opts.staleMs] - Age in milliseconds before a background
  *        refresh is triggered. Defaults to 80% of ttlMs.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number, dbMs?: number}>}
+ * @param {() => number} [opts.getStamp] - See cachedQuery; hits return the
+ *        stamp stored with the entry.
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number, dbMs?: number, stamp: number}>}
  *          The response payload, cache tier that served it, and hit count.
  *          buf is null when the result is a negative cache entry (caller
  *          should return 404).
  */
 export async function withSWR({
     cache, cacheKey, ctx, ttlMs, negativeTtlMs,
-    queryFn, tag, emptySentinel = EMPTY_ENVELOPE, staleMs,
+    queryFn, tag, emptySentinel = EMPTY_ENVELOPE, staleMs, getStamp,
 }) {
     const effectiveStaleMs = staleMs !== undefined ? staleMs : Math.floor(ttlMs * 0.8);
 
     /** @type {Parameters<typeof cachedQuery>[0]} */
     const pipelineOpts = {
-        cacheKey, cache, entityTag: tag, queryFn, emptySentinel,
+        cacheKey, cache, entityTag: tag, queryFn, emptySentinel, getStamp,
     };
 
     // ── SYNCHRONOUS DESTRUCTURE ──────────────────────────────────────
@@ -82,6 +84,7 @@ export async function withSWR({
         const buf = /** @type {Uint8Array|null} */ (/** @type {unknown} */ (entry.buf));
         const hits = entry.hits;
         const addedAt = entry.addedAt;
+        const stamp = entry.meta?.stamp ?? 0;
         // Fields extracted — safe from _ret mutation beyond this point.
 
         const age = Date.now() - addedAt;
@@ -103,14 +106,14 @@ export async function withSWR({
 
             // Return cached data (fresh or stale-but-valid)
             if (neg) {
-                return { buf: null, tier: /** @type {'L1'} */ ('L1'), hits };
+                return { buf: null, tier: /** @type {'L1'} */ ('L1'), hits, stamp };
             }
-            return { buf, tier: /** @type {'L1'} */ ('L1'), hits };
+            return { buf, tier: /** @type {'L1'} */ ('L1'), hits, stamp };
         }
         // Entry is past hard TTL — fall through to miss path
     }
 
     // ── CACHE MISS (blocking) ────────────────────────────────────────
     const result = await cachedQuery(pipelineOpts);
-    return { buf: result.buf, tier: result.tier, hits: 0, dbMs: result.dbMs };
+    return { buf: result.buf, tier: result.tier, hits: 0, dbMs: result.dbMs, stamp: result.stamp };
 }
