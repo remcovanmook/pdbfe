@@ -116,7 +116,6 @@ function makeHC(overrides = {}) {
         queryString: '',
         authenticated: false,
         hApi: H_API_ANON,
-        entityVersionMs: 0,
         userId: null,
         ...overrides,
     });

@@ -57,7 +57,9 @@ export function isNegative(buf, sentinel = EMPTY_ENVELOPE) {
  */
 
 /**
- * @typedef {{buf: Uint8Array|null, tier: CacheTier, dbMs?: number}} CachedResult
+ * @typedef {{buf: Uint8Array|null, tier: CacheTier, dbMs?: number, stamp: number}} CachedResult
+ *   stamp: the caller's getStamp() value taken right after the query (0
+ *   without getStamp), stored with the L1 entry so hits return it too.
  */
 
 /**
@@ -91,15 +93,18 @@ export function isNegative(buf, sentinel = EMPTY_ENVELOPE) {
  * @param {Uint8Array} [opts.emptySentinel] - Sentinel buffer used for negative cache
  *        entries. Defaults to EMPTY_ENVELOPE. Workers with different empty-result
  *        shapes (e.g. GraphQL's {"data":null,"errors":[]}) inject their own.
+ * @param {() => number} [opts.getStamp] - Read after queryFn resolves; the value
+ *        is kept with the entry (the API worker's Last-Modified: the sync run's
+ *        as-of time, read in the same D1 batch as the query).
  * @returns {Promise<CachedResult>} Fresh payload; buf is null for negative results
  *          (sentinel was stored, caller should 404).
  */
-export async function cachedQuery({ cacheKey, cache, entityTag, queryFn, emptySentinel = EMPTY_ENVELOPE }) {
+export async function cachedQuery({ cacheKey, cache, entityTag, queryFn, emptySentinel = EMPTY_ENVELOPE, getStamp }) {
     // ── Promise coalescing ───────────────────────────────────────
     let inflight = cache.pending.get(cacheKey);
 
     if (!inflight) {
-        inflight = _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel);
+        inflight = _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel, getStamp);
         cache.pending.set(cacheKey, inflight);
         inflight.finally(() => cache.pending.delete(cacheKey)).catch(() => {});
     }
@@ -116,21 +121,23 @@ export async function cachedQuery({ cacheKey, cache, entityTag, queryFn, emptySe
  * @param {string} entityTag
  * @param {() => Promise<Uint8Array|null>} queryFn
  * @param {Uint8Array} emptySentinel
+ * @param {(() => number)|undefined} getStamp
  * @returns {Promise<CachedResult>}
  */
-async function _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel) {
+async function _resolve(cacheKey, cache, entityTag, queryFn, emptySentinel, getStamp) {
     // Phase timing for Server-Timing. Workers clocks advance across I/O,
     // which is exactly what this await is.
     const tDb = Date.now();
     const buf = await queryFn();
     const dbMs = Date.now() - tDb;
+    const stamp = getStamp ? getStamp() : 0;
 
     if (buf === null) {
         // Negative result: store sentinel (the caller's negativeTtlMs applies)
-        cache.add(cacheKey, emptySentinel, { entityTag }, Date.now());
-        return { buf: null, tier: 'MISS', dbMs };
+        cache.add(cacheKey, emptySentinel, { entityTag, stamp }, Date.now());
+        return { buf: null, tier: 'MISS', dbMs, stamp };
     }
 
-    cache.add(cacheKey, buf, { entityTag }, Date.now());
-    return { buf, tier: 'MISS', dbMs };
+    cache.add(cacheKey, buf, { entityTag, stamp }, Date.now());
+    return { buf, tier: 'MISS', dbMs, stamp };
 }

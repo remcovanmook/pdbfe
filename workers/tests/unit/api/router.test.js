@@ -41,8 +41,9 @@ function mockPDB(overrides = {}) {
                 all() { return Promise.resolve({ success: true, meta: {}, results: rows }); },
             };
         },
+        // As D1: each statement's own results, in order.
         batch(/** @type {any[]} */ stmts) {
-            return Promise.resolve(stmts.map(() => ({ success: true, meta: {}, results: [] })));
+            return Promise.all(stmts.map((s) => s.all()));
         },
     });
 }

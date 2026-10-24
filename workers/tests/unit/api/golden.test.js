@@ -138,7 +138,6 @@ function goldenHC(tag, db, optsOverride = {}) {
         rawPath: `anon:api/${tag}`,
         queryString: '',
         authenticated: false,
-        entityVersionMs: 0,
         userId: null,
     });
 }

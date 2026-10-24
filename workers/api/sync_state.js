@@ -13,7 +13,7 @@
  * Exports:
  *   ensureSyncFreshness(db, ctx, now) — O(1) hot-path hook
  *   handleStatus(request, db, ctx)    — pre-encoded /status handler
- *   getEntityVersion(tag)             — returns last_modified_at (Last-Modified / If-Modified-Since)
+ *   getEntityVersion(tag)             — returns last_modified_at (per-entity If-Modified-Since)
  */
 
 import { createSyncState } from '../core/sync_state.js';

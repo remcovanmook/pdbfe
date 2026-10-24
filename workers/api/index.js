@@ -7,7 +7,7 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, syncAlignedCacheControl } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus } from './sync_state.js';
@@ -31,6 +31,14 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
 });
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Last-Modified: last_sync of the entity the sync worker processes last (it
+ * walks the registry in order, sync/index.js). That row only moves once every
+ * entity before it is written, so it is the time the whole run is complete
+ * as of. One existing row, by primary key.
+ */
+const SYNC_RUN_SQL = `SELECT "last_sync" FROM "_sync_meta" WHERE "entity" = '${Object.keys(ENTITIES).at(-1)}'`;
 const ALL_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"];
 
 /**
@@ -230,13 +238,14 @@ async function handleRequest(request, env, ctx) {
     // If-Modified-Since shortcut: return 304 without touching cache or D1
     // if the entity data hasn't changed since the client's cached copy.
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
+    // No Last-Modified: that is the as-of time of the data a response was
+    // built from, and this one reads none; the client keeps its own.
     if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
         return new Response(null, {
             status: 304,
             headers: {
                 ...hEntity,
                 ...(hEntity['Cache-Control'].startsWith('public') ? { 'Cache-Control': syncAlignedCacheControl() } : {}),
-                'Last-Modified': lastModifiedHeader(entityVersionMs),
             }
         });
     }
@@ -258,17 +267,20 @@ async function handleRequest(request, env, ctx) {
     const paging = page !== null && id <= 0 ? { page, perPage } : null;
 
     // ── Handler dispatch ─────────────────────────────────────────────
-    // entityVersionMs and userId are threaded into the context so that
-    // serveJSON can bake Last-Modified and X-Auth-Id into the initial
-    // header dict, avoiding a second Response + Headers allocation.
+    // userId is threaded into the context so that serveJSON can bake
+    // X-Auth-Id into the initial header dict, avoiding a second Response +
+    // Headers allocation; Last-Modified comes from d1.stamp (see below).
     /** @type {HandlerContext} */
-    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, entityVersionMs, userId: shared ? null : userId, paging, authMs };
+    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, userId: shared ? null : userId, paging, authMs };
     // Sync freshness poll (every 15 s per isolate): rides along the
     // request's first D1 call in the same batch — no extra round trip, and
     // no separate query racing the request's own. A request that never
     // reaches D1 (L1 hit) runs it after the response instead.
     const poll = claimSyncPoll(now);
     if (poll) db.carry(poll);
+    // Last-Modified: the sync run's as-of time, read in the same batch as the
+    // query so it describes that query's snapshot (kept with the L1 entry).
+    db.stamp(SYNC_RUN_SQL);
     const response = id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);

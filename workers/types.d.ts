@@ -680,16 +680,14 @@ interface HandlerContext {
     authenticated: boolean;
     /** Response header set chosen by the router: H_API_SHARED for auth-independent responses, else H_API_AUTH / H_API_ANON. */
     hApi: Record<string, string>;
-    /** Entity last-modified epoch ms (0 if unknown). serveJSON uses this to set Last-Modified. */
-    entityVersionMs?: number;
     /** Authenticated user ID (null for anon). serveJSON uses this to set X-Auth-Id. */
     userId?: number | null;
     /** Raw ?page / ?per_page for page-number pagination on list requests (null when absent). */
     paging?: { page: string, perPage: string | null } | null;
     /** Auth resolution time (ms), reported in Server-Timing. */
     authMs?: number;
-    /** Per-request D1 counters for Server-Timing (core/d1stats.js). */
-    d1?: { calls: number, sqlMs: number, rowsRead: number };
+    /** Per-request D1 counters for Server-Timing, and the sync run's as-of time read with the query (stamp; Last-Modified) — core/d1stats.js. */
+    d1?: { calls: number, sqlMs: number, rowsRead: number, stamp: number };
     /** Pipeline result of the request (set by list/detail handlers) for tier metrics. */
     pipeline?: { tier: string, dbMs?: number };
 }

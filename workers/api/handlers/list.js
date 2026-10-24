@@ -40,9 +40,10 @@ export async function handleList(hc) {
     const cacheKey = normaliseCacheKey(rawPath, queryString);
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
-        () => executeListQuery(db, entity, filters, opts, authenticated)
+        () => executeListQuery(db, entity, filters, opts, authenticated),
+        undefined, hc.d1
     );
-    const { buf, tier, hits } = result;
+    const { buf, tier, hits, stamp } = result;
     hc.pipeline = result;
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
@@ -58,13 +59,13 @@ export async function handleList(hc) {
             const nextCacheKey = normaliseCacheKey(rawPath, buildSortedQS(filters, nextOpts));
             if (!cache.has(nextCacheKey) && !cache.pending.has(nextCacheKey)) {
                 ctx.waitUntil(
-                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated, ctx)
+                    prefetchPage(db, entity, entityTag, filters, nextOpts, nextCacheKey, cache, authenticated, ctx, hc.d1)
                 );
             }
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, stamp * 1000, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -132,12 +133,13 @@ async function handlePaged(hc, entity, paging) {
     const result = await withEdgeSWR(
         entityTag, cacheKey, ctx, LIST_TTL,
         () => buildPagedEnvelope(db, entity, filters, opts, { page, perPage, base, queryString },
-            (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated))
+            (pageOpts) => executeListQuery(db, entity, filters, pageOpts, authenticated)),
+        undefined, hc.d1
     );
-    const { buf, tier, hits } = result;
+    const { buf, tier, hits, stamp } = result;
     hc.pipeline = result;
     if (!buf) return jsonError(404, 'Invalid page.');
-    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hApi, hc.entityVersionMs, hc.userId);
+    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hApi, stamp * 1000, hc.userId);
 }
 
 /**
@@ -153,13 +155,17 @@ async function handlePaged(hc, entity, paging) {
  * @param {LocalCache} cache - The entity's LRU cache instance.
  * @param {boolean} authenticated - Whether the caller is authenticated (for POC visibility).
  * @param {ExecutionContext} ctx - Worker execution context.
+ * @param {{ stamp: number }} [stampOf] - The request's D1 stats. Their stamp
+ *        came with the request's own query, a snapshot no newer than this
+ *        page's (same session), so it is a safe Last-Modified for it.
  * @returns {Promise<void>}
  */
-async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated, ctx) {
+async function prefetchPage(db, entity, entityTag, filters, opts, cacheKey, cache, authenticated, ctx, stampOf) {
     try {
         await cachedQuery({ // ap-ok: background prefetch in waitUntil, not handler flow
             cacheKey, cache, entityTag, ttlMs: LIST_TTL, ctx,
-            queryFn: () => executeListQuery(db, entity, filters, opts, authenticated)
+            queryFn: () => executeListQuery(db, entity, filters, opts, authenticated),
+            getStamp: () => stampOf?.stamp ?? 0,
         });
     } catch (err) {
         console.error(`Pre-fetch failed for ${cacheKey}:`, err);

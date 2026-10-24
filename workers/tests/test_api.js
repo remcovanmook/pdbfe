@@ -33,6 +33,8 @@ function mockD1(rows = []) {
             };
             return stmt;
         },
+        /** As D1: each statement's own results, in order (requests batch their query with the sync poll and the Last-Modified stamp). */
+        batch: async (/** @type {any[]} */ stmts) => Promise.all(stmts.map((s) => s.all())),
         /** Sessions API: returns itself since the mock already has .prepare(). */
         withSession() { return db; }
     });

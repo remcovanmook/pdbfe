@@ -30,7 +30,7 @@ describe('withD1Stats', () => {
         const { db, stats } = withD1Stats(fakeD1([{ id: 1 }]));
         await db.prepare('SELECT 1').bind(1).all();
         await db.batch([db.prepare('a').bind(), db.prepare('b')]);
-        assert.deepEqual(stats, { calls: 2, sqlMs: 7.5, rowsRead: 30 }); // 1 + batch of 2 statements
+        assert.deepEqual(stats, { calls: 2, sqlMs: 7.5, rowsRead: 30, stamp: 0 }); // 1 + batch of 2 statements
     });
 
     it('first() goes through all(): same row, and meta is recorded', async () => {
@@ -95,7 +95,7 @@ describe('riders (the sync poll sent with the request’s first D1 call)', () =>
         assert.deepEqual(f.batches, [['MAIN', 'POLL']]);
         assert.deepEqual(f.direct, []);
         assert.deepEqual(polled, [{ from: 'POLL' }]);
-        assert.deepEqual(stats, { calls: 1, sqlMs: 1, rowsRead: 1 }, 'rider meta not counted');
+        assert.deepEqual(stats, { calls: 1, sqlMs: 1, rowsRead: 1, stamp: 0 }, 'rider meta not counted');
         await db.prepare('NEXT').all();
         assert.deepEqual(f.direct, ['NEXT'], 'only the first call carries it');
     });
@@ -123,5 +123,86 @@ describe('riders (the sync poll sent with the request’s first D1 call)', () =>
         const { db } = withD1Stats(recordingD1().db);
         db.carry({ sql: 'POLL', apply: () => { throw new Error('boom'); } });
         assert.deepEqual(await db.prepare('MAIN').first(), { from: 'MAIN' });
+    });
+});
+
+describe('stamp (the sync run row sent with the first D1 call)', () => {
+    /** Fake D1: STAMP returns `stampRows`, anything else one row. */
+    function stampD1(/** @type {any[]} */ stampRows) {
+        /** @type {string[][]} */
+        const batches = [];
+        const stmt = (/** @type {string} */ sql) => ({
+            sql,
+            bind() { return this; },
+            all: async () => { batches.push([sql]); return { results: [{ from: sql }], meta: {} }; },
+        });
+        return {
+            batches,
+            db: {
+                prepare: stmt,
+                batch: async (/** @type {any[]} */ stmts) => {
+                    batches.push(stmts.map((s) => s.sql));
+                    return stmts.map((s) => ({ results: s.sql === 'STAMP' ? stampRows : [{ from: s.sql }], meta: {} }));
+                },
+            },
+        };
+    }
+
+    it('goes with the first call, next to the poll, and sets stats.stamp', async () => {
+        const f = stampD1([{ as_of: 1800000000 }]);
+        const { db, stats } = withD1Stats(f.db);
+        db.carry({ sql: 'POLL', apply: () => {} });
+        db.stamp('STAMP');
+        assert.deepEqual(await db.prepare('MAIN').first(), { from: 'MAIN' });
+        assert.deepEqual(f.batches, [['MAIN', 'POLL', 'STAMP']]);
+        assert.equal(stats.stamp, 1800000000);
+        await db.prepare('NEXT').all();
+        assert.deepEqual(f.batches[1], ['NEXT'], 'only the first call carries it');
+    });
+
+    it('batch() strips it from the results', async () => {
+        const f = stampD1([{ as_of: 7 }]);
+        const { db, stats } = withD1Stats(f.db);
+        db.stamp('STAMP');
+        const results = await db.batch([db.prepare('A'), db.prepare('B')]);
+        assert.deepEqual(results.map((/** @type {any} */ r) => r.results[0].from), ['A', 'B']);
+        assert.equal(stats.stamp, 7);
+    });
+
+    it('is not handed back by takeRider(), and waits for a later call', async () => {
+        const f = stampD1([{ as_of: 9 }]);
+        const { db, stats } = withD1Stats(f.db);
+        db.stamp('STAMP');
+        assert.equal(db.takeRider(), null);
+        assert.equal(stats.stamp, 0);
+        await db.prepare('LATER').all();
+        assert.deepEqual(f.batches, [['LATER', 'STAMP']]);
+        assert.equal(stats.stamp, 9);
+    });
+
+    it('a failed call puts the poll and the stamp back for the retry', async () => {
+        const f = stampD1([{ as_of: 5 }]);
+        let fail = true;
+        const inner = f.db.batch;
+        f.db.batch = async (/** @type {any[]} */ stmts) => {
+            if (fail) { fail = false; throw new Error('D1_ERROR: string or blob too big: SQLITE_TOOBIG'); }
+            return inner(stmts);
+        };
+        const { db, stats } = withD1Stats(f.db);
+        let polled = 0;
+        db.carry({ sql: 'POLL', apply: () => { polled++; } });
+        db.stamp('STAMP');
+        await assert.rejects(db.prepare('BIG').all());
+        await db.prepare('SMALLER').all();
+        assert.deepEqual(f.batches, [['SMALLER', 'POLL', 'STAMP']]);
+        assert.equal(polled, 1);
+        assert.equal(stats.stamp, 5);
+    });
+
+    it('no row (before the first sync run): stamp stays 0', async () => {
+        const { db, stats } = withD1Stats(stampD1([]).db);
+        db.stamp('STAMP');
+        await db.prepare('MAIN').all();
+        assert.equal(stats.stamp, 0);
     });
 });

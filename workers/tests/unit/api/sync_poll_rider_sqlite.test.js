@@ -44,14 +44,15 @@ const get = async (/** @type {string} */ path) => {
     assert.equal(res.status, 200);
     return res;
 };
-const isPoll = (/** @type {string} */ sql) => sql.includes('_sync_meta');
+// The poll reads all of _sync_meta; the Last-Modified stamp reads one row of it.
+const isPoll = (/** @type {string} */ sql) => sql.includes('FROM "_sync_meta" ORDER BY entity');
 
 describe('sync freshness poll', () => {
     it('due + the request queries D1: one batch carries both, no separate poll query', async () => {
         reset();
         await get('net/100');
         assert.equal(batches.length, 1);
-        assert.equal(batches[0].length, 2);
+        assert.equal(batches[0].length, 3, 'the query, the poll, the sync run stamp');
         assert.ok(batches[0].some(isPoll), 'poll in the batch');
         assert.equal(direct.filter(isPoll).length, 0);
     });

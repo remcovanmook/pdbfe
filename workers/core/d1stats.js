@@ -17,10 +17,17 @@
  * caller, and its meta does not count toward the request's stats. If the
  * request makes no D1 call, `takeRider()` hands it back for the caller to
  * run separately.
+ *
+ * Stamp: `stamp(sql)` attaches a one-row lookup (the sync run's as-of time)
+ * to the first D1 call the same way; its first column lands in
+ * `stats.stamp`, from the same snapshot as that call's data. Unlike the
+ * poll it is never handed back: a request that makes no D1 call has no use
+ * for it (a later background call on the session, e.g. an SWR refresh,
+ * still takes it).
  */
 
 /**
- * @typedef {{ calls: number, sqlMs: number, rowsRead: number }} D1Stats
+ * @typedef {{ calls: number, sqlMs: number, rowsRead: number, stamp: number }} D1Stats
  * @typedef {{ sql: string, apply: (results: Record<string, any>[]) => void }} Rider
  */
 
@@ -30,7 +37,7 @@
  */
 export function withD1Stats(db) {
     /** @type {D1Stats} */
-    const stats = { calls: 0, sqlMs: 0, rowsRead: 0 };
+    const stats = { calls: 0, sqlMs: 0, rowsRead: 0, stamp: 0 };
 
     /** @param {any} meta */
     const record = (meta) => {
@@ -42,6 +49,41 @@ export function withD1Stats(db) {
 
     /** @type {Rider|null} */
     let rider = null;
+    /** @type {Rider|null} */
+    let stampRider = null;
+
+    /** The stamp rider's apply: first column of the first row → stats.stamp. @param {Record<string, any>[]} rows */
+    const stampApply = (rows) => {
+        const row = rows[0];
+        const v = row ? Number(Object.values(row)[0]) : 0;
+        stats.stamp = Number.isFinite(v) && v > 0 ? v : 0;
+    };
+
+    /**
+     * The pending riders (poll, stamp), cleared — they go with this call.
+     * @returns {Rider[]}
+     */
+    const takeAll = () => {
+        /** @type {Rider[]} */
+        const out = [];
+        if (rider) out.push(rider);
+        if (stampRider) out.push(stampRider);
+        rider = null;
+        stampRider = null;
+        return out;
+    };
+
+    /**
+     * Puts riders back after their call failed (a failed batch returns
+     * nothing for any statement), so the caller's retry carries them.
+     * @param {Rider[]} riders
+     */
+    const restore = (riders) => {
+        for (const r of riders) {
+            if (r.apply === stampApply) stampRider ??= r;
+            else rider ??= r;
+        }
+    };
 
     /** @param {Rider} r @param {any} result */
     const deliver = (r, result) => {
@@ -49,16 +91,22 @@ export function withD1Stats(db) {
     };
 
     /**
-     * Executes one statement's all(), sending the pending rider (if any) in
-     * the same batch.
+     * Executes one statement's all(), sending the pending riders (if any)
+     * in the same batch.
      * @param {any} st
      */
     const allWithRider = async (st) => {
-        const r = rider;
-        if (!r) return st.all();
-        rider = null;
-        const [main, extra] = await db.batch([st, db.prepare(r.sql)]);
-        deliver(r, extra);
+        if (!rider && !stampRider) return st.all();
+        const riders = takeAll();
+        let results;
+        try {
+            results = await db.batch([st, ...riders.map(r => db.prepare(r.sql))]); // ap-ok: D1 call path, one map per call
+        } catch (err) {
+            restore(riders);
+            throw err;
+        }
+        const [main, ...extra] = results;
+        for (let i = 0; i < riders.length; i++) deliver(riders[i], extra[i]);
         return main;
     };
 
@@ -94,11 +142,17 @@ export function withD1Stats(db) {
         batch: async (/** @type {any[]} */ stmts) => {
             stats.calls++;
             const inner = stmts.map(s => s?.__inner ?? s); // ap-ok: cold path, one map per batch
-            const r = rider;
-            rider = null;
-            if (r) inner.push(db.prepare(r.sql));
-            const results = await db.batch(inner);
-            if (r) deliver(r, results.pop());
+            const riders = takeAll();
+            for (const r of riders) inner.push(db.prepare(r.sql));
+            let results;
+            try {
+                results = await db.batch(inner);
+            } catch (err) {
+                restore(riders);
+                throw err;
+            }
+            const extra = results.splice(stmts.length);
+            for (let i = 0; i < riders.length; i++) deliver(riders[i], extra[i]);
             for (const res of results) record(res?.meta);
             return results;
         },
@@ -106,6 +160,12 @@ export function withD1Stats(db) {
         carry: (r) => { rider = r; },
         /** The rider, if no D1 call took it (then cleared). @returns {Rider|null} */
         takeRider: () => { const r = rider; rider = null; return r; },
+        /**
+         * Attaches a one-row lookup to the next D1 call; its first column goes
+         * to stats.stamp (see file overview).
+         * @param {string} sql
+         */
+        stamp: (sql) => { stampRider = { sql, apply: stampApply }; },
         withSession: () => session,
         getBookmark: () => db.getBookmark?.() ?? null,
     };
