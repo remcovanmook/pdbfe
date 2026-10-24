@@ -565,7 +565,16 @@ function rowsOf(entity, where) {
     const cols = new Set(parentFks(entity, true).map(f => f.name)); // ap-ok: SQL construction, cached per entity and depth
     for (const j of entity.joinColumns || []) cols.add(j.localFk);
     cols.delete('id');
-    return { sql: `SELECT "id"${[...cols].map(c => `, "${c}"`).join('')} FROM "${entity.table}" WHERE ${where}`, params: [] }; // ap-ok: SQL construction, cached per entity and depth
+    return { sql: `SELECT "id"${extraColumns([...cols])} FROM "${entity.table}" WHERE ${where}`, params: [] }; // ap-ok: SQL construction, cached per entity and depth
+}
+
+/**
+ * `, "a", "b"` — columns to append after "id" in a SELECT list.
+ * @param {string[]} cols
+ * @returns {string}
+ */
+function extraColumns(cols) {
+    return cols.map(c => ', "' + c + '"').join(''); // ap-ok: SQL construction, cached per entity and depth
 }
 
 /**
@@ -587,7 +596,7 @@ function collectExpansion(entity, src, depth, parts) {
         for (const rel of entity.relationships) {
             const childTag = TABLE_TO_TAG.get(rel.table);
             if (!childTag) continue;
-            const children = `SELECT "id"${(rel.joinColumns || []).map(j => `, "${j.localFk}"`).join('')} FROM "${rel.table}" WHERE "${rel.fk}" IN (${selectFrom(src)})`; // ap-ok: SQL construction, cached per entity and depth
+            const children = `SELECT "id"${extraColumns((rel.joinColumns || []).map(j => j.localFk))} FROM "${rel.table}" WHERE "${rel.fk}" IN (${selectFrom(src)})`; // ap-ok: SQL construction, cached per entity and depth
             parts.push({ tag: childTag, col: 'row_at', ids: `SELECT "id" FROM (${children})` });
             for (const j of rel.joinColumns || []) {
                 const tag = TABLE_TO_TAG.get(j.table);
@@ -626,7 +635,7 @@ function collectExpansion(entity, src, depth, parts) {
 export async function changedSince(db, entity, id, depth, imsS) {
     try {
         const row = await db.prepare(changeCheckSql(entity, depth)).bind(imsS, id).first();
-        return !row || row.changed !== 0;
+        return row?.changed !== 0;
     } catch (err) {
         console.error('[depth] change check failed:', err);
         return true;

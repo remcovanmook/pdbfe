@@ -44,7 +44,10 @@ const LISTED_BY = new Map();
 /** @param {string} child @param {string} tag @param {string} fk */
 function addListing(child, tag, fk) {
     let list = LISTED_BY.get(child);
-    if (!list) LISTED_BY.set(child, list = []);
+    if (!list) {
+        list = [];
+        LISTED_BY.set(child, list);
+    }
     if (!list.some(l => l.tag === tag && l.fk === fk)) list.push({ tag, fk });
 }
 
