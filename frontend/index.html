@@ -29,6 +29,13 @@
          without a preload the browser only finds out after layout. -->
     <link rel="preload" href="/third_party/inter/inter-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/css/index.css" as="style">
+    <!-- Every page's data comes from the API origin, which cannot reuse this
+         page's connection (its certificate does not cover api.*, and the
+         fetches are uncredentialed CORS: a separate connection pool). Open
+         that connection now instead of after the JS runs. crossorigin makes
+         the socket match the fetches' pool. HTML only: 103 Early Hints pass
+         on rel=preload alone. -->
+    <link rel="preconnect" href="https://api.pdbfe.dev" crossorigin>
 
     <!-- Fonts (self-hosted) -->
     <link rel="stylesheet" href="/third_party/inter/inter.css">
