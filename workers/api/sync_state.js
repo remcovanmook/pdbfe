@@ -4,7 +4,6 @@
  * Injects the API worker's dependencies into core/sync_state.js:
  *   - ENTITY_TAGS         — the tracked entity list
  *   - onEntityChange      — per-entity L1 purge via getEntityCache()
- *   - onPollApplied       — version changes for the per-object reader (row_changes.js)
  *   - statusHeaders (H_API) — the API worker serves the sync /status endpoint
  *   - statusCacheControl  — sync-aligned expiry (+ no-transform), as entity responses
  *
@@ -19,7 +18,6 @@
 
 import { createSyncState } from '../core/sync_state.js';
 import { getEntityCache } from './cache.js';
-import { onRowChangesPoll } from './row_changes.js';
 import { ENTITY_TAGS } from './entities.js';
 import { H_API, syncAlignedCacheControl, withNoTransform } from './http.js';
 
@@ -29,7 +27,6 @@ const _sync = createSyncState({
         const cache = getEntityCache(tag);
         if (cache) cache.purge();
     },
-    onPollApplied: onRowChangesPoll,
     statusHeaders: H_API,
     // /status only changes when the sync runs, so it expires with the sync
     // schedule like entity responses instead of every 60s.

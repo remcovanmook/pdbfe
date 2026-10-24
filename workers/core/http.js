@@ -190,23 +190,11 @@ export function lastModifiedHeader(epochMs) {
  * @returns {boolean} True if the client cache is still valid.
  */
 export function isNotModifiedSince(requestHeaders, epochMs) {
-    const imsTime = parseIfModifiedSince(requestHeaders);
-    if (imsTime < 0) return false;
+    const ims = requestHeaders.get('if-modified-since');
+    if (!ims) return false;
+    const imsTime = Date.parse(ims);
+    if (Number.isNaN(imsTime)) return false;
     // HTTP dates have 1-second resolution. The data is unchanged if
     // the IMS timestamp is >= the last-modified epoch (truncated to seconds).
     return imsTime >= Math.floor(epochMs / 1000) * 1000;
-}
-
-/**
- * The request's If-Modified-Since as epoch milliseconds, or -1 when absent
- * or unparseable.
- *
- * @param {Headers} requestHeaders - Inbound HTTP request headers.
- * @returns {number}
- */
-export function parseIfModifiedSince(requestHeaders) {
-    const ims = requestHeaders.get('if-modified-since');
-    if (!ims) return -1;
-    const imsTime = Date.parse(ims);
-    return Number.isNaN(imsTime) ? -1 : imsTime;
 }

@@ -15,7 +15,7 @@ import { H_CORS, H_NOCACHE, SHARED_MARKER, generateETag, isNotModified, lastModi
 
 // Re-export core symbols that api/ modules also need, so they can
 // import everything from a single api/http.js entry point.
-export { encoder, encodeJSON, jsonError, handlePreflight, generateETag, isNotModified, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
+export { encoder, encodeJSON, jsonError, handlePreflight, generateETag, isNotModified, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince } from '../core/http.js';
 
 /**
  * Standard cache headers for API responses.
