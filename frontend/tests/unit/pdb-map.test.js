@@ -1,7 +1,8 @@
 /**
- * @fileoverview Unit tests for loadLeaflet() in components/pdb-map.js:
- * Leaflet's stylesheet and script are added once, on first use, and a
- * failed load is retried by the next map.
+ * @fileoverview Unit tests for loadLeaflet() and preconnectTiles() in
+ * components/pdb-map.js: Leaflet's stylesheet and script are added once, on
+ * first use, and a failed load is retried by the next map; the tile server
+ * gets one preconnect, when a map is first mounted.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -16,7 +17,8 @@ globalThis.HTMLElement ??= /** @type {any} */ (class {});
  * the page's lifetime, which is the point, but tests need a clean start.
  */
 let copy = 0;
-const freshLoadLeaflet = async () => (await import(`../../js/components/pdb-map.js?copy=${++copy}`)).loadLeaflet;
+const freshModule = async () => import(`../../js/components/pdb-map.js?copy=${++copy}`);
+const freshLoadLeaflet = async () => (await freshModule()).loadLeaflet;
 
 /** Elements appended to <head>; `outcome` decides whether each load succeeds. */
 let appended = /** @type {any[]} */ ([]);
@@ -62,5 +64,18 @@ describe('loadLeaflet', () => {
         outcome = 'load';
         await loadLeaflet();
         assert.equal(appended.length, 4, 'a second pair of elements for the retry');
+    });
+});
+
+describe('preconnectTiles', () => {
+    it('adds one preconnect to the tile server, without crossorigin', async () => {
+        const { preconnectTiles } = await freshModule();
+        preconnectTiles();
+        preconnectTiles();
+        assert.equal(appended.length, 1);
+        assert.equal(appended[0].tagName, 'LINK');
+        assert.equal(appended[0].rel, 'preconnect');
+        assert.equal(appended[0].href, 'https://tile.openstreetmap.org');
+        assert.equal(appended[0].crossOrigin, undefined, 'tiles are plain image requests');
     });
 });

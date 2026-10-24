@@ -64,6 +64,27 @@ const LEAFLET_JS = '/third_party/leaflet/leaflet.js';
 /** @type {Promise<void>|null} */
 let _leafletLoad = null;
 
+/** Raster tile server (see _initMap). */
+const TILE_ORIGIN = 'https://tile.openstreetmap.org';
+
+let _tilesPreconnected = false;
+
+/**
+ * Opens the connection to the tile server once, when the first map is
+ * mounted: its DNS, TCP and TLS then overlap Leaflet's download instead of
+ * starting at the first tile request. Only pages that show a map contact
+ * the tile server — never from index.html. No crossorigin: tiles are plain
+ * image requests.
+ */
+export function preconnectTiles() {
+    if (_tilesPreconnected) return;
+    _tilesPreconnected = true;
+    const link = document.createElement('link');
+    link.rel = 'preconnect';
+    link.href = TILE_ORIGIN;
+    document.head.appendChild(link);
+}
+
 /**
  * Adds an element to <head> and resolves once it has loaded.
  *
@@ -115,14 +136,15 @@ export class PdbMap extends HTMLElement {
             this.appendChild(TEMPLATE.content.cloneNode(true));
         }
 
-        // Initialize leaflet map slightly deferred to ensure DOM layout is complete
-        // and dimensions are available for Leaflet's tile engine. Leaflet itself
-        // loads on first use; skip if the element left the page meanwhile.
-        globalThis.requestAnimationFrame(() => {
-            loadLeaflet().then(() => {
-                if (this.isConnected && !this._map) this._initMap();
-            }, (err) => console.error('Leaflet failed to load:', err));
-        });
+        // Leaflet loads on first use and the tile connection opens now, both
+        // while the frame lays out. The map itself starts after the next frame,
+        // so its container has dimensions for Leaflet's tile engine; skip if the
+        // element left the page meanwhile.
+        preconnectTiles();
+        const laidOut = new Promise((resolve) => globalThis.requestAnimationFrame(resolve));
+        Promise.all([loadLeaflet(), laidOut]).then(() => {
+            if (this.isConnected && !this._map) this._initMap();
+        }, (err) => console.error('Leaflet failed to load:', err));
     }
 
     disconnectedCallback() {
@@ -213,7 +235,7 @@ export class PdbMap extends HTMLElement {
         }
 
         // OpenStreetMap raster tiles (Confirmed acceptable within privacy budget)
-        /** @type {any} */ (globalThis).L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        /** @type {any} */ (globalThis).L.tileLayer(`${TILE_ORIGIN}/{z}/{x}/{y}.png`, {
             maxZoom: 19,
             attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(this._map);

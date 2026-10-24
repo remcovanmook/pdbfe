@@ -1,6 +1,6 @@
 # CI pipeline — mirrors the pre-commit hook checks so they run on
-# every push and PR, regardless of whether the contributor has the
-# local git hooks configured.
+# every PR, regardless of whether the contributor has the local git hooks
+# configured.
 #
 # Versioning is NOT enforced per-PR: PRs never edit VERSION. Releases are cut
 # deliberately via the Release workflow (workflow_dispatch), which derives the
@@ -14,14 +14,20 @@
 name: CI
 
 on:
-  push:
-    # auto/** is here because PRs opened by the upstream-sync workflow use
-    # GITHUB_TOKEN, and GitHub deliberately does not fire pull_request events
-    # for those — without this, a sync PR shows no CI at all and has to be
-    # closed and reopened by hand to get checked.
-    branches: [main, 'auto/**']
+  # Once per change, on the PR. Not on push to main: main only moves through
+  # PRs (ruleset), the PR branch must be up to date with main before merging,
+  # so the PR run has already tested exactly the tree that lands — a second
+  # run on main re-tests it and holds up releases. The PR's checks are
+  # required for merging (ruleset "default"), so main only gets green trees.
   pull_request:
     branches: [main]
+  push:
+    # auto/** because PRs opened by the upstream-sync workflow use
+    # GITHUB_TOKEN, and GitHub deliberately does not fire pull_request events
+    # for those — without this, a sync PR shows no CI at all and has to be
+    # closed and reopened by hand to get checked. Required checks match by
+    # commit, so these runs count for the sync PR.
+    branches: ['auto/**']
 
 permissions:
   contents: read
