@@ -119,7 +119,7 @@ Every API request follows this hierarchy:
 2. **Rate limiting:** Check per-isolate request count for this caller. Anonymous callers are keyed by source IP (IPv6 truncated to /64); authenticated callers by API key or session ID. Returns 429 if over quota (60/min anonymous, 600/min authenticated).
 3. **Routing:** Parse entity tag and optional ID from the path. Validate method, entity, filters.
 4. **Error cache:** Check L1 for a cached 400 for this query string. If found, return it.
-5. **If-Modified-Since shortcut:** Compare request `If-Modified-Since` against `getEntityVersion()` from `sync_state.js`. If the entity data hasn't changed, return 304 (no `Last-Modified`: it reads no data) — no cache or D1 work.
+5. **If-Modified-Since shortcut:** lists and depth-0 details: against `getEntityVersion()` from `sync_state.js` (no cache or D1 work). Depth≥1 details (no `If-None-Match`, IMS within 24h): one D1 statement, `changedSince()` in `depth.js`, checks every row the response shows against `_row_changes` (written by `sync/row_changes.js`). If unchanged, return 304 (no `Last-Modified`: it reads no data).
 6. **SWR (Stale-While-Revalidate):** `withEdgeSWR()` handles the L1 read → serve-if-fresh → background-refresh-if-stale → block-on-miss flow:
    - **L1 fresh** (<TTL): Serve instantly (<1ms). For negative entries (`EMPTY_ENVELOPE`), return 404.
    - **L1 stale** (TTL–2×TTL): Serve stale response immediately, fire `ctx.waitUntil()` to refresh in background.

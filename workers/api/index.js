@@ -7,8 +7,9 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, syncAlignedCacheControl } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
+import { changedSince } from './depth.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus } from './sync_state.js';
 import { withD1Stats } from '../core/d1stats.js';
@@ -31,6 +32,12 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
 });
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * If-Modified-Since older than this is not checked against _row_changes
+ * (kept 25h, sync/row_changes.js): the full response is served.
+ */
+const IMS_WINDOW_MS = 24 * 3600 * 1000;
 
 /**
  * Last-Modified: last_sync of the entity the sync worker processes last (it
@@ -235,12 +242,24 @@ async function handleRequest(request, env, ctx) {
     // query path, so lists return public contacts and non-public ids 404,
     // as upstream does.
 
-    // If-Modified-Since shortcut: return 304 without touching cache or D1
-    // if the entity data hasn't changed since the client's cached copy.
+    // If-Modified-Since. The entity's last_modified_at (isolate memory, no
+    // D1) answers for responses made of that entity's rows alone: lists and
+    // depth=0 details. A detail at depth≥1 also shows other entities' rows,
+    // so it asks D1 whether any row it shows changed (_row_changes, one
+    // statement — api/depth.js changeCheckSql). If-None-Match takes
+    // precedence over If-Modified-Since (RFC 9110 §13.1.3): the ETag path
+    // answers those.
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
+    let notModified = (id <= 0 || depth === 0) && entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);
+    if (!notModified && id > 0 && since <= 0 && !request.headers.has('if-none-match')) {
+        const imsMs = parseIfModifiedSince(request.headers);
+        if (imsMs >= 0 && imsMs >= now - IMS_WINDOW_MS) {
+            notModified = !(await changedSince(db, entity, id, depth, Math.floor(imsMs / 1000)));
+        }
+    }
     // No Last-Modified: that is the as-of time of the data a response was
     // built from, and this one reads none; the client keeps its own.
-    if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
+    if (notModified) {
         return new Response(null, {
             status: 304,
             headers: {
