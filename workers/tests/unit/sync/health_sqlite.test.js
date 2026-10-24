@@ -86,11 +86,11 @@ describe('repair', () => {
     it('marks repaired objects in _row_changes and advances last_modified_at', async () => {
         seedNets([1, 2, 11]);
         await run([1, 2, 12], { 2: '2026-04-08T22:46:00Z' });
-        const marked = sqlite.prepare(`SELECT entity, id FROM "_row_changes" WHERE d0_at > 0 ORDER BY entity, id`).all()
+        const marked = sqlite.prepare(`SELECT entity, id FROM "_row_changes" WHERE row_at > 0 ORDER BY entity, id`).all()
             .map((/** @type {any} */ r) => `${r.entity}/${r.id}`);
         assert.deepEqual(marked, ['net/2', 'net/11', 'net/12']);
-        const org = /** @type {any} */ (sqlite.prepare(`SELECT d1_at FROM "_row_changes" WHERE entity = 'org' AND id = 1`).get());
-        assert.ok(org?.d1_at > 0, 'org.net_set changed');
+        const org = /** @type {any} */ (sqlite.prepare(`SELECT set_at FROM "_row_changes" WHERE entity = 'org' AND id = 1`).get());
+        assert.ok(org?.set_at > 0, 'org.net_set changed');
         const lm = /** @type {any} */ (sqlite.prepare(`SELECT last_modified_at FROM "_sync_meta" WHERE entity = 'net'`).get()).last_modified_at;
         assert.ok(lm > 0);
     });

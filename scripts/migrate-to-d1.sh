@@ -224,7 +224,7 @@ for ENTITY_DEF in "${ENTITIES[@]}"; do
     echo "INSERT OR REPLACE INTO _sync_meta (entity, last_sync, row_count, updated_at, last_modified_at) VALUES ('${TAG}', ${LAST_SYNC}, ${ROW_COUNT}, datetime('now'), 0);" >> "$SYNC_FILE"
     # Whole-entity change marker (workers/sync/row_changes.js): every object
     # changed now, so no If-Modified-Since from before the import gets a 304.
-    echo "INSERT OR REPLACE INTO _row_changes (entity, id, d0_at, d1_at, d2_at) VALUES ('${TAG}', 0, CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER));" >> "$SYNC_FILE"
+    echo "INSERT OR REPLACE INTO _row_changes (entity, id, row_at, set_at) VALUES ('${TAG}', 0, CAST(strftime('%s', 'now') AS INTEGER), CAST(strftime('%s', 'now') AS INTEGER));" >> "$SYNC_FILE"
 done
 
 npx wrangler d1 execute peeringdb \

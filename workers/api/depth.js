@@ -489,3 +489,146 @@ function planParents(db, entity, src, getRows, depth, authenticated, pdbfe, deta
         }
     }
 }
+
+// ── Change check (If-Modified-Since) ──────────────────────────────────────────
+
+/**
+ * One component of a detail response for the change check: rows of `tag`
+ * whose ids `ids` selects, checked on `col` of _row_changes (row_at: the row
+ * itself; set_at: its child sets' membership — sync/row_changes.js).
+ * @typedef {{ tag: string, col: 'row_at'|'set_at', ids: string }} Component
+ */
+
+/** Change-check SQL per `${tag}:${depth}` — independent of the id (bound as ?2). @type {Map<string, string>} */
+const CHANGE_CHECK_SQL = new Map();
+
+/**
+ * SQL answering "did anything in GET /api/{tag}/{id}?depth={depth} change at
+ * or after ?1 (epoch seconds)?" for ?2 = id: one row, `changed` 0 or 1.
+ *
+ * It walks the response the way planExpansion builds it, collecting every
+ * row the response shows — the object, at depth≥1 its joined rows, its
+ * children (depth 2) with their joined rows, through-set targets, parent
+ * objects and, on a detail at depth 2, each parent expanded at depth 1 — and
+ * checks them against _row_changes: row_at for shown rows, set_at for rows
+ * whose sets are shown (a child that left has no row here to check).
+ * Ids come from FK columns, not joins, so a deleted parent or through-set
+ * target still counts. Any whole-entity marker (id 0) counts too.
+ *
+ * Keep in step with planExpansion and its plan* helpers;
+ * tests/unit/api/change_check_sqlite.test.js renders every detail before and
+ * after each kind of change and fails on a changed response this misses.
+ *
+ * @param {EntityMeta} entity
+ * @param {number} depth - 0, 1 or 2.
+ * @returns {string}
+ */
+export function changeCheckSql(entity, depth) {
+    const key = `${entity.tag}:${depth}`;
+    let sql = CHANGE_CHECK_SQL.get(key);
+    if (sql) return sql;
+
+    /** @type {Component[]} */
+    const parts = [{ tag: entity.tag, col: 'row_at', ids: 'SELECT ?2' }];
+    if (depth > 0) {
+        const main = rowsOf(entity, `"id" = ?2`);
+        // The main row's joined columns (depth≥1). A join through a parent FK
+        // is covered by the parent object below.
+        const parentFkNames = new Set(parentFks(entity, true).map(f => f.name)); // ap-ok: SQL construction, cached per entity and depth
+        for (const j of entity.joinColumns || []) {
+            const tag = TABLE_TO_TAG.get(j.table);
+            if (tag && !parentFkNames.has(j.localFk)) parts.push({ tag, col: 'row_at', ids: selectFrom(main, j.localFk) });
+        }
+        collectExpansion(entity, main, depth, parts);
+    }
+
+    const exists = parts.map(p => // ap-ok: SQL construction, cached per entity and depth
+        `EXISTS (SELECT 1 FROM "_row_changes" WHERE "entity" = '${p.tag}' AND "id" IN (${p.ids}) AND "${p.col}" >= ?1)`);
+    // Whole-entity markers (id 0) are written for every entity at once
+    // (migration, bootstrap: no history before them), so any one counts —
+    // also for entities a response lists only by id.
+    exists.push('EXISTS (SELECT 1 FROM "_row_changes" WHERE "id" = 0 AND max("row_at", "set_at") >= ?1)');
+    sql = `SELECT (${exists.join(' OR ')}) AS "changed"`;
+    CHANGE_CHECK_SQL.set(key, sql);
+    return sql;
+}
+
+/**
+ * Source over rows of `entity` matching `where`: "id" plus every column the
+ * check follows from them (parent FKs, join FKs).
+ *
+ * @param {EntityMeta} entity
+ * @param {string} where
+ * @returns {Source}
+ */
+function rowsOf(entity, where) {
+    const cols = new Set(parentFks(entity, true).map(f => f.name)); // ap-ok: SQL construction, cached per entity and depth
+    for (const j of entity.joinColumns || []) cols.add(j.localFk);
+    cols.delete('id');
+    return { sql: `SELECT "id"${[...cols].map(c => `, "${c}"`).join('')} FROM "${entity.table}" WHERE ${where}`, params: [] }; // ap-ok: SQL construction, cached per entity and depth
+}
+
+/**
+ * The change-check counterpart of planExpansion (detail view): appends the
+ * components that expanding `src` rows of `entity` at `depth` shows.
+ *
+ * @param {EntityMeta} entity
+ * @param {Source} src
+ * @param {number} depth - ≥1.
+ * @param {Component[]} parts - Mutated.
+ */
+function collectExpansion(entity, src, depth, parts) {
+    // Child sets and through sets: membership (set_at) at any depth.
+    if (entity.relationships.length > 0 || THROUGH_SETS[entity.tag]) {
+        parts.push({ tag: entity.tag, col: 'set_at', ids: selectFrom(src) });
+    }
+    // depth=2: the children as objects, with their set-join columns.
+    if (depth >= 2) {
+        for (const rel of entity.relationships) {
+            const childTag = TABLE_TO_TAG.get(rel.table);
+            if (!childTag) continue;
+            const children = `SELECT "id"${(rel.joinColumns || []).map(j => `, "${j.localFk}"`).join('')} FROM "${rel.table}" WHERE "${rel.fk}" IN (${selectFrom(src)})`; // ap-ok: SQL construction, cached per entity and depth
+            parts.push({ tag: childTag, col: 'row_at', ids: `SELECT "id" FROM (${children})` });
+            for (const j of rel.joinColumns || []) {
+                const tag = TABLE_TO_TAG.get(j.table);
+                if (tag) parts.push({ tag, col: 'row_at', ids: `SELECT "${j.localFk}" FROM (${children})` });
+            }
+        }
+    }
+    // Through sets: target ids at depth 1, objects at depth 2 — either way
+    // the targets the link rows name.
+    for (const ts of THROUGH_SETS[entity.tag] || []) {
+        parts.push({ tag: ts.targetTag, col: 'row_at', ids: `SELECT "${ts.targetFk}" FROM "${ts.link}" WHERE "${ts.parentFk}" IN (${selectFrom(src)})` });
+    }
+    // Parents as objects; on a detail at depth=2 each expanded at depth 1.
+    for (const fk of parentFks(entity, true)) {
+        const parentTag = /** @type {string} */ (fk.foreignKey);
+        parts.push({ tag: parentTag, col: 'row_at', ids: selectFrom(src, fk.name) });
+        if (depth >= 2) {
+            const parent = ENTITIES[parentTag];
+            collectExpansion(parent, rowsOf(parent, `"id" IN (${selectFrom(src, fk.name)})`), depth - 1, parts);
+        }
+    }
+}
+
+/**
+ * Whether anything GET /api/{entity.tag}/{id}?depth={depth} shows changed at
+ * or after `imsS` (see changeCheckSql). One D1 statement; a failure counts
+ * as changed (the full response is served).
+ *
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {number} id
+ * @param {number} depth
+ * @param {number} imsS - If-Modified-Since, epoch seconds.
+ * @returns {Promise<boolean>}
+ */
+export async function changedSince(db, entity, id, depth, imsS) {
+    try {
+        const row = await db.prepare(changeCheckSql(entity, depth)).bind(imsS, id).first();
+        return !row || row.changed !== 0;
+    } catch (err) {
+        console.error('[depth] change check failed:', err);
+        return true;
+    }
+}
