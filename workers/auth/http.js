@@ -22,36 +22,58 @@ function stripWww(host) {
 }
 
 /**
+ * The frontend origins the auth worker serves: FRONTEND_ORIGIN first, then
+ * any FRONTEND_ALIASES (comma-separated origins, e.g. another domain the
+ * same frontend is published on). Malformed entries are skipped.
+ *
+ * @param {PdbAuthEnv} env - Auth worker environment bindings.
+ * @returns {string[]} Hostnames, FRONTEND_ORIGIN's first.
+ */
+function frontendHosts(env) {
+    const hosts = [new URL(env.FRONTEND_ORIGIN).host];
+    for (const alias of (env.FRONTEND_ALIASES || '').split(',')) {
+        const trimmed = alias.trim();
+        if (!trimmed) continue;
+        try {
+            hosts.push(new URL(trimmed).host);
+        } catch { /* malformed alias — skip */ }
+    }
+    return hosts;
+}
+
+/**
+ * Whether a request host belongs to a frontend host: the same host, its
+ * www/apex twin (pdbfe.dev and www.pdbfe.dev), or a subdomain of it
+ * (staging.pdbfe.dev).
+ *
+ * @param {string} reqHost
+ * @param {string} frontendHost
+ * @returns {boolean}
+ */
+function matchesFrontendHost(reqHost, frontendHost) {
+    if (reqHost === frontendHost) return true;
+    const apex = stripWww(frontendHost);
+    return stripWww(reqHost) === apex || reqHost.endsWith(`.${apex}`);
+}
+
+/**
  * Resolves the CORS origin to reflect in the response. Returns the
- * request's Origin if it matches:
- *   1. The production FRONTEND_ORIGIN host (treating www. and apex
- *      as equivalent — e.g. pdbfe.dev and www.pdbfe.dev both match), or
- *   2. Any subdomain of the production host, or
- *   3. Any Cloudflare Pages preview subdomain (*.pages.dev) for the
- *      same project (configured via PAGES_PROJECT or derived from
- *      FRONTEND_ORIGIN).
- * Falls back to the production origin otherwise.
+ * request's Origin if its host belongs to FRONTEND_ORIGIN or one of
+ * FRONTEND_ALIASES (same host, www/apex twin, or a subdomain — see
+ * matchesFrontendHost), or is a Cloudflare Pages preview subdomain
+ * (*.pages.dev) of the same project (PAGES_PROJECT, default
+ * pdbfe-frontend). Falls back to FRONTEND_ORIGIN otherwise.
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbAuthEnv} env - Auth worker environment bindings.
  * @returns {string} The origin to use in Access-Control-Allow-Origin.
  */
 export function resolveAllowedOrigin(request, env) {
-    const prodHost = new URL(env.FRONTEND_ORIGIN).host;
     const requestOrigin = request.headers.get('Origin') || '';
     if (!requestOrigin) return env.FRONTEND_ORIGIN;
     try {
         const reqHost = new URL(requestOrigin).host;
-        // Exact match (covers identical host including www prefix)
-        if (reqHost === prodHost) return requestOrigin;
-        // Apex/www equivalence: strip www. from both and compare.
-        // Handles FRONTEND_ORIGIN=https://www.pdbfe.dev with request
-        // from https://pdbfe.dev, and vice versa.
-        if (stripWww(reqHost) === stripWww(prodHost)) return requestOrigin;
-        // Subdomain of production host (e.g. staging.pdbfe.dev)
-        if (reqHost.endsWith(`.${stripWww(prodHost)}`)) {
-            return requestOrigin;
-        }
+        if (frontendHosts(env).some((h) => matchesFrontendHost(reqHost, h))) return requestOrigin;
         // Cloudflare Pages preview: <hash|branch>.pdbfe-frontend.pages.dev
         const pagesProject = env.PAGES_PROJECT || 'pdbfe-frontend';
         if (reqHost.endsWith(`.${pagesProject}.pages.dev`)) {

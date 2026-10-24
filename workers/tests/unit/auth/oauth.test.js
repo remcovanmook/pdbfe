@@ -481,6 +481,21 @@ describe('handleAuth', () => {
         assert.ok(stateCookie, 'pdbfe_oauth_state cookie should be set');
     });
 
+    it('returns a login started on a FRONTEND_ALIASES domain to that domain', () => {
+        const env = mockEnv({ FRONTEND_ALIASES: 'https://pdbedge.com' });
+        const req = new Request('https://auth.pdbfe.dev/auth/login', { headers: { Referer: 'https://pdbedge.com/net/1418' } });
+        const ret = getCookie(handleAuth(req, env), 'pdbfe_oauth_return=');
+        assert.ok(ret, 'return cookie set');
+        assert.equal(decodeURIComponent(cookieValue(ret)), 'https://pdbedge.com');
+    });
+
+    it('returns a login started on an unknown domain to FRONTEND_ORIGIN', () => {
+        const env = mockEnv({ FRONTEND_ALIASES: 'https://pdbedge.com' });
+        const req = new Request('https://auth.pdbfe.dev/auth/login', { headers: { Referer: 'https://evil.com/' } });
+        const ret = getCookie(handleAuth(req, env), 'pdbfe_oauth_return=');
+        assert.equal(decodeURIComponent(cookieValue(ret)), 'https://pdbfe.dev');
+    });
+
     it('routes /auth/me to 401 when unauthenticated', async () => {
         const env = mockEnv({ SESSIONS: mockKV(null) });
         const req = new Request('https://auth.pdbfe.dev/auth/me');

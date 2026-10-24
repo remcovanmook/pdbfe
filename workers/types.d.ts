@@ -380,6 +380,8 @@ interface PdbAuthEnv {
     OAUTH_CLIENT_SECRET: string;
     OAUTH_REDIRECT_URI: string;
     FRONTEND_ORIGIN: string;
+    /** Further frontend origins, comma-separated (e.g. "https://pdbedge.com"): CORS and login return like FRONTEND_ORIGIN. Optional. */
+    FRONTEND_ALIASES?: string;
     PEERINGDB_API_KEY: string;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;

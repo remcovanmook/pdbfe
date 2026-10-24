@@ -29,4 +29,9 @@ database_id = "<your-users-d1-database-id>"
 [vars]
 OAUTH_REDIRECT_URI = "https://auth.<your-domain>/auth/callback"
 FRONTEND_ORIGIN = "https://<your-domain>"
+# Further domains the same frontend is published on, comma-separated origins
+# (e.g. "https://example.org"): trusted for CORS and as login return origins
+# like FRONTEND_ORIGIN. Empty for none. Set from FRONTEND_ALIASES by
+# scripts/deploy.sh --generate-configs.
+FRONTEND_ALIASES = "<your-frontend-aliases>"
 PDBFE_VERSION = "<your-version>"

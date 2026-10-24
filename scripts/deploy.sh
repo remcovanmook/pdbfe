@@ -32,6 +32,10 @@
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
 #   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev")
 #   VECTORIZE_INDEX_NAME   — Vectorize index name (e.g. "pdbfe-vectors")
+#   FRONTEND_ALIASES       — Optional: other domains the frontend is published
+#                            on, comma-separated origins (e.g.
+#                            "https://pdbedge.com"); auth trusts them like
+#                            the main frontend origin
 #
 # For local use, put infra IDs in .env.deploy (gitignored). Format:
 #   D1_DATABASE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
@@ -132,6 +136,7 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
         -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
         -e "s|<your-users-d1-database-id>|${D1_USERDB_ID}|" \
         -e "s|<your-domain>|${API_DOMAIN}|g" \
+        -e "s|<your-frontend-aliases>|${FRONTEND_ALIASES:-}|g" \
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
         "$REPO_ROOT/workers/wrangler-auth.toml.example" > "$REPO_ROOT/workers/wrangler-auth.toml"
 

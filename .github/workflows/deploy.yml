@@ -130,6 +130,9 @@ jobs:
           KV_SESSIONS_ID: ${{ secrets.KV_SESSIONS_ID }}
           API_DOMAIN: ${{ secrets.API_DOMAIN }}
           VECTORIZE_INDEX_NAME: ${{ secrets.VECTORIZE_INDEX_NAME }}
+          # Other domains the frontend is published on (repository variable,
+          # not secret): comma-separated origins, e.g. https://pdbedge.com.
+          FRONTEND_ALIASES: ${{ vars.FRONTEND_ALIASES }}
 
       - name: Deploy
         run: ./scripts/deploy.sh --remote --apply-migrations --force
