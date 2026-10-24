@@ -7,11 +7,10 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, lastModifiedHeader, syncAlignedCacheControl } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, lastModifiedHeader, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
 import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus } from './sync_state.js';
-import { rowChangesReady, isUnchangedSince, claimRowChangesFetch, runRowChangesFetch } from './row_changes.js';
 import { withD1Stats } from '../core/d1stats.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
@@ -229,18 +228,9 @@ async function handleRequest(request, env, ctx) {
     // as upstream does.
 
     // If-Modified-Since shortcut: return 304 without touching cache or D1
-    // if the data hasn't changed since the client's cached copy. Details go
-    // by the object's own change marks (row_changes.js) once they are
-    // loaded; everything else by the entity's last_modified_at.
+    // if the entity data hasn't changed since the client's cached copy.
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
-    let notModified;
-    if (id > 0 && since <= 0 && rowChangesReady()) {
-        const imsMs = parseIfModifiedSince(request.headers);
-        notModified = imsMs >= 0 && isUnchangedSince(entityTag, id, depth, Math.floor(imsMs / 1000), Math.floor(now / 1000));
-    } else {
-        notModified = entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);
-    }
-    if (notModified) {
+    if (entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs)) {
         return new Response(null, {
             status: 304,
             headers: {
@@ -282,28 +272,10 @@ async function handleRequest(request, env, ctx) {
     const response = id > 0
         ? await handleDetail(hc, id)
         : await handleList(hc);
-    // A poll that moved a version leaves _row_changes rows to fetch; fetch
-    // them after the response (after the poll, when it runs separately).
     const unsent = db.takeRider();
-    if (unsent) {
-        ctx.waitUntil(runSyncPoll(session, unsent).then(() => fetchRowChanges(session, now)));
-    } else {
-        const due = claimRowChangesFetch(now);
-        if (due) ctx.waitUntil(runRowChangesFetch(session, due));
-    }
+    if (unsent) ctx.waitUntil(runSyncPoll(session, unsent));
     recordCacheTier(env, hc, response.status, shared, since > 0);
     return response;
-}
-
-/**
- * Fetches due _row_changes rows, if any.
- * @param {D1Session} session
- * @param {number} now
- * @returns {Promise<void>}
- */
-function fetchRowChanges(session, now) {
-    const due = claimRowChangesFetch(now);
-    return due ? runRowChangesFetch(session, due) : Promise.resolve();
 }
 
 /**

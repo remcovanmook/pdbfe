@@ -15,7 +15,6 @@ const { purgeAllCaches } = await import('../../../api/cache.js');
 const TS = '2026-01-01T00:00:00Z';
 /** @type {any} */ let env;
 const calls = { batch: 0, batchStmts: 0, direct: 0 };
-const background = (/** @type {string} */ sql) => sql.includes('_sync_meta') || sql.includes('_row_changes');
 
 before(() => {
     const { sqlite, db } = createSqliteD1();
@@ -37,10 +36,9 @@ before(() => {
             const wrap = (/** @type {any} */ st) => ({
                 ...st,
                 bind: (/** @type {any[]} */ ...a) => wrap(st.bind(...a)),
-                // _sync_meta / _row_changes: the background freshness poll and
-                // the mark fetch after it, not the request path
-                all: async () => { if (!background(sql)) calls.direct++; return st.all(); },
-                first: async () => { if (!background(sql)) calls.direct++; return st.first(); },
+                // _sync_meta: the background freshness poll, not the request path
+                all: async () => { if (!sql.includes('_sync_meta')) calls.direct++; return st.all(); },
+                first: async () => { if (!sql.includes('_sync_meta')) calls.direct++; return st.first(); },
             });
             return wrap(db.prepare(sql));
         },
