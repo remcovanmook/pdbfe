@@ -267,3 +267,32 @@ describe('resolveAllowedOrigin', () => {
         assert.equal(result, 'https://www.pdbfe.dev');
     });
 });
+
+describe('resolveAllowedOrigin — FRONTEND_ALIASES', () => {
+    /** @param {string} aliases */
+    const env = (aliases) => /** @type {any} */ ({ FRONTEND_ORIGIN: 'https://pdbfe.dev', FRONTEND_ALIASES: aliases });
+
+    it('reflects an alias origin, its www twin and its subdomains', () => {
+        for (const origin of ['https://pdbedge.com', 'https://www.pdbedge.com', 'https://staging.pdbedge.com']) {
+            assert.equal(resolveAllowedOrigin(mockRequest(origin), env('https://pdbedge.com')), origin);
+        }
+    });
+
+    it('takes several aliases, comma-separated, with spaces', () => {
+        assert.equal(resolveAllowedOrigin(mockRequest('https://b.example'), env('https://a.example, https://b.example')), 'https://b.example');
+    });
+
+    it('still refuses other origins (falls back to FRONTEND_ORIGIN)', () => {
+        assert.equal(resolveAllowedOrigin(mockRequest('https://evil.com'), env('https://pdbedge.com')), 'https://pdbfe.dev');
+        assert.equal(resolveAllowedOrigin(mockRequest('https://pdbedge.com.evil.com'), env('https://pdbedge.com')), 'https://pdbfe.dev');
+    });
+
+    it('skips a malformed alias without breaking the others', () => {
+        assert.equal(resolveAllowedOrigin(mockRequest('https://pdbedge.com'), env('not a url,https://pdbedge.com')), 'https://pdbedge.com');
+    });
+
+    it('no aliases (unset or empty): only FRONTEND_ORIGIN', () => {
+        assert.equal(resolveAllowedOrigin(mockRequest('https://pdbedge.com'), mockEnv('https://pdbfe.dev')), 'https://pdbfe.dev');
+        assert.equal(resolveAllowedOrigin(mockRequest('https://pdbedge.com'), env('')), 'https://pdbfe.dev');
+    });
+});
