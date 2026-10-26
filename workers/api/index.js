@@ -39,6 +39,28 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 const IMS_WINDOW_MS = 24 * 3600 * 1000;
 
+/** Parsed CF_VERSION_METADATA.timestamp, cached by its string. */
+let _versionTs = /** @type {string|undefined} */ (undefined);
+let _versionMs = 0;
+
+/**
+ * When this worker version was deployed (epoch ms; 0 when unknown — tests,
+ * local dev): If-Modified-Since shortcuts only answer for copies at least
+ * this new (see handleRequest).
+ *
+ * @param {PdbApiEnv} env
+ * @returns {number}
+ */
+function deployedAtMs(env) {
+    const ts = env.CF_VERSION_METADATA?.timestamp;
+    if (ts !== _versionTs) {
+        _versionTs = ts;
+        const ms = Date.parse(ts ?? '');
+        _versionMs = Number.isNaN(ms) ? 0 : ms;
+    }
+    return _versionMs;
+}
+
 /**
  * Last-Modified: last_sync of the entity the sync worker processes last (it
  * walks the registry in order, sync/index.js). That row only moves once every
@@ -246,16 +268,21 @@ async function handleRequest(request, env, ctx) {
     // D1) answers for responses made of that entity's rows alone: lists and
     // depth=0 details. A detail at depth≥1 also shows other entities' rows,
     // so it asks D1 whether any row it shows changed (_row_changes, one
-    // statement — api/depth.js changeCheckSql). If-None-Match takes
-    // precedence over If-Modified-Since (RFC 9110 §13.1.3): the ETag path
-    // answers those.
+    // statement — api/depth.js changeCheckSql).
+    //
+    // Also when If-None-Match is present (RFC 9110 §13.1.3 has it take
+    // precedence): the edge revalidates with both, and the ETag path builds
+    // the whole response to compare hashes. Within one worker version an
+    // unchanged object serialises to the same bytes, so the answer is the
+    // same. Across versions it is not — a release may change the output
+    // format — so a copy older than this version's deploy goes to the ETag
+    // path. (The edge cache is per version anyway; this is for browsers.)
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
-    let notModified = (id <= 0 || depth === 0) && entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);
-    if (!notModified && id > 0 && since <= 0 && !request.headers.has('if-none-match')) {
-        const imsMs = parseIfModifiedSince(request.headers);
-        if (imsMs >= 0 && imsMs >= now - IMS_WINDOW_MS) {
-            notModified = !(await changedSince(db, entity, id, depth, Math.floor(imsMs / 1000)));
-        }
+    const imsMs = parseIfModifiedSince(request.headers);
+    const imsUsable = imsMs >= 0 && imsMs >= deployedAtMs(env);
+    let notModified = imsUsable && (id <= 0 || depth === 0) && entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);
+    if (!notModified && imsUsable && id > 0 && since <= 0 && imsMs >= now - IMS_WINDOW_MS) {
+        notModified = !(await changedSince(db, entity, id, depth, Math.floor(imsMs / 1000)));
     }
     // No Last-Modified: that is the as-of time of the data a response was
     // built from, and this one reads none; the client keeps its own.
