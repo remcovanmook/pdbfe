@@ -285,6 +285,8 @@ interface PdbApiEnv {
     PDBFE_VERSION?: string;
     /** Workers Analytics Engine dataset for cache-tier counters (optional; absent in tests/dev). */
     METRICS?: AnalyticsEngineDataset;
+    /** This worker version's metadata ([version_metadata] binding); timestamp is its deploy time. Absent in tests/dev. */
+    CF_VERSION_METADATA?: { id: string, tag: string, timestamp: string };
 }
 
 /** Minimal Workers Analytics Engine binding surface used by the API worker. */

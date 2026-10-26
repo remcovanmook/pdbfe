@@ -1,8 +1,9 @@
 /**
  * @fileoverview If-Modified-Since on the request path (api/index.js): which
  * check answers which request, the 24h window, whole-entity markers,
- * If-None-Match precedence, and failure handling. Coverage of the change
- * check itself is change_check_sqlite.test.js.
+ * revalidations carrying If-None-Match, the deploy-time guard, and failure
+ * handling. Coverage of the change check itself is
+ * change_check_sqlite.test.js.
  */
 
 import { describe, it, before, after, mock } from 'node:test';
@@ -82,11 +83,24 @@ describe('If-Modified-Since on details', () => {
         assert.equal(checks(), before);
     });
 
-    it('If-None-Match takes precedence: no D1 check', async () => {
+    it('also with If-None-Match (the edge revalidates with both): the cheap check answers, not the ETag path', async () => {
         const before = checks();
-        const status = await get('net/100?depth=1', { ...ims(NOW), 'If-None-Match': '"nope"' });
-        assert.equal(status, 200);
+        assert.equal(await get('net/100?depth=1', { ...ims(NOW), 'If-None-Match': '"whatever"' }), 304);
+        assert.equal(checks(), before + 1);
+        markRow('net', 100, NOW - 10);
+        assert.equal(await get('net/100?depth=1', { ...ims(NOW - 60), 'If-None-Match': '"whatever"' }), 200, 'changed: full response');
+    });
+
+    it('a copy from before this worker version was deployed goes to the ETag path (the format may differ)', async () => {
+        const deployed = { ...env, CF_VERSION_METADATA: { id: 'v', tag: '', timestamp: new Date((NOW - 30) * 1000).toISOString() } };
+        const req = (/** @type {string} */ path, /** @type {number} */ s) => apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`, {
+            headers: { 'cf-connecting-ip': `10.2.1.${++ip}`, ...ims(s) },
+        }), deployed, mockCtx);
+        const before = checks();
+        assert.equal((await req('net/101?depth=1', NOW - 60)).status, 200, 'older than the deploy: no shortcut');
+        assert.equal((await req('net/101', NOW - 60)).status, 200, 'per-entity shortcut too');
         assert.equal(checks(), before);
+        assert.equal((await req('net/101?depth=1', NOW)).status, 304, 'since the deploy: answered');
     });
 
     it('a failing check counts as changed', async () => {
