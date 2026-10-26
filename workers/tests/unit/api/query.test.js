@@ -116,7 +116,8 @@ describe("buildRowQuery", () => {
     it("should apply an equality filter on its own", () => {
         const filters = [{ field: "asn", op: "eq", value: "13335" }];
         const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
+        assert.ok(result.sql.includes('"asn" = ?'));
+        assert.ok(!result.sql.includes('"asn" = ? COLLATE NOCASE'), 'numeric: no collation (it would block the index)');
         assert.ok(!result.sql.includes('"status" = ?'));
         assert.deepEqual(result.params, [13335, MAX_PAGE_LIMIT]);
     });
@@ -305,7 +306,8 @@ describe("buildRowQuery with joinColumns", () => {
     it("should qualify WHERE filters with table alias", () => {
         const filters = [{ field: "ix_id", op: "eq", value: "26" }];
         const result = buildRowQuery(NETIXLAN_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('t."ix_id" = ? COLLATE NOCASE'));
+        assert.ok(result.sql.includes('t."ix_id" = ?'));
+        assert.ok(!result.sql.includes('t."ix_id" = ? COLLATE NOCASE'));
     });
 
     it("should qualify single ID fetch with table alias", () => {
@@ -680,10 +682,12 @@ describe("eq COLLATE NOCASE", () => {
         assert.ok(result.sql.includes('"name" = ? COLLATE NOCASE'));
     });
 
-    it("should emit COLLATE NOCASE for number eq filter (no-op in SQLite)", () => {
-        const filters = [{ field: "asn", op: "eq", value: "13335" }];
-        const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
-        assert.ok(result.sql.includes('"asn" = ? COLLATE NOCASE'));
+    it("should not emit COLLATE NOCASE for number eq/not filters: same result, but it keeps SQLite off the column's index", () => {
+        for (const op of ['eq', 'not']) {
+            const filters = [{ field: "asn", op, value: "13335" }];
+            const result = buildRowQuery(NET_ENTITY, filters, { depth: 0, limit: 0, skip: 0, since: 0 });
+            assert.ok(!result.sql.includes('COLLATE NOCASE'), result.sql);
+        }
     });
 
     it("should emit COLLATE NOCASE in aliased JOIN queries", () => {

@@ -44,14 +44,25 @@ export const MAX_PAGE_LIMIT = 1_000_000;
 export const FILTER_OPS = new Set(['lt', 'gt', 'lte', 'gte', 'contains', 'startswith', 'in', 'not', 'notin', 'endswith', 'isnil', 'equalfold']);
 
 /**
+ * ` COLLATE NOCASE` for string fields — upstream matches text filters
+ * case-insensitively — and nothing for numbers, booleans and datetimes,
+ * where case changes no result but the collation keeps SQLite from using
+ * the column's (BINARY) index: `netixlan?ix_id=` scanned all 66k rows.
+ *
+ * @param {string} [fieldType] - The declared field type.
+ * @returns {string}
+ */
+const nocase = (fieldType) => (fieldType === 'string' ? ' COLLATE NOCASE' : '');
+
+/**
  * Operator mapping from PeeringDB filter suffix to SQL fragment.
  * Each entry is a function that returns the SQL clause and parameter(s).
  *
- * @type {Record<string, (col: string, value: string) => {clause: string, params: (string|number)[]}>}
+ * @type {Record<string, (col: string, value: string, fieldType?: string) => {clause: string, params: (string|number)[]}>}
  */
 const OPS = {
-    eq: (col, value) => ({
-        clause: `"${col}" = ? COLLATE NOCASE`,
+    eq: (col, value, fieldType) => ({
+        clause: `"${col}" = ?${nocase(fieldType)}`,
         params: [value]
     }),
     lt: (col, value) => ({
@@ -86,8 +97,8 @@ const OPS = {
         };
     },
 
-    not: (col, value) => ({
-        clause: `"${col}" != ? COLLATE NOCASE`,
+    not: (col, value, fieldType) => ({
+        clause: `"${col}" != ?${nocase(fieldType)}`,
         params: [value]
     }),
     notin: (col, value) => {
@@ -105,8 +116,8 @@ const OPS = {
         clause: value === 'true' || value === '1' ? `"${col}" IS NULL` : `"${col}" IS NOT NULL`,
         params: []
     }),
-    equalfold: (col, value) => ({
-        clause: `"${col}" = ? COLLATE NOCASE`,
+    equalfold: (col, value, fieldType) => ({
+        clause: `"${col}" = ?${nocase(fieldType)}`,
         params: [value]
     }),
 };
@@ -116,19 +127,19 @@ const OPS = {
  * Unlike OPS, these accept a pre-quoted SQL column expression
  * (e.g. t."ix_id") and a placeholder string.
  *
- * @type {Record<string, (col: string, ph: string) => string>}
+ * @type {Record<string, (col: string, ph: string, fieldType?: string) => string>}
  */
 const OPS_SQL = {
-    eq: (col, ph) => `${col} = ${ph} COLLATE NOCASE`,
+    eq: (col, ph, fieldType) => `${col} = ${ph}${nocase(fieldType)}`,
     lt: (col, ph) => `${col} < ${ph}`,
     gt: (col, ph) => `${col} > ${ph}`,
     lte: (col, ph) => `${col} <= ${ph}`,
     gte: (col, ph) => `${col} >= ${ph}`,
     contains: (col, ph) => `${col} LIKE '%' || ${ph} || '%' COLLATE NOCASE`,
     startswith: (col, ph) => `${col} LIKE ${ph} || '%' COLLATE NOCASE`,
-    not: (col, ph) => `${col} != ${ph} COLLATE NOCASE`,
+    not: (col, ph, fieldType) => `${col} != ${ph}${nocase(fieldType)}`,
     endswith: (col, ph) => `${col} LIKE '%' || ${ph} COLLATE NOCASE`,
-    equalfold: (col, ph) => `${col} = ${ph} COLLATE NOCASE`,
+    equalfold: (col, ph, fieldType) => `${col} = ${ph}${nocase(fieldType)}`,
 };
 
 /**
@@ -523,7 +534,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
                 clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (SELECT value FROM json_each(?))${gateSql})`);
                 params.push(JSON.stringify(parts)); // ap-ok: SQL bind params
             } else {
-                const inner = opFn(f.field, f.value);
+                const inner = opFn(f.field, f.value, ref.fieldType);
                 clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE ${inner.clause}${gateSql})`);
                 params.push(coerceValue(f.value, /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType)));
             }
@@ -568,11 +579,11 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             if (pfx) {
                 const opSql = OPS_SQL[f.op];
                 if (opSql) {
-                    clauses.push(opSql(sqlCol, '?'));
+                    clauses.push(opSql(sqlCol, '?', fieldType));
                     params.push(coerced);
                 }
             } else {
-                const result = opFn(f.field, /** @type {string} */(coerced));
+                const result = opFn(f.field, /** @type {string} */(coerced), fieldType);
                 result.params = [coerced];
                 clauses.push(result.clause);
                 params.push(...result.params);
