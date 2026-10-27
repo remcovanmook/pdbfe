@@ -32,6 +32,10 @@
 #   KV_SESSIONS_ID         — Sessions KV namespace ID
 #   API_DOMAIN             — Custom domain (e.g. "pdbfe.dev")
 #   VECTORIZE_INDEX_NAME   — Vectorize index name (e.g. "pdbfe-vectors")
+#   API_DOMAIN_ALIASES     — Optional: other domains (zones in the same account)
+#                            the API workers also answer on, comma-separated
+#                            (e.g. "pdbedge.com"): api./rest./graphql. routes
+#                            are added for each. Not auth (OAuth redirect URI).
 #   FRONTEND_ALIASES       — Optional: other domains the frontend is published
 #                            on, comma-separated origins (e.g.
 #                            "https://pdbedge.com"); auth trusts them like
@@ -113,6 +117,35 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
     PDBFE_VERSION="$(cat "$REPO_ROOT/VERSION" | tr -d '[:space:]')"
     VECTORIZE_INDEX_NAME="${VECTORIZE_INDEX_NAME:-pdbfe-vectors}"
 
+    # Adds a copy of every route on API_DOMAIN's zone for each domain in
+    # API_DOMAIN_ALIASES (comma-separated, e.g. "pdbedge.com"), so the same
+    # workers also answer on api./rest./graphql.<alias>. Rewrites the routes
+    # array of a generated wrangler toml in place; no aliases, no change.
+    add_alias_routes() {
+        local toml="$1"
+        [[ -n "${API_DOMAIN_ALIASES:-}" ]] || return 0
+        awk -v main="$API_DOMAIN" -v aliases="$API_DOMAIN_ALIASES" '
+            BEGIN { n_alias = split(aliases, alias, ","); gsub(/\./, "\\.", main) }
+            /^routes = \[/ { in_routes = 1; n = 0; print; next }
+            in_routes && /^\]/ {
+                for (i = 1; i <= n; i++) printf "%s%s\n", entry[i], (i < n ? "," : "")
+                in_routes = 0; print; next
+            }
+            in_routes {
+                line = $0; sub(/,[ \t]*$/, "", line)
+                if (line ~ /^[ \t]*$/) next
+                entry[++n] = line
+                for (a = 1; a <= n_alias; a++) {
+                    d = alias[a]; gsub(/[ \t]/, "", d)
+                    if (d == "") continue
+                    copy = line; gsub(main, d, copy); entry[++n] = copy
+                }
+                next
+            }
+            { print }
+        ' "$toml" > "$toml.tmp" && mv "$toml.tmp" "$toml"
+    }
+
     sed \
         -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
         -e "s|<your-sessions-kv-namespace-id>|${KV_SESSIONS_ID}|" \
@@ -120,6 +153,7 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
         -e "s|<your-domain>|${API_DOMAIN}|g" \
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
         "$REPO_ROOT/workers/wrangler.toml.example" > "$REPO_ROOT/workers/wrangler.toml"
+    add_alias_routes "$REPO_ROOT/workers/wrangler.toml"
 
     sed \
         -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
@@ -147,6 +181,7 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
         -e "s|<your-domain>|${API_DOMAIN}|g" \
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
         "$REPO_ROOT/workers/wrangler-graphql.toml.example" > "$REPO_ROOT/workers/wrangler-graphql.toml"
+    add_alias_routes "$REPO_ROOT/workers/wrangler-graphql.toml"
 
     sed \
         -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
@@ -155,6 +190,7 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
         -e "s|<your-domain>|${API_DOMAIN}|g" \
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
         "$REPO_ROOT/workers/wrangler-rest.toml.example" > "$REPO_ROOT/workers/wrangler-rest.toml"
+    add_alias_routes "$REPO_ROOT/workers/wrangler-rest.toml"
 
     sed \
         -e "s|<your-d1-database-id>|${D1_DATABASE_ID}|" \
@@ -164,6 +200,7 @@ if [[ -n "$GENERATE_CONFIGS" ]]; then
         -e "s|<your-version>|${PDBFE_VERSION}|g" \
         -e "s|<your-vectorize-index-name>|${VECTORIZE_INDEX_NAME}|g" \
         "$REPO_ROOT/workers/wrangler-search.toml.example" > "$REPO_ROOT/workers/wrangler-search.toml"
+    add_alias_routes "$REPO_ROOT/workers/wrangler-search.toml"
 
     # Frontend config — all origins derive from API_DOMAIN
     sed \
