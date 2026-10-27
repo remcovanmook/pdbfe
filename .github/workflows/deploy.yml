@@ -133,6 +133,9 @@ jobs:
           # Other domains the frontend is published on (repository variable,
           # not secret): comma-separated origins, e.g. https://pdbedge.com.
           FRONTEND_ALIASES: ${{ vars.FRONTEND_ALIASES }}
+          # Other zones the API workers also answer on (repository variable):
+          # comma-separated domains, e.g. pdbedge.com — api./rest./graphql.
+          API_DOMAIN_ALIASES: ${{ vars.API_DOMAIN_ALIASES }}
 
       - name: Deploy
         run: ./scripts/deploy.sh --remote --apply-migrations --force
