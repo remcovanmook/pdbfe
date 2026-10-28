@@ -71,8 +71,8 @@ describe('If-Modified-Since on details', () => {
         assert.equal(await get('net/101', ims(V0 + 240)), 304);
     });
 
-    it('a whole-entity marker newer than the IMS is a 200', async () => {
-        markRow('poc', 0, V0 + 400, V0 + 400);
+    it('whole-entity markers newer than the IMS are a 200 (written for every entity at once, as the migration does)', async () => {
+        for (const tag of Object.keys(ENTITIES)) markRow(tag, 0, V0 + 400, V0 + 400);
         assert.equal(await get('net/100?depth=1', ims(V0 + 350)), 200, 'net/100 shows its pocs at depth 1');
         assert.equal(await get('net/100?depth=1', ims(V0 + 450)), 304);
     });
