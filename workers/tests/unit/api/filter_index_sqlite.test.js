@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { createSqliteD1 } from '../../lib/sqlite_d1.js';
 import { ENTITIES } from '../../../api/entities.js';
 import { buildRowQuery, buildJsonQuery } from '../../../api/query.js';
+import { changeCheckSql } from '../../../api/depth.js';
 
 const { sqlite } = createSqliteD1();
 const OPTS = { depth: 0, limit: 0, skip: 0, since: 0 };
@@ -47,4 +48,18 @@ describe('string equality filters stay case-insensitive', () => {
         const q = buildRowQuery(ENTITIES.net, [{ field: 'name', op: 'eq', value: 'cLoUdFlArE' }], OPTS);
         assert.equal(/** @type {any[]} */ (sqlite.prepare(q.sql).all(...q.params)).length, 1);
     });
+});
+
+describe('the If-Modified-Since change check uses the primary key', () => {
+    // Its marker clause once filtered on id alone and scanned _row_changes
+    // on every call: 88% of production's D1 rows read.
+    for (const [tag, entity] of Object.entries(ENTITIES)) {
+        it(`${tag} at depth 0, 1 and 2: no scan of _row_changes`, () => {
+            for (const depth of [0, 1, 2]) {
+                const p = plan({ sql: changeCheckSql(entity, depth), params: [0, 1] });
+                const bad = p.filter(d => /^SCAN _row_changes\b/.test(d.trim()));
+                assert.deepEqual(bad, [], `depth ${depth}:\n  ${p.join('\n  ')}`);
+            }
+        });
+    }
 });

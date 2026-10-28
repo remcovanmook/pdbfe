@@ -513,7 +513,8 @@ const CHANGE_CHECK_SQL = new Map();
  * checks them against _row_changes: row_at for shown rows, set_at for rows
  * whose sets are shown (a child that left has no row here to check).
  * Ids come from FK columns, not joins, so a deleted parent or through-set
- * target still counts. Any whole-entity marker (id 0) counts too.
+ * target still counts. The entity's whole-entity marker (id 0) counts too;
+ * markers are written for all entities at once.
  *
  * Keep in step with planExpansion and its plan* helpers;
  * tests/unit/api/change_check_sqlite.test.js renders every detail before and
@@ -545,9 +546,11 @@ export function changeCheckSql(entity, depth) {
     const exists = parts.map(p => // ap-ok: SQL construction, cached per entity and depth
         `EXISTS (SELECT 1 FROM "_row_changes" WHERE "entity" = '${p.tag}' AND "id" IN (${p.ids}) AND "${p.col}" >= ?1)`);
     // Whole-entity markers (id 0) are written for every entity at once
-    // (migration, bootstrap: no history before them), so any one counts —
-    // also for entities a response lists only by id.
-    exists.push('EXISTS (SELECT 1 FROM "_row_changes" WHERE "id" = 0 AND max("row_at", "set_at") >= ?1)');
+    // (migration, bootstrap: no history before them), with one timestamp,
+    // so this entity's marker stands for all of them — also for entities a
+    // response lists only by id. A primary-key lookup: filtering on id
+    // alone scanned the whole table on every check (88% of D1 rows read).
+    exists.push(`EXISTS (SELECT 1 FROM "_row_changes" WHERE "entity" = '${entity.tag}' AND "id" = 0 AND max("row_at", "set_at") >= ?1)`);
     sql = `SELECT (${exists.join(' OR ')}) AS "changed"`;
     CHANGE_CHECK_SQL.set(key, sql);
     return sql;
