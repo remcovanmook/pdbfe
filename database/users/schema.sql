@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     prefix     TEXT    NOT NULL,      -- first 4 hex chars, for UI display
     hash       TEXT    NOT NULL UNIQUE, -- SHA-256 hex of the full key
     created_at TEXT    NOT NULL,      -- ISO 8601
+    expires_at TEXT,                  -- ISO 8601; NULL = never expires
     PRIMARY KEY (user_id, key_id)
 );
 

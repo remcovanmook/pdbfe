@@ -144,6 +144,10 @@ npx wrangler d1 execute pdbfe-users \
     --file=database/users/0002_preference_options.sql --remote
 ```
 
+`schema.sql` already includes `api_keys.expires_at`. Databases bootstrapped
+before it was added need `database/users/0003_api_key_expiry.sql` applied once,
+before deploying workers that read the column.
+
 ### Backfill private POC records
 
 Public JSON dumps only contain `visible=Public` POC records. Backfill the rest:

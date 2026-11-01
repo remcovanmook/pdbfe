@@ -70,6 +70,65 @@ function modal(id, title, body) {
     return overlay;
 }
 
+// ── API key expiry ──────────────────────────────────────────────────
+
+/**
+ * Lifetime choices for a new API key: [select value, label]. The value is
+ * the `expires_in_days` sent to the auth worker, or 'never'.
+ * @type {Array<[string, string]>}
+ */
+const KEY_EXPIRY_OPTIONS = [
+    ['30', '30 days'],
+    ['90', '90 days'],
+    ['365', '1 year'],
+    ['never', 'Never'],
+];
+
+/** Default lifetime, matching the auth worker's default. */
+const KEY_EXPIRY_DEFAULT = '365';
+
+/** Keys expiring within this many days are flagged in the table. */
+const KEY_EXPIRY_WARN_DAYS = 30;
+
+/**
+ * Whether a key's expiry has passed.
+ *
+ * @param {string|null} expiresAt - ISO expiry, or null for never.
+ * @returns {boolean}
+ */
+function isExpired(expiresAt) {
+    return expiresAt !== null && expiresAt !== undefined && Date.parse(expiresAt) <= Date.now();
+}
+
+/**
+ * Builds the Expires cell for a key row: "Never", the date, the date with
+ * a days-left warning when it is close, or "Expired".
+ *
+ * @param {string|null} expiresAt - ISO expiry, or null for never.
+ * @returns {HTMLTableCellElement}
+ */
+function expiryCell(expiresAt) {
+    const td = document.createElement('td');
+    if (!expiresAt) {
+        td.textContent = t('Never');
+        td.style.color = 'var(--text-muted)';
+        return td;
+    }
+    if (isExpired(expiresAt)) {
+        td.textContent = t('Expired');
+        td.style.color = 'var(--status-error)';
+        td.title = formatDate(expiresAt);
+        return td;
+    }
+    td.textContent = formatDate(expiresAt);
+    const daysLeft = Math.ceil((Date.parse(expiresAt) - Date.now()) / 86_400_000);
+    if (daysLeft <= KEY_EXPIRY_WARN_DAYS) {
+        td.style.color = 'var(--status-warn)';
+        td.title = t('{n} days left', { n: daysLeft });
+    }
+    return td;
+}
+
 // ── Page renderer ───────────────────────────────────────────────────
 
 /**
@@ -262,6 +321,18 @@ export async function renderAccount(_params) {
     labelInput.maxLength = 64;
     labelInput.autofocus = true;
     createDiv.appendChild(labelInput);
+    createDiv.appendChild(el('label', { style: 'display:block;color:var(--text-secondary);font-size:0.8125rem;margin:var(--space-md) 0 var(--space-xs)', text: t('Expires') }));
+    const expirySelect = /** @type {HTMLSelectElement} */ (document.createElement('select'));
+    expirySelect.id = 'key-expiry-select';
+    expirySelect.className = 'key-label-input';
+    for (const [value, text] of KEY_EXPIRY_OPTIONS) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = t(text);
+        if (value === KEY_EXPIRY_DEFAULT) opt.selected = true;
+        expirySelect.appendChild(opt);
+    }
+    createDiv.appendChild(expirySelect);
     const createBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm);margin-top:var(--space-md)' });
     createBtnRow.appendChild(el('button', { id: 'btn-do-create', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1', text: t('Create') }));
     createBtnRow.appendChild(el('button', { id: 'btn-cancel-create', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
@@ -271,6 +342,7 @@ export async function renderAccount(_params) {
     const resultDiv = el('div', { id: 'key-modal-result', style: 'display:none' });
     resultDiv.appendChild(el('p', { style: 'color:var(--status-warn);font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('Copy this key now \u2014 it will not be shown again.') }));
     resultDiv.appendChild(el('code', { id: 'key-modal-value', className: 'key-display' }));
+    resultDiv.appendChild(el('p', { id: 'key-modal-note', style: 'display:none;color:var(--text-secondary);font-size:0.8125rem;margin-top:var(--space-md)' }));
     resultDiv.appendChild(el('button', { id: 'btn-copy-key', className: 'auth-link', style: 'cursor:pointer;margin-top:var(--space-md);display:block;background:none;width:100%', text: t('Copy to clipboard') }));
     resultDiv.appendChild(el('button', { id: 'btn-close-modal', className: 'auth-link', style: 'cursor:pointer;margin-top:var(--space-sm);display:block;background:none;color:var(--text-muted);border-color:var(--border);width:100%', text: t('Close') }));
     createModalBody.appendChild(resultDiv);
@@ -288,6 +360,18 @@ export async function renderAccount(_params) {
     revokeBody.appendChild(el('p', { id: 'revoke-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
 
     frag.appendChild(modal('revoke-modal', t('Revoke API Key'), revokeBody));
+
+    // ── Rotate key modal ─────────────────────────────────────────
+    const rotateBody = document.createDocumentFragment();
+    rotateBody.appendChild(el('p', { style: 'font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('A new key with the same label and lifetime will be issued. The current key keeps working for 7 days, so you can switch clients over.') }));
+    rotateBody.appendChild(el('p', { id: 'rotate-key-info', style: 'font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)' }));
+    const rotateBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm)' });
+    rotateBtnRow.appendChild(el('button', { id: 'btn-do-rotate', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1', text: t('Rotate') }));
+    rotateBtnRow.appendChild(el('button', { id: 'btn-cancel-rotate', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
+    rotateBody.appendChild(rotateBtnRow);
+    rotateBody.appendChild(el('p', { id: 'rotate-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
+
+    frag.appendChild(modal('rotate-modal', t('Rotate API Key'), rotateBody));
 
     // ── Mount and wire ───────────────────────────────────────────
     container.replaceChildren(frag);
@@ -586,7 +670,7 @@ async function loadKeys(sid) {
 
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        for (const label of [t('Label'), t('Key Prefix'), t('Created'), '']) {
+        for (const label of [t('Label'), t('Key Prefix'), t('Created'), t('Expires'), '']) {
             const th = document.createElement('th');
             th.textContent = label;
             headerRow.appendChild(th);
@@ -611,7 +695,21 @@ async function loadKeys(sid) {
             tdDate.textContent = formatDate(k.created_at);
             tr.appendChild(tdDate);
 
+            tr.appendChild(expiryCell(k.expires_at));
+
             const tdAction = document.createElement('td');
+            tdAction.style.cssText = 'white-space:nowrap';
+            if (!isExpired(k.expires_at)) {
+                const rotateBtn = document.createElement('button');
+                rotateBtn.className = 'auth-link btn-rotate-key';
+                rotateBtn.style.cssText = 'cursor:pointer;background:none;margin-right:var(--space-xs)';
+                rotateBtn.textContent = t('Rotate');
+                rotateBtn.setAttribute('aria-label', t('Rotate API key'));
+                rotateBtn.addEventListener('click', () => {
+                    showRotateDialog(sid, k.key_id, k.label, k.prefix);
+                });
+                tdAction.appendChild(rotateBtn);
+            }
             const revokeBtn = document.createElement('button');
             revokeBtn.className = 'auth-link btn-delete-key';
             revokeBtn.style.cssText = 'cursor:pointer;background:none;color:var(--status-error);border-color:var(--status-error)';
@@ -630,7 +728,9 @@ async function loadKeys(sid) {
 
         const usageP = document.createElement('p');
         usageP.style.cssText = 'color:var(--text-muted);font-size:0.6875rem;margin-top:var(--space-sm)';
-        usageP.textContent = t('{n} / {max} keys used', { n: keys.length, max: data.max_keys });
+        // Expired keys don't count toward the limit (the auth worker skips them too).
+        const liveKeys = keys.filter((/** @type {{expires_at: string|null}} */ k) => !isExpired(k.expires_at)).length;
+        usageP.textContent = t('{n} / {max} keys used', { n: liveKeys, max: data.max_keys });
 
         keysContainer.replaceChildren(wrapper, usageP);
 
@@ -664,6 +764,10 @@ function showCreateDialog(sid) {
     createView.style.display = 'block';
     resultView.style.display = 'none';
     labelInput.value = '';
+    const expirySelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('key-expiry-select'));
+    if (expirySelect) expirySelect.value = KEY_EXPIRY_DEFAULT;
+    const noteEl = document.getElementById('key-modal-note');
+    if (noteEl) noteEl.style.display = 'none';
     modal.style.display = 'flex';
     labelInput.focus();
 
@@ -676,6 +780,8 @@ function showCreateDialog(sid) {
     /** Submits the create request and shows the result. */
     async function doCreate() {
         const label = labelInput.value.trim() || 'Unnamed key';
+        const expiryValue = expirySelect?.value ?? KEY_EXPIRY_DEFAULT;
+        const expires_in_days = expiryValue === 'never' ? null : Number(expiryValue);
         const createBtn = document.getElementById('btn-do-create');
         if (createBtn) createBtn.textContent = t('Creating...');
 
@@ -686,7 +792,7 @@ function showCreateDialog(sid) {
                     'Authorization': `Bearer ${sid}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ label }),
+                body: JSON.stringify({ label, expires_in_days }),
             });
 
             const data = await res.json();
@@ -744,6 +850,116 @@ function showCreateDialog(sid) {
         if (e.key === 'Enter') doCreate().catch((err) => console.error('Create key error:', err));
         if (e.key === 'Escape') closeModal();
     };
+}
+
+/**
+ * Shows a confirmation modal before rotating an API key. On confirm,
+ * rotates it and shows the new key in the key modal's result view, with
+ * a note saying until when the old key keeps working.
+ *
+ * @param {string} sid - Session ID.
+ * @param {string} keyId - The key ID to rotate.
+ * @param {string} label - Display label for the key.
+ * @param {string} prefix - 4-char key prefix.
+ */
+function showRotateDialog(sid, keyId, label, prefix) {
+    const modal = document.getElementById('rotate-modal');
+    const infoEl = document.getElementById('rotate-key-info');
+    const errorEl = document.getElementById('rotate-error');
+    if (!modal || !infoEl || !errorEl) return;
+
+    // User key label goes through textContent
+    infoEl.textContent = '';
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'td-mono';
+    prefixSpan.style.display = 'inline';
+    prefixSpan.textContent = ` (pdbfe.${prefix}…)`;
+    infoEl.append(strong, prefixSpan);
+    errorEl.style.display = 'none';
+    modal.style.display = 'flex';
+
+    /** Closes the rotate modal. */
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    /** Performs the rotate request and shows the new key. */
+    async function doRotate() {
+        const rotateBtn = document.getElementById('btn-do-rotate');
+        if (rotateBtn) rotateBtn.textContent = t('Rotating...');
+
+        try {
+            const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}/rotate`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${sid}` },
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errorEl.textContent = data.error || t('Failed to rotate key');
+                errorEl.style.display = 'block';
+                if (rotateBtn) rotateBtn.textContent = t('Rotate');
+                return;
+            }
+
+            closeModal();
+            showKeyResult(sid, t('API Key Rotated'), data.key,
+                t('The old key keeps working until {date}.', { date: formatDate(data.rotated.expires_at) }));
+        } catch (err) {
+            console.error('Rotate key error:', err);
+            errorEl.textContent = t('Network error');
+            errorEl.style.display = 'block';
+            if (rotateBtn) rotateBtn.textContent = t('Rotate');
+        }
+    }
+
+    const rotateBtn = document.getElementById('btn-do-rotate');
+    const cancelBtn = document.getElementById('btn-cancel-rotate');
+    if (rotateBtn) {
+        rotateBtn.textContent = t('Rotate');
+        rotateBtn.onclick = doRotate;
+    }
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+}
+
+/**
+ * Opens the key modal straight in its result view, showing a newly issued
+ * key with a copy button and an optional note. Closing refreshes the list.
+ *
+ * @param {string} sid - Session ID.
+ * @param {string} title - Modal title.
+ * @param {string} key - The full key, shown once.
+ * @param {string} note - Extra line under the key.
+ */
+function showKeyResult(sid, title, key, note) {
+    const modal = document.getElementById('key-modal');
+    const createView = document.getElementById('key-modal-create');
+    const resultView = document.getElementById('key-modal-result');
+    const titleEl = document.getElementById('key-modal-title');
+    const keyValue = document.getElementById('key-modal-value');
+    const noteEl = document.getElementById('key-modal-note');
+    const copyBtn = document.getElementById('btn-copy-key');
+    const closeBtn = document.getElementById('btn-close-modal');
+    if (!modal || !createView || !resultView || !titleEl || !keyValue || !noteEl || !copyBtn || !closeBtn) return;
+
+    titleEl.textContent = title;
+    createView.style.display = 'none';
+    resultView.style.display = 'block';
+    keyValue.textContent = key;
+    noteEl.textContent = note;
+    noteEl.style.display = 'block';
+    copyBtn.textContent = t('Copy to clipboard');
+    copyBtn.onclick = () => {
+        navigator.clipboard.writeText(key).then(() => {
+            copyBtn.textContent = t('Copied!');
+        }, (err) => console.error('Copy to clipboard failed:', err));
+    };
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+        loadKeys(sid).catch((err) => console.error('Loading API keys failed:', err));
+    };
+    modal.style.display = 'flex';
 }
 
 /**
