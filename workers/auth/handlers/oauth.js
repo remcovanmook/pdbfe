@@ -128,6 +128,11 @@ function getOAuthHandler(env) {
         scopes:       OAUTH_SCOPES,
         cookiePrefix: 'pdbfe_oauth',
 
+        // 30-day sessions: PeeringDB shows its consent screen on every login,
+        // so a daily expiry meant a daily re-authorize. Network affiliations
+        // are snapshotted at login and refresh on the next one.
+        sessionTtl:   30 * 86400,
+
         // PeeringDB's WAF blocks Cloudflare Worker subrequests without an
         // Authorization header. Inject the API key to satisfy it; the token
         // endpoint reads OAuth credentials from the POST body independently.

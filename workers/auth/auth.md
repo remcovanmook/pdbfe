@@ -32,7 +32,7 @@ pdbfe-auth /auth/callback?code=...&state=...
         │     (with Api-Key header to bypass PeeringDB WAF — see below)
         │  3. GET auth.peeringdb.com/profile/v1 → user profile
         │  4. Generate session ID (32 random bytes, hex)
-        │  5. KV.put("session:<sid>", {profile}, TTL=24h)
+        │  5. KV.put("session:<sid>", {profile}, TTL=30d)
         │  6. Clear oauth_state cookie
         │  7. Redirect to frontend/?sid=<session_id>
         ▼
@@ -96,7 +96,7 @@ pdbfe-api:
 
 | Key Pattern | Value | TTL | Written By |
 |---|---|---|---|
-| `session:<hex64>` | JSON SessionData | 24 hours | pdbfe-auth |
+| `session:<hex64>` | JSON SessionData | 30 days | pdbfe-auth |
 
 ### USERDB D1 database (`pdbfe-users`)
 
