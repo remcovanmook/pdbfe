@@ -70,6 +70,31 @@ function modal(id, title, body) {
     return overlay;
 }
 
+/**
+ * Builds the body of a key confirmation modal (revoke, rotate): a message,
+ * a line naming the key, confirm and cancel buttons, and an error line.
+ * Element IDs derive from `name`: `${name}-key-info`, `btn-do-${name}`,
+ * `btn-cancel-${name}`, `${name}-error` (see showConfirmDialog).
+ *
+ * @param {string} name - Dialog name used in element IDs.
+ * @param {string} message - Explanation shown first.
+ * @param {string} messageStyle - Extra inline CSS for the message.
+ * @param {string} actionLabel - Confirm button text.
+ * @param {string} actionStyle - Extra inline CSS for the confirm button.
+ * @returns {DocumentFragment}
+ */
+function confirmBody(name, message, messageStyle, actionLabel, actionStyle) {
+    const body = document.createDocumentFragment();
+    body.appendChild(el('p', { style: `${messageStyle}font-size:0.8125rem;margin-bottom:var(--space-md)`, text: message }));
+    body.appendChild(el('p', { id: `${name}-key-info`, style: 'font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)' }));
+    const row = el('div', { style: 'display:flex;gap:var(--space-sm)' });
+    row.appendChild(el('button', { id: `btn-do-${name}`, className: 'auth-link', style: `cursor:pointer;background:none;flex:1;${actionStyle}`, text: actionLabel }));
+    row.appendChild(el('button', { id: `btn-cancel-${name}`, className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
+    body.appendChild(row);
+    body.appendChild(el('p', { id: `${name}-error`, className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
+    return body;
+}
+
 // ── API key expiry ──────────────────────────────────────────────────
 
 /**
@@ -349,29 +374,13 @@ export async function renderAccount(_params) {
 
     frag.appendChild(modal('key-modal', t('Create API Key'), createModalBody));
 
-    // ── Revoke key modal ─────────────────────────────────────────
-    const revokeBody = document.createDocumentFragment();
-    revokeBody.appendChild(el('p', { style: 'color:var(--status-error);font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('This will permanently revoke the key. Any client using it will lose access.') }));
-    revokeBody.appendChild(el('p', { id: 'revoke-key-info', style: 'font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)' }));
-    const revokeBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm)' });
-    revokeBtnRow.appendChild(el('button', { id: 'btn-do-revoke', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--status-error);border-color:var(--status-error)', text: t('Revoke') }));
-    revokeBtnRow.appendChild(el('button', { id: 'btn-cancel-revoke', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
-    revokeBody.appendChild(revokeBtnRow);
-    revokeBody.appendChild(el('p', { id: 'revoke-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
-
-    frag.appendChild(modal('revoke-modal', t('Revoke API Key'), revokeBody));
-
-    // ── Rotate key modal ─────────────────────────────────────────
-    const rotateBody = document.createDocumentFragment();
-    rotateBody.appendChild(el('p', { style: 'font-size:0.8125rem;margin-bottom:var(--space-md)', text: t('A new key with the same label and lifetime will be issued. The current key keeps working for 7 days, so you can switch clients over.') }));
-    rotateBody.appendChild(el('p', { id: 'rotate-key-info', style: 'font-size:0.8125rem;color:var(--text-secondary);margin-bottom:var(--space-md)' }));
-    const rotateBtnRow = el('div', { style: 'display:flex;gap:var(--space-sm)' });
-    rotateBtnRow.appendChild(el('button', { id: 'btn-do-rotate', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1', text: t('Rotate') }));
-    rotateBtnRow.appendChild(el('button', { id: 'btn-cancel-rotate', className: 'auth-link', style: 'cursor:pointer;background:none;flex:1;color:var(--text-muted);border-color:var(--border)', text: t('Cancel') }));
-    rotateBody.appendChild(rotateBtnRow);
-    rotateBody.appendChild(el('p', { id: 'rotate-error', className: 'modal-error', style: 'display:none;color:var(--status-error);font-size:0.8125rem;margin-top:var(--space-sm)' }));
-
-    frag.appendChild(modal('rotate-modal', t('Rotate API Key'), rotateBody));
+    // ── Revoke and rotate confirmation modals ────────────────────
+    frag.appendChild(modal('revoke-modal', t('Revoke API Key'), confirmBody('revoke',
+        t('This will permanently revoke the key. Any client using it will lose access.'), 'color:var(--status-error);',
+        t('Revoke'), 'color:var(--status-error);border-color:var(--status-error)')));
+    frag.appendChild(modal('rotate-modal', t('Rotate API Key'), confirmBody('rotate',
+        t('A new key with the same label and lifetime will be issued. The current key keeps working for 7 days, so you can switch clients over.'), '',
+        t('Rotate'), '')));
 
     // ── Mount and wire ───────────────────────────────────────────
     container.replaceChildren(frag);
@@ -766,8 +775,6 @@ function showCreateDialog(sid) {
     labelInput.value = '';
     const expirySelect = /** @type {HTMLSelectElement|null} */ (document.getElementById('key-expiry-select'));
     if (expirySelect) expirySelect.value = KEY_EXPIRY_DEFAULT;
-    const noteEl = document.getElementById('key-modal-note');
-    if (noteEl) noteEl.style.display = 'none';
     modal.style.display = 'flex';
     labelInput.focus();
 
@@ -809,27 +816,7 @@ function showCreateDialog(sid) {
                 return;
             }
 
-            // Switch to result view
-            titleEl.textContent = t('API Key Created');
-            createView.style.display = 'none';
-            resultView.style.display = 'block';
-
-            const keyValue = document.getElementById('key-modal-value');
-            if (keyValue) keyValue.textContent = data.key;
-
-            const copyBtn = document.getElementById('btn-copy-key');
-            if (copyBtn) {
-                copyBtn.textContent = t('Copy to clipboard');
-                copyBtn.onclick = () => {
-                    navigator.clipboard.writeText(data.key).then(() => {
-                        copyBtn.textContent = t('Copied!');
-                    }, (err) => console.error('Copy to clipboard failed:', err));
-                };
-            }
-
-            const closeBtn = document.getElementById('btn-close-modal');
-            if (closeBtn) closeBtn.onclick = closeModal;
-
+            showKeyResult(sid, t('API Key Created'), data.key, '');
         } catch (err) {
             console.error('Create key error:', err);
             if (createBtn) createBtn.textContent = t('Create');
@@ -853,9 +840,61 @@ function showCreateDialog(sid) {
 }
 
 /**
- * Shows a confirmation modal before rotating an API key. On confirm,
- * rotates it and shows the new key in the key modal's result view, with
- * a note saying until when the old key keeps working.
+ * Shows a key confirmation modal built by confirmBody and runs `action`
+ * on confirm. The action resolves to an error message to show in the
+ * modal, or null on success, which closes it.
+ *
+ * @param {string} name - Dialog name ('revoke' or 'rotate').
+ * @param {string} label - Display label for the key.
+ * @param {string} prefix - 4-char key prefix.
+ * @param {string} actionLabel - Confirm button text.
+ * @param {string} busyLabel - Confirm button text while the action runs.
+ * @param {() => Promise<string|null>} action - The confirmed operation.
+ */
+function showConfirmDialog(name, label, prefix, actionLabel, busyLabel, action) {
+    const modal = document.getElementById(`${name}-modal`);
+    const infoEl = document.getElementById(`${name}-key-info`);
+    const errorEl = document.getElementById(`${name}-error`);
+    const actionBtn = document.getElementById(`btn-do-${name}`);
+    const cancelBtn = document.getElementById(`btn-cancel-${name}`);
+    if (!modal || !infoEl || !errorEl || !actionBtn || !cancelBtn) return;
+
+    // Build the info text with DOM nodes — user key label goes through textContent
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const prefixSpan = document.createElement('span');
+    prefixSpan.className = 'td-mono';
+    prefixSpan.style.display = 'inline';
+    prefixSpan.textContent = ` (pdbfe.${prefix}…)`;
+    infoEl.replaceChildren(strong, prefixSpan);
+    errorEl.style.display = 'none';
+    actionBtn.textContent = actionLabel;
+    modal.style.display = 'flex';
+
+    /** @param {string} message */
+    const showError = (message) => {
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+        actionBtn.textContent = actionLabel;
+    };
+
+    actionBtn.onclick = async () => {
+        actionBtn.textContent = busyLabel;
+        try {
+            const error = await action();
+            if (error === null) modal.style.display = 'none';
+            else showError(error);
+        } catch (err) {
+            console.error(`${name} key error:`, err);
+            showError(t('Network error'));
+        }
+    };
+    cancelBtn.onclick = () => { modal.style.display = 'none'; };
+}
+
+/**
+ * Asks for confirmation, then rotates an API key and shows the new key
+ * in the key modal's result view, with until when the old key works.
  *
  * @param {string} sid - Session ID.
  * @param {string} keyId - The key ID to rotate.
@@ -863,64 +902,17 @@ function showCreateDialog(sid) {
  * @param {string} prefix - 4-char key prefix.
  */
 function showRotateDialog(sid, keyId, label, prefix) {
-    const modal = document.getElementById('rotate-modal');
-    const infoEl = document.getElementById('rotate-key-info');
-    const errorEl = document.getElementById('rotate-error');
-    if (!modal || !infoEl || !errorEl) return;
-
-    // User key label goes through textContent
-    infoEl.textContent = '';
-    const strong = document.createElement('strong');
-    strong.textContent = label;
-    const prefixSpan = document.createElement('span');
-    prefixSpan.className = 'td-mono';
-    prefixSpan.style.display = 'inline';
-    prefixSpan.textContent = ` (pdbfe.${prefix}…)`;
-    infoEl.append(strong, prefixSpan);
-    errorEl.style.display = 'none';
-    modal.style.display = 'flex';
-
-    /** Closes the rotate modal. */
-    function closeModal() {
-        modal.style.display = 'none';
-    }
-
-    /** Performs the rotate request and shows the new key. */
-    async function doRotate() {
-        const rotateBtn = document.getElementById('btn-do-rotate');
-        if (rotateBtn) rotateBtn.textContent = t('Rotating...');
-
-        try {
-            const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}/rotate`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${sid}` },
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                errorEl.textContent = data.error || t('Failed to rotate key');
-                errorEl.style.display = 'block';
-                if (rotateBtn) rotateBtn.textContent = t('Rotate');
-                return;
-            }
-
-            closeModal();
-            showKeyResult(sid, t('API Key Rotated'), data.key,
-                t('The old key keeps working until {date}.', { date: formatDate(data.rotated.expires_at) }));
-        } catch (err) {
-            console.error('Rotate key error:', err);
-            errorEl.textContent = t('Network error');
-            errorEl.style.display = 'block';
-            if (rotateBtn) rotateBtn.textContent = t('Rotate');
-        }
-    }
-
-    const rotateBtn = document.getElementById('btn-do-rotate');
-    const cancelBtn = document.getElementById('btn-cancel-rotate');
-    if (rotateBtn) {
-        rotateBtn.textContent = t('Rotate');
-        rotateBtn.onclick = doRotate;
-    }
-    if (cancelBtn) cancelBtn.onclick = closeModal;
+    showConfirmDialog('rotate', label, prefix, t('Rotate'), t('Rotating...'), async () => {
+        const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}/rotate`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${sid}` },
+        });
+        const data = await res.json();
+        if (!res.ok) return data.error || t('Failed to rotate key');
+        showKeyResult(sid, t('API Key Rotated'), data.key,
+            t('The old key keeps working until {date}.', { date: formatDate(data.rotated.expires_at) }));
+        return null;
+    });
 }
 
 /**
@@ -930,7 +922,7 @@ function showRotateDialog(sid, keyId, label, prefix) {
  * @param {string} sid - Session ID.
  * @param {string} title - Modal title.
  * @param {string} key - The full key, shown once.
- * @param {string} note - Extra line under the key.
+ * @param {string} note - Extra line under the key ('' for none).
  */
 function showKeyResult(sid, title, key, note) {
     const modal = document.getElementById('key-modal');
@@ -948,7 +940,7 @@ function showKeyResult(sid, title, key, note) {
     resultView.style.display = 'block';
     keyValue.textContent = key;
     noteEl.textContent = note;
-    noteEl.style.display = 'block';
+    noteEl.style.display = note ? 'block' : 'none';
     copyBtn.textContent = t('Copy to clipboard');
     copyBtn.onclick = () => {
         navigator.clipboard.writeText(key).then(() => {
@@ -963,72 +955,23 @@ function showKeyResult(sid, title, key, note) {
 }
 
 /**
- * Shows a confirmation modal before revoking an API key.
+ * Asks for confirmation, then revokes an API key and refreshes the list.
  *
  * @param {string} sid - Session ID.
- * @param {string} keyId - The 8-char key ID to revoke.
+ * @param {string} keyId - The key ID to revoke.
  * @param {string} label - Display label for the key.
  * @param {string} prefix - 4-char key prefix.
  */
 function showRevokeDialog(sid, keyId, label, prefix) {
-    const modal = document.getElementById('revoke-modal');
-    const infoEl = document.getElementById('revoke-key-info');
-    const errorEl = document.getElementById('revoke-error');
-    if (!modal || !infoEl || !errorEl) return;
-
-    // Build the info text with DOM nodes — user key label goes through textContent
-    infoEl.textContent = '';
-    const strong = document.createElement('strong');
-    strong.textContent = label;
-    const prefixSpan = document.createElement('span');
-    prefixSpan.className = 'td-mono';
-    prefixSpan.style.display = 'inline';
-    prefixSpan.textContent = ` (pdbfe.${prefix}…)`;
-    infoEl.append(strong, prefixSpan);
-    errorEl.style.display = 'none';
-    modal.style.display = 'flex';
-
-    /** Closes the revoke modal. */
-    function closeModal() {
-        modal.style.display = 'none';
-    }
-
-    /** Performs the DELETE request and refreshes the list. */
-    async function doRevoke() {
-        const revokeBtn = document.getElementById('btn-do-revoke');
-        if (revokeBtn) revokeBtn.textContent = t('Revoking...');
-
-        try {
-            const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${sid}` },
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                errorEl.textContent = data.error || t('Failed to revoke key');
-                errorEl.style.display = 'block';
-                if (revokeBtn) revokeBtn.textContent = t('Revoke');
-                return;
-            }
-
-            closeModal();
-            await loadKeys(sid);
-        } catch (err) {
-            console.error('Delete key error:', err);
-            errorEl.textContent = t('Network error');
-            errorEl.style.display = 'block';
-            if (revokeBtn) revokeBtn.textContent = t('Revoke');
-        }
-    }
-
-    const revokeBtn = document.getElementById('btn-do-revoke');
-    const cancelBtn = document.getElementById('btn-cancel-revoke');
-    if (revokeBtn) {
-        revokeBtn.textContent = t('Revoke');
-        revokeBtn.onclick = doRevoke;
-    }
-    if (cancelBtn) cancelBtn.onclick = closeModal;
+    showConfirmDialog('revoke', label, prefix, t('Revoke'), t('Revoking...'), async () => {
+        const res = await fetch(`${AUTH_ORIGIN}/account/keys/${keyId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${sid}` },
+        });
+        if (!res.ok) return (await res.json()).error || t('Failed to revoke key');
+        await loadKeys(sid);
+        return null;
+    });
 }
 
 /**
