@@ -48,6 +48,7 @@ export const HEALTH_CRON = '7 3 * * SUN';
  * found netixlans stamped seconds before a sync slot, missing or outdated).
  * One full cron interval of overlap re-reads those; rows whose `updated`
  * matches the stored copy are skipped, so the overlap writes nothing twice.
+ * Reported upstream as peeringdb/peeringdb#2071.
  */
 export const SINCE_OVERLAP_S = 900;
 
