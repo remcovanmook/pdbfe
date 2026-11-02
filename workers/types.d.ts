@@ -385,6 +385,8 @@ interface PdbAuthEnv {
     /** Further frontend origins, comma-separated (e.g. "https://pdbedge.com"): CORS and login return like FRONTEND_ORIGIN. Optional. */
     FRONTEND_ALIASES?: string;
     PEERINGDB_API_KEY: string;
+    /** 32-byte hex key encrypting stored OAuth refresh tokens. Optional: without it, no tokens are stored and revalidation is off. */
+    TOKEN_ENCRYPTION_KEY?: string;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
 }

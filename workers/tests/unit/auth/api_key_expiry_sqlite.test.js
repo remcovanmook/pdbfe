@@ -188,7 +188,7 @@ describe('migration 0003', () => {
         const preSchema = USERS_SCHEMA.replace(/^\s*expires_at TEXT,.*\n/m, '');
         assert.ok(!preSchema.includes('expires_at'), 'test setup: column removed from the pre-0003 schema');
         const { sqlite, db } = createSqliteD1({ schema: preSchema });
-        sqlite.exec(`INSERT INTO users VALUES (42, 'Test User', '', '{}', 'x', 'x');
+        sqlite.exec(`INSERT INTO users (id, name, email, preferences, created_at, updated_at) VALUES (42, 'Test User', '', '{}', 'x', 'x');
                      INSERT INTO api_keys (key_id, user_id, label, prefix, hash, created_at) VALUES ('k1', 42, 'old', 'abcd', 'h1', 'x');`);
 
         sqlite.exec(MIGRATION_0003);

@@ -119,6 +119,12 @@ openssl rand -hex 32 | wrangler secret put ADMIN_SECRET --config workers/wrangle
 wrangler secret put OAUTH_CLIENT_ID     --config workers/wrangler-auth.toml
 wrangler secret put OAUTH_CLIENT_SECRET --config workers/wrangler-auth.toml
 wrangler secret put PEERINGDB_API_KEY   --config workers/wrangler-auth.toml
+
+# Auth worker (optional) — daily revalidation of users against PeeringDB.
+# Login stores each user's OAuth refresh token encrypted with this key; a
+# daily cron refreshes it, re-reads the profile and ends sessions and API
+# keys of users who closed their account or withdrew consent.
+openssl rand -hex 32 | wrangler secret put TOKEN_ENCRYPTION_KEY --config workers/wrangler-auth.toml
 ```
 
 > The `PEERINGDB_API_KEY` on the auth worker is required to bypass PeeringDB's
@@ -154,7 +160,9 @@ npx wrangler d1 execute pdbfe-users \
 
 `schema.sql` already includes `api_keys.expires_at`. Databases bootstrapped
 before it was added need `database/users/0003_api_key_expiry.sql` applied once,
-before deploying workers that read the column.
+before deploying workers that read the column. Likewise
+`database/users/0004_user_revalidation.sql` (`users.refresh_token`,
+`users.validated_at`) before the auth worker that reads them.
 
 ### Backfill private POC records
 

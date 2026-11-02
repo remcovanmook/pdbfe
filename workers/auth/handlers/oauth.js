@@ -19,15 +19,16 @@
  * @see https://docs.peeringdb.com/oauth/
  */
 
-import { resolveAllowedOrigin, accountCorsHeaders, methodNotAllowed, handlePreflight } from '../http.js';
+import { resolveAllowedOrigin, accountCorsHeaders, methodNotAllowed, handlePreflight, ensureUser } from '../http.js';
 import { createOAuthHandler } from '../../core/oauth.js';
+import { encryptToken } from '../tokens.js';
 
 // ── PeeringDB OAuth2 Constants ───────────────────────────────────────────────
 
 const PDB_AUTH_BASE     = 'https://auth.peeringdb.com';
 const PDB_AUTHORIZE_URL = `${PDB_AUTH_BASE}/oauth2/authorize/`;
-const PDB_TOKEN_URL     = `${PDB_AUTH_BASE}/oauth2/token/`;
-const PDB_PROFILE_URL   = `${PDB_AUTH_BASE}/profile/v1`;
+export const PDB_TOKEN_URL   = `${PDB_AUTH_BASE}/oauth2/token/`;
+export const PDB_PROFILE_URL = `${PDB_AUTH_BASE}/profile/v1`;
 
 /**
  * OAuth scopes requested from PeeringDB.
@@ -46,7 +47,7 @@ const OAUTH_SCOPES = 'profile email networks';
  * @param {Record<string, any>} profile - Raw profile JSON from PeeringDB.
  * @returns {import('../../core/oauth.js').OAuthProfileResult}
  */
-function parsePeeringDbProfile(profile) {
+export function parsePeeringDbProfile(profile) {
     if (!profile.verified_user) {
         return {
             valid: false,
@@ -69,6 +70,43 @@ function parsePeeringDbProfile(profile) {
             created_at:     new Date().toISOString(),
         },
     };
+}
+
+/**
+ * Headers for requests to auth.peeringdb.com. PeeringDB's WAF blocks
+ * Cloudflare Worker subrequests without an Authorization header, so the
+ * token endpoint gets the API key (it reads OAuth credentials from the POST
+ * body independently).
+ *
+ * @param {PdbAuthEnv} env
+ * @returns {{token: Record<string, string>, profile: Record<string, string>}}
+ */
+export function peeringDbHeaders(env) {
+    const ua = `pdbfe-auth/1.0 (Cloudflare Worker; +${env.FRONTEND_ORIGIN})`;
+    return {
+        token: { 'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`, 'User-Agent': ua },
+        profile: { 'User-Agent': ua },
+    };
+}
+
+/**
+ * After a login: make sure the user row exists and keep the refresh token
+ * (encrypted) for the daily revalidation (auth/revalidate.js). Without
+ * TOKEN_ENCRYPTION_KEY, or when PeeringDB returns no refresh token, nothing
+ * is stored and the user is simply not revalidated.
+ *
+ * @param {PdbAuthEnv} env
+ * @param {Record<string, any>} sessionData - Parsed profile (parsePeeringDbProfile).
+ * @param {{refresh_token?: string}} tokens - From the token exchange.
+ * @returns {Promise<void>}
+ */
+async function storeLogin(env, sessionData, tokens) {
+    await ensureUser(env.USERDB, /** @type {SessionData} */ (sessionData));
+    console.log(`[auth] login user ${sessionData.id}: refresh token ${tokens.refresh_token ? 'received' : 'not received'}`);
+    if (!tokens.refresh_token || !env.TOKEN_ENCRYPTION_KEY) return;
+    const now = new Date().toISOString();
+    await env.USERDB.prepare('UPDATE users SET refresh_token = ?, validated_at = ? WHERE id = ?')
+        .bind(await encryptToken(env.TOKEN_ENCRYPTION_KEY, tokens.refresh_token), now, sessionData.id).run();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -118,8 +156,7 @@ let oauthHandler = null;
 function getOAuthHandler(env) {
     if (oauthHandler) return oauthHandler;
 
-    /** @type {string} Shared User-Agent for all upstream requests. */
-    const UA = `pdbfe-auth/1.0 (Cloudflare Worker; +${env.FRONTEND_ORIGIN})`;
+    const headers = peeringDbHeaders(env);
 
     oauthHandler = createOAuthHandler({
         authorizeUrl: PDB_AUTHORIZE_URL,
@@ -133,17 +170,9 @@ function getOAuthHandler(env) {
         // are snapshotted at login and refresh on the next one.
         sessionTtl:   30 * 86400,
 
-        // PeeringDB's WAF blocks Cloudflare Worker subrequests without an
-        // Authorization header. Inject the API key to satisfy it; the token
-        // endpoint reads OAuth credentials from the POST body independently.
-        tokenHeaders: {
-            'Authorization': `Api-Key ${env.PEERINGDB_API_KEY}`,
-            'User-Agent': UA,
-        },
-
-        profileHeaders: {
-            'User-Agent': UA,
-        },
+        tokenHeaders:   headers.token,
+        profileHeaders: headers.profile,
+        onLogin:        storeLogin,
 
         getCorsHeaders: (request, env) => accountCorsHeaders(resolveAllowedOrigin(request, env)),
 
