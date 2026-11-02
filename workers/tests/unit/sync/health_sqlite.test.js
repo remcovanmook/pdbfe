@@ -28,12 +28,15 @@ function seedNets(ids) {
 
 /**
  * Mock upstream: `?fields=id,updated` lists `upIds` (updated from `upUpdated`,
- * default TS); `?id__in=` returns those ids as full rows, named after their
- * updated value so a refresh is visible in the table.
+ * default TS) — the cached full list; `?id__in=` is answered live, returning
+ * the requested ids that are in `liveIds` (default: `upIds`) as full rows,
+ * named after their updated value so a refresh is visible in the table.
  * @param {number[]|null} upIds - null → HTTP 500
  * @param {Record<number, string>} [upUpdated] - Per-id upstream `updated`.
+ * @param {number[]} [liveIds] - Ids upstream lists live, when the cached list lags.
  */
-function upstreamMock(upIds, upUpdated = {}) {
+function upstreamMock(upIds, upUpdated = {}, liveIds = upIds ?? []) {
+    const live = new Set(liveIds);
     const updatedOf = (/** @type {number} */ id) => upUpdated[id] ?? TS;
     return /** @type {any} */ (async (/** @type {string} */ url) => {
         requests.push(url);
@@ -42,16 +45,16 @@ function upstreamMock(upIds, upUpdated = {}) {
         if (u.searchParams.get('fields') === 'id,updated') {
             return new Response(JSON.stringify({ data: upIds.map((id) => ({ id, updated: updatedOf(id) })) }));
         }
-        const ids = (u.searchParams.get('id__in') || '').split(',').map(Number);
+        const ids = (u.searchParams.get('id__in') || '').split(',').map(Number).filter((id) => live.has(id));
         return new Response(JSON.stringify({ data: ids.map((id) => ({
             id, org_id: 1, name: `Net ${id} @${updatedOf(id)}`, asn: 64000 + id, social_media: [], info_types: [], status: 'ok', created: TS, updated: updatedOf(id),
         })) }));
     });
 }
 
-const run = (/** @type {number[]|null} */ upIds, /** @type {Record<number, string>} */ upUpdated = {}) => runHealthCheck(
+const run = (/** @type {number[]|null} */ upIds, /** @type {Record<number, string>} */ upUpdated = {}, /** @type {number[]|undefined} */ liveIds = undefined) => runHealthCheck(
     /** @type {any} */ ({ PDB: db, QUEUE: { sendBatch: async (/** @type {any[]} */ m) => { sent.push(...m); } } }),
-    { pauseMs: 0, fetchImpl: upstreamMock(upIds, upUpdated), tags: ['net'] },
+    { pauseMs: 0, fetchImpl: upstreamMock(upIds, upUpdated, liveIds), tags: ['net'] },
 );
 const netName = (/** @type {number} */ id) => /** @type {any} */ (sqlite.prepare('SELECT name FROM "peeringdb_network" WHERE id = ?').get(id)).name;
 const netIds = () => sqlite.prepare('SELECT id FROM "peeringdb_network" ORDER BY id').all().map((/** @type {any} */ r) => r.id);
@@ -73,6 +76,18 @@ describe('repair', () => {
         const [rec] = runs();
         assert.equal(/** @type {any} */ (rec).repaired, 1);
         assert.deepEqual(JSON.parse(/** @type {any} */ (rec).report).tables[0].deleted, [11]);
+    });
+
+    it('keeps a row the cached list lacks but upstream lists live', async () => {
+        // 13 was created upstream after the full list was cached (it lags
+        // 30–40 minutes): stale by the list, live by id. 11 is really gone.
+        seedNets([1, 2, 11, 13]);
+        const report = await run([1, 2], {}, [1, 2, 13]);
+        const t = report.tables[0];
+        assert.equal(t.stale, 2, 'both are stale candidates by the cached list');
+        assert.deepEqual(t.deleted, [11]);
+        assert.deepEqual(netIds(), [1, 2, 13]);
+        assert.ok(requests.some((u) => u.includes('id__in=11,13')), 'candidates re-checked by id');
     });
 
     it('publishes delete and embed messages for repaired rows', async () => {

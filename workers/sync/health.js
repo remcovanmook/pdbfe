@@ -10,7 +10,8 @@
  * upstream lists that the mirror never received.
  *
  * Once a week, per entity: fetch upstream's id + updated list (one request,
- * ?fields=id,updated), diff it against D1, then repair — delete stale rows,
+ * ?fields=id,updated), diff it against D1, then repair — delete stale rows
+ * (after confirming each by id: see confirmStale),
  * fetch and upsert missing ones and outdated ones (upstream `updated` newer
  * than ours: a change the incremental sync never received, e.g. rows that
  * changed while a bootstrap dump was being imported) via id__in, 150 per
@@ -21,6 +22,10 @@
  *
  * Guards (repair deletes data):
  *   - a failed or empty upstream id list skips the table (error);
+ *   - the unfiltered list is served from an upstream cache that lags
+ *     30–40 minutes, so a row created or restored since is "stale" in it;
+ *     stale candidates are re-checked by id__in (live) and only rows that
+ *     upstream really no longer lists are deleted;
  *   - deleting more than max(STALE_ABS, STALE_PCT of the table) is refused
  *     and reported as an alert — a truncated upstream response must never
  *     wipe the mirror;
@@ -146,7 +151,7 @@ async function checkTable(env, tag, meta, upstream) {
         // Set membership (parent FKs, visibility) before the repair overwrites it (row_changes.js).
         const ts = Math.floor(Date.now() / 1000);
         const staleBefore = await readMembership(db, tag, stale);
-        t.deleted = await deleteStale(db, meta, stale, mirrorUpdated.size, t.alerts);
+        t.deleted = await deleteStale(db, meta, await confirmStale(tag, stale, mirrorUpdated.size, upstream, t.alerts));
         const fetched = await fetchById(tag, missing, outdated, upstream, t.alerts);
         const fetchedBefore = await readMembership(db, tag, fetched.map((r) => r.id));
         await upsertActiveRows(db, meta, fetched);
@@ -184,23 +189,52 @@ async function checkTable(env, tag, meta, upstream) {
 }
 
 /**
- * Deletes stale rows in one statement, unless there are suspiciously many
- * (a truncated upstream list must never wipe the mirror) — then alerts.
+ * Narrows stale candidates to the rows upstream really no longer lists.
  *
- * @param {D1Database} db
- * @param {Pick<EntityMeta, 'table'>} meta
- * @param {number[]} stale - Ids present here but not upstream.
+ * The full id list comes from an upstream cache that lags 30–40 minutes:
+ * a row created or restored since then is missing from it but present
+ * here, and deleting it would drop a live row until next week's run
+ * re-inserts it (seen with POCs and a netixlan touched ~25 minutes before
+ * the check). id__in queries are answered live, so each candidate is
+ * re-checked; listed rows are kept (the incremental sync owns their
+ * updates). More candidates than the safety limit (a truncated upstream
+ * list must never wipe the mirror) alerts instead, without fetching.
+ *
+ * @param {string} tag
+ * @param {number[]} stale - Ids present here but not in the cached list.
  * @param {number} mirrorSize - Rows in the table.
+ * @param {(path: string) => Promise<Record<string, any>[]>} upstream - Paced fetcher.
  * @param {string[]} alerts - Mutated.
- * @returns {Promise<number[]>} Ids deleted.
+ * @returns {Promise<number[]>} Ids to delete.
  */
-async function deleteStale(db, meta, stale, mirrorSize, alerts) {
+async function confirmStale(tag, stale, mirrorSize, upstream, alerts) {
     if (stale.length === 0) return [];
     const limit = Math.max(STALE_ABS, Math.ceil(mirrorSize * STALE_PCT));
     if (stale.length > limit) {
         alerts.push(`${stale.length} stale rows exceed the safety limit of ${limit}; not deleting`);
         return [];
     }
+    /** @type {Set<number>} */
+    const listed = new Set();
+    for (let i = 0; i < stale.length; i += ID_IN_CHUNK) {
+        const chunk = stale.slice(i, i + ID_IN_CHUNK);
+        // Sequential on purpose: upstream requests must be paced (published rate limits).
+        const rows = await upstream(`${tag}?id__in=${chunk.join(',')}&depth=0&limit=0&fields=id,status`); // NOSONAR
+        for (const r of rows) if (isListed(r)) listed.add(r.id);
+    }
+    return stale.filter((id) => !listed.has(id));
+}
+
+/**
+ * Deletes confirmed stale rows in one statement.
+ *
+ * @param {D1Database} db
+ * @param {Pick<EntityMeta, 'table'>} meta
+ * @param {number[]} stale - Ids upstream no longer lists (confirmStale).
+ * @returns {Promise<number[]>} Ids deleted.
+ */
+async function deleteStale(db, meta, stale) {
+    if (stale.length === 0) return [];
     await db.prepare(`DELETE FROM "${meta.table}" WHERE id IN (SELECT value FROM json_each(?))`)
         .bind(JSON.stringify(stale)).run();
     return stale;

@@ -14,7 +14,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { syncEntity, buildUpsert, ensureColumns } from '../../../sync/index.js';
+import worker, { syncEntity, buildUpsert, ensureColumns, SINCE_OVERLAP_S } from '../../../sync/index.js';
 
 // ── Runtime polyfills ─────────────────────────────────────────────────────────
 // Node.js crypto.subtle does not implement timingSafeEqual (a Cloudflare
@@ -68,6 +68,14 @@ function mockD1({ lastSync = null, existingColumns = [], capturedAlters = [], ca
                 },
                 run() { return Promise.resolve({ success: true, meta: {}, results: [] }); },
                 all() {
+                    // readMembership: every incoming id exists, with an older copy.
+                    if (sql.includes('json_each')) {
+                        return Promise.resolve({
+                            success: true,
+                            results: JSON.parse(this._params[0]).map((/** @type {number} */ id) => ({ id, updated: '2000-01-01T00:00:00Z' })),
+                            meta: {},
+                        });
+                    }
                     if (sql.includes('PRAGMA table_info')) {
                         return Promise.resolve({
                             success: true,
@@ -251,7 +259,7 @@ describe('syncEntity pagination', () => {
             await syncEntity(db, 'net', TEST_META, '');
             assert.ok(capturedUrl.includes('limit=0'));
             assert.ok(capturedUrl.includes('depth=0'));
-            assert.ok(capturedUrl.includes('since=1712000000'));
+            assert.ok(capturedUrl.includes(`since=${1712000000 - SINCE_OVERLAP_S}`), 'starts SINCE_OVERLAP_S behind the cursor');
         } finally {
             globalThis.fetch = origFetch;
         }
