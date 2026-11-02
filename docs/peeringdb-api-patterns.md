@@ -139,7 +139,8 @@ Two pitfalls, both seen in production (pdbfe-sync handles them):
   A row stamped seconds before your fetch but committed after it is older
   than your next cursor and never returned. Start each fetch some time behind
   the cursor (pdbfe-sync: one 15-minute cron interval, `SINCE_OVERLAP_S`) and
-  skip rows whose `updated` you already have.
+  skip rows whose `updated` you already have. Reported upstream as
+  [peeringdb/peeringdb#2071](https://github.com/peeringdb/peeringdb/issues/2071).
 - **Unfiltered list queries are cached.** `?fields=id,updated` with no filter
   is served from a cache that lags 30–40 minutes; filtered queries
   (`since`, `id__in`) are live. Don't treat an id missing from the full list
