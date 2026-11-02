@@ -7,11 +7,20 @@ name: Mirror health
 # anything was repaired, errored, alerted — or the weekly run is missing.
 # A clean run comments on and closes any open mirror-health issue. The run
 # itself fails only when the report can't be read.
+#
+# Run manually with "run_check" ticked to run a fresh health check first
+# (POST /sync/health.<ADMIN_SECRET> on pdbfe-sync, about a minute) and report
+# on that; unticked, a manual run re-reports the latest weekly run.
 
 on:
   schedule:
     - cron: "40 3 * * 0"
   workflow_dispatch:
+    inputs:
+      run_check:
+        description: 'Run a fresh health check (and repair) first, instead of re-reporting the last weekly run'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,6 +34,24 @@ jobs:
     environment: deploy env
     steps:
       - uses: actions/checkout@v4
+
+      # The sync worker has no route; it lives on the account's workers.dev
+      # subdomain, looked up here so no URL needs configuring.
+      - name: Run a fresh health check
+        if: inputs.run_check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_SECRET: ${{ secrets.ADMIN_SECRET }}
+        run: |
+          if [ -z "$ADMIN_SECRET" ]; then
+            echo "::error::ADMIN_SECRET is not set in the deploy env environment"
+            exit 1
+          fi
+          SUB=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r .result.subdomain)
+          curl -fsS -X POST --max-time 600 -o /dev/null -w "health check: HTTP %{http_code} in %{time_total}s\n" \
+            "https://pdbfe-sync.$SUB.workers.dev/sync/health.$ADMIN_SECRET"
 
       - name: Read latest health report
         id: report

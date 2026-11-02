@@ -111,6 +111,10 @@ Set runtime secrets for each worker. These are stored in Cloudflare and never co
 # Sync worker — upstream API access for delta fetching
 wrangler secret put PEERINGDB_API_KEY --config workers/wrangler-sync.toml
 
+# Sync worker (optional) — enables the admin endpoints:
+# POST /sync/health.<secret> (on-demand health check) and /sync/trigger.<secret>
+openssl rand -hex 32 | wrangler secret put ADMIN_SECRET --config workers/wrangler-sync.toml
+
 # Auth worker — OAuth credentials + WAF bypass
 wrangler secret put OAUTH_CLIENT_ID     --config workers/wrangler-auth.toml
 wrangler secret put OAUTH_CLIENT_SECRET --config workers/wrangler-auth.toml
@@ -119,6 +123,10 @@ wrangler secret put PEERINGDB_API_KEY   --config workers/wrangler-auth.toml
 
 > The `PEERINGDB_API_KEY` on the auth worker is required to bypass PeeringDB's
 > WAF during the OAuth token exchange — Cloudflare Workers IPs are blocked without it.
+
+> Without `ADMIN_SECRET` every admin endpoint answers 403. To run a health
+> check from GitHub Actions (Mirror health → Run workflow → run_check), store
+> the same value as an `ADMIN_SECRET` secret in the `deploy env` environment.
 
 ---
 
