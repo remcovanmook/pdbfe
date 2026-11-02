@@ -537,6 +537,22 @@ describe('sync worker HTTP fetch handler', () => {
         assert.ok(body.error.includes('Forbidden'));
     });
 
+    it('POST /sync/health.<wrong-secret> returns 403 without running the check', async () => {
+        let upstreamCalls = 0;
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = /** @type {any} */ (async () => { upstreamCalls++; return new Response('{"data":[]}'); });
+        try {
+            const res = await worker.fetch(
+                new Request('https://sync.example.com/sync/health.wrong-secret', { method: 'POST' }),
+                ENV, CTX
+            );
+            assert.equal(res.status, 403);
+            assert.equal(upstreamCalls, 0);
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+    });
+
     it('returns 404 for unrecognised paths', async () => {
         const res = await worker.fetch(
             new Request('https://sync.example.com/something-else'),

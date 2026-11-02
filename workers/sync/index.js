@@ -234,8 +234,8 @@ function json(body, status = 200) {
  * Runs `fn` only when `secret` matches ADMIN_SECRET; otherwise 403.
  * @param {PdbSyncEnv} env
  * @param {string} secret
- * @param {() => Response} fn
- * @returns {Response}
+ * @param {() => Response|Promise<Response>} fn
+ * @returns {Response|Promise<Response>}
  */
 function withSecret(env, secret, fn) {
     return isValidSyncSecret(env, secret) ? fn() : json({ error: 'Forbidden' }, 403);
@@ -325,7 +325,8 @@ export default {
      *   GET  /sync/status             — returns last sync times and row counts.
      *   POST /sync/trigger.<secret>   — runs a full sync cycle (requires ADMIN_SECRET).
      *   GET  /sync/health             — latest weekly health check report.
-     *   POST /sync/health.<secret>    — runs the health check now (requires ADMIN_SECRET).
+     *   POST /sync/health.<secret>    — runs the health check now and returns its report
+     *                                   (requires ADMIN_SECRET; takes about a minute).
      *
      * @param {Request} request - The inbound HTTP request.
      * @param {PdbSyncEnv} env - Environment bindings.
@@ -339,10 +340,11 @@ export default {
         if (method === 'GET' && rawPath === 'sync/status') return syncStatus(env);
         if (method === 'GET' && rawPath === 'sync/health') return latestHealth(env);
         if (method === 'POST' && rawPath.startsWith('sync/health.')) {
-            return withSecret(env, rawPath.slice('sync/health.'.length), () => {
-                ctx.waitUntil(runHealthCheck(env));
-                return json({ status: 'health check triggered' });
-            });
+            // Run inside the request, not ctx.waitUntil: waitUntil gets ~30s
+            // after the response, and the paced check takes about a minute
+            // (13 tables, UPSTREAM_GAP_MS between upstream requests). A
+            // request has no wall-clock limit while the caller waits.
+            return withSecret(env, rawPath.slice('sync/health.'.length), async () => json(await runHealthCheck(env)));
         }
         if (method === 'POST' && rawPath.startsWith('sync/trigger.')) {
             return withSecret(env, rawPath.slice('sync/trigger.'.length), () => {
