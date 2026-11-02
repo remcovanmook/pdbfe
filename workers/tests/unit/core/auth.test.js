@@ -356,7 +356,7 @@ describe('generateSessionId', () => {
 // ── writeSession ─────────────────────────────────────────────────────────────
 
 describe('writeSession', () => {
-    it('writes session data to KV with correct key and TTL', async () => {
+    it('writes session data to KV with correct key, TTL and the user id as metadata', async () => {
         const { kv, calls } = mockKV({});
         const data = /** @type {any} */ ({ id: 1, name: 'Test' });
         await writeSession(kv, 'sid123', data, 3600);
@@ -364,7 +364,7 @@ describe('writeSession', () => {
         assert.equal(calls.put.length, 1);
         assert.equal(calls.put[0].key, 'session:sid123');
         assert.equal(calls.put[0].value, JSON.stringify(data));
-        assert.deepEqual(calls.put[0].opts, { expirationTtl: 3600 });
+        assert.deepEqual(calls.put[0].opts, { expirationTtl: 3600, metadata: { uid: 1 } });
     });
 
     it('uses default TTL of 86400 seconds', async () => {

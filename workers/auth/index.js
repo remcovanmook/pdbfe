@@ -13,6 +13,9 @@
  *
  * Session state lives in the SESSIONS KV namespace (shared with pdbfe-api).
  * User profiles and API keys live in the USERDB D1 database.
+ *
+ * Cron REVALIDATE_CRON (daily) revalidates users against PeeringDB
+ * (auth/revalidate.js).
  */
 
 import {
@@ -25,6 +28,7 @@ import {
 
 import { wrapHandler } from '../core/admin.js';
 import { parseURL } from '../core/utils.js';
+import { runRevalidation, REVALIDATE_CRON } from './revalidate.js';
 
 /**
  * Routes incoming requests to the appropriate handler.
@@ -73,4 +77,16 @@ async function handleRequest(request, env, _ctx) {
     );
 }
 
-export default wrapHandler(handleRequest, 'pdbfe-auth');
+export default {
+    ...wrapHandler(handleRequest, 'pdbfe-auth'),
+
+    /**
+     * @param {ScheduledEvent} event - The cron event.
+     * @param {PdbAuthEnv} env - Auth worker environment bindings.
+     * @param {ExecutionContext} _ctx - Execution context (unused).
+     * @returns {Promise<void>}
+     */
+    async scheduled(event, env, _ctx) {
+        if (event.cron === REVALIDATE_CRON) await runRevalidation(env);
+    },
+};

@@ -44,6 +44,11 @@ import { generateSessionId, writeSession, deleteSession, extractSessionId, resol
  *   Maps the raw provider profile JSON to a session data object.
  *   Return `{ valid: false, error: '...' }` to reject the login.
  *
+ * @property {(env: any, sessionData: Record<string, any>, tokens: {refresh_token?: string}) => Promise<void>} [onLogin]
+ *   Called after a successful login, before the session is written, with
+ *   the provider's tokens (e.g. to keep the refresh token). A failure here
+ *   is logged and does not fail the login.
+ *
  * @property {(request: Request, env: any) => Record<string, string>} getCorsHeaders
  *   Returns CORS and other response headers for the /auth/me endpoint.
  */
@@ -161,7 +166,7 @@ async function handleLogout(request, env, corsHeaders) {
  * @param {string} redirectUri - Registered redirect URI.
  * @param {string} tokenUrl - Provider token endpoint URL.
  * @param {Record<string, string>} extraHeaders - Additional request headers.
- * @returns {Promise<{ok: boolean, access_token?: string, error?: string}>}
+ * @returns {Promise<{ok: boolean, access_token?: string, refresh_token?: string, error?: string}>}
  */
 async function exchangeCode(code, clientId, clientSecret, redirectUri, tokenUrl, extraHeaders) {
     const body = new URLSearchParams({
@@ -188,11 +193,11 @@ async function exchangeCode(code, clientId, clientSecret, redirectUri, tokenUrl,
             return { ok: false, error: `Token endpoint returned ${response.status}: ${text}` };
         }
 
-        const data = /** @type {{access_token: string}} */ (await response.json());
+        const data = /** @type {{access_token: string, refresh_token?: string}} */ (await response.json());
         if (!data.access_token) {
             return { ok: false, error: 'No access_token in token response' };
         }
-        return { ok: true, access_token: data.access_token };
+        return { ok: true, access_token: data.access_token, refresh_token: data.refresh_token };
     } catch (err) {
         console.error('Token exchange error:', err);
         return { ok: false, error: 'Token exchange network error' };
@@ -388,6 +393,14 @@ export function createOAuthHandler(config) {
         const parsed = config.parseProfile(profile);
         if (!parsed.valid) {
             return clearAndReturn(redirectToFrontend(returnOrigin, null, parsed.error || 'Profile rejected'));
+        }
+
+        if (config.onLogin) {
+            try {
+                await config.onLogin(env, /** @type {Record<string, any>} */ (parsed.sessionData), { refresh_token: tokenResult.refresh_token });
+            } catch (err) {
+                console.error('onLogin hook failed:', err);
+            }
         }
 
         const sid = generateSessionId();

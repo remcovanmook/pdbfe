@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS users (
     email       TEXT    NOT NULL DEFAULT '',
     preferences TEXT    NOT NULL DEFAULT '{}',  -- JSON: { language?, ... }
     created_at  TEXT    NOT NULL,      -- ISO 8601
-    updated_at  TEXT    NOT NULL       -- ISO 8601
+    updated_at  TEXT    NOT NULL,      -- ISO 8601
+    refresh_token TEXT,                -- PeeringDB OAuth refresh token, AES-GCM encrypted; NULL = none
+    validated_at  TEXT                 -- ISO 8601, last successful daily revalidation
 );
 
 -- API keys table: normalized rows replace the JSON array that was

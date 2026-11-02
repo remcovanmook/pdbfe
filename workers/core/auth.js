@@ -243,6 +243,10 @@ export function generateSessionId() {
  * Writes a session to the SESSIONS KV namespace. Used by the auth
  * worker after a successful OAuth callback to persist user data.
  *
+ * The user id goes in the key's metadata as well, so a user's sessions can
+ * be found with a single KV list (auth/revalidate.js) without reading
+ * every value.
+ *
  * @param {KVNamespace} kv - The SESSIONS KV namespace binding.
  * @param {string} sid - The session ID (from generateSessionId).
  * @param {SessionData} data - The user profile data to store.
@@ -251,7 +255,7 @@ export function generateSessionId() {
  */
 export async function writeSession(kv, sid, data, ttlSeconds = 86400) {
     const key = SESSION_PREFIX + sid;
-    await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSeconds });
+    await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSeconds, metadata: { uid: data.id } });
 }
 
 /**
