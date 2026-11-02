@@ -132,6 +132,19 @@ done
 curl "https://www.peeringdb.com/api/net?status=deleted&since=$LAST_SYNC"
 ```
 
+Two pitfalls, both seen in production (pdbfe-sync handles them):
+
+- **`since` is not commit-safe.** Upstream stamps `updated` when a row is
+  written and commits it later; the IX-F importer's batches run for a while.
+  A row stamped seconds before your fetch but committed after it is older
+  than your next cursor and never returned. Start each fetch some time behind
+  the cursor (pdbfe-sync: one 15-minute cron interval, `SINCE_OVERLAP_S`) and
+  skip rows whose `updated` you already have.
+- **Unfiltered list queries are cached.** `?fields=id,updated` with no filter
+  is served from a cache that lags 30–40 minutes; filtered queries
+  (`since`, `id__in`) are live. Don't treat an id missing from the full list
+  as deleted without checking it by `id__in`.
+
 ---
 
 ## 9. Contact / PoC Lookup (Authenticated)

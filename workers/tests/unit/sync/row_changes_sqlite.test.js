@@ -31,13 +31,18 @@ beforeEach(() => {
 });
 afterEach(() => { globalThis.fetch = realFetch; });
 
+/** Upstream `updated` for each successive change, so every sync is a new version. */
+let version = 0;
+
 /**
- * Syncs one upstream version of a stored row.
+ * Syncs one upstream version of a stored row. Like upstream, a change
+ * advances `updated` (the sync skips rows whose `updated` it already has).
  * @param {string} tag @param {number} id @param {(row: Record<string, any>) => void} change
  */
 async function sync(tag, id, change) {
     const row = /** @type {Record<string, any>} */ (sqlite.prepare(`SELECT * FROM "${ENTITIES[tag].table}" WHERE id = ?`).get(id));
     change(row);
+    row.updated = new Date(Date.parse(TS) + ++version * 1000).toISOString().replace('.000Z', 'Z');
     globalThis.fetch = /** @type {any} */ (async () => new Response(JSON.stringify({ data: [row] })));
     const r = await syncEntity(db, tag, ENTITIES[tag], '', undefined);
     assert.ok(!r.error, r.error);
@@ -88,6 +93,42 @@ describe('what the sync records', () => {
     it('a failed sync fetch records nothing', async () => {
         globalThis.fetch = /** @type {any} */ (async () => new Response('boom', { status: 500 }));
         await syncEntity(db, 'net', ENTITIES.net, '', undefined);
+        assert.deepEqual(marks(), []);
+    });
+});
+
+describe('the since overlap (SINCE_OVERLAP_S)', () => {
+    /** @param {Record<string, any>[]} data */
+    const serve = (data) => { globalThis.fetch = /** @type {any} */ (async () => new Response(JSON.stringify({ data }))); };
+    const meta = () => /** @type {any} */ (sqlite.prepare(`SELECT last_sync, last_modified_at FROM "_sync_meta" WHERE entity = 'net'`).get());
+
+    it('re-reading rows it already has writes, marks and publishes nothing', async () => {
+        const stored = /** @type {Record<string, any>} */ (sqlite.prepare('SELECT * FROM "peeringdb_network" WHERE id = 100').get());
+        serve([stored]);
+        /** @type {any[]} */ const sent = [];
+        const r = await syncEntity(db, 'net', ENTITIES.net, '', /** @type {any} */ ({ sendBatch: async (/** @type {any[]} */ m) => { sent.push(...m); } }));
+        assert.ok(!r.error, r.error);
+        assert.equal(r.updated, 0);
+        assert.deepEqual(marks(), []);
+        assert.deepEqual(sent, []);
+        assert.equal(meta().last_modified_at, 0, 'Last-Modified does not move');
+        assert.ok(meta().last_sync > 1700000000, 'the cursor still advances');
+    });
+
+    it('applies a row committed after the last fetch but stamped before its cursor', async () => {
+        // Stamped 1 second before the stored cursor (1700000000): a ?since= at
+        // the cursor never returns it; the overlap does.
+        const late = new Date((1700000000 - 1) * 1000).toISOString().replace('.000Z', 'Z');
+        serve([{ id: 102, org_id: 1, name: 'Net 102', asn: 64102, social_media: [], info_types: [], status: 'ok', created: late, updated: late }]);
+        const r = await syncEntity(db, 'net', ENTITIES.net, '', undefined);
+        assert.equal(r.updated, 1);
+        assert.deepEqual(marks(), ['net/102 row', 'org/1 set']);
+    });
+
+    it('drops a removal of a row it never stored', async () => {
+        serve([{ id: 999, status: 'deleted', updated: TS }]);
+        const r = await syncEntity(db, 'net', ENTITIES.net, '', undefined);
+        assert.deepEqual(r.deletedIds ?? [], []);
         assert.deepEqual(marks(), []);
     });
 });

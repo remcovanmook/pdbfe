@@ -98,7 +98,8 @@ describe('D1 holds only listed rows', () => {
         assert.ok(!result.error, String(result.error));
         const ids = sqlite.prepare('SELECT id FROM "peeringdb_network" ORDER BY id').all().map((/** @type {any} */ r) => r.id);
         assert.deepEqual(ids, [1, 2, 3, 5, 9]);
-        assert.deepEqual(result.deletedIds.sort((a, b) => a - b), [4, 8], "removed ids reported like deletions");
+        // 8 was never stored: nothing to delete, so no deletion (or queue delete) for it.
+        assert.deepEqual(result.deletedIds, [4], 'only stored rows are reported as deleted');
         assert.equal(storedCount(), 5); // 5 + {9} - {4}
         assert.equal(actualCount(), 5);
     });

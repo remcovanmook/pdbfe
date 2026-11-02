@@ -184,6 +184,9 @@ describe('If-Modified-Since never confirms a changed detail response', () => {
             const entity = ENTITIES[sc.tag];
             const row = /** @type {Record<string, any>} */ (sqlite.prepare(`SELECT * FROM "${entity.table}" WHERE id = ?`).get(sc.id));
             sc.change(row);
+            // Upstream advances `updated` on every change; the sync skips rows
+            // whose `updated` it already has (SINCE_OVERLAP_S).
+            row.updated = '2026-10-22T12:00:00Z';
             globalThis.fetch = /** @type {any} */ (async () => new Response(JSON.stringify({ data: [row] })));
             const result = await syncEntity(db, sc.tag, entity, '', undefined);
             globalThis.fetch = realFetch;

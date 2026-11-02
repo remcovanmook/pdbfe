@@ -91,9 +91,10 @@ function membershipColumns(tag) {
 }
 
 /**
- * Reads id and the membership columns of the given ids, before they are
- * overwritten or deleted (the `before` of planRowChanges). The result's
- * length is also how many of the ids already exist.
+ * Reads id, `updated` and the membership columns of the given ids, before
+ * they are overwritten or deleted (the `before` of planRowChanges). The
+ * result's length is also how many of the ids already exist; `updated`
+ * lets the sync skip re-fetched rows it already has (SINCE_OVERLAP_S).
  *
  * @param {D1Database} db
  * @param {string} tag
@@ -104,7 +105,7 @@ export async function readMembership(db, tag, ids) {
     if (ids.length === 0) return [];
     const cols = membershipColumns(tag).map(c => `, "${c}"`).join('');
     const res = await db.prepare(
-        `SELECT "id"${cols} FROM "${ENTITIES[tag].table}" WHERE "id" IN (SELECT value FROM json_each(?))`
+        `SELECT "id", "updated"${cols} FROM "${ENTITIES[tag].table}" WHERE "id" IN (SELECT value FROM json_each(?))`
     ).bind(JSON.stringify(ids)).all();
     return res.results || [];
 }

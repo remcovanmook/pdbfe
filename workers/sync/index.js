@@ -38,6 +38,19 @@ const API_BASE = 'https://www.peeringdb.com/api';
 /** Weekly health check cron: Sunday 03:07 UTC, off the quarter-hour sync slots. Must match wrangler-sync.toml. */
 export const HEALTH_CRON = '7 3 * * SUN';
 
+/**
+ * How far behind the stored cursor each ?since= fetch starts, in seconds.
+ *
+ * The cursor is our clock at fetch time, but upstream stamps `updated` when
+ * it writes a row and commits it later (the IX-F importer's batches run for
+ * a while). A row stamped 01:14:58 that becomes visible after our 01:15
+ * fetch is older than the next cursor and was never fetched (health runs
+ * found netixlans stamped seconds before a sync slot, missing or outdated).
+ * One full cron interval of overlap re-reads those; rows whose `updated`
+ * matches the stored copy are skipped, so the overlap writes nothing twice.
+ */
+export const SINCE_OVERLAP_S = 900;
+
 
 /**
  * Deletes rows upstream reports as deleted; returns how many actually existed
@@ -124,7 +137,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
 
         // limit=0 disables PeeringDB's default 250-item pagination cap so that
         // any sync window with >250 changed rows is captured in one request.
-        const url = `${API_BASE}/${tag}?since=${lastSync}&depth=0&limit=0`;
+        const url = `${API_BASE}/${tag}?since=${lastSync - SINCE_OVERLAP_S}&depth=0&limit=0`;
         const response = await fetch(url, { headers });
 
         if (!response.ok) {
@@ -135,31 +148,37 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         const data = /** @type {{ data: Record<string, any>[] }} */ (await response.json());
         const rows = data.data || [];
 
-        if (rows.length === 0) {
+        // Split listed (see LISTED_STATUSES) from removed (any other status — see
+        // isListed), dropping rows without a usable integer id — a malformed
+        // upstream record would otherwise INSERT a null primary key (a junk
+        // auto-rowid row) or DELETE/publish an `undefined` id.
+        const listedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && isListed(r));
+        const removedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && !isListed(r));
+        const skipped = rows.length - listedRows.length - removedRows.length;
+        if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
+
+        // The incoming ids that already exist, with `updated` and their parent
+        // FKs, read BEFORE the write: the overlap's re-reads are dropped here,
+        // row_count advances by the genuinely new rows, and a moved or deleted
+        // row's old parents are marked changed too (row_changes.js). One
+        // json_each probe reads only those ids — a COUNT(*) of the whole table
+        // instead bills every row (66k for netixlan) on every run.
+        const stored = await readMembership(db, tag, [...listedRows, ...removedRows].map(r => r.id));
+        const storedUpdated = new Map(stored.map(r => [r.id, r.updated]));
+        const activeRows = listedRows.filter(r => !storedUpdated.has(r.id) || storedUpdated.get(r.id) !== r.updated);
+        const deletedRows = removedRows.filter(r => storedUpdated.has(r.id));
+
+        if (activeRows.length === 0 && deletedRows.length === 0) {
             await db.prepare(
                 `INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, (SELECT COALESCE(row_count, 0) FROM "_sync_meta" WHERE entity = ?), datetime('now'), (SELECT COALESCE(NULLIF(last_modified_at, ''), 0) FROM "_sync_meta" WHERE entity = ?))`
             ).bind(tag, now, tag, tag).run();
             return result;
         }
 
-        // Split listed (see LISTED_STATUSES) from removed (any other status — see
-        // isListed), dropping rows without a usable integer id — a malformed
-        // upstream record would otherwise INSERT a null primary key (a junk
-        // auto-rowid row) or DELETE/publish an `undefined` id.
-        const activeRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && isListed(r));
-        const deletedRows = rows.filter(r => Number.isInteger(r.id) && r.id > 0 && !isListed(r));
-        const skipped = rows.length - activeRows.length - deletedRows.length;
-        if (skipped > 0) console.warn(`[sync] ${tag}: skipped ${skipped} row(s) with missing/invalid id`);
-
-        // The incoming ids that already exist, with their parent FKs, read
-        // BEFORE the write: row_count advances by the genuinely new rows, and
-        // a moved or deleted row's old parents are marked changed too
-        // (row_changes.js). One json_each probe reads only those ids — a
-        // COUNT(*) of the whole table instead bills every row (66k for
-        // netixlan) on every run.
         const activeIds = new Set(activeRows.map(r => r.id));
         const deletedIds = deletedRows.map(r => r.id);
-        const before = await readMembership(db, tag, [...activeIds, ...deletedIds]);
+        const changedIds = new Set([...activeIds, ...deletedIds]);
+        const before = stored.filter(r => changedIds.has(r.id));
         const existingActive = before.filter(r => activeIds.has(r.id)).length;
 
         await upsertActiveRows(db, meta, activeRows);
