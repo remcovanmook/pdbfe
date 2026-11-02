@@ -166,6 +166,25 @@ jobs:
       - name: Build the deploy output
         run: node scripts/version_frontend.js "$RUNNER_TEMP/frontend-dist" ci
 
+      # Budget on what ships: the minified, code-split JS from the build plus
+      # the site CSS. (Summing the source modules counted comments and JSDoc,
+      # which esbuild strips: ~520 KB of source is ~180 KB shipped.)
+      - name: Bundle size budget
+        run: |
+          DIST="$RUNNER_TEMP/frontend-dist"
+          JS_SIZE=$(find "$DIST/js" -name '*.js' | xargs cat | wc -c)
+          JS_GZ=$(find "$DIST/js" -name '*.js' | xargs cat | gzip -9 | wc -c)
+          CSS_SIZE=$(find "$DIST/css" -name '*.css' | xargs cat | wc -c)
+          TOTAL=$((JS_SIZE + CSS_SIZE))
+          echo "Shipped JS: ${JS_SIZE} bytes (${JS_GZ} gzipped)"
+          echo "Shipped CSS: ${CSS_SIZE} bytes"
+          echo "Total: ${TOTAL} bytes"
+          # Fail if total exceeds 320 KB (~254 KB at the time this was set)
+          if [ "$TOTAL" -gt 327680 ]; then
+            echo "::error::Shipped frontend size ${TOTAL} exceeds 320 KB budget"
+            exit 1
+          fi
+
       - name: E2E against the build
         run: ./node_modules/.bin/playwright test --reporter=line
         working-directory: frontend
@@ -195,20 +214,6 @@ jobs:
 
       - name: Locale completeness
         run: node scripts/check_locales.js
-
-      - name: Bundle size budget
-        run: |
-          JS_SIZE=$(find frontend/js -name '*.js' -not -path '*/tests/*' | xargs cat | wc -c)
-          CSS_SIZE=$(find frontend/css -name '*.css' -not -path '*/third_party/*' | xargs cat | wc -c)
-          TOTAL=$((JS_SIZE + CSS_SIZE))
-          echo "Frontend JS: ${JS_SIZE} bytes"
-          echo "Frontend CSS: ${CSS_SIZE} bytes"
-          echo "Total: ${TOTAL} bytes"
-          # Fail if total exceeds 512 KB
-          if [ "$TOTAL" -gt 524288 ]; then
-            echo "::error::Frontend bundle size ${TOTAL} exceeds 512 KB budget"
-            exit 1
-          fi
 
   # ── Schema: generated artifact freshness ──────────────────────────
   schema:

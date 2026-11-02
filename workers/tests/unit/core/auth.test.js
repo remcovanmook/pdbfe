@@ -166,9 +166,9 @@ describe('verifyApiKey', () => {
     }
 
     it('should return {valid: false} when key is not in D1', async () => {
-        assert.deepEqual(await verifyApiKey(emptyD1(), 'any-key'), { valid: false, userId: null });
-        assert.deepEqual(await verifyApiKey(emptyD1(), ''), { valid: false, userId: null });
-        assert.deepEqual(await verifyApiKey(emptyD1(), 'valid-looking-key-12345'), { valid: false, userId: null });
+        assert.deepEqual(await verifyApiKey(emptyD1(), 'any-key'), { valid: false, userId: null, expiresAt: null });
+        assert.deepEqual(await verifyApiKey(emptyD1(), ''), { valid: false, userId: null, expiresAt: null });
+        assert.deepEqual(await verifyApiKey(emptyD1(), 'valid-looking-key-12345'), { valid: false, userId: null, expiresAt: null });
     });
 
     it('should return {valid: true, userId} when hashed key exists in D1', async () => {
@@ -200,7 +200,7 @@ describe('verifyApiKey', () => {
                 };
             },
         });
-        assert.deepEqual(await verifyApiKey(db, 'pdbfe.old'), { valid: false, userId: null });
+        assert.deepEqual(await verifyApiKey(db, 'pdbfe.old'), { valid: false, userId: null, expiresAt: null });
     });
 
     it('should return {valid: false} for null', async () => {
@@ -209,7 +209,7 @@ describe('verifyApiKey', () => {
                 return { bind() { return { first: async () => null }; } };
             },
         });
-        assert.deepEqual(await verifyApiKey(db, null), { valid: false, userId: null });
+        assert.deepEqual(await verifyApiKey(db, null), { valid: false, userId: null, expiresAt: null });
     });
 
     it('should cache results to avoid repeated D1 queries', async () => {

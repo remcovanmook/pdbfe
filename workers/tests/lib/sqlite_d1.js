@@ -49,14 +49,15 @@ export function registerAssetLoader() {
  * Creates an in-memory database with the production schema and a D1 binding
  * over it.
  *
- * @param {{maxValueBytes?: number, oversizeError?: 'toobig'|'nomem'}} [opts] -
- *     maxValueBytes: fail when any returned string column exceeds this length,
+ * @param {{schema?: string, maxValueBytes?: number, oversizeError?: 'toobig'|'nomem'}} [opts] -
+ *     schema: SQL to load instead of the PeeringDB mirror schema (e.g. the
+ *     users database's). maxValueBytes: fail when any returned string column exceeds this length,
  *     with D1's SQLITE_TOOBIG (default) or SQLITE_NOMEM error.
  * @returns {{sqlite: DatabaseSync, db: any, stats: {queries: number, payloadQueries: number, tooBig: number, sql: string[]}}}
  */
-export function createSqliteD1({ maxValueBytes = Infinity, oversizeError = 'toobig' } = {}) {
+export function createSqliteD1({ schema = SCHEMA, maxValueBytes = Infinity, oversizeError = 'toobig' } = {}) {
     const sqlite = new DatabaseSync(':memory:');
-    sqlite.exec(SCHEMA);
+    sqlite.exec(schema);
     /** payloadQueries: json_group_array list/detail statements (`AS payload`); sql: every statement prepared. */
     const stats = { queries: 0, payloadQueries: 0, tooBig: 0, sql: /** @type {string[]} */ ([]) };
     const oversizeMessage = oversizeError === 'nomem'

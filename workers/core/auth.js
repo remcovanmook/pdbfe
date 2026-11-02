@@ -67,32 +67,41 @@ export function extractApiKey(request) {
  * 5-minute window.
  *
  * Key format: `pdbfe.<32 hex chars>`.
- * D1 query: `SELECT user_id FROM api_keys WHERE hash = ?`.
+ * D1 query: `SELECT user_id, expires_at FROM api_keys WHERE hash = ?`.
+ *
+ * Expiry is checked here, at point of use, on every call (cache hits
+ * included), so a cached key stops working the moment it expires.
+ * `expiresAt` is the key's ISO expiry (null = never); an expired key
+ * returns `valid: false` with `expiresAt` set so callers can say why.
  *
  * @internal Exported for unit testing. Production callers use resolveAuth().
  * @param {D1Database|D1DatabaseSession} db - USERDB D1 binding (or session).
  * @param {string} apiKey - The API key to validate.
- * @returns {Promise<{valid: boolean, userId: number|null}>} Validation result with owning user ID.
+ * @returns {Promise<{valid: boolean, userId: number|null, expiresAt: string|null}>} Validation result with owning user ID.
  */
 export async function verifyApiKey(db, apiKey) {
-    if (!apiKey) return { valid: false, userId: null };
+    if (!apiKey) return { valid: false, userId: null, expiresAt: null };
 
     const now = Date.now();
 
     // Check in-memory cache first (keyed on cleartext, ephemeral per-isolate)
     const cached = _apiKeyCache.get(apiKey);
     if (cached && (now - cached.ts) < APIKEY_CACHE_TTL) {
-        return { valid: cached.valid, userId: cached.userId };
+        return keyResult(cached, now);
     }
 
     // Hash the key, then look up in D1
     const hashed = await hashKey(apiKey);
-    const row = await db.prepare('SELECT user_id FROM api_keys WHERE hash = ?').bind(hashed).first();
-    const valid = row !== null;
-    const userId = valid ? /** @type {number} */ (row.user_id) : null;
+    const row = await db.prepare('SELECT user_id, expires_at FROM api_keys WHERE hash = ?').bind(hashed).first();
+    const entry = {
+        found: row !== null,
+        userId: row ? /** @type {number} */ (row.user_id) : null,
+        expiresAt: row ? /** @type {string|null} */ (row.expires_at ?? null) : null,
+        ts: now,
+    };
 
     // Cache the result (both positive and negative)
-    _apiKeyCache.set(apiKey, { valid, userId, ts: now });
+    _apiKeyCache.set(apiKey, entry);
 
     // Enforce hard size cap to prevent unbounded growth from brute-force
     // floods of invalid keys. First pass: evict stale entries. If still
@@ -117,15 +126,31 @@ export async function verifyApiKey(db, apiKey) {
         }
     }
 
-    return { valid, userId };
+    return keyResult(entry, now);
 }
 
 /**
- * Per-isolate cache for API key verification results.
- * Maps full API key string → {valid: boolean, ts: number}.
+ * Turns a key lookup (fresh or cached) into a verification result,
+ * applying the expiry check against the current time.
+ *
+ * @param {{found: boolean, userId: number|null, expiresAt: string|null}} entry - Lookup result.
+ * @param {number} now - Current time in ms since epoch.
+ * @returns {{valid: boolean, userId: number|null, expiresAt: string|null}}
+ */
+function keyResult(entry, now) {
+    if (!entry.found) return { valid: false, userId: null, expiresAt: null };
+    if (entry.expiresAt !== null && Date.parse(entry.expiresAt) <= now) {
+        return { valid: false, userId: null, expiresAt: entry.expiresAt };
+    }
+    return { valid: true, userId: entry.userId, expiresAt: entry.expiresAt };
+}
+
+/**
+ * Per-isolate cache for API key lookups.
+ * Maps full API key string → the D1 row's user and expiry (or not found).
  * Entries expire after APIKEY_CACHE_TTL milliseconds.
  *
- * @type {Map<string, {valid: boolean, userId: number|null, ts: number}>}
+ * @type {Map<string, {found: boolean, userId: number|null, expiresAt: string|null, ts: number}>}
  */
 const _apiKeyCache = new Map();
 
@@ -257,7 +282,7 @@ export async function deleteSession(kv, sid) {
  *   - `identity` (string|null): rate-limit key — the API key or session ID.
  *   - `userId` (number|null): PeeringDB user ID when authenticated.
  *   - `rejection` (string|null): error message when credentials are
- *     recognised but invalid (e.g. upstream PeeringDB keys).
+ *     recognised but invalid (upstream PeeringDB keys, expired pdbfe keys).
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {{USERDB: D1Database, SESSIONS: KVNamespace}} env - Database and KV bindings.
@@ -279,9 +304,21 @@ export async function resolveAuth(request, env) {
 
     // Path 1: API key (verified against USERDB D1)
     if (apiKey !== null) {
-        const { valid, userId } = await verifyApiKey(env.USERDB, apiKey);
+        const { valid, userId, expiresAt } = await verifyApiKey(env.USERDB, apiKey);
         if (valid) {
             return { authenticated: true, identity: apiKey, userId, rejection: null };
+        }
+        // An expired key is refused outright rather than falling back to
+        // anonymous access, so the client notices instead of silently
+        // dropping to the anonymous rate limit.
+        if (expiresAt !== null) {
+            return {
+                authenticated: false,
+                identity: null,
+                userId: null,
+                rejection: `This API key expired at ${expiresAt}. `
+                         + 'Rotate or create a key at /account.',
+            };
         }
     }
 
