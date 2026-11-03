@@ -20,7 +20,11 @@ const H_JSON = Object.freeze({
     "Cache-Control": "no-store"
 });
 
-const ROBOTS_BODY = "User-agent: *\nAllow: /$\nDisallow: /\n";
+// Disallow: /* rather than /: Cloudflare's managed robots.txt is served in front
+// of this with its own "User-agent: *" and "Allow: /". Groups for the same agent
+// merge and a tie goes to Allow, so "Disallow: /" would block nothing. The longer
+// pattern wins the longest-match comparison.
+const ROBOTS_BODY = "User-agent: *\nAllow: /$\nDisallow: /*\n";
 const DEFAULT_METHODS = ["GET", "HEAD", "OPTIONS"];
 const ISOLATE_ID = Math.random().toString(16).slice(2, 10);
 // Cloudflare Workers return 0 from Date.now() at module scope.

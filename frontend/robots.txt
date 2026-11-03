@@ -1,0 +1,7 @@
+# Cloudflare's managed robots.txt is served in front of this file, and that
+# already allows search crawlers. Everything except / is the same index.html
+# shell, and every path answers 200, so a crawler that indexes without running
+# the JS sees an endless set of identical pages.
+User-agent: ExaSearchBot
+Allow: /$
+Disallow: /
