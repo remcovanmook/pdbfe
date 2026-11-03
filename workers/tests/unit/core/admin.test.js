@@ -102,6 +102,14 @@ describe('routeAdminPath', () => {
         assert.equal(resp.headers.get('Content-Type'), 'text/plain; charset=utf-8');
     });
 
+    it('robots.txt outranks the managed Allow: / that Cloudflare serves in front of it', async () => {
+        const resp = routeAdminPath('robots.txt', {}, mockOpts);
+        const lines = (await resp.text()).split('\n');
+        assert.ok(lines.includes('Allow: /$'));
+        assert.ok(lines.includes('Disallow: /*'));
+        assert.ok(!lines.includes('Disallow: /'));
+    });
+
     it('returns health check for health path', async () => {
         const resp = await routeAdminPath('health', {}, mockOpts);
         assert.ok(resp);
