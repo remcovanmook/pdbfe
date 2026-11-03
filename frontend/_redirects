@@ -1,0 +1,16 @@
+# The SPA's routes, from js/boot.js (tests/unit/routes.test.js checks this).
+# 404.html turns off Pages' SPA fallback, so any other path answers 404. These
+# rewrite to /, not /index.html, which would redirect to / and lose the path.
+/about / 200
+/account / 200
+/advanced_search / 200
+/compare / 200
+/favorites / 200
+/search / 200
+/asn/:id / 200
+/campus/:id / 200
+/carrier/:id / 200
+/fac/:id / 200
+/ix/:id / 200
+/net/:id / 200
+/org/:id / 200

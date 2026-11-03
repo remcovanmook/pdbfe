@@ -97,7 +97,6 @@ cp wrangler-rest.toml.example wrangler-rest.toml
 cd ../frontend
 cp js/config.js.example js/config.js
 cp _headers.example _headers
-cp _redirects.example _redirects
 ```
 
 See [docs/deployment.md](docs/deployment.md) for the full setup walkthrough.

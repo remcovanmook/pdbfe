@@ -211,7 +211,6 @@ The frontend is a static SPA deployed to Cloudflare Pages.
 cd frontend
 cp js/config.js.example js/config.js
 cp _headers.example _headers
-cp _redirects.example _redirects
 ```
 
 Edit each file and replace the domain placeholders with your actual hostnames.
@@ -222,7 +221,7 @@ npx wrangler pages project create <your-pages-project>
 npx wrangler pages deploy frontend/ --project-name <your-pages-project>
 ```
 
-The `_redirects` file proxies `/api/*` requests to the API worker.
+`frontend/_redirects` lists the SPA's routes. Any other path answers 404, using `frontend/404.html`. When you add a route in `frontend/js/boot.js`, add it to `_redirects` too.
 
 ---
 

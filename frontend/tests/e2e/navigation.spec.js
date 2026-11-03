@@ -124,11 +124,24 @@ test('Compare link in footer navigates to /compare', async ({ page }) => {
 
 // ── Unknown route ─────────────────────────────────────────────────────────────
 
-test('navigating to an unknown route does not crash', async ({ page }) => {
-    await page.goto('/this-page-does-not-exist');
-    // App should still be functional — no uncaught JS errors
+test('unknown paths answer 404, not the SPA shell', async ({ request }) => {
+    for (const path of ['/this-page-does-not-exist', '/sitemap.xml', '/net/1/2']) {
+        const res = await request.get(path);
+        expect(res.status(), path).toBe(404);
+    }
+});
+
+test('a route keeps its path when loaded directly', async ({ page }) => {
+    const res = await page.goto('/about');
+    expect(res.status()).toBe(200);
+    expect(new URL(page.url()).pathname).toBe('/about');
+});
+
+test('an unknown id under a known route still gets the SPA', async ({ page }) => {
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));
+    const res = await page.goto('/net/not-a-number');
+    expect(res.status()).toBe(200);
     await page.waitForTimeout(500);
     expect(errors.length).toBe(0);
 });

@@ -1,2 +1,0 @@
-/api/*  https://pdbfe-api.<your-subdomain>.workers.dev/api/:splat  200
-/*  /index.html  200

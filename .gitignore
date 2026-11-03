@@ -29,7 +29,6 @@ workers/wrangler-async.toml
 frontend/js/config.js
 frontend/js/config.js.browse-bak
 frontend/_headers
-frontend/_redirects
 
 # Database artifacts
 database/*.sqlite
