@@ -88,6 +88,13 @@ async function handleRequest(request, env, ctx) {
     const staticResponse = serveStaticAsset(rawPath);
     if (staticResponse) return staticResponse;
 
+    // Unknown paths answer before auth and rate limiting: a scanner should get
+    // a 404, not a 429 that invites it to retry. The message stays constant
+    // here: jsonError caches by message, and nothing limits these requests.
+    if (!rawPath.startsWith('v1/') || !ENTITY_TAGS.has(tokenizeString(rawPath.slice(3), '/', 2).p0)) {
+        return jsonError(404, 'Not found');
+    }
+
     // Auth resolution
     const { authenticated, identity, rejection } = await resolveAuth(request, env);
     if (rejection) return jsonError(403, rejection);
@@ -117,16 +124,8 @@ async function handleRequest(request, env, ctx) {
 async function routeApiRequest(request, rc) {
     const { db, ctx, rawPath, queryString, authenticated } = rc;
 
-    if (!rawPath.startsWith('v1/')) {
-        return jsonError(404, 'Not found');
-    }
-
     const apiPath = rawPath.slice(3); // strip "v1/"
     const { p0: entityTag, p1: idStr, p2: relation } = tokenizeString(apiPath, '/', 3);
-
-    if (!ENTITY_TAGS.has(entityTag)) {
-        return jsonError(404, `Unknown entity: ${entityTag}`);
-    }
 
     const entity = ENTITIES[entityTag];
     const { filters, depth, limit, skip, since, sort, fields: rawFields, pdbfe, page, perPage } = parseQueryFilters(queryString);

@@ -258,8 +258,7 @@ describe('unknown entity tag', () => {
     it('returns 404 for unknown entity type', async () => {
         const res = await fetch('https://api.pdbfe.dev/api/unicorn');
         assert.equal(res.status, 404);
-        const body = await res.json();
-        assert.ok(body.error.includes('Unknown entity'));
+        assert.deepEqual(await res.json(), { error: 'Not found' });
     });
 
     it('returns 404 for an empty entity segment (/api/)', async () => {
@@ -287,8 +286,7 @@ describe('.json entity suffix', () => {
     it('still 404s an unknown entity with a .json suffix', async () => {
         const res = await fetch('https://api.pdbfe.dev/api/unicorn.json');
         assert.equal(res.status, 404);
-        const body = await res.json();
-        assert.ok(body.error.includes('Unknown entity: unicorn'));
+        assert.deepEqual(await res.json(), { error: 'Not found' });
     });
 });
 
@@ -381,6 +379,38 @@ describe('If-Modified-Since', () => {
 });
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
+
+describe('unknown paths', () => {
+    // A TEST-NET-3 address no other test uses, so its quota can be exhausted here.
+    const ip = '198.51.100.77';
+    const send = (path, method = 'GET') => worker.fetch(
+        new Request(`https://api.pdbfe.dev/${path}`, { method, headers: { 'cf-connecting-ip': ip } }),
+        mockEnv(),
+        mockCtx
+    );
+
+    it('answer 404, not 429, for a caller over the rate limit', async () => {
+        let last;
+        for (let i = 0; i < 61; i++) last = await send('api/net');
+        assert.equal(last.status, 429);
+
+        for (const path of ['nope', 'wp-login.php', 'static/css/style.css', 'api/', 'api/user/ismustmobile', 'api/index/webconfig']) {
+            assert.equal((await send(path)).status, 404, path);
+        }
+        assert.equal((await send('api/user/ismustmobile', 'POST')).status, 404);
+    });
+
+    it('still rate limit the paths the worker serves', async () => {
+        for (const path of ['api/net', 'api/net.json', 'api/net/1', 'api/as_set/15169', 'api/compare', 'status']) {
+            assert.equal((await send(path)).status, 429, path);
+        }
+    });
+
+    it('do not reflect the path in the error', async () => {
+        const res = await send('api/some-caller-text');
+        assert.deepEqual(await res.json(), { error: 'Not found' });
+    });
+});
 
 describe('rate limiting', () => {
     it('returns 429 after exceeding anonymous limit', async () => {

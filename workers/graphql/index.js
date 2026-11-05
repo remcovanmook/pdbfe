@@ -44,9 +44,10 @@ const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = cr
  *   2. CORS preflight handling
  *   3. Admin endpoints (health, robots.txt, cache stats)
  *   4. Static assets (GraphiQL, fonts)
- *   5. Auth resolution
- *   6. Rate limiting
- *   7. Delegate to query handler (POST) or uncached yoga (GET/HEAD)
+ *   5. 404 for any other path but the endpoint
+ *   6. Auth resolution
+ *   7. Rate limiting
+ *   8. Delegate to query handler (POST) or uncached yoga (GET/HEAD)
  *
  * @param {Request} request - The inbound HTTP request.
  * @param {PdbApiEnv} env - Cloudflare environment bindings.
@@ -83,6 +84,13 @@ async function handleRequest(request, env, ctx) {
     // Static assets (GraphiQL page, CSS/Font bundles)
     const staticResponse = serveStaticAsset(request, rawPath);
     if (staticResponse) return staticResponse;
+
+    // Yoga answers on every path (graphqlEndpoint: '*'), so this is what limits
+    // the endpoint to / and /graphql. Before auth and rate limiting: a scanner
+    // should get a 404, not a 429 that invites it to retry.
+    if (rawPath !== '' && rawPath !== 'graphql') {
+        return jsonError(404, 'Not found');
+    }
 
     // Auth resolution
     const { authenticated, identity, rejection } = await resolveAuth(request, env);

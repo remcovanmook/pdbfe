@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateRequest, routeAdminPath, wrapHandler } from '../../../core/admin.js';
+import { validateRequest, routeAdminPath, isAdminPath, wrapHandler } from '../../../core/admin.js';
 
 // ── Mock helpers ─────────────────────────────────────────────────────────────
 
@@ -108,6 +108,15 @@ describe('routeAdminPath', () => {
         assert.ok(lines.includes('Allow: /$'));
         assert.ok(lines.includes('Disallow: /*'));
         assert.ok(!lines.includes('Disallow: /'));
+    });
+
+    it('isAdminPath matches every path routeAdminPath can answer', () => {
+        for (const path of ['robots.txt', 'health', '_cache_status.x', '_cache_flush.x']) {
+            assert.equal(isAdminPath(path), true, path);
+        }
+        for (const path of ['', 'status', 'nope', 'health/', '_cache_status']) {
+            assert.equal(isAdminPath(path), false, path);
+        }
     });
 
     it('returns health check for health path', async () => {

@@ -187,6 +187,20 @@ function handleFlush(flushFn) {
 }
 
 /**
+ * Whether a raw path has the shape of an admin endpoint. Checks no secret:
+ * routeAdminPath does that.
+ *
+ * @param {string} rawPath - URL path without leading slash.
+ * @returns {boolean} True if routeAdminPath could answer this path.
+ */
+export function isAdminPath(rawPath) {
+    return rawPath === "robots.txt"
+        || rawPath === "health"
+        || rawPath.startsWith("_cache_status.")
+        || rawPath.startsWith("_cache_flush.");
+}
+
+/**
  * Attempts to route a raw path to an admin endpoint. Returns a Response
  * if matched, or null if the path is not an admin route.
  *
