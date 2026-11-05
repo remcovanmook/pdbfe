@@ -9,6 +9,13 @@
  *
  * Implemented as a graphql validation rule (no runtime cost beyond the normal
  * validation pass, no new dependency).
+ *
+ * Inside introspection (__schema / __type), `ofType` does not add depth: the
+ * standard introspection query (what GraphiQL sends on load) walks a type's
+ * List / NonNull wrappers through ~8 nested `ofType`, reaching depth 14. That
+ * is metadata from the in-memory schema — no resolver, no D1 — and past the
+ * real wrappers it is null. Every other field, introspection included,
+ * counts, and the field cap bounds everything.
  */
 
 import { GraphQLError } from 'graphql';
@@ -27,22 +34,25 @@ export const MAX_QUERY_FIELDS = 1000;
  * @param {import('graphql').SelectionSetNode} selectionSet
  * @param {Record<string, import('graphql').FragmentDefinitionNode>} fragments
  * @param {Set<string>} visiting - Fragment names on the current spread path.
+ * @param {boolean} [introspection] - Inside a __schema / __type selection.
  * @returns {{depth: number, fields: number}}
  */
-function measure(selectionSet, fragments, visiting) {
+function measure(selectionSet, fragments, visiting, introspection = false) {
     let depth = 0;
     let fields = 0;
     for (const sel of selectionSet.selections) {
         if (sel.kind === 'Field') {
             fields += 1;
             if (sel.selectionSet) {
-                const sub = measure(sel.selectionSet, fragments, visiting);
+                const name = sel.name.value;
+                const inIntro = introspection || name === '__schema' || name === '__type';
+                const sub = measure(sel.selectionSet, fragments, visiting, inIntro);
                 fields += sub.fields;
-                depth = Math.max(depth, 1 + sub.depth);
+                depth = Math.max(depth, (inIntro && name === 'ofType' ? 0 : 1) + sub.depth);
             }
         } else if (sel.kind === 'InlineFragment') {
             if (sel.selectionSet) {
-                const sub = measure(sel.selectionSet, fragments, visiting);
+                const sub = measure(sel.selectionSet, fragments, visiting, introspection);
                 fields += sub.fields;
                 depth = Math.max(depth, sub.depth);
             }
@@ -52,7 +62,7 @@ function measure(selectionSet, fragments, visiting) {
             const frag = fragments[name];
             if (frag) {
                 visiting.add(name);
-                const sub = measure(frag.selectionSet, fragments, visiting);
+                const sub = measure(frag.selectionSet, fragments, visiting, introspection);
                 visiting.delete(name);
                 fields += sub.fields;
                 depth = Math.max(depth, sub.depth);

@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { parse, validate, buildSchema } from 'graphql';
+import { parse, validate, buildSchema, getIntrospectionQuery } from 'graphql';
 import { createComplexityRule, MAX_QUERY_DEPTH, MAX_QUERY_FIELDS } from '../../../graphql/security.js';
 
 // Minimal schema — validate() runs ONLY the rule we pass, so no type checking
@@ -82,3 +82,23 @@ describe('GraphQL complexity rule — fragments', () => {
         assert.doesNotThrow(() => check(q, { maxDepth: 3 }));
     });
 });
+
+describe('GraphQL complexity rule — introspection', () => {
+    it('passes the standard introspection query GraphiQL sends on load', () => {
+        assert.deepEqual(check(getIntrospectionQuery()), []);
+        assert.deepEqual(check(getIntrospectionQuery({ descriptions: true, specifiedByUrl: true, directiveIsRepeatable: true, schemaDescription: true, inputValueDeprecation: true })), []);
+    });
+
+    it('still rejects deep introspection that is not an ofType chain', () => {
+        let inner = 'name';
+        for (let i = 0; i < MAX_QUERY_DEPTH; i++) inner = `fields { type { ${inner} } }`;
+        assert.equal(check(`{ __schema { types { ${inner} } } }`).length, 1);
+    });
+
+    it('ofType outside introspection counts as usual', () => {
+        let inner = 'x';
+        for (let i = 0; i < MAX_QUERY_DEPTH + 1; i++) inner = `ofType { ${inner} }`;
+        assert.equal(check(`{ ${inner} }`).length, 1);
+    });
+});
+
