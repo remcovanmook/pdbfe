@@ -1,21 +1,21 @@
 /**
- * @fileoverview depth=0 list execution that never asks D1 for a whole large
- * table in one statement.
+ * @fileoverview depth=0 list execution: D1 builds the JSON, the worker
+ * forwards it.
  *
  * The hot path builds the `{"data":[...],"meta":{}}` envelope inside D1 with
- * json_group_array — one query, one string, no per-row V8 work. For a large
- * table that single statement fails: SQLITE_TOOBIG when the string passes
- * D1's max value size, or SQLITE_NOMEM when the aggregate exhausts D1's
- * memory — and NOMEM is not contained to the request: concurrent queries on
- * the same database (including the sync poll) fail with it too.
+ * json_group_array — one query, one string, no per-row V8 work. D1 refuses a
+ * single computed string much over 7.5 MB (SQLITE_TOOBIG, measured on
+ * production on 2026-11-05: 7.58 MB built, ~8.85 MB failed), and an aggregate
+ * that exhausts D1's memory fails with SQLITE_NOMEM — which also fails
+ * concurrent queries on the same database, the sync poll included.
  *
- * So:
- *   - windows of at most PAGE_START rows (explicit small limit) run as one
- *     query, as before;
- *   - unbounded or large windows are fetched in pages from the start. Each
- *     page also returns its row count, so a result that fits in the first
- *     page still costs exactly one query. Page size adapts to payload bytes:
- *     doubled while pages stay small, halved on TOOBIG / NOMEM.
+ * So every query asks for at most one page of the entity's PAGE_ROWS. Any result that fits — every list of a small table,
+ * and nearly every filtered or limited one — is that single query, and its
+ * envelope is forwarded exactly as D1 built it. Only a result larger than a
+ * page (in practice an unfiltered list of net, netixlan, org, netfac or
+ * authenticated poc) continues in pages, which are spliced into one envelope.
+ * Each query also returns its row count, so the last page is known without an
+ * extra query. A page that still fails TOOBIG / NOMEM is halved and retried.
  *
  * Shared by the api and rest list handlers.
  */
@@ -27,12 +27,34 @@ import { encoder } from './http.js';
 const PREFIX = '{"data":[';
 const SUFFIX = '],"meta":{}}';
 
-/** First page size, and the largest window still run as a single query. */
-const PAGE_START = 2000;
+/** Smallest page a TOOBIG / NOMEM retry halves down to. */
 const PAGE_MIN = 250;
-const PAGE_MAX = 32_000;
-/** Pages under this many bytes double the next page size. */
-const PAGE_GROW_BELOW = 1_000_000;
+
+/**
+ * Rows per page, per entity. Measured on production D1 on 2026-11-05: the
+ * largest single string D1 built was 7.58 MB (6000 net rows); ~8.85 MB failed
+ * SQLITE_TOOBIG. Each value keeps rows × the entity's p90 row size of the
+ * list JSON under 7.5 MB, and is rounded up to a round number so that
+ * ordinary table growth does not add a near-empty page to a full-table list:
+ *
+ *   entity    p90 B  max B   rows (2026-11-05)  page at p90  full-table pages
+ *   net       1329   19747   35849              6.6 MB       8 (to 40000 rows)
+ *   netixlan   454     524   66769              6.8 MB       5 (to 75000)
+ *   org        610    5111   35293              6.1 MB       4 (to 40000)
+ *   netfac     220     269   62762              6.6 MB       3 (to 90000)
+ *   poc*       237     339   61014              7.1 MB       3 (to 90000)
+ *   fac        993    3155    5886              7.0 MB       1 (to 7000)
+ *   * authenticated view, which includes non-public contacts.
+ *
+ * Average rows run 10–20% under p90. Re-measure when columns are added or
+ * row sizes grow; the TOOBIG halving covers drift until then. Entities not
+ * listed are small (whole table under 1.5 MB) and get DEFAULT_PAGE_ROWS.
+ * @type {Readonly<Record<string, number>>}
+ */
+const PAGE_ROWS = Object.freeze({
+    net: 5000, netixlan: 15_000, org: 10_000, netfac: 30_000, poc: 30_000, fac: 7000,
+});
+const DEFAULT_PAGE_ROWS = 3000;
 
 /**
  * Row count of each envelope built here, as D1 counted it. Kept by buffer
@@ -81,6 +103,11 @@ export function isTooLarge(err) {
 /**
  * Executes a depth=0 list query and returns the JSON envelope bytes.
  *
+ * Runs over the caller's window (skip … skip+limit) in pages of PAGE_ROWS,
+ * following the query's ORDER BY, which always ends in an id tiebreak, so
+ * OFFSET paging neither repeats nor drops rows. A result of one page is D1's
+ * envelope as built; only a multi-page result is spliced.
+ *
  * @param {D1Session} db - D1 session.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed filters.
@@ -88,41 +115,14 @@ export function isTooLarge(err) {
  * @returns {Promise<Uint8Array|null>} Envelope bytes, or null when D1 returned no payload.
  */
 export async function queryJsonList(db, entity, filters, opts) {
-    if (opts.limit > 0 && opts.limit <= PAGE_START) {
-        const { sql, params } = buildJsonQuery(entity, filters, opts, null, true);
-        try {
-            const row = await db.prepare(sql).bind(...params).first();
-            if (!row?.payload) return null;
-            return withRowCount(encoder.encode(/** @type {string} */ (row.payload)), Number(row.n ?? 0));
-        } catch (err) {
-            if (!isTooLarge(err)) throw err;
-        }
-    }
-    return queryJsonListPaged(db, entity, filters, opts);
-}
-
-/**
- * Runs the list query in pages over the caller's window (skip … skip+limit)
- * and joins the page arrays into one envelope. Pages follow the query's
- * ORDER BY, which always ends in an id tiebreak, so OFFSET paging neither
- * repeats nor drops rows.
- *
- * @param {D1Session} db - D1 session.
- * @param {EntityMeta} entity - Entity metadata.
- * @param {ParsedFilter[]} filters - Parsed filters.
- * @param {QueryOpts} opts - Query options.
- * @returns {Promise<Uint8Array>} Envelope bytes.
- */
-async function queryJsonListPaged(db, entity, filters, opts) {
     const window = opts.limit > 0 && opts.limit < MAX_PAGE_LIMIT ? opts.limit : MAX_PAGE_LIMIT;
     const baseSkip = Math.max(opts.skip, 0);
 
-    /** @type {Uint8Array[]} */
-    const pages = [];
-    let bytes = 0;
+    /** @type {string[]} */
+    const payloads = [];
     let rows = 0;
     let offset = 0;
-    let size = PAGE_START;
+    let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
 
     while (offset < window) {
         const want = Math.min(size, window - offset);
@@ -143,23 +143,42 @@ async function queryJsonListPaged(db, entity, filters, opts) {
             continue;
         }
 
-        const payload = /** @type {string} */ (row?.payload ?? '');
         const n = Number(row?.n ?? 0);
+        if (offset === 0 && n < want) {
+            // The whole result in one query: forward D1's envelope as built.
+            if (!row?.payload) return null;
+            return withRowCount(encoder.encode(/** @type {string} */ (row.payload)), n);
+        }
         if (n > 0) {
-            if (!payload.startsWith(PREFIX) || !payload.endsWith(SUFFIX)) {
-                throw new Error('queryJsonListPaged: unexpected payload envelope');
-            }
-            const page = encoder.encode(payload.slice(PREFIX.length, payload.length - SUFFIX.length));
-            pages.push(page);
-            bytes += page.length;
+            payloads.push(/** @type {string} */ (row.payload));
             rows += n;
-            if (page.length < PAGE_GROW_BELOW && size < PAGE_MAX) size = Math.min(PAGE_MAX, size * 2);
         }
         if (n < want) break; // last page
         offset += want;
     }
+    if (payloads.length === 1) return withRowCount(encoder.encode(payloads[0]), rows);
+    return withRowCount(splice(payloads), rows);
+}
 
-    // PREFIX + pages joined by ',' + SUFFIX, assembled once.
+/**
+ * Joins page envelopes into one: PREFIX, each page's array contents joined
+ * by ',', SUFFIX, assembled once.
+ *
+ * @param {string[]} payloads - Page envelopes, each `{"data":[...],"meta":{}}`.
+ * @returns {Uint8Array} Envelope bytes.
+ */
+function splice(payloads) {
+    /** @type {Uint8Array[]} */
+    const pages = [];
+    let bytes = 0;
+    for (const payload of payloads) {
+        if (!payload.startsWith(PREFIX) || !payload.endsWith(SUFFIX)) {
+            throw new Error('queryJsonList: unexpected payload envelope');
+        }
+        const page = encoder.encode(payload.slice(PREFIX.length, payload.length - SUFFIX.length));
+        pages.push(page);
+        bytes += page.length;
+    }
     const head = encoder.encode(PREFIX);
     const tail = encoder.encode(SUFFIX);
     const out = new Uint8Array(head.length + bytes + Math.max(pages.length - 1, 0) + tail.length);
@@ -170,5 +189,5 @@ async function queryJsonListPaged(db, entity, filters, opts) {
         out.set(pages[i], pos); pos += pages[i].length;
     }
     out.set(tail, pos);
-    return withRowCount(out, rows);
+    return out;
 }

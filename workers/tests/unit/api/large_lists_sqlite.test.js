@@ -194,7 +194,9 @@ describe('paging cost on an unconstrained database', () => {
         assert.equal(status, 200);
         assert.equal(body.data.length, 5000);
         assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), Array.from({ length: 5000 }, (_, i) => i + 1));
-        assert.ok(stats.payloadQueries - before > 1, 'should page');
+        // A full net page is 5000 rows (PAGE_ROWS): the full page, then an
+        // empty one that ends the list.
+        assert.equal(stats.payloadQueries - before, 2, 'pages of PAGE_ROWS.net');
     });
 });
 

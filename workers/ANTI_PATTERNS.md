@@ -290,7 +290,7 @@ next `get()` call.
 const a = cache.get("key-a");
 const b = cache.get("key-b");
 // BUG: a.buf now contains key-b's data — 'a' and 'b' are the same object
-return serveJSON(request, a.buf);
+return serveJSON(a.buf);
 ```
 
 **Do:**
@@ -327,13 +327,13 @@ const cache = getEntityCache(entityTag);
 const cacheKey = normaliseCacheKey(rawPath, queryString);
 const cached = cache.get(cacheKey);
 if (cached && (Date.now() - cached.addedAt) < LIST_TTL) {
-    return serveJSON(request, cached.buf, { tier: 'L1', hits: cached.hits });
+    return serveJSON(cached.buf, { tier: 'L1', hits: cached.hits });
 }
 const { buf, tier } = await cachedQuery({
     cacheKey, cache, entityTag, ttlMs: LIST_TTL,
     queryFn: () => executeListQuery(db, entity, filters, opts)
 });
-return serveJSON(request, buf, { tier, hits: 0 });
+return serveJSON(buf, { tier, hits: 0 });
 ```
 
 **Do:**
@@ -345,7 +345,7 @@ const { buf, tier, hits } = await withEdgeSWR(
     entityTag, cacheKey, ctx, LIST_TTL,
     () => executeListQuery(db, entity, filters, opts)
 );
-return serveJSON(request, buf || EMPTY_ENVELOPE, { tier, hits });
+return serveJSON(buf || EMPTY_ENVELOPE, { tier, hits });
 ```
 
 `withEdgeSWR` handles cache resolution from `entityTag`, synchronous field
