@@ -6,7 +6,7 @@
 
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
-import { validateRequest, routeAdminPath, wrapHandler } from '../core/admin.js';
+import { validateRequest, routeAdminPath, isAdminPath, wrapHandler } from '../core/admin.js';
 import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, syncAlignedCacheControl } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { changedSince } from './depth.js';
@@ -92,6 +92,24 @@ function validateQueryOrError(entity, filters, hNocache) {
 
 
 /**
+ * Whether a path could be served by this worker, judged on its shape alone.
+ *
+ * @param {string} rawPath - URL path without leading slash.
+ * @param {string} topLevel - First path segment.
+ * @param {string|undefined} apiCall - The path after the first segment.
+ * @returns {boolean} True if the path can reach a handler.
+ */
+function isKnownPath(rawPath, topLevel, apiCall) {
+    if (apiCall === undefined) {
+        return rawPath === '' || rawPath === 'status' || isAdminPath(rawPath);
+    }
+    if (topLevel !== 'api') return false;
+    const { p0: rawTag } = tokenizeString(apiCall, '/', 2);
+    const tag = rawTag?.endsWith('.json') ? rawTag.slice(0, -5) : rawTag;
+    return ENTITY_TAGS.has(tag) || tag === 'as_set' || tag === 'compare';
+}
+
+/**
  * Validates and routes incoming API requests.
  * Routes to admin endpoints, CORS preflight, entity list/detail handlers,
  * AS-set lookups, or returns appropriate error responses.
@@ -103,6 +121,19 @@ function validateQueryOrError(entity, filters, hNocache) {
  */
 async function handleRequest(request, env, ctx) {
     const { rawPath, queryString } = parseURL(request);
+
+    // Allow all methods through validation so we can return proper 501s
+    const invalid = validateRequest(request, rawPath, ALL_METHODS);
+    if (invalid) return invalid;
+
+    const { p0: topLevel, p1: apiCall } = tokenizeString(rawPath, '/', 2);
+
+    // Unknown paths answer before auth and rate limiting: a scanner should get
+    // a 404, not a 429 that invites it to retry. The message stays constant
+    // here: jsonError caches by message, and nothing limits these requests.
+    if (request.method !== "OPTIONS" && !isKnownPath(rawPath, topLevel, apiCall)) {
+        return jsonError(404, "Not found", H_NOCACHE_ANON);
+    }
 
     const tAuth = Date.now();
     const { authenticated, identity: authIdentity, userId, rejection } = await resolveAuth(request, env);
@@ -128,10 +159,6 @@ async function handleRequest(request, env, ctx) {
                 'for higher rate limits \u2014 see /account', hNocache);
     }
 
-    // Allow all methods through validation so we can return proper 501s
-    const invalid = validateRequest(request, rawPath, ALL_METHODS);
-    if (invalid) return invalid;
-
     // CORS preflight — return before D1 session allocation
     if (request.method === "OPTIONS") {
         return handlePreflight();
@@ -146,8 +173,6 @@ async function handleRequest(request, env, ctx) {
     // the background _sync_meta poll uses the bare session so it never
     // counts toward a request.
     const { db, stats: d1 } = withD1Stats(session);
-
-    const { p0: topLevel, p1: apiCall } = tokenizeString(rawPath, '/', 2);
 
     // Root-level paths (no slash): admin endpoints
     if (apiCall === undefined) {
@@ -171,11 +196,6 @@ async function handleRequest(request, env, ctx) {
             return handleServiceDiscovery(request);
         }
 
-        return jsonError(404, "Not found");
-    }
-
-    // All API paths start with "api/"
-    if (topLevel !== "api") {
         return jsonError(404, "Not found");
     }
 
