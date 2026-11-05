@@ -9,6 +9,13 @@
  *
  * Implemented as a graphql validation rule (no runtime cost beyond the normal
  * validation pass, no new dependency).
+ *
+ * Inside introspection (__schema / __type), `ofType` does not add depth: the
+ * standard introspection query (what GraphiQL sends on load) walks a type's
+ * List / NonNull wrappers through ~8 nested `ofType`, reaching depth 14. That
+ * is metadata from the in-memory schema — no resolver, no D1 — and past the
+ * real wrappers it is null. Every other field, introspection included,
+ * counts, and the field cap bounds everything.
  */
 
 import { GraphQLError } from 'graphql';
@@ -19,6 +26,9 @@ export const MAX_QUERY_DEPTH = 12;
 /** Max total resolved fields in one operation (bounds alias amplification). */
 export const MAX_QUERY_FIELDS = 1000;
 
+/** A selection that adds nothing. */
+const NONE = Object.freeze({ depth: 0, fields: 0 });
+
 /**
  * Measures the depth and total field count of a selection set, resolving
  * fragment spreads (with a cycle guard so a cyclic fragment can't recurse
@@ -27,39 +37,72 @@ export const MAX_QUERY_FIELDS = 1000;
  * @param {import('graphql').SelectionSetNode} selectionSet
  * @param {Record<string, import('graphql').FragmentDefinitionNode>} fragments
  * @param {Set<string>} visiting - Fragment names on the current spread path.
+ * @param {boolean} [introspection] - Inside a __schema / __type selection.
  * @returns {{depth: number, fields: number}}
  */
-function measure(selectionSet, fragments, visiting) {
+function measure(selectionSet, fragments, visiting, introspection = false) {
     let depth = 0;
     let fields = 0;
     for (const sel of selectionSet.selections) {
-        if (sel.kind === 'Field') {
-            fields += 1;
-            if (sel.selectionSet) {
-                const sub = measure(sel.selectionSet, fragments, visiting);
-                fields += sub.fields;
-                depth = Math.max(depth, 1 + sub.depth);
-            }
-        } else if (sel.kind === 'InlineFragment') {
-            if (sel.selectionSet) {
-                const sub = measure(sel.selectionSet, fragments, visiting);
-                fields += sub.fields;
-                depth = Math.max(depth, sub.depth);
-            }
-        } else if (sel.kind === 'FragmentSpread') {
-            const name = sel.name.value;
-            if (visiting.has(name)) continue; // cycle guard
-            const frag = fragments[name];
-            if (frag) {
-                visiting.add(name);
-                const sub = measure(frag.selectionSet, fragments, visiting);
-                visiting.delete(name);
-                fields += sub.fields;
-                depth = Math.max(depth, sub.depth);
-            }
-        }
+        const sub = measureSelection(sel, fragments, visiting, introspection);
+        fields += sub.fields;
+        depth = Math.max(depth, sub.depth);
     }
     return { depth, fields };
+}
+
+/**
+ * One selection: a field, an inline fragment, or a fragment spread.
+ *
+ * @param {import('graphql').SelectionNode} sel
+ * @param {Record<string, import('graphql').FragmentDefinitionNode>} fragments
+ * @param {Set<string>} visiting
+ * @param {boolean} introspection
+ * @returns {{depth: number, fields: number}}
+ */
+function measureSelection(sel, fragments, visiting, introspection) {
+    if (sel.kind === 'Field') return measureField(sel, fragments, visiting, introspection);
+    if (sel.kind === 'InlineFragment') {
+        return sel.selectionSet ? measure(sel.selectionSet, fragments, visiting, introspection) : NONE;
+    }
+    return measureSpread(sel, fragments, visiting, introspection);
+}
+
+/**
+ * A field counts once and adds one level of depth, except `ofType` inside
+ * introspection (see the file overview).
+ *
+ * @param {import('graphql').FieldNode} field
+ * @param {Record<string, import('graphql').FragmentDefinitionNode>} fragments
+ * @param {Set<string>} visiting
+ * @param {boolean} introspection
+ * @returns {{depth: number, fields: number}}
+ */
+function measureField(field, fragments, visiting, introspection) {
+    if (!field.selectionSet) return { depth: 0, fields: 1 };
+    const name = field.name.value;
+    const inIntro = introspection || name === '__schema' || name === '__type';
+    const sub = measure(field.selectionSet, fragments, visiting, inIntro);
+    return { depth: (inIntro && name === 'ofType' ? 0 : 1) + sub.depth, fields: 1 + sub.fields };
+}
+
+/**
+ * A fragment spread measures as its fragment, once per spread path (cycle guard).
+ *
+ * @param {import('graphql').FragmentSpreadNode} spread
+ * @param {Record<string, import('graphql').FragmentDefinitionNode>} fragments
+ * @param {Set<string>} visiting
+ * @param {boolean} introspection
+ * @returns {{depth: number, fields: number}}
+ */
+function measureSpread(spread, fragments, visiting, introspection) {
+    const name = spread.name.value;
+    const frag = fragments[name];
+    if (visiting.has(name) || !frag) return NONE;
+    visiting.add(name);
+    const sub = measure(frag.selectionSet, fragments, visiting, introspection);
+    visiting.delete(name);
+    return sub;
 }
 
 /**
