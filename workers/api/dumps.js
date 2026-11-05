@@ -10,7 +10,10 @@
  *
  * Lifecycle:
  *   1. The sync advances _sync_meta.last_modified_at for a changed table and
- *      then publishes a `dump` task (sync/rows.js publishDump).
+ *      then publishes a `dump` task (sync/rows.js publishDump) to the
+ *      pdbfe-dumps queue, whose consumer takes one table per invocation, one
+ *      invocation at a time: each build has an isolate to itself, and builds
+ *      never overlap on D1.
  *   2. The async worker builds `dumps/<tag>/<last_modified_at>.json` from the
  *      same page queries the API uses (api/json_list.js writeJsonList),
  *      uploads it, and only then sets _sync_meta.dump_key — conditional on

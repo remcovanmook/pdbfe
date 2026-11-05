@@ -203,7 +203,9 @@ export async function publishTasks(queue, tag, activeRows, deletedIds) {
  * Best effort: a failed publish leaves the table on the D1 path until its
  * next change, so it is logged, not thrown, and never fails the sync.
  *
- * @param {Queue<AsyncTaskMessage>|undefined} queue - Queue producer (optional).
+ * @param {Queue<AsyncTaskMessage>|undefined} queue - pdbfe-dumps Queue producer
+ *        (optional): its consumer takes one message per invocation, one at a
+ *        time, so each table's dump gets its own isolate and D1 builds never overlap.
  * @param {string} tag - Entity tag.
  * @returns {Promise<void>}
  */

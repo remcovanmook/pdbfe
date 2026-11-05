@@ -241,7 +241,7 @@ describe('sync keeps dump_key and asks for a dump after recording the version', 
 
     it('a run without changes keeps dump_key and sends nothing', async () => {
         upstream([row(1, TS)]);
-        const r = await syncEntity(db, 'net', ENTITIES.net, '', queue);
+        const r = await syncEntity(db, 'net', ENTITIES.net, '', undefined, queue);
         assert.ok(!r.error, r.error);
         assert.equal(metaOf(sqlite).dump_key, dumpKey('net', V1));
         assert.equal(sent.length, 0);
@@ -250,20 +250,30 @@ describe('sync keeps dump_key and asks for a dump after recording the version', 
     it('a run without changes asks for the dump when it is missing or behind', async () => {
         sqlite.prepare(`UPDATE "_sync_meta" SET dump_key = ''`).run();
         upstream([row(1, TS)]);
-        await syncEntity(db, 'net', ENTITIES.net, '', queue);
+        await syncEntity(db, 'net', ENTITIES.net, '', undefined, queue);
         assert.deepEqual(sent.map((s) => s.msg), [{ action: 'dump', tag: 'net', id: 0 }]);
+    });
+
+    it('dump tasks go to the dump queue, never onto pdbfe-tasks', async () => {
+        /** @type {any[]} */
+        const tasks = [];
+        const taskQueue = /** @type {any} */ ({ async send(/** @type {any} */ m) { tasks.push(m); }, async sendBatch(/** @type {any[]} */ ms) { tasks.push(...ms.map((x) => x.body)); } });
+        upstream([row(1, '2026-10-07T13:00:00Z')]);
+        await syncEntity(db, 'net', ENTITIES.net, '', taskQueue, queue);
+        assert.ok(tasks.every((m) => m.action !== 'dump'), JSON.stringify(tasks));
+        assert.deepEqual(sent.map((x) => x.msg.action), ['dump']);
     });
 
     it('tables without a dump are never asked for one', async () => {
         sqlite.prepare(`INSERT INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES ('ixlan', ?, 0, '', ?)`).run(V1, V1);
         upstream([]);
-        await syncEntity(db, 'ixlan', ENTITIES.ixlan, '', queue);
+        await syncEntity(db, 'ixlan', ENTITIES.ixlan, '', undefined, queue);
         assert.equal(sent.length, 0);
     });
 
     it('a run with changes keeps the old dump_key (now stale) and sends dump after last_modified_at moved', async () => {
         upstream([row(1, '2026-10-07T13:00:00Z')]);
-        const r = await syncEntity(db, 'net', ENTITIES.net, '', queue);
+        const r = await syncEntity(db, 'net', ENTITIES.net, '', undefined, queue);
         assert.ok(!r.error, r.error);
         const meta = metaOf(sqlite);
         assert.ok(meta.last_modified_at > V1, 'version advanced');

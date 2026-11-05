@@ -27,6 +27,16 @@ max_batch_size    = 10
 max_batch_timeout = 5
 max_retries       = 3
 
+# Full-table dumps (api/dumps.js): one table per invocation, so each build has
+# the isolate to itself, and one invocation at a time, so builds never overlap
+# on D1 (back-to-back full-table queries trip D1's 10 s resource window).
+# Create with: wrangler queues create pdbfe-dumps
+[[queues.consumers]]
+queue = "pdbfe-dumps"
+max_batch_size  = 1
+max_concurrency = 1
+max_retries     = 3
+
 [vars]
 PDBFE_VERSION = "<your-version>"
 

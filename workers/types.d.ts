@@ -330,6 +330,8 @@ interface PdbSyncEnv {
     PDB: D1Database;
     /** pdbfe-tasks Queue producer binding. Optional — sync operates without it (no async tasks pushed). */
     QUEUE?: Queue<AsyncTaskMessage>;
+    /** pdbfe-dumps Queue producer binding: `dump` tasks, one per consumer invocation (api/dumps.js). Optional — without it no dumps are written and lists stream from D1. */
+    DUMP_QUEUE?: Queue<AsyncTaskMessage>;
     ADMIN_SECRET?: string;
     PEERINGDB_API_KEY?: string;
     /** Release version string injected at deploy time from the VERSION file. */
