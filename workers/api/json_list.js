@@ -9,8 +9,7 @@
  * that exhausts D1's memory fails with SQLITE_NOMEM — which also fails
  * concurrent queries on the same database, the sync poll included.
  *
- * So every query asks for at most one page: PAGE_BYTES divided by the
- * entity's p90 row size. Any result that fits — every list of a small table,
+ * So every query asks for at most one page of the entity's PAGE_ROWS. Any result that fits — every list of a small table,
  * and nearly every filtered or limited one — is that single query, and its
  * envelope is forwarded exactly as D1 built it. Only a result larger than a
  * page (in practice an unfiltered list of net, netixlan, org, netfac or
@@ -28,33 +27,34 @@ import { encoder } from './http.js';
 const PREFIX = '{"data":[';
 const SUFFIX = '],"meta":{}}';
 
-/** Byte budget for one page: 20% under the largest string D1 was seen to build. */
-const PAGE_BYTES = 6_000_000;
 /** Smallest page a TOOBIG / NOMEM retry halves down to. */
 const PAGE_MIN = 250;
 
 /**
- * p90 size in bytes of one row of the depth=0 list JSON, per entity, measured
- * on production D1 on 2026-11-05 (poc: the authenticated view, which includes
- * non-public contacts). Max row sizes were 1–15x p90 (net: 19.7 KB), a few
- * rows' worth per page at most. Re-measure when columns are added or rows
- * grow. An entity not listed is small: its whole table is far under a page,
- * and DEFAULT_ROW_BYTES only bounds a page should that change.
+ * Rows per page, per entity. Measured on production D1 on 2026-11-05: the
+ * largest single string D1 built was 7.58 MB (6000 net rows); ~8.85 MB failed
+ * SQLITE_TOOBIG. Each value keeps rows × the entity's p90 row size of the
+ * list JSON under 7.5 MB, and is rounded up to a round number so that
+ * ordinary table growth does not add a near-empty page to a full-table list:
+ *
+ *   entity    p90 B  max B   rows (2026-11-05)  page at p90  full-table pages
+ *   net       1329   19747   35849              6.6 MB       8 (to 40000 rows)
+ *   netixlan   454     524   66769              6.8 MB       5 (to 75000)
+ *   org        610    5111   35293              6.1 MB       4 (to 40000)
+ *   netfac     220     269   62762              6.6 MB       3 (to 90000)
+ *   poc*       237     339   61014              7.1 MB       3 (to 90000)
+ *   fac        993    3155    5886              7.0 MB       1 (to 7000)
+ *   * authenticated view, which includes non-public contacts.
+ *
+ * Average rows run 10–20% under p90. Re-measure when columns are added or
+ * row sizes grow; the TOOBIG halving covers drift until then. Entities not
+ * listed are small (whole table under 1.5 MB) and get DEFAULT_PAGE_ROWS.
  * @type {Readonly<Record<string, number>>}
  */
-const ROW_P90_BYTES = Object.freeze({
-    net: 1329, fac: 993, org: 610, netixlan: 454, poc: 237, netfac: 220,
+const PAGE_ROWS = Object.freeze({
+    net: 5000, netixlan: 15_000, org: 10_000, netfac: 30_000, poc: 30_000, fac: 7000,
 });
-const DEFAULT_ROW_BYTES = 2000;
-
-/**
- * Rows per page for an entity.
- * @param {EntityMeta} entity
- * @returns {number}
- */
-function pageRows(entity) {
-    return Math.floor(PAGE_BYTES / (ROW_P90_BYTES[entity.tag] ?? DEFAULT_ROW_BYTES));
-}
+const DEFAULT_PAGE_ROWS = 3000;
 
 /**
  * Row count of each envelope built here, as D1 counted it. Kept by buffer
@@ -103,7 +103,7 @@ export function isTooLarge(err) {
 /**
  * Executes a depth=0 list query and returns the JSON envelope bytes.
  *
- * Runs over the caller's window (skip … skip+limit) in pages of pageRows(),
+ * Runs over the caller's window (skip … skip+limit) in pages of PAGE_ROWS,
  * following the query's ORDER BY, which always ends in an id tiebreak, so
  * OFFSET paging neither repeats nor drops rows. A result of one page is D1's
  * envelope as built; only a multi-page result is spliced.
@@ -122,7 +122,7 @@ export async function queryJsonList(db, entity, filters, opts) {
     const payloads = [];
     let rows = 0;
     let offset = 0;
-    let size = pageRows(entity);
+    let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
 
     while (offset < window) {
         const want = Math.min(size, window - offset);

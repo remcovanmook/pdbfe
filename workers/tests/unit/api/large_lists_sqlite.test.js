@@ -194,8 +194,9 @@ describe('paging cost on an unconstrained database', () => {
         assert.equal(status, 200);
         assert.equal(body.data.length, 5000);
         assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), Array.from({ length: 5000 }, (_, i) => i + 1));
-        // net pages hold 6 MB / 1329 B (its p90 row) = 4514 rows: 4514 + 486.
-        assert.equal(stats.payloadQueries - before, 2, 'pages sized from the entity\'s p90 row');
+        // A full net page is 5000 rows (PAGE_ROWS): the full page, then an
+        // empty one that ends the list.
+        assert.equal(stats.payloadQueries - before, 2, 'pages of PAGE_ROWS.net');
     });
 });
 
