@@ -130,7 +130,7 @@ function windowOf(opts) {
  */
 export function isStreamedList(entity, filters, opts) {
     const rows = PAGE_ROWS[entity.tag];
-    return rows !== undefined && opts.depth === 0 && filters.length === 0 && !(opts.since > 0) && windowOf(opts) > rows;
+    return rows !== undefined && opts.depth === 0 && filters.length === 0 && opts.since <= 0 && windowOf(opts) > rows;
 }
 
 /**
@@ -224,11 +224,13 @@ export async function streamJsonList(db, entity, filters, opts, ctx) {
         let last = first;
         try {
             await writer.write(rows > 0 ? PREFIX + first.frag : PREFIX);
+            // One page at a time, on purpose: concurrent pages all arrive at
+            // the end (measured), and waiting on the client keeps one in memory.
             while (last.n >= last.want && offset < window) {
-                const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset));
+                const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset)); // NOSONAR
                 if (page.want < size && page.want < window - offset) size = page.want; // halved
                 if (page.n > 0) {
-                    await writer.write(rows > 0 ? ',' + page.frag : /** @type {string} */ (page.frag));
+                    await writer.write(rows > 0 ? ',' + page.frag : /** @type {string} */ (page.frag)); // NOSONAR
                     rows += page.n;
                 }
                 offset += page.want;
