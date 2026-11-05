@@ -27,7 +27,7 @@ pdbfe/
 │   │   └── index.js               # OAuth ceremony, session/key management
 │   ├── core/                      # Shared primitives (no domain knowledge)
 │   │   ├── cache.js               # TypedArray LRU implementation
-│   │   ├── http.js                # JSON serving, ETag, CORS
+│   │   ├── http.js                # JSON serving, CORS
 │   │   ├── admin.js               # Request validation, health, robots.txt
 │   │   ├── utils.js               # URL parsing, filter parsing
 │   │   ├── auth.js                # Session resolution, API key verification

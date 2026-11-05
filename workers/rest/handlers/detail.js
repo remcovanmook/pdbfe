@@ -16,14 +16,13 @@ import { withRestSWR } from '../cache.js';
 /**
  * Handles a detail request for a single entity by ID.
  *
- * @param {Request} request - Inbound request.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {number} id - Entity primary key.
  * @param {QueryOpts} opts - Parsed query options.
  * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string}} qc - Query context.
  * @returns {Promise<Response>}
  */
-export async function handleDetail(request, entity, id, opts, qc) {
+export async function handleDetail(entity, id, opts, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     // Partitioned by auth state where it matters (see handlers/list.js).
     const cacheKey = normaliseCacheKey(`${qc.cachePrefix}:v1/${entityTag}/${id}`, queryString);
@@ -52,5 +51,5 @@ export async function handleDetail(request, entity, id, opts, qc) {
         return jsonError(404, `${entityTag} with id ${id} not found`);
     }
 
-    return serveJSON(request, buf, { tier, hits }, hResponse);
+    return serveJSON(buf, { tier, hits }, hResponse);
 }

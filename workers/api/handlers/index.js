@@ -6,7 +6,7 @@
  *   detail.js  — handleDetail (single entity by ID)
  *   as_set.js  — handleAsSet (AS-set lookup by ASN)
  *   compare.js — handleCompare (entity overlap analysis, PDBFE extension)
- *   shared.js  — handleNotImplemented, parseJsonFields, countRowsBytes
+ *   shared.js  — handleNotImplemented, parseJsonFields
  */
 
 export { handleList } from './list.js';

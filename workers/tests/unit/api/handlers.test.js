@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { handleList } from '../../../api/handlers/list.js';
 import { handleDetail } from '../../../api/handlers/detail.js';
 import { handleAsSet } from '../../../api/handlers/as_set.js';
-import { handleNotImplemented, countRowsBytes } from '../../../api/handlers/shared.js';
+import { handleNotImplemented } from '../../../api/handlers/shared.js';
 import { purgeAllCaches } from '../../../api/cache.js';
 import { H_API_AUTH, H_API_ANON, H_API_SHARED } from '../../../api/http.js';
 import { SHARED_MARKER } from '../../../core/http.js';
@@ -294,31 +294,10 @@ describe('handleDetail', () => {
         assert.equal(res.status, 404);
     });
 
-    it('includes ETag header on successful response', async () => {
-        const payload = '{"data":[{"id":1}],"meta":{}}';
-        const db = mockD1({ hotPayload: payload });
-        const hc = makeHC({ db });
-
-        const res = await handleDetail(hc, 1);
-        assert.ok(res.headers.has('ETag'));
-    });
-
-    it('returns 304 when If-None-Match matches ETag', async () => {
-        const payload = '{"data":[{"id":1}],"meta":{}}';
-        const db = mockD1({ hotPayload: payload });
-
-        // First request to get the ETag
-        const hc1 = makeHC({ db });
-        const res1 = await handleDetail(hc1, 1);
-        const etag = res1.headers.get('ETag');
-
-        // Second request with If-None-Match
-        const request = new Request('https://api.pdbfe.dev/api/net/1', {
-            headers: { 'If-None-Match': etag }
-        });
-        const hc2 = makeHC({ db, request });
-        const res2 = await handleDetail(hc2, 1);
-        assert.equal(res2.status, 304);
+    it('sends no ETag', async () => {
+        const db = mockD1({ hotPayload: '{"data":[{"id":1}],"meta":{}}' });
+        const res = await handleDetail(makeHC({ db }), 1);
+        assert.equal(res.headers.has('ETag'), false);
     });
 });
 
@@ -335,7 +314,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/13335');
 
-        const res = await handleAsSet(request, db, ctx, 13335);
+        const res = await handleAsSet(db, ctx, 13335);
         assert.equal(res.status, 200);
 
         const body = await res.json();
@@ -348,7 +327,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/999999');
 
-        const res = await handleAsSet(request, db, ctx, 999999);
+        const res = await handleAsSet(db, ctx, 999999);
         assert.equal(res.status, 404);
     });
 
@@ -357,7 +336,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/999');
 
-        const res = await handleAsSet(request, db, ctx, 999);
+        const res = await handleAsSet(db, ctx, 999);
         assert.equal(res.status, 404);
     });
 
@@ -367,7 +346,7 @@ describe('handleAsSet', () => {
         const { ctx } = mockCtx();
         const request = new Request('https://api.pdbfe.dev/api/as_set/1');
 
-        const res = await handleAsSet(request, db, ctx, 1);
+        const res = await handleAsSet(db, ctx, 1);
         assert.ok(res.headers.get('Cache-Control')?.startsWith('public'));
         assert.equal(res.headers.get('Vary'), null);
         assert.equal(res.headers.get('X-Auth-Status'), null);
@@ -393,34 +372,5 @@ describe('handleNotImplemented', () => {
         const res = handleNotImplemented('PUT', '/api/net/1');
         const body = await res.json();
         assert.ok(body.error.includes('read-only'));
-    });
-});
-
-describe('countRowsBytes', () => {
-    it('returns 0 for an empty array payload', () => {
-        assert.equal(countRowsBytes(enc.encode('{"data":[],"meta":{}}')), 0);
-    });
-
-    it('returns 1 for a single-object payload', () => {
-        assert.equal(countRowsBytes(enc.encode('{"data":[{"id":1}],"meta":{}}')), 1);
-    });
-
-    it('counts multiple objects via the },{ separator', () => {
-        assert.equal(
-            countRowsBytes(enc.encode('{"data":[{"id":1},{"id":2},{"id":3}],"meta":{}}')),
-            3
-        );
-    });
-
-    it('returns 0 when there is no array', () => {
-        assert.equal(countRowsBytes(enc.encode('{"error":"boom"}')), 0);
-    });
-
-    it('matches the byte offsets even with multi-byte UTF-8 content', () => {
-        // Multi-byte chars (é, 世, 🌍) inside string values must not shift the
-        // separator detection — their continuation bytes are all >= 0x80 and
-        // can never collide with the ASCII } , { bytes.
-        const payload = '{"data":[{"n":"café"},{"n":"世界"},{"n":"🌍"}],"meta":{}}';
-        assert.equal(countRowsBytes(enc.encode(payload)), 3);
     });
 });

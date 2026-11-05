@@ -1,8 +1,8 @@
 /**
  * @fileoverview Generic HTTP response helpers shared across all workers.
  *
- * Provides low-level building blocks: encoder, CORS headers, ETag,
- * conditional request checks, JSON encoding, and error responses.
+ * Provides low-level building blocks: encoder, CORS headers, Last-Modified
+ * helpers, JSON encoding, and error responses.
  *
  * API-specific header sets (H_API, H_API_AUTH/ANON, serveJSON) live
  * in api/http.js which layers on top of this module.
@@ -32,7 +32,7 @@ export const H_CORS = Object.freeze({
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
-    "Access-Control-Expose-Headers": "X-Cache, X-Cache-Hits, X-Timer, X-Served-By, X-Isolate-ID, ETag, Allow, X-Auth-Status, X-Auth-Id, X-App-Version, Last-Modified, Server-Timing"
+    "Access-Control-Expose-Headers": "X-Cache, X-Cache-Hits, X-Timer, X-Served-By, X-Isolate-ID, Allow, X-Auth-Status, X-Auth-Id, X-App-Version, Last-Modified, Server-Timing"
 });
 
 /**
@@ -68,60 +68,6 @@ const PREFLIGHT_RESPONSE_INIT = Object.freeze({
  */
 export function handlePreflight() {
     return new Response(null, PREFLIGHT_RESPONSE_INIT);
-}
-
-/**
- * Generates a weak ETag from a Uint8Array payload using a fast
- * DJB2-style hash. Not cryptographic — just collision-resistant
- * enough for HTTP conditional caching.
- *
- * @param {Uint8Array} buf - The response payload bytes.
- * @returns {string} Weak ETag string, e.g. 'W/"a1b2c3d4"'.
- */
-export function generateETag(buf) {
-    let hash = 5381;
-    for (let i = 0; i < buf.byteLength; i++) {
-        hash = ((hash << 5) + hash + buf[i]) >>> 0;
-    }
-    return `W/"${hash.toString(16)}"`;
-}
-
-/**
- * Checks whether the client's conditional headers (If-None-Match)
- * indicate the response has not changed. Used before sending a
- * full payload to potentially return a 304 instead.
- *
- * @param {Headers} requestHeaders - Inbound HTTP request headers.
- * @param {string} etag - The current ETag for the response.
- * @returns {boolean} True if the client cache is still valid.
- */
-export function isNotModified(requestHeaders, etag) {
-    const reqEtag = requestHeaders.get("if-none-match");
-    if (!reqEtag) return false;
-    if (reqEtag === "*") return true;
-    // If-None-Match is a comma-separated list of ETags (RFC 9110 §13.1.2), e.g.
-    // '"a", W/"b"'. A single-string compare would miss a 304 whenever the client
-    // holds more than one cached representation, so compare each token in turn.
-    const want = stripEtagDecoration(etag);
-    for (const token of reqEtag.split(",")) { // ap-ok: If-None-Match list, small bounded header
-        if (stripEtagDecoration(token.trim()) === want) return true;
-    }
-    return false;
-}
-
-/**
- * Strips the W/ weak indicator and surrounding quotes from an ETag value.
- * Uses string operations (no regex) — safe for the hot path.
- *
- * @param {string} raw - Raw ETag string (e.g. 'W/"abc123"' or '"abc123"').
- * @returns {string} The bare hash value (e.g. 'abc123').
- */
-function stripEtagDecoration(raw) {
-    let s = raw;
-    if (s.startsWith('W/')) s = s.slice(2);
-    if (s.startsWith('"')) s = s.slice(1);
-    if (s.endsWith('"')) s = s.slice(0, -1);
-    return s;
 }
 
 /**

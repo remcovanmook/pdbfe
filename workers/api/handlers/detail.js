@@ -21,7 +21,7 @@ import { encoder, encodeJSON, serveJSON, serverTiming, jsonError } from '../http
  * @returns {Promise<Response>} JSON response.
  */
 export async function handleDetail(hc, id) {
-    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
+    const { db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
@@ -36,7 +36,7 @@ export async function handleDetail(hc, id) {
 
     if (!buf) return jsonError(404, `${entityTag} with id ${id} not found`);
 
-    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, stamp * 1000, hc.userId);
+    return serveJSON(buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, stamp * 1000, hc.userId);
 }
 
 /**

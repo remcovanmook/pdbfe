@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for api/http.js.
  *
- * Tests API-specific response helpers: serveJSON (ETag, 304, Content-Type),
+ * Tests API-specific response helpers: serveJSON (no ETag, Content-Type),
  * withLastModified (header injection, no-op for falsy epoch), and the
  * frozen header set composition (H_API, H_API_AUTH, H_API_ANON).
  */
@@ -26,57 +26,43 @@ describe('serveJSON', () => {
     const buf = encoder.encode('{"data":[],"meta":{}}');
 
     it('returns a 200 response with JSON Content-Type', () => {
-        const req = new Request('https://example.com/api/net');
-        const resp = serveJSON(req, buf);
+        const resp = serveJSON(buf);
         assert.equal(resp.status, 200);
         assert.ok(resp.headers.get('Content-Type').includes('application/json'));
     });
 
-    it('includes an ETag header', () => {
-        const req = new Request('https://example.com/api/net');
-        const resp = serveJSON(req, buf);
-        assert.ok(resp.headers.get('ETag'));
+    it('sends no ETag and ignores If-None-Match', () => {
+        const resp = serveJSON(buf);
+        assert.equal(resp.status, 200);
+        assert.equal(resp.headers.get('ETag'), null);
     });
 
-    it('returns 304 when If-None-Match matches ETag', () => {
-        const req1 = new Request('https://example.com/api/net');
-        const resp1 = serveJSON(req1, buf);
-        const etag = resp1.headers.get('ETag');
-
-        const req2 = new Request('https://example.com/api/net', {
-            headers: { 'If-None-Match': etag },
-        });
-        const resp2 = serveJSON(req2, buf);
-        assert.equal(resp2.status, 304);
+    it('private responses expire at the next sync too', () => {
+        assert.match(serveJSON(buf, undefined, H_API_AUTH).headers.get('Cache-Control'), /^private, max-age=\d+, stale-while-revalidate=\d+, no-transform$/);
     });
 
     it('marks bodies below the first-flight threshold no-transform', () => {
-        const req = new Request('https://example.com/api/net');
-        assert.match(serveJSON(req, buf).headers.get('Cache-Control'), /^public, .*, no-transform$/);
-        assert.match(serveJSON(req, buf, undefined, H_API_AUTH).headers.get('Cache-Control'), /^private, .*, no-transform$/);
+        assert.match(serveJSON(buf).headers.get('Cache-Control'), /^public, .*, no-transform$/);
+        assert.match(serveJSON(buf, undefined, H_API_AUTH).headers.get('Cache-Control'), /^private, .*, no-transform$/);
     });
 
     it('leaves larger bodies compressible', () => {
-        const req = new Request('https://example.com/api/net');
         const big = new Uint8Array(NO_TRANSFORM_MAX_BYTES);
-        assert.doesNotMatch(serveJSON(req, big).headers.get('Cache-Control'), /no-transform/);
+        assert.doesNotMatch(serveJSON(big).headers.get('Cache-Control'), /no-transform/);
     });
 
     it('includes X-Cache header from meta', () => {
-        const req = new Request('https://example.com/api/net');
-        const resp = serveJSON(req, buf, { tier: 'L1', hits: 5 });
+        const resp = serveJSON(buf, { tier: 'L1', hits: 5 });
         assert.equal(resp.headers.get('X-Cache'), 'L1');
     });
 
     it('includes X-Cache-Hits header from meta', () => {
-        const req = new Request('https://example.com/api/net');
-        const resp = serveJSON(req, buf, { tier: 'MISS', hits: 0 });
+        const resp = serveJSON(buf, { tier: 'MISS', hits: 0 });
         assert.equal(resp.headers.get('X-Cache-Hits'), '0');
     });
 
     it('accepts custom base headers', () => {
-        const req = new Request('https://example.com/api/net');
-        const resp = serveJSON(req, buf, { tier: 'MISS', hits: 0 }, H_API_AUTH);
+        const resp = serveJSON(buf, { tier: 'MISS', hits: 0 }, H_API_AUTH);
         assert.equal(resp.headers.get('X-Auth-Status'), 'authenticated');
     });
 });

@@ -130,7 +130,7 @@ describe('Access-Control-Expose-Headers', () => {
 
     for (const header of [
         'X-Cache', 'X-Cache-Hits', 'X-Timer', 'X-Served-By',
-        'X-Isolate-ID', 'ETag', 'Allow', 'X-Auth-Status', 'X-Auth-Id',
+        'X-Isolate-ID', 'Allow', 'X-Auth-Status', 'X-Auth-Id',
         'X-App-Version', 'Last-Modified'
     ]) {
         it(`exposes ${header}`, () => {

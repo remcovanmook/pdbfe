@@ -13,6 +13,7 @@ import {
     purgeGqlCache,
     getGqlCache,
     withGqlSWR,
+    ensureSyncFreshness,
 } from '../../../graphql/cache.js';
 
 // ── Mock ExecutionContext ────────────────────────────────────────────────────
@@ -169,5 +170,32 @@ describe('withGqlSWR', () => {
         // Store negative entry
         const result = await withGqlSWR(key, ctx, async () => null);
         assert.equal(result.buf, null);
+    });
+});
+
+describe('ensureSyncFreshness', () => {
+    beforeEach(() => purgeGqlCache());
+
+    /** @param {number} modifiedAt */
+    const dbAt = (modifiedAt) => /** @type {any} */ ({
+        prepare: () => ({
+            all: async () => ({ results: [{ entity: 'net', last_sync: modifiedAt, row_count: 1, updated_at: '', last_modified_at: modifiedAt }] }),
+        }),
+    });
+    const poll = async (/** @type {any} */ db, /** @type {number} */ now) => {
+        /** @type {Promise<any>[]} */
+        const pending = [];
+        ensureSyncFreshness(db, /** @type {any} */ ({ waitUntil: (/** @type {Promise<any>} */ p) => pending.push(p) }), now);
+        await Promise.all(pending);
+    };
+
+    it('purges cached results once any entity has changed', async () => {
+        const t = 1_000_000_000_000;
+        await poll(dbAt(100), t);
+        getGqlCache().add('gql/x:anon', new TextEncoder().encode('{"data":{}}'), { entityTag: 'graphql' }, Date.now());
+        await poll(dbAt(100), t + 20_000);
+        assert.equal(getGqlCacheStats().items, 1, 'unchanged: kept');
+        await poll(dbAt(200), t + 40_000);
+        assert.equal(getGqlCacheStats().items, 0, 'changed: purged');
     });
 });

@@ -35,6 +35,37 @@ const PAGE_MAX = 32_000;
 const PAGE_GROW_BELOW = 1_000_000;
 
 /**
+ * Row count of each envelope built here, as D1 counted it. Kept by buffer
+ * identity so it travels with the bytes through request coalescing and L1
+ * without being stored or parsed: the next-page check reads it on every list
+ * request, and the body may be tens of MB.
+ * @type {WeakMap<Uint8Array, number>}
+ */
+const rowCounts = new WeakMap();
+
+/**
+ * Records an envelope's row count for rowCountOf.
+ *
+ * @param {Uint8Array} buf - Envelope bytes.
+ * @param {number} rows - Rows in the envelope.
+ * @returns {Uint8Array} buf.
+ */
+export function withRowCount(buf, rows) {
+    rowCounts.set(buf, rows);
+    return buf;
+}
+
+/**
+ * Row count of an envelope built by queryJsonList or marked by withRowCount.
+ *
+ * @param {Uint8Array} buf - Envelope bytes.
+ * @returns {number} Rows, or 0 when the count is not known.
+ */
+export function rowCountOf(buf) {
+    return rowCounts.get(buf) ?? 0;
+}
+
+/**
  * Whether a D1 error means the statement's result was too large to build:
  * SQLITE_TOOBIG (value over D1's max length) or SQLITE_NOMEM (out of memory).
  *
@@ -58,10 +89,11 @@ export function isTooLarge(err) {
  */
 export async function queryJsonList(db, entity, filters, opts) {
     if (opts.limit > 0 && opts.limit <= PAGE_START) {
-        const { sql, params } = buildJsonQuery(entity, filters, opts);
+        const { sql, params } = buildJsonQuery(entity, filters, opts, null, true);
         try {
             const row = await db.prepare(sql).bind(...params).first();
-            return row?.payload ? encoder.encode(/** @type {string} */ (row.payload)) : null;
+            if (!row?.payload) return null;
+            return withRowCount(encoder.encode(/** @type {string} */ (row.payload)), Number(row.n ?? 0));
         } catch (err) {
             if (!isTooLarge(err)) throw err;
         }
@@ -88,6 +120,7 @@ async function queryJsonListPaged(db, entity, filters, opts) {
     /** @type {Uint8Array[]} */
     const pages = [];
     let bytes = 0;
+    let rows = 0;
     let offset = 0;
     let size = PAGE_START;
 
@@ -119,6 +152,7 @@ async function queryJsonListPaged(db, entity, filters, opts) {
             const page = encoder.encode(payload.slice(PREFIX.length, payload.length - SUFFIX.length));
             pages.push(page);
             bytes += page.length;
+            rows += n;
             if (page.length < PAGE_GROW_BELOW && size < PAGE_MAX) size = Math.min(PAGE_MAX, size * 2);
         }
         if (n < want) break; // last page
@@ -136,5 +170,5 @@ async function queryJsonListPaged(db, entity, filters, opts) {
         out.set(pages[i], pos); pos += pages[i].length;
     }
     out.set(tail, pos);
-    return out;
+    return withRowCount(out, rows);
 }

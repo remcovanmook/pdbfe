@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SUBRESOURCE_MAP, handleSubResource } from '../../../rest/subresource.js';
 import { ENTITY_TAGS } from '../../../api/entities.js';
+import { H_API_ANON, H_API_AUTH } from '../../../api/http.js';
 
 // ── Mock D1 ──────────────────────────────────────────────────────────────────
 
@@ -49,10 +50,7 @@ function mockD1({ firstResult = null, allResults = [] } = {}) {
 }
 
 /** Standard response headers for sub-resource endpoints. */
-const H_RESPONSE = Object.freeze({
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-});
+const H_RESPONSE = H_API_ANON;
 
 // ── SUBRESOURCE_MAP construction ─────────────────────────────────────────────
 
@@ -188,5 +186,17 @@ describe('handleSubResource', () => {
                 return;
             }
         }
+    });
+});
+
+describe('handleSubResource — Cache-Control', () => {
+    const rc = /** @type {any} */ ({ db: mockD1({ allResults: [{ id: 1, net_id: 1 }] }) });
+
+    it('expires at the next sync, public or private', async () => {
+        const anon = await handleSubResource(rc, 'net', 1, 'network-exchange-lans', '', false, H_API_ANON);
+        assert.match(anon.headers.get('Cache-Control') ?? '', /^public, max-age=\d+, stale-while-revalidate=\d+$/);
+        assert.doesNotMatch(anon.headers.get('Cache-Control') ?? '', /max-age=60,/);
+        const auth = await handleSubResource(rc, 'net', 1, 'network-exchange-lans', '', true, H_API_AUTH);
+        assert.match(auth.headers.get('Cache-Control') ?? '', /^private, max-age=\d+, stale-while-revalidate=\d+$/);
     });
 });

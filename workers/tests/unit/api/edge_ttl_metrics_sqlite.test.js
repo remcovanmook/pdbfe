@@ -7,7 +7,7 @@ import { describe, it, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createSqliteD1, registerAssetLoader, envFor, mockCtx } from '../../lib/sqlite_d1.js';
-import { secondsUntilFreshData, syncAlignedCacheControl, SYNC_INTERVAL_S, SYNC_GRACE_S, SWR_S } from '../../../api/http.js';
+import { secondsUntilFreshData, syncAlignedCacheControl, syncAlignedFor, H_API_AUTH, H_API_SHARED, SYNC_INTERVAL_S, SYNC_GRACE_S, SWR_S } from '../../../api/http.js';
 
 registerAssetLoader();
 const { default: apiWorker } = await import('../../../api/index.js');
@@ -42,6 +42,13 @@ describe('secondsUntilFreshData (absolute expiry after the next sync)', () => {
     for (const [iso, expected] of cases) {
         it(`${iso} → ${expected}s`, () => assert.equal(secondsUntilFreshData(at(iso)), expected));
     }
+
+    it('syncAlignedFor keeps the header set\'s scope', () => {
+        const t = at('2026-10-07T12:41:00Z') * 1000;
+        assert.equal(syncAlignedFor(H_API_SHARED, t), `public, max-age=300, stale-while-revalidate=${SWR_S}`);
+        assert.equal(syncAlignedFor(H_API_AUTH, t), `private, max-age=300, stale-while-revalidate=${SWR_S}`);
+        assert.equal(syncAlignedFor({ 'Cache-Control': 'no-store' }, t), 'no-store');
+    });
 
     it('header carries the aligned max-age plus stale-while-revalidate', () => {
         assert.equal(syncAlignedCacheControl(at('2026-10-07T12:41:00Z') * 1000), `public, max-age=300, stale-while-revalidate=${SWR_S}`);

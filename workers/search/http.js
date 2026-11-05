@@ -22,8 +22,6 @@ export {
     handlePreflight,
     jsonError,
     encodeJSON,
-    generateETag,
-    isNotModified,
     lastModifiedHeader,
     isNotModifiedSince,
 } from '../core/http.js';

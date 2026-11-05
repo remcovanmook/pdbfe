@@ -11,11 +11,11 @@
  */
 
 import { VERSIONS } from './entities.js';
-import { H_CORS, H_NOCACHE, SHARED_MARKER, generateETag, isNotModified, lastModifiedHeader } from '../core/http.js';
+import { H_CORS, H_NOCACHE, SHARED_MARKER, lastModifiedHeader } from '../core/http.js';
 
 // Re-export core symbols that api/ modules also need, so they can
 // import everything from a single api/http.js entry point.
-export { encoder, encodeJSON, jsonError, handlePreflight, generateETag, isNotModified, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
+export { encoder, encodeJSON, jsonError, handlePreflight, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
 
 /**
  * Standard cache headers for API responses.
@@ -51,7 +51,7 @@ export const H_API = Object.freeze({
  * H_API_AUTH overrides Cache-Control to `private`: authenticated responses
  * (API-key OR session) must never be stored in a shared/edge cache. `private`
  * triggers edge BYPASS and removes the RFC 9111 §3.5 store-on-`public` path,
- * while the browser keeps the same max-age/SWR/ETag behaviour. X-Auth-Id in a
+ * while the browser keeps the same max-age/SWR behaviour. X-Auth-Id in a
  * per-user private cache carries no replay risk.
  *
  * H_API_ANON stays `public` (inherited from H_API) — anonymous responses are
@@ -143,10 +143,40 @@ export function secondsUntilFreshData(nowSec) {
  * staleness (≤ SWR_S) is immaterial.
  *
  * @param {number} [nowMs] - Current time in ms (injectable for tests).
+ * @param {'public'|'private'} [scope] - `private` for per-caller responses:
+ *        the same expiry, browser cache only.
  * @returns {string}
  */
-export function syncAlignedCacheControl(nowMs = Date.now()) {
-    return `public, max-age=${secondsUntilFreshData(Math.floor(nowMs / 1000))}, stale-while-revalidate=${SWR_S}`;
+export function syncAlignedCacheControl(nowMs = Date.now(), scope = 'public') {
+    return `${scope}, max-age=${secondsUntilFreshData(Math.floor(nowMs / 1000))}, stale-while-revalidate=${SWR_S}`;
+}
+
+/**
+ * The sync-aligned Cache-Control for a response built on `baseHeaders`,
+ * keeping that set's scope: every data response, public or private, is
+ * valid until the next sync. A set that is neither (no-store) keeps its own.
+ * The fixed max-age in the frozen sets is only a fallback for this.
+ *
+ * @param {Record<string, string>} baseHeaders - Header set the response uses.
+ * @param {number} [nowMs] - Current time in ms (injectable for tests).
+ * @returns {string}
+ */
+export function syncAlignedFor(baseHeaders, nowMs = Date.now()) {
+    const cc = baseHeaders['Cache-Control'];
+    if (cc.startsWith('public')) return syncAlignedCacheControl(nowMs);
+    if (cc.startsWith('private')) return syncAlignedCacheControl(nowMs, 'private');
+    return cc;
+}
+
+/**
+ * `baseHeaders` with its Cache-Control replaced by syncAlignedFor's, for
+ * responses built outside serveJSON.
+ *
+ * @param {Record<string, string>} baseHeaders - Header set the response uses.
+ * @returns {Record<string, string>}
+ */
+export function withSyncExpiry(baseHeaders) {
+    return { ...baseHeaders, 'Cache-Control': syncAlignedFor(baseHeaders) };
 }
 
 /**
@@ -175,14 +205,15 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
 
 /**
  * Serves a Uint8Array of pre-encoded JSON bytes as an HTTP Response.
- * Handles ETag generation and 304 Not Modified checks. On a cache hit,
- * the buf is forwarded directly — no JSON.parse or JSON.stringify.
+ * The buf is forwarded as is: nothing here reads the body. There is no ETag:
+ * data only changes when the sync runs, so freshness is Cache-Control aligned
+ * to the sync schedule, and revalidation is If-Modified-Since against
+ * Last-Modified, answered in api/index.js before any response is built.
  *
  * Optional `lastModifiedMs` and `authId` params bake Last-Modified and
  * X-Auth-Id directly into the initial header dict, avoiding a subsequent
  * Response repack (new Headers + new Response) on the hot path.
  *
- * @param {Request} request - The inbound HTTP request (for conditional headers).
  * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
  * @param {{tier: import('./cache.js').CacheTier, hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
@@ -191,16 +222,13 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  * @param {number|null} [authId] - Authenticated user ID. When non-null, sets X-Auth-Id.
  * @returns {Response} The HTTP response ready for the client.
  */
-export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API, lastModifiedMs = 0, authId = null) {
-    const etag = generateETag(buf);
-
+export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastModifiedMs = 0, authId = null) {
     /** @type {Record<string, string>} */
     const extra = {};
     if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
     if (meta.timing) extra['Server-Timing'] = meta.timing;
-    // Public responses expire just after the next sync, not after a fixed 60s.
-    if (baseHeaders['Cache-Control'].startsWith('public')) extra['Cache-Control'] = syncAlignedCacheControl();
-    extra['Cache-Control'] = withNoTransform(extra['Cache-Control'] ?? baseHeaders['Cache-Control'], buf.byteLength);
+    // Expires just after the next sync, not after a fixed 60s.
+    extra['Cache-Control'] = withNoTransform(syncAlignedFor(baseHeaders), buf.byteLength);
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable
@@ -211,25 +239,11 @@ export function serveJSON(request, buf, meta = DEFAULT_META, baseHeaders = H_API
         extra['X-Auth-Id'] = `u${authId}`;
     }
 
-    if (isNotModified(request.headers, etag)) {
-        return new Response(null, {
-            status: 304,
-            headers: {
-                ...baseHeaders,
-                ...extra,
-                "ETag": etag,
-                "X-Cache": meta.tier,
-                "X-Cache-Hits": meta.hits.toString()
-            }
-        });
-    }
-
     return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
         status: 200,
         headers: {
             ...baseHeaders,
             ...extra,
-            "ETag": etag,
             "Content-Length": buf.byteLength.toString(),
             "X-Cache": meta.tier,
             "X-Cache-Hits": meta.hits.toString()

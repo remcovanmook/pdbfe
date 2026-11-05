@@ -73,6 +73,9 @@ Because GraphQL requests generally employ query bodies over `POST`, cache keys a
 ### L1 Cache
 1. **L1 LRU**: A 2000-slot LRU cache in `cache.js`. Due to the high combinatorial possibility of uniquely shaped GraphQL queries, a GraphQL request retains a ~10% capacity isolation ratio.
 
+### Sync invalidation
+`cache.js` binds `core/sync_state.js` as the REST worker does: the request path polls `_sync_meta` at most every 15s, and any entity change purges the whole L1, since a query can span any entities. Results are served with a `Cache-Control` expiry at the next sync (`private` for authenticated callers, `Vary: Authorization` otherwise), and the L1 drops them once that sync has changed the data.
+
 ### SWR (Stale-While-Revalidate)
 `withGqlSWR()` in `cache.js` wraps `core/swr.js`, injecting the GraphQL-specific cache, TTL, and sentinel. The flow matches the API worker pattern: L1 hit → stale-serve + background refresh → miss.
 

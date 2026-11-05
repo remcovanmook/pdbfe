@@ -83,7 +83,7 @@ describe('If-Modified-Since on details', () => {
         assert.equal(checks(), before);
     });
 
-    it('also with If-None-Match (the edge revalidates with both): the cheap check answers, not the ETag path', async () => {
+    it('also with If-None-Match (the edge revalidates with both): the cheap check answers', async () => {
         const before = checks();
         assert.equal(await get('net/100?depth=1', { ...ims(NOW), 'If-None-Match': '"whatever"' }), 304);
         assert.equal(checks(), before + 1);
@@ -91,7 +91,7 @@ describe('If-Modified-Since on details', () => {
         assert.equal(await get('net/100?depth=1', { ...ims(NOW - 60), 'If-None-Match': '"whatever"' }), 200, 'changed: full response');
     });
 
-    it('a copy from before this worker version was deployed goes to the ETag path (the format may differ)', async () => {
+    it('a copy from before this worker version was deployed gets a full response (the format may differ)', async () => {
         const deployed = { ...env, CF_VERSION_METADATA: { id: 'v', tag: '', timestamp: new Date((NOW - 30) * 1000).toISOString() } };
         const req = (/** @type {string} */ path, /** @type {number} */ s) => apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`, {
             headers: { 'cf-connecting-ip': `10.2.1.${++ip}`, ...ims(s) },

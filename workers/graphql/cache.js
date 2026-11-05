@@ -5,6 +5,7 @@
  *   - LRU cache instance and TTL constants
  *   - Cache key generation (SHA-256 hashing of query + variables)
  *   - SWR wrapper (thin adapter over core/pipeline/)
+ *   - Sync-state: the whole cache is purged when any entity's data changes
  *   - Cache stats and admin flush
  *
  * The Cloudflare Cache API only supports GET requests. Since GraphQL
@@ -16,12 +17,12 @@
 import { LRUCache } from '../core/cache.js';
 import { withSWR } from '../core/pipeline/index.js';
 import { encoder } from '../core/http.js';
+import { createSyncState } from '../core/sync_state.js';
+import { ENTITY_TAGS } from '../api/entities.js';
 
 /**
- * Cache TTL for GraphQL query results (30 minutes).
- * Shorter than the API worker's DETAIL_TTL because GraphQL queries
- * can span multiple entity types and staleness is harder to detect
- * without per-entity version tracking.
+ * Cache TTL for GraphQL query results (30 minutes). A backstop only: the
+ * sync-state tracker below purges the cache as soon as the data changes.
  * @type {number}
  */
 export const GQL_TTL = 30 * 60 * 1000;
@@ -74,6 +75,21 @@ export function purgeGqlCache() {
     gqlCache.purge();
 }
 
+// ── Sync-state (background L1 invalidation) ──────────────────────────────────
+
+/**
+ * GraphQL binding of the generic sync-state tracker, as in the REST worker.
+ * A query can span any entities, so any entity change purges the whole
+ * cache: results never outlive the sync that changed their data by more
+ * than one poll interval, matching the expiry clients are given.
+ */
+const _sync = createSyncState({
+    entityTags: ENTITY_TAGS,
+    onEntityChange: () => gqlCache.purge(),
+});
+
+export const ensureSyncFreshness = _sync.ensureSyncFreshness;
+
 // ── Cache key generation ─────────────────────────────────────────────────────
 
 /**
@@ -110,9 +126,6 @@ export async function graphqlCacheKey(query, variables) {
  * Delegates entirely to the generic withSWR() in core/pipeline/, injecting
  * the GraphQL cache, sentinel, and TTL values. The caller only needs to
  * provide the cache key, execution context, and yoga query closure.
- *
- * Unlike the API worker, GraphQL has no entity version tracking (queries
- * span multiple entity types).
  *
  * @param {string} cacheKey - Deterministic cache key from graphqlCacheKey().
  * @param {ExecutionContext} ctx - Worker execution context for waitUntil().

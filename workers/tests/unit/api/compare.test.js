@@ -66,7 +66,7 @@ async function callCompare(db, qs) {
     const req = new Request('https://test.workers.dev/api/compare?' + qs, {
         method: 'GET',
     });
-    return handleCompare(req, db, mockCtx(), qs, hNocache);
+    return handleCompare(db, mockCtx(), qs, hNocache);
 }
 
 describe('handleCompare', () => {
@@ -357,7 +357,7 @@ describe('handleCompare', () => {
     });
 
     describe('response format', () => {
-        it('uses serveJSON headers (Cache-Control, CORS, ETag)', async () => {
+        it('uses serveJSON headers (Cache-Control, CORS)', async () => {
             const db = /** @type {any} */ ({
                 prepare: () => ({
                     bind: () => ({
@@ -378,7 +378,7 @@ describe('handleCompare', () => {
                 'should have CORS header'
             );
 
-            assert.ok(res.headers.has('ETag'), 'should have ETag from serveJSON');
+            assert.equal(res.headers.has('ETag'), false, 'no ETag');
         });
 
         it('includes X-Cache tier from withEdgeSWR', async () => {

@@ -10,13 +10,12 @@
 import { ENTITIES } from '../entities.js';
 import { buildRowQuery, nextPageParams } from '../query.js';
 import { selectWithDepth } from '../depth.js';
-import { queryJsonList } from '../json_list.js';
+import { queryJsonList, rowCountOf, withRowCount } from '../json_list.js';
 import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
 import { getEntityCache, LIST_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
-import { countRowsBytes } from './shared.js';
 
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
@@ -27,7 +26,7 @@ import { countRowsBytes } from './shared.js';
  * @returns {Promise<Response>} JSON response.
  */
 export async function handleList(hc) {
-    const { request, db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
+    const { db, ctx, entityTag, filters, opts, rawPath, queryString, authenticated } = hc;
     const entity = ENTITIES[entityTag];
     if (!entity) return jsonError(404, `Unknown entity: ${entityTag}`);
 
@@ -47,11 +46,10 @@ export async function handleList(hc) {
     hc.pipeline = result;
     const effectiveBuf = buf || EMPTY_ENVELOPE;
 
-    // Pre-fetch next page in background if paginated. Count rows directly from
-    // the payload bytes — decoding the whole (potentially multi-MB) buffer to a
-    // string just to count would be pure waste on every cache hit.
+    // Pre-fetch next page in background if paginated. D1 counted the rows when
+    // it built the payload; nothing here reads the (possibly tens of MB) body.
     const cache = getEntityCache(entityTag);
-    const rowCount = countRowsBytes(effectiveBuf);
+    const rowCount = rowCountOf(effectiveBuf);
     if (rowCount > 0) {
         const nextPage = nextPageParams(entity, filters, opts, rowCount);
         if (nextPage) {
@@ -65,7 +63,7 @@ export async function handleList(hc) {
         }
     }
 
-    return serveJSON(request, effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, stamp * 1000, hc.userId);
+    return serveJSON(effectiveBuf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hc.hApi, stamp * 1000, hc.userId);
 }
 
 // ── D1 query functions ───────────────────────────────────────────────────────
@@ -101,7 +99,7 @@ async function executeListQuery(db, entity, filters, opts, authenticated) {
         const main = buildRowQuery(entity, filters, { ...opts, fields: [] });
         const inline = (opts.skip || 0) < DEEP_SKIP;
         const rows = await selectWithDepth(db, entity, main, opts.depth, authenticated, opts.pdbfe, false, opts.fields, inline);
-        return encodeJSON({ data: rows, meta: {} });
+        return withRowCount(encodeJSON({ data: rows, meta: {} }), rows.length);
     }
 
     // Hot path: D1 returns the full JSON envelope as a single string
@@ -139,7 +137,7 @@ async function handlePaged(hc, entity, paging) {
     const { buf, tier, hits, stamp } = result;
     hc.pipeline = result;
     if (!buf) return jsonError(404, 'Invalid page.');
-    return serveJSON(request, buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hApi, stamp * 1000, hc.userId);
+    return serveJSON(buf, { tier, hits, timing: serverTiming(hc.authMs, result, hc.d1) }, hApi, stamp * 1000, hc.userId);
 }
 
 /**

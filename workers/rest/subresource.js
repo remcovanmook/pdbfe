@@ -16,6 +16,7 @@ import { ENTITIES, ENTITY_TAGS } from '../api/entities.js';
 import { buildRowQuery } from '../api/query.js';
 import { parseQueryFilters } from '../api/utils.js';
 import { jsonError } from '../core/http.js';
+import { withSyncExpiry } from '../api/http.js';
 
 /**
  * Direction of the sub-resource relationship.
@@ -146,7 +147,7 @@ export async function handleSubResource(rc, sourceTag, sourceId, relation, query
     if (!authenticated && targetEntity._restricted) {
         const af = targetEntity._anonFilter;
         if (def.direction === 'forward' || !af) {
-            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: hResponse });
+            return new Response('{"data":[],"meta":{}}\n', { status: 200, headers: withSyncExpiry(hResponse) });
         }
         filters.push({ field: af.field, op: 'eq', value: af.value });
     }
@@ -197,7 +198,7 @@ async function handleForwardFK(db, sourceTag, sourceId, def, hResponse, authenti
     const tgtResult = await db.prepare(tgtSql).bind(...tgtParams).all();
 
     const data = tgtResult.results || [];
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: withSyncExpiry(hResponse) }); // ap-ok: sub-resource cold path, low volume
 }
 
 /**
@@ -235,5 +236,5 @@ async function handleReverseEdge(db, def, parentId, extraFilters, hResponse, { l
     const result = await db.prepare(sql).bind(...params).all();
     const data = result.results || [];
 
-    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: hResponse }); // ap-ok: sub-resource cold path, low volume
+    return new Response(JSON.stringify({ data, meta: {} }) + '\n', { status: 200, headers: withSyncExpiry(hResponse) }); // ap-ok: sub-resource cold path, low volume
 }

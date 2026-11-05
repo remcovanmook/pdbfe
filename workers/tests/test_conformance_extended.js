@@ -534,9 +534,8 @@ describe('Conformance: output format', { concurrency: 1 }, () => {
         const res = await fetchMirror('/api/net?limit=1&depth=0');
         // Your mirror should set some caching — verify it exists
         const cacheControl = res.headers.get('cache-control');
-        const etag = res.headers.get('etag');
         const lastMod = res.headers.get('last-modified');
-        assert.ok(cacheControl || etag || lastMod,
+        assert.ok(cacheControl || lastMod,
             'Response should include at least one cache-related header');
     });
 });
