@@ -339,7 +339,7 @@ function innerSelect(entity, columns, opts) {
  * @param {QueryOpts} opts - Pagination.
  * @param {number|null} [singleId=null] - If set, fetches a single row by ID.
  * @param {boolean} [withCount=false] - Also return the page's row count as `n`
- *     (used by the paged list path in json_list.js to detect the last page).
+ *     (used by json_list.js: the last-page check and rowCountOf).
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string} (and {n: number} with withCount).
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null, withCount = false) {

@@ -20,7 +20,7 @@ import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
 import { createRateLimiter } from '../core/ratelimit.js';
-import { getGqlCacheStats, purgeGqlCache } from './cache.js';
+import { getGqlCacheStats, purgeGqlCache, ensureSyncFreshness } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';
 import { handleQuery, handleUncached } from './handlers/query.js';
 
@@ -103,6 +103,10 @@ async function handleRequest(request, env, ctx) {
     if (isRateLimited(callerKey, authenticated, now)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
+
+    // Background _sync_meta poll: purges the result cache once the data has
+    // changed. O(1) unless the 15s interval has elapsed.
+    ensureSyncFreshness(db, ctx, now);
 
     // POST → cached query pipeline (returns null on negative cache bypass)
     const cached = await handleQuery(request, db, ctx, authenticated);

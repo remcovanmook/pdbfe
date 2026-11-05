@@ -1,7 +1,7 @@
 /**
  * @fileoverview Unit tests for core/http.js.
  *
- * Tests ETag generation, 304 Not Modified handling, jsonError construction,
+ * Tests jsonError construction,
  * Last-Modified / If-Modified-Since utilities, frozen CORS header sets,
  * and the TextEncoder singleton.
  */
@@ -11,8 +11,6 @@ import assert from 'node:assert/strict';
 import {
     encoder,
     encodeJSON,
-    generateETag,
-    isNotModified,
     jsonError,
     handlePreflight,
     lastModifiedHeader,
@@ -49,47 +47,6 @@ describe('encodeJSON', () => {
         const buf = encodeJSON(original);
         const decoded = JSON.parse(new TextDecoder().decode(buf));
         assert.deepEqual(decoded, original);
-    });
-});
-
-// ── generateETag ─────────────────────────────────────────────────────────────
-
-describe('generateETag', () => {
-    it('returns a quoted W/ etag string', () => {
-        const buf = encoder.encode('{"data":[],"meta":{}}');
-        const etag = generateETag(buf);
-        assert.ok(etag.startsWith('W/"'));
-        assert.ok(etag.endsWith('"'));
-    });
-
-    it('returns the same hash for the same input', () => {
-        const buf = encoder.encode('hello world');
-        assert.equal(generateETag(buf), generateETag(buf));
-    });
-
-    it('returns different hashes for different input', () => {
-        const a = generateETag(encoder.encode('aaa'));
-        const b = generateETag(encoder.encode('bbb'));
-        assert.notEqual(a, b);
-    });
-});
-
-// ── isNotModified ────────────────────────────────────────────────────────────
-
-describe('isNotModified', () => {
-    it('returns true when If-None-Match equals the etag', () => {
-        const headers = new Headers({ 'If-None-Match': 'W/"abc123"' });
-        assert.equal(isNotModified(headers, 'W/"abc123"'), true);
-    });
-
-    it('returns false when etags differ', () => {
-        const headers = new Headers({ 'If-None-Match': 'W/"abc123"' });
-        assert.equal(isNotModified(headers, 'W/"different"'), false);
-    });
-
-    it('returns false when no If-None-Match header', () => {
-        const headers = new Headers();
-        assert.equal(isNotModified(headers, 'W/"abc123"'), false);
     });
 });
 

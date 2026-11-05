@@ -16,6 +16,7 @@ import { createSchema, createYoga } from 'graphql-yoga';
 import { typeDefs } from '../../../extracted/graphql-typedefs.js';
 import { resolvers } from '../../../extracted/graphql-resolvers.js';
 import { encoder } from '../../core/http.js';
+import { syncAlignedCacheControl } from '../../api/http.js';
 import { graphqlCacheKey, withGqlSWR } from '../cache.js';
 import { complexityPlugin } from '../security.js';
 
@@ -60,6 +61,21 @@ function getYoga() {
  * @type {Map<string, string>}
  */
 const bodyKeyCache = new Map();
+
+/**
+ * Cache headers for a query result: valid until the next sync, like every
+ * API response. Authenticated results may hold non-public contacts, so they
+ * are private; anonymous ones vary on Authorization so a cached anonymous
+ * result never answers an authenticated request.
+ *
+ * @param {boolean} authenticated - Whether the caller is authenticated.
+ * @returns {Record<string, string>}
+ */
+function resultCacheHeaders(authenticated) {
+    return authenticated
+        ? { 'Cache-Control': syncAlignedCacheControl(Date.now(), 'private') }
+        : { 'Cache-Control': syncAlignedCacheControl(), 'Vary': 'Authorization' };
+}
 
 /** Maximum entries in bodyKeyCache before LRU eviction kicks in. */
 const BODY_KEY_CACHE_LIMIT = 500;
@@ -138,6 +154,7 @@ export async function handleQuery(request, db, ctx, authenticated) {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
+                ...resultCacheHeaders(authenticated),
                 'X-Cache': tier,
                 'X-Cache-Hits': hits.toString()
             }
@@ -151,7 +168,8 @@ export async function handleQuery(request, db, ctx, authenticated) {
 /**
  * Executes a raw yoga.fetch without caching.
  * Used as fallback for non-POST requests, HEAD, and negative cache
- * bypass (where we want the actual GraphQL error response).
+ * bypass (where we want the actual GraphQL error response). A successful
+ * GET query gets the same cache headers as a cached POST result.
  *
  * @param {Request} request - The inbound request.
  * @param {D1Session} db - D1 database binding.
@@ -160,5 +178,11 @@ export async function handleQuery(request, db, ctx, authenticated) {
  */
 export async function handleUncached(request, db, authenticated) {
     const yoga = getYoga();
-    return yoga.fetch(request, { db, authenticated });
+    const response = await yoga.fetch(request, { db, authenticated });
+    const url = request.url;
+    const isQuery = url.includes('?query=') || url.includes('&query=');
+    if (request.method !== 'GET' || !response.ok || !isQuery) return response;
+    const headers = new Headers(response.headers);
+    for (const [k, v] of Object.entries(resultCacheHeaders(authenticated))) headers.set(k, v);
+    return new Response(response.body, { status: response.status, headers });
 }

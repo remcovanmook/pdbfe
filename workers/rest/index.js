@@ -182,10 +182,10 @@ async function routeApiRequest(request, rc) {
             return handleSubResource(rc, entityTag, id, relation, queryString, authenticated, hResponse);
         }
 
-        return handleDetail(request, entity, id, opts, qc);
+        return handleDetail(entity, id, opts, qc);
     }
 
-    return handleListRequest(request, entity, filters, opts, rawPath, qc);
+    return handleListRequest(entity, filters, opts, rawPath, qc);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-rest');

@@ -590,14 +590,13 @@ async function executeCompareQuery(db, refA, refB, pk) {
  * Uses the "compare" cache tier and serveJSON for response building, following
  * the same pattern as handleAsSet and handleDetail.
  *
- * @param {Request} request - The inbound HTTP request.
  * @param {D1Session} db - D1 database session (with read replication).
  * @param {ExecutionContext} ctx - Worker execution context for SWR background tasks.
  * @param {string} queryString - Raw query string (without leading '?').
  * @param {Record<string, string>} hNocache - Pre-cooked no-cache header set.
  * @returns {Promise<Response>} JSON response with overlap data.
  */
-export async function handleCompare(request, db, ctx, queryString, hNocache) {
+export async function handleCompare(db, ctx, queryString, hNocache) {
     // Parse ALL query parameters via tokenizeString (no array allocation).
     // Split on '&' with maxParts=-1 (unlimited): capping at 3 folded a 4th
     // param (e.g. a cache-buster `_=…`, or `__pdbfe` placed last) into the
@@ -651,5 +650,5 @@ export async function handleCompare(request, db, ctx, queryString, hNocache) {
         return jsonError(404, 'One or both entities not found', hNocache);
     }
 
-    return serveJSON(request, buf, { tier, hits }, H_API_SHARED) // never contains restricted (poc) data — see api/auth_scope.js;
+    return serveJSON(buf, { tier, hits }, H_API_SHARED) // never contains restricted (poc) data — see api/auth_scope.js;
 }

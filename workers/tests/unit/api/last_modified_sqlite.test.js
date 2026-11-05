@@ -29,7 +29,7 @@ async function get(path, headers = {}) {
     const res = await apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`, {
         headers: { 'cf-connecting-ip': `10.1.0.${++ip}`, ...headers },
     }), env, ctx);
-    return { status: res.status, lastModified: res.headers.get('Last-Modified'), etag: res.headers.get('ETag') };
+    return { status: res.status, lastModified: res.headers.get('Last-Modified') };
 }
 
 const LAST = Object.keys(ENTITIES).at(-1);
@@ -68,12 +68,5 @@ describe('Last-Modified from the sync run', () => {
         setRun(RUN_2);
         assert.equal((await get('net/100')).lastModified, httpDate(RUN_1), 'cached under run 1');
         assert.equal((await get('net/102')).lastModified, httpDate(RUN_2), 'new miss under run 2');
-    });
-
-    it('an ETag 304 carries it', async () => {
-        const { etag } = await get('net/102');
-        const r = await get('net/102', { 'If-None-Match': /** @type {string} */ (etag) });
-        assert.equal(r.status, 304);
-        assert.equal(r.lastModified, httpDate(RUN_2));
     });
 });

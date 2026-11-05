@@ -69,26 +69,26 @@ const visibilities = (body) => {
 describe('rest cache is partitioned by auth state', () => {
     it('detail net?depth=2: anonymous after authenticated sees only Public contacts', async () => {
         const req = new Request('https://rest.pdbfe.dev/v1/net/1?depth=2');
-        const authRes = await handleDetail(req, ENTITIES.net, 1, opts(true, 2), qc('net', true, 'depth=2'));
+        const authRes = await handleDetail(ENTITIES.net, 1, opts(true, 2), qc('net', true, 'depth=2'));
         assert.deepEqual(visibilities(await authRes.json()), ['Private', 'Public', 'Users']);
 
-        const anonRes = await handleDetail(req, ENTITIES.net, 1, opts(false, 2), qc('net', false, 'depth=2'));
+        const anonRes = await handleDetail(ENTITIES.net, 1, opts(false, 2), qc('net', false, 'depth=2'));
         assert.deepEqual(visibilities(await anonRes.json()), ['Public']);
     });
 
     it('list v1/poc: anonymous after authenticated sees only Public contacts', async () => {
         const req = new Request('https://rest.pdbfe.dev/v1/poc');
-        const authRes = await handleListRequest(req, ENTITIES.poc, [], opts(true, 0), 'v1/poc', qc('poc', true, ''));
+        const authRes = await handleListRequest(ENTITIES.poc, [], opts(true, 0), 'v1/poc', qc('poc', true, ''));
         assert.deepEqual(visibilities(await authRes.json()), ['Private', 'Public', 'Users']);
 
-        const anonRes = await handleListRequest(req, ENTITIES.poc, [], opts(false, 0), 'v1/poc', qc('poc', false, ''));
+        const anonRes = await handleListRequest(ENTITIES.poc, [], opts(false, 0), 'v1/poc', qc('poc', false, ''));
         assert.deepEqual(visibilities(await anonRes.json()), ['Public']);
     });
 
     it('list v1/net?depth=2: anonymous after authenticated sees only Public contacts', async () => {
         const req = new Request('https://rest.pdbfe.dev/v1/net?depth=2');
-        await handleListRequest(req, ENTITIES.net, [], opts(true, 2), 'v1/net', qc('net', true, 'depth=2'));
-        const anonRes = await handleListRequest(req, ENTITIES.net, [], opts(false, 2), 'v1/net', qc('net', false, 'depth=2'));
+        await handleListRequest(ENTITIES.net, [], opts(true, 2), 'v1/net', qc('net', true, 'depth=2'));
+        const anonRes = await handleListRequest(ENTITIES.net, [], opts(false, 2), 'v1/net', qc('net', false, 'depth=2'));
         assert.deepEqual(visibilities(await anonRes.json()), ['Public']);
     });
 });

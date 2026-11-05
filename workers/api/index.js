@@ -7,7 +7,7 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, isAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, syncAlignedCacheControl } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, syncAlignedFor } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { changedSince } from './depth.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
@@ -228,13 +228,13 @@ async function handleRequest(request, env, ctx) {
         if (Number.isNaN(asn)) {
             return jsonError(400, "Invalid ASN", hNocache);
         }
-        return handleAsSet(request, db, ctx, asn);
+        return handleAsSet(db, ctx, asn);
     }
 
     // Entity overlap analysis — PDBFE extension endpoint.
     // Dispatched before the entity tag check since "compare" is not an entity tag.
     if (entityTag === "compare") {
-        return handleCompare(request, db, ctx, queryString, hNocache);
+        return handleCompare(db, ctx, queryString, hNocache);
     }
 
     // ── Shared entity request pipeline ───────────────────────────────
@@ -290,13 +290,10 @@ async function handleRequest(request, env, ctx) {
     // so it asks D1 whether any row it shows changed (_row_changes, one
     // statement — api/depth.js changeCheckSql).
     //
-    // Also when If-None-Match is present (RFC 9110 §13.1.3 has it take
-    // precedence): the edge revalidates with both, and the ETag path builds
-    // the whole response to compare hashes. Within one worker version an
-    // unchanged object serialises to the same bytes, so the answer is the
-    // same. Across versions it is not — a release may change the output
-    // format — so a copy older than this version's deploy goes to the ETag
-    // path. (The edge cache is per version anyway; this is for browsers.)
+    // Within one worker version an unchanged object serialises to the same
+    // bytes. Across versions it may not — a release may change the output
+    // format — so a copy older than this version's deploy gets a full
+    // response. (The edge cache is per version anyway; this is for browsers.)
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
     const imsMs = parseIfModifiedSince(request.headers);
     const imsUsable = imsMs >= 0 && imsMs >= deployedAtMs(env);
@@ -311,7 +308,7 @@ async function handleRequest(request, env, ctx) {
             status: 304,
             headers: {
                 ...hEntity,
-                ...(hEntity['Cache-Control'].startsWith('public') ? { 'Cache-Control': syncAlignedCacheControl() } : {}),
+                'Cache-Control': syncAlignedFor(hEntity),
             }
         });
     }

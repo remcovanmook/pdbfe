@@ -19,7 +19,8 @@ import { createSqliteD1, registerAssetLoader, envFor, mockCtx } from '../../lib/
 registerAssetLoader();
 const { default: apiWorker } = await import('../../../api/index.js');
 const { default: restWorker } = await import('../../../rest/index.js');
-const { purgeAllCaches } = await import('../../../api/cache.js');
+const { purgeAllCaches, getEntityCache } = await import('../../../api/cache.js');
+const { normaliseCacheKey } = await import('../../../core/cache.js');
 const { purgeRestCache } = await import('../../../rest/cache.js');
 
 /** Each suite seeds its own database; drop isolate caches so no response leaks across. */
@@ -194,5 +195,50 @@ describe('paging cost on an unconstrained database', () => {
         assert.equal(body.data.length, 5000);
         assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), Array.from({ length: 5000 }, (_, i) => i + 1));
         assert.ok(stats.payloadQueries - before > 1, 'should page');
+    });
+});
+
+describe('next-page prefetch uses the row count from D1', () => {
+    /** @type {any} */
+    let env;
+    before(() => {
+        freshCaches();
+        const { sqlite, db } = createSqliteD1();
+        seed(sqlite, 10);
+        // Nested objects: '},{' inside a row must not count as a row boundary.
+        sqlite.exec(`UPDATE "peeringdb_network" SET social_media = '[{"service":"a","identifier":"b"},{"service":"c","identifier":"d"}]'`);
+        env = envFor(db);
+    });
+
+    /** Lets the waitUntil prefetch finish. */
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+    const cached = (/** @type {string} */ qs, partition = 'pub') => getEntityCache('net').has(normaliseCacheKey(`${partition}:api/net`, qs));
+
+    it('a full page prefetches the next one', async () => {
+        await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?limit=2');
+        await settle();
+        assert.ok(cached('limit=2&skip=2'));
+    });
+
+    it('so does an L1 hit whose next page is gone', async () => {
+        await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?limit=3');
+        await settle();
+        getEntityCache('net').purge(normaliseCacheKey('pub:api/net', 'limit=3&skip=3'));
+        assert.ok(!cached('limit=3&skip=3'));
+        await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?limit=3');
+        await settle();
+        assert.ok(cached('limit=3&skip=3'));
+    });
+
+    it('a short page does not, however many nested objects its rows hold', async () => {
+        await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?asn=64001&limit=2');
+        await settle();
+        assert.ok(!cached('asn=64001&limit=2&skip=2'));
+    });
+
+    it('depth>0 counts its rows too', async () => {
+        await getJSON(apiWorker, env, 'https://api.pdbfe.dev/api/net?depth=1&limit=2');
+        await settle();
+        assert.ok(cached('depth=1&limit=2&skip=2', 'anon'));
     });
 });

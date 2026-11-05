@@ -18,7 +18,6 @@ import { withRestSWR } from '../cache.js';
 /**
  * Handles a list request for entities matching the given filters.
  *
- * @param {Request} request - Inbound request.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Query filters.
  * @param {QueryOpts} opts - Parsed query options.
@@ -26,7 +25,7 @@ import { withRestSWR } from '../cache.js';
  * @param {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string}} qc - Query context.
  * @returns {Promise<Response>}
  */
-export async function handleListRequest(request, entity, filters, opts, rawPath, qc) {
+export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     // Partitioned by auth state where it matters (poc lists, depth>0
     // poc_set): authenticated responses include non-public contacts and must
@@ -51,5 +50,5 @@ export async function handleListRequest(request, entity, filters, opts, rawPath,
     );
 
     const effectiveBuf = buf || EMPTY_ENVELOPE;
-    return serveJSON(request, effectiveBuf, { tier, hits }, hResponse);
+    return serveJSON(effectiveBuf, { tier, hits }, hResponse);
 }
