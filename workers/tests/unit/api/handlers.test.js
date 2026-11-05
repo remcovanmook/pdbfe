@@ -65,6 +65,11 @@ function mockD1({ hotPayload = null, rows = [], count = 0, asSetResult = null } 
                     return this;
                 },
                 first() {
+                    // List page (buildJsonFragmentQuery): the rows of hotPayload, comma-joined.
+                    if (sql.includes('AS frag')) {
+                        const data = hotPayload ? JSON.parse(hotPayload).data : [];
+                        return Promise.resolve({ frag: data.length ? data.map((/** @type {any} */ r) => JSON.stringify(r)).join(',') : null, n: data.length });
+                    }
                     // json_group_array hot path
                     if (sql.includes('json_group_array')) {
                         // n: row count, as buildJsonQuery(withCount) returns for paged lists

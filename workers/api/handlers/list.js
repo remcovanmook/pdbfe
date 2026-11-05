@@ -3,14 +3,15 @@
  *
  * Handles the list endpoint with pagination and pre-fetch. `limit=0` means
  * no limit, as upstream (PeeringDB returns every row; it has no count mode).
- * Uses the zero-allocation hot path (json_group_array) for depth=0 and
- * falls back to row-level expansion for depth>0.
+ * Uses the zero-allocation hot path (JSON built by D1, api/json_list.js) for
+ * depth=0 and falls back to row-level expansion for depth>0. An unfiltered
+ * list of a table larger than a page streams instead of being cached.
  */
 
 import { ENTITIES } from '../entities.js';
 import { buildRowQuery, nextPageParams } from '../query.js';
 import { selectWithDepth } from '../depth.js';
-import { queryJsonList, rowCountOf, withRowCount } from '../json_list.js';
+import { queryJsonList, rowCountOf, withRowCount, isStreamedList, streamJsonList } from '../json_list.js';
 import { buildPagedEnvelope, parsePageNumber, parsePerPage } from './paged.js';
 import { getEntityCache, LIST_TTL, cachedQuery, withEdgeSWR } from '../cache.js';
 import { normaliseCacheKey } from '../../core/cache.js';
@@ -34,6 +35,16 @@ export async function handleList(hc) {
     // paginates the full set.
     if (hc.paging) {
         return handlePaged(hc, entity, hc.paging);
+    }
+
+    // The outliers — an unfiltered list of a table larger than a page —
+    // stream page by page outside the cache pipeline (api/json_list.js;
+    // ANTI_PATTERNS.md §9). Server-Timing covers the first page.
+    if (isStreamedList(entity, filters, opts)) {
+        const tDb = Date.now();
+        const body = await streamJsonList(db, entity, filters, opts, ctx);
+        const timing = serverTiming(hc.authMs, { tier: 'MISS', dbMs: Date.now() - tDb }, hc.d1);
+        return serveJSON(body, { tier: 'MISS', hits: 0, timing }, hc.hApi, (hc.d1?.stamp ?? 0) * 1000, hc.userId);
     }
 
     const cacheKey = normaliseCacheKey(rawPath, queryString);

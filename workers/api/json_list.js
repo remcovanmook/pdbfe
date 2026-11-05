@@ -2,28 +2,36 @@
  * @fileoverview depth=0 list execution: D1 builds the JSON, the worker
  * forwards it.
  *
- * The hot path builds the `{"data":[...],"meta":{}}` envelope inside D1 with
- * json_group_array — one query, one string, no per-row V8 work. D1 refuses a
- * single computed string much over 7.5 MB (SQLITE_TOOBIG, measured on
- * production on 2026-11-05: 7.58 MB built, ~8.85 MB failed), and an aggregate
- * that exhausts D1's memory fails with SQLITE_NOMEM — which also fails
- * concurrent queries on the same database, the sync poll included.
+ * Each query asks D1 for one page of rows already serialised and joined
+ * (buildJsonFragmentQuery: `group_concat(json_object(...), ',')` plus the
+ * row count), with no array or envelope around them. The worker writes the
+ * envelope itself — `{"data":[` + page + `,` + page … + `],"meta":{}}` — so
+ * no D1 output is ever unwrapped, checked or parsed.
  *
- * So every query asks for at most one page of the entity's PAGE_ROWS. Any result that fits — every list of a small table,
- * and nearly every filtered or limited one — is that single query, and its
- * envelope is forwarded exactly as D1 built it. Only a result larger than a
- * page (in practice an unfiltered list of net, netixlan, org, netfac or
- * authenticated poc) continues in pages, which are spliced into one envelope.
- * Each query also returns its row count, so the last page is known without an
- * extra query. A page that still fails TOOBIG / NOMEM is halved and retried.
+ * D1 refuses a single computed string much over 7.5 MB (SQLITE_TOOBIG,
+ * measured on production on 2026-11-05: 7.58 MB built, ~8.85 MB failed), and
+ * an aggregate that exhausts D1's memory fails with SQLITE_NOMEM — which also
+ * fails concurrent queries on the same database, the sync poll included. So a
+ * page is at most the entity's PAGE_ROWS, and a page that still fails is
+ * halved and retried.
  *
- * Shared by the api and rest list handlers.
+ * Two ways out:
+ *   - queryJsonList: the envelope as one buffer, for the cache pipeline.
+ *     Nearly every result is one page, so one query. Filtered lists use it.
+ *   - streamJsonList: the outliers — an unfiltered list of a table larger
+ *     than a page (isStreamedList). Pages go to the client as D1 returns
+ *     them: the first byte after the first page, about one page in memory,
+ *     and nothing cached (they would not fit L1, and isolates rarely live
+ *     long enough for L1 to matter). ANTI_PATTERNS.md §9 lists the exception.
+ *
+ * Pages follow the query's ORDER BY, which always ends in an id tiebreak, so
+ * OFFSET paging neither repeats nor drops rows. Shared by the api and rest
+ * list handlers.
  */
 
-import { buildJsonQuery, MAX_PAGE_LIMIT } from './query.js';
+import { buildJsonFragmentQuery, MAX_PAGE_LIMIT } from './query.js';
 import { encoder } from './http.js';
 
-/** Envelope produced by buildJsonQuery's json_object('data',…,'meta',json_object()). */
 const PREFIX = '{"data":[';
 const SUFFIX = '],"meta":{}}';
 
@@ -101,93 +109,140 @@ export function isTooLarge(err) {
 }
 
 /**
- * Executes a depth=0 list query and returns the JSON envelope bytes.
+ * Rows the caller asked for: the limit, or everything.
+ * @param {QueryOpts} opts
+ * @returns {number}
+ */
+function windowOf(opts) {
+    return opts.limit > 0 && opts.limit < MAX_PAGE_LIMIT ? opts.limit : MAX_PAGE_LIMIT;
+}
+
+/**
+ * Whether a list is one of the outliers streamJsonList serves: no filters
+ * (so the whole table), on a table larger than one page, asking for more
+ * than one page. Everything else is a filtered or small result for the cache
+ * pipeline.
  *
- * Runs over the caller's window (skip … skip+limit) in pages of PAGE_ROWS,
- * following the query's ORDER BY, which always ends in an id tiebreak, so
- * OFFSET paging neither repeats nor drops rows. A result of one page is D1's
- * envelope as built; only a multi-page result is spliced.
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed filters.
+ * @param {QueryOpts} opts - Query options.
+ * @returns {boolean}
+ */
+export function isStreamedList(entity, filters, opts) {
+    const rows = PAGE_ROWS[entity.tag];
+    return rows !== undefined && opts.depth === 0 && filters.length === 0 && opts.since <= 0 && windowOf(opts) > rows;
+}
+
+/**
+ * Fetches one page: up to `want` rows at `skip`, halving on TOOBIG / NOMEM.
+ *
+ * @param {D1Session} db
+ * @param {EntityMeta} entity
+ * @param {ParsedFilter[]} filters
+ * @param {QueryOpts} opts
+ * @param {number} skip
+ * @param {number} want
+ * @returns {Promise<{frag: string|null, n: number, want: number}>} The rows,
+ *          their count, and the page size that worked (want, or less).
+ */
+async function fetchPage(db, entity, filters, opts, skip, want) {
+    for (;;) {
+        /** @type {QueryOpts} */
+        const pageOpts = {
+            depth: 0, limit: want, skip, since: opts.since,
+            sort: opts.sort, fields: opts.fields, pdbfe: opts.pdbfe, authenticated: opts.authenticated,
+        };
+        const { sql, params } = buildJsonFragmentQuery(entity, filters, pageOpts);
+        try {
+            const row = await db.prepare(sql).bind(...params).first();
+            return { frag: /** @type {string|null} */ (row?.frag ?? null), n: Number(row?.n ?? 0), want };
+        } catch (err) {
+            if (!isTooLarge(err) || want <= PAGE_MIN) throw err;
+            want = Math.max(PAGE_MIN, want >> 1);
+        }
+    }
+}
+
+/**
+ * Executes a depth=0 list query and returns the JSON envelope bytes.
  *
  * @param {D1Session} db - D1 session.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed filters.
  * @param {QueryOpts} opts - Query options (depth must be 0).
- * @returns {Promise<Uint8Array|null>} Envelope bytes, or null when D1 returned no payload.
+ * @returns {Promise<Uint8Array>} Envelope bytes.
  */
 export async function queryJsonList(db, entity, filters, opts) {
-    const window = opts.limit > 0 && opts.limit < MAX_PAGE_LIMIT ? opts.limit : MAX_PAGE_LIMIT;
+    const window = windowOf(opts);
     const baseSkip = Math.max(opts.skip, 0);
-
-    /** @type {string[]} */
-    const payloads = [];
+    let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
+    let body = PREFIX;
     let rows = 0;
     let offset = 0;
-    let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
 
     while (offset < window) {
-        const want = Math.min(size, window - offset);
-        /** @type {QueryOpts} */
-        const pageOpts = {
-            depth: 0, limit: want, skip: baseSkip + offset, since: opts.since,
-            sort: opts.sort, fields: opts.fields, pdbfe: opts.pdbfe, authenticated: opts.authenticated,
-        };
-        const { sql, params } = buildJsonQuery(entity, filters, pageOpts, null, true);
-
-        /** @type {any} */
-        let row;
-        try {
-            row = await db.prepare(sql).bind(...params).first();
-        } catch (err) {
-            if (!isTooLarge(err) || size <= PAGE_MIN) throw err;
-            size = Math.max(PAGE_MIN, size >> 1);
-            continue;
+        const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset));
+        if (page.want < size && page.want < window - offset) size = page.want; // halved
+        if (page.n > 0) {
+            body += rows > 0 ? ',' + page.frag : page.frag;
+            rows += page.n;
         }
-
-        const n = Number(row?.n ?? 0);
-        if (offset === 0 && n < want) {
-            // The whole result in one query: forward D1's envelope as built.
-            if (!row?.payload) return null;
-            return withRowCount(encoder.encode(/** @type {string} */ (row.payload)), n);
-        }
-        if (n > 0) {
-            payloads.push(/** @type {string} */ (row.payload));
-            rows += n;
-        }
-        if (n < want) break; // last page
-        offset += want;
+        if (page.n < page.want) break; // last page
+        offset += page.want;
     }
-    if (payloads.length === 1) return withRowCount(encoder.encode(payloads[0]), rows);
-    return withRowCount(splice(payloads), rows);
+    return withRowCount(encoder.encode(body + SUFFIX), rows);
 }
 
 /**
- * Joins page envelopes into one: PREFIX, each page's array contents joined
- * by ',', SUFFIX, assembled once.
+ * Streams a depth=0 list page by page (see isStreamedList). Resolves once
+ * the first page is in, so a failure before any byte is an ordinary error
+ * response; after that, a failing page errors the stream and the client sees
+ * a broken response — never a body that ends in valid JSON, since the closing
+ * `]}` is written only when every page is in. Each page waits for the client
+ * to take the previous one, so memory holds about one page.
  *
- * @param {string[]} payloads - Page envelopes, each `{"data":[...],"meta":{}}`.
- * @returns {Uint8Array} Envelope bytes.
+ * @param {D1Session} db - D1 session.
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {ParsedFilter[]} filters - Parsed filters (empty for streamed lists).
+ * @param {QueryOpts} opts - Query options (depth must be 0).
+ * @param {ExecutionContext} ctx - Keeps the remaining pages running after the response starts.
+ * @returns {Promise<ReadableStream<Uint8Array>>} The envelope as a byte stream.
  */
-function splice(payloads) {
-    /** @type {Uint8Array[]} */
-    const pages = [];
-    let bytes = 0;
-    for (const payload of payloads) {
-        if (!payload.startsWith(PREFIX) || !payload.endsWith(SUFFIX)) {
-            throw new Error('queryJsonList: unexpected payload envelope');
+export async function streamJsonList(db, entity, filters, opts, ctx) {
+    const window = windowOf(opts);
+    const baseSkip = Math.max(opts.skip, 0);
+    let size = /** @type {number} */ (PAGE_ROWS[entity.tag]);
+    const first = await fetchPage(db, entity, filters, opts, baseSkip, Math.min(size, window));
+    if (first.want < size) size = first.want;
+
+    const { readable, writable } = new TextEncoderStream();
+    const writer = writable.getWriter();
+
+    const pump = async () => {
+        let rows = first.n;
+        let offset = first.want;
+        let last = first;
+        try {
+            await writer.write(rows > 0 ? PREFIX + first.frag : PREFIX);
+            // One page at a time, on purpose: concurrent pages all arrive at
+            // the end (measured), and waiting on the client keeps one in memory.
+            while (last.n >= last.want && offset < window) {
+                const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset)); // NOSONAR
+                if (page.want < size && page.want < window - offset) size = page.want; // halved
+                if (page.n > 0) {
+                    await writer.write(rows > 0 ? ',' + page.frag : /** @type {string} */ (page.frag)); // NOSONAR
+                    rows += page.n;
+                }
+                offset += page.want;
+                last = page;
+            }
+            await writer.write(SUFFIX);
+            await writer.close();
+        } catch (err) {
+            console.error(`[list] stream of ${entity.tag} failed after ${rows} rows:`, err);
+            await writer.abort(err).catch(() => {});
         }
-        const page = encoder.encode(payload.slice(PREFIX.length, payload.length - SUFFIX.length));
-        pages.push(page);
-        bytes += page.length;
-    }
-    const head = encoder.encode(PREFIX);
-    const tail = encoder.encode(SUFFIX);
-    const out = new Uint8Array(head.length + bytes + Math.max(pages.length - 1, 0) + tail.length);
-    let pos = 0;
-    out.set(head, pos); pos += head.length;
-    for (let i = 0; i < pages.length; i++) {
-        if (i > 0) out[pos++] = 0x2c; // ','
-        out.set(pages[i], pos); pos += pages[i].length;
-    }
-    out.set(tail, pos);
-    return out;
+    };
+    ctx.waitUntil(pump());
+    return readable;
 }

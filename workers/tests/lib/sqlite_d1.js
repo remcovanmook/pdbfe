@@ -58,7 +58,7 @@ export function registerAssetLoader() {
 export function createSqliteD1({ schema = SCHEMA, maxValueBytes = Infinity, oversizeError = 'toobig' } = {}) {
     const sqlite = new DatabaseSync(':memory:');
     sqlite.exec(schema);
-    /** payloadQueries: json_group_array list/detail statements (`AS payload`); sql: every statement prepared. */
+    /** payloadQueries: D1-built JSON statements (list pages `AS frag`, details `AS payload`); sql: every statement prepared. */
     const stats = { queries: 0, payloadQueries: 0, tooBig: 0, sql: /** @type {string[]} */ ([]) };
     const oversizeMessage = oversizeError === 'nomem'
         ? 'D1_ERROR: out of memory: SQLITE_NOMEM'
@@ -78,7 +78,7 @@ export function createSqliteD1({ schema = SCHEMA, maxValueBytes = Infinity, over
     const prepare = (/** @type {string} */ sql) => {
         const stmt = sqlite.prepare(sql);
         stats.sql.push(sql);
-        const isPayload = sql.includes('AS payload');
+        const isPayload = sql.includes('AS payload') || sql.includes('AS frag');
         const isRead = /^\s*(SELECT|WITH|PRAGMA)/i.test(sql);
         /** @param {any[]} args */
         const bound = (args) => {

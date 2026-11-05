@@ -33,7 +33,14 @@ function mockPDB(overrides = {}) {
             const match = Object.entries(overrides).find(([k]) => sql.includes(k));
             const override = match ? match[1] : null;
             // As D1: first() is all().results[0] (core/d1stats.js serves first() through all()).
-            const rows = override == null ? [] : (Array.isArray(override) ? override : [override]);
+            let rows = override == null ? [] : (Array.isArray(override) ? override : [override]);
+            // A list page (buildJsonFragmentQuery) gets the override's rows comma-joined.
+            if (sql.includes('AS frag')) {
+                rows = rows.map((r) => {
+                    const data = r.payload ? JSON.parse(r.payload).data : [];
+                    return { frag: data.length ? data.map((/** @type {any} */ x) => JSON.stringify(x)).join(',') : null, n: data.length };
+                });
+            }
             return {
                 bind() { return this; },
                 first() { return Promise.resolve(rows[0] ?? null); },

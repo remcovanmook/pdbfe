@@ -1,12 +1,14 @@
 /**
  * @fileoverview List handler for GET /v1/{entity} on the REST worker.
  *
- * Uses the zero-allocation hot path (json_group_array) for depth=0 and
- * falls back to row-level expansion for depth>0. Cached via withRestSWR.
+ * Uses the zero-allocation hot path (JSON built by D1, api/json_list.js)
+ * for depth=0 and falls back to row-level expansion for depth>0. Cached via
+ * withRestSWR, except an unfiltered list of a table larger than a page,
+ * which streams page by page (ANTI_PATTERNS.md §9).
  */
 
 import { buildRowQuery } from '../../api/query.js';
-import { queryJsonList } from '../../api/json_list.js';
+import { queryJsonList, isStreamedList, streamJsonList } from '../../api/json_list.js';
 import { expandDepth } from '../../api/depth.js';
 import { parseJsonFields } from '../../api/handlers/shared.js';
 import { encodeJSON } from '../../core/http.js';
@@ -27,6 +29,9 @@ import { withRestSWR } from '../cache.js';
  */
 export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
+    if (isStreamedList(entity, filters, opts)) {
+        return serveJSON(await streamJsonList(db, entity, filters, opts, ctx), { tier: 'MISS', hits: 0 }, hResponse);
+    }
     // Partitioned by auth state where it matters (poc lists, depth>0
     // poc_set): authenticated responses include non-public contacts and must
     // never reach an anonymous caller from L1. Shared responses use one

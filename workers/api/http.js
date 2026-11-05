@@ -204,8 +204,9 @@ export function withNoTransform(cacheControl, byteLength) {
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
 /**
- * Serves a Uint8Array of pre-encoded JSON bytes as an HTTP Response.
- * The buf is forwarded as is: nothing here reads the body. There is no ETag:
+ * Serves pre-encoded JSON as an HTTP Response: a Uint8Array, or a byte
+ * stream (a large list streamed page by page, json_list.js), which goes out
+ * without Content-Length. The body is forwarded as is: nothing here reads it. There is no ETag:
  * data only changes when the sync runs, so freshness is Cache-Control aligned
  * to the sync schedule, and revalidation is If-Modified-Since against
  * Last-Modified, answered in api/index.js before any response is built.
@@ -214,7 +215,7 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  * X-Auth-Id directly into the initial header dict, avoiding a subsequent
  * Response repack (new Headers + new Response) on the hot path.
  *
- * @param {Uint8Array} buf - Pre-encoded JSON payload bytes.
+ * @param {Uint8Array|ReadableStream<Uint8Array>} buf - Pre-encoded JSON payload.
  * @param {{tier: import('./cache.js').CacheTier, hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
@@ -227,8 +228,14 @@ export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastMod
     const extra = {};
     if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
     if (meta.timing) extra['Server-Timing'] = meta.timing;
-    // Expires just after the next sync, not after a fixed 60s.
-    extra['Cache-Control'] = withNoTransform(syncAlignedFor(baseHeaders), buf.byteLength);
+    // Expires just after the next sync, not after a fixed 60s. A stream is
+    // a large list, never below the no-transform threshold.
+    if (buf instanceof Uint8Array) {
+        extra['Cache-Control'] = withNoTransform(syncAlignedFor(baseHeaders), buf.byteLength);
+        extra['Content-Length'] = buf.byteLength.toString();
+    } else {
+        extra['Cache-Control'] = syncAlignedFor(baseHeaders);
+    }
     if (authId !== null) {
         // X-Auth-Id is per-user and must only ride the `private` H_API_AUTH set.
         // Guard against a future call site pairing authId with a cacheable
@@ -244,7 +251,6 @@ export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastMod
         headers: {
             ...baseHeaders,
             ...extra,
-            "Content-Length": buf.byteLength.toString(),
             "X-Cache": meta.tier,
             "X-Cache-Hits": meta.hits.toString()
         }
