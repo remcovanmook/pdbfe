@@ -97,8 +97,10 @@ in `entities.js`) is fine — it runs once per isolate lifetime.
 
 For depth=0 lists, D1 returns each page's rows already serialised and
 comma-joined (`group_concat(json_object(...), ',')`, `buildJsonFragmentQuery`).
-The worker writes the `{"data":[` … `],"meta":{}}` envelope around them,
-encodes once and caches the `Uint8Array` (or streams the pages, §9). Details
+The worker encodes each page once as it arrives and assembles the
+`{"data":[` … `],"meta":{}}` envelope from byte chunks (constant prefix,
+comma and suffix bytes plus the pages), never by joining strings; it caches
+the `Uint8Array` (or streams the chunks, §9). Details
 use `json_group_array(json_object(...))`, the whole envelope from D1. There is
 no parse/stringify cycle, and no D1 output is unwrapped.
 

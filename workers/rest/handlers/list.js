@@ -30,7 +30,7 @@ import { withRestSWR } from '../cache.js';
 export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
     if (isStreamedList(entity, filters, opts)) {
-        return serveJSON(await streamJsonList(db, entity, filters, opts, ctx), { tier: 'MISS', hits: 0 }, hResponse);
+        return serveJSON(await streamJsonList(db, entity, filters, opts), { tier: 'MISS', hits: 0 }, hResponse);
     }
     // Partitioned by auth state where it matters (poc lists, depth>0
     // poc_set): authenticated responses include non-public contacts and must

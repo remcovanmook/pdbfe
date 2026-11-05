@@ -42,7 +42,7 @@ export async function handleList(hc) {
     // ANTI_PATTERNS.md §9). Server-Timing covers the first page.
     if (isStreamedList(entity, filters, opts)) {
         const tDb = Date.now();
-        const body = await streamJsonList(db, entity, filters, opts, ctx);
+        const body = await streamJsonList(db, entity, filters, opts);
         const timing = serverTiming(hc.authMs, { tier: 'MISS', dbMs: Date.now() - tDb }, hc.d1);
         return serveJSON(body, { tier: 'MISS', hits: 0, timing }, hc.hApi, (hc.d1?.stamp ?? 0) * 1000, hc.userId);
     }
