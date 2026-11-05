@@ -343,7 +343,39 @@ function innerSelect(entity, columns, opts) {
  * @returns {BuiltQuery} Parameterised SQL that returns {payload: string} (and {n: number} with withCount).
  */
 export function buildJsonQuery(entity, filters, opts, singleId = null, withCount = false) {
+    const { rowExpr, from, params } = jsonRowSource(entity, filters, opts, singleId);
     const countCol = withCount ? ', COUNT(*) AS n' : '';
+    return { sql: `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}${from}`, params };
+}
+
+/**
+ * Same rows as buildJsonQuery, returned as the comma-joined row objects with
+ * no array or envelope around them (`frag`, NULL for no rows), plus their
+ * count (`n`). json_list.js writes its own envelope around one or more of
+ * these, so no D1 output is ever unwrapped. Rows follow the subquery's ORDER
+ * BY, exactly as json_group_array's do.
+ *
+ * @param {EntityMeta} entity - Entity metadata from the registry.
+ * @param {ParsedFilter[]} filters - Parsed query filters.
+ * @param {QueryOpts} opts - Pagination.
+ * @returns {BuiltQuery} SQL returning {frag: string|null, n: number}.
+ */
+export function buildJsonFragmentQuery(entity, filters, opts) {
+    const { rowExpr, from, params } = jsonRowSource(entity, filters, opts, null);
+    return { sql: `SELECT group_concat(${rowExpr}, ',') AS frag, COUNT(*) AS n${from}`, params };
+}
+
+/**
+ * The per-row JSON expression and the ordered, paged subquery it reads from,
+ * shared by buildJsonQuery and buildJsonFragmentQuery.
+ *
+ * @param {EntityMeta} entity
+ * @param {ParsedFilter[]} filters
+ * @param {QueryOpts} opts
+ * @param {number|null} singleId
+ * @returns {{ rowExpr: string, from: string, params: (string|number)[] }}
+ */
+function jsonRowSource(entity, filters, opts, singleId) {
     const columns = resolveColumns(entity, opts);
     const jsonCols = getJsonColumns(entity);
     const boolCols = getBoolColumns(entity);
@@ -360,6 +392,10 @@ export function buildJsonQuery(entity, filters, opts, singleId = null, withCount
     // No table-alias prefix: these CASE expressions execute in the outer
     // SELECT where subquery columns are bare (same as jsonObjectArgs).
     const omitArgs = omitEmptyRemoveArgs(columns, omitCols, boolCols);
+    const innerExpr = `json_object(${jsonObjectArgs(columns, jsonCols, boolCols, nullableCols)})`;
+    const rowExpr = omitArgs.length > 0
+        ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
+        : innerExpr;
 
     if (hasJoins) {
         const { joinSql } = buildJoinFragments(
@@ -369,36 +405,17 @@ export function buildJsonQuery(entity, filters, opts, singleId = null, withCount
         // fields (org_name, net_name, etc.) to match upstream PeeringDB.
         // The LEFT JOINs remain in the query for cross-entity WHERE filters.
         const baseCols = columns.map((/** @type {string} */ c) => selectColumn(entity.table, c, 't.', opts.authenticated)).join(', '); // ap-ok: SQL construction
-        const baseJsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
-
-        // Standard depth=0 — base entity columns only, no join cols.
-        const allSelectCols = baseCols;
-        const allJsonArgs = baseJsonArgs;
-
-        const innerExpr = `json_object(${allJsonArgs})`;
-        const rowExpr = omitArgs.length > 0
-            ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
-            : innerExpr;
-
-        const sql =
-            `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}` +
-            ` FROM (SELECT ${allSelectCols}` +
-            ` FROM "${entity.table}" AS t${joinSql}${where}` +
-            ` ORDER BY ${orderBy}${pagination})`;
-
-        return { sql, params };
+        return {
+            rowExpr,
+            from: ` FROM (SELECT ${baseCols} FROM "${entity.table}" AS t${joinSql}${where} ORDER BY ${orderBy}${pagination})`,
+            params,
+        };
     }
-
-    const jsonArgs = jsonObjectArgs(columns, jsonCols, boolCols, nullableCols);
-    const innerExpr = `json_object(${jsonArgs})`;
-    const rowExpr = omitArgs.length > 0
-        ? `json_remove(${innerExpr}, ${omitArgs.join(', ')})`
-        : innerExpr;
-    const sql =
-        `SELECT json_object('data',json_group_array(${rowExpr}),'meta',json_object()) AS payload${countCol}` +
-        ` FROM (SELECT ${innerSelect(entity, columns, opts)} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`;
-
-    return { sql, params };
+    return {
+        rowExpr,
+        from: ` FROM (SELECT ${innerSelect(entity, columns, opts)} FROM "${entity.table}"${where} ORDER BY ${orderBy}${pagination})`,
+        params,
+    };
 }
 
 /**

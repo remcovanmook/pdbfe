@@ -95,9 +95,12 @@ in `entities.js`) is fine — it runs once per isolate lifetime.
 
 ## 4. JSON Round-Tripping on the Hot Path
 
-For depth=0 queries, D1 returns the complete JSON envelope as a string
-via `json_group_array(json_object(...))`. The worker encodes it to bytes
-once and caches the `Uint8Array`. There is no parse/stringify cycle.
+For depth=0 lists, D1 returns each page's rows already serialised and
+comma-joined (`group_concat(json_object(...), ',')`, `buildJsonFragmentQuery`).
+The worker writes the `{"data":[` … `],"meta":{}}` envelope around them,
+encodes once and caches the `Uint8Array` (or streams the pages, §9). Details
+use `json_group_array(json_object(...))`, the whole envelope from D1. There is
+no parse/stringify cycle, and no D1 output is unwrapped.
 
 **Don't:**
 ```js
@@ -268,6 +271,12 @@ Exceptions:
   the purpose.
 - `sync_state.js` polls `_sync_meta` every 15s in a background task
   via `ctx.waitUntil()`. Not on the response path.
+- `json_list.js` → `streamJsonList()`: an unfiltered depth=0 list of a table
+  larger than one page (`isStreamedList`) streams page by page to the client.
+  A stream can't be cached or shared between coalesced requests, the body
+  would not fit the entity's L1 budget anyway, and isolates rarely live long
+  enough for L1 to matter. The edge cache still absorbs repeats. Every other
+  list goes through the pipeline.
 
 ---
 

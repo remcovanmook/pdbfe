@@ -36,7 +36,8 @@ api/
 ├── cache.js          Per-entity LRU caches, TTLs, withEdgeSWR(), cachedQuery()
 ├── http.js           serveJSON, jsonError, header sets
 ├── entities.js       Entity registry (re-exports extracted/entities-worker.js)
-├── query.js          buildJsonQuery, buildRowQuery, nextPageParams
+├── query.js          buildJsonQuery, buildJsonFragmentQuery, buildRowQuery, nextPageParams
+├── json_list.js      depth=0 lists: pages of D1-built JSON, buffered or streamed
 ├── depth.js          expandDepth (_set field expansion)
 ├── utils.js          parseQueryFilters
 ├── sync_state.js     Entity version tracking
@@ -71,7 +72,7 @@ Total: ~64 MB. Remaining ~64 MB is available for working memory.
 
 ### Raw JSON Byte Forwarding (Zero-Allocation Hot Path)
 
-For `depth=0` queries (the common case), JSON construction is pushed down to SQLite. `buildJsonQuery` wraps the SELECT in `json_group_array(json_object(...))`, making D1 return the complete `{"data":[...],"meta":{}}` envelope as a single string. The worker calls `TextEncoder.encode()` on this string and caches the resulting `Uint8Array`. No `JSON.parse`, no row iteration, no `JSON.stringify` — zero transient V8 heap objects per row.
+For `depth=0` queries (the common case), JSON construction is pushed down to SQLite. A list page (`buildJsonFragmentQuery`) returns its rows' JSON comma-joined, `group_concat(json_object(...), ',')`, with their count; the worker writes `{"data":[` + pages + `],"meta":{}}` around them, calls `TextEncoder.encode()` once and caches the resulting `Uint8Array`. A detail (`buildJsonQuery`) returns the whole envelope from `json_group_array`. A page is at most the entity's `PAGE_ROWS` (json_list.js), sized from measured row sizes to stay under D1's ~8 MB limit on a computed string; an unfiltered list of a table larger than a page streams to the client page by page (first byte after the first page, about one page in memory) instead of being cached (ANTI_PATTERNS.md §9). No `JSON.parse`, no row iteration, no `JSON.stringify` — zero transient V8 heap objects per row.
 
 JSON-stored TEXT columns (`social_media`, `info_types`, `available_voltage_services`) are unwrapped with SQLite's `json()` function to prevent double-escaping.
 
@@ -115,8 +116,8 @@ Rate limiting is initialised inline in `index.js` using `createRateLimiter()` fr
 
 `api/query.js` provides two query paths sharing common filter/pagination logic:
 
-### `buildJsonQuery()` (depth=0)
-Wraps the SELECT in `json_group_array(json_object(...))` returning a single string. Used on the hot path where no V8-side row processing is needed.
+### `buildJsonQuery()` / `buildJsonFragmentQuery()` (depth=0)
+`buildJsonQuery` wraps the SELECT in `json_group_array(json_object(...))` returning the whole envelope as a single string (details). `buildJsonFragmentQuery` returns the same rows as `group_concat(json_object(...), ',')` plus `COUNT(*)` (list pages). Used on the hot path where no V8-side row processing is needed.
 
 ### `buildRowQuery()` (depth>0)
 Traditional SELECT returning individual rows for V8-side depth expansion.

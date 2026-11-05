@@ -244,3 +244,84 @@ describe('next-page prefetch uses the row count from D1', () => {
         assert.ok(cached('depth=1&limit=2&skip=2', 'anon'));
     });
 });
+
+describe('streamed outliers: an unfiltered list of a table larger than a page', () => {
+    // 6000 nets: over one net page (PAGE_ROWS.net = 5000), so two pages.
+    /** @type {any} */
+    let env;
+    /** @type {any} */
+    let db;
+    /** @type {{payloadQueries: number}} */
+    let stats;
+    before(() => {
+        freshCaches();
+        const d = createSqliteD1();
+        seed(d.sqlite, 6000);
+        db = d.db;
+        stats = d.stats;
+        env = envFor(db);
+    });
+
+    /**
+     * An env whose list pages fail from the `failAt`-th fragment query on.
+     * @param {number} failAt
+     */
+    const failingEnv = (failAt) => {
+        let pages = 0;
+        const failing = {
+            ...db,
+            withSession() { return failing; },
+            prepare(/** @type {string} */ sql) {
+                if (sql.includes('AS frag') && ++pages >= failAt) throw new Error('D1_ERROR: network connection lost');
+                return db.prepare(sql);
+            },
+        };
+        return envFor(failing);
+    };
+
+    it('api: streams every row once, in order, without Content-Length', async () => {
+        const before = stats.payloadQueries;
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net'), env, mockCtx);
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get('Content-Length'), null);
+        assert.match(res.headers.get('Cache-Control') ?? '', /^public, max-age=\d+, stale-while-revalidate=\d+$/);
+        const body = JSON.parse(await res.text());
+        assert.deepEqual(body.data.map((/** @type {any} */ r) => r.id), Array.from({ length: 6000 }, (_, i) => i + 1));
+        assert.deepEqual(body.meta, {});
+        assert.equal(stats.payloadQueries - before, 2, 'one query per page');
+    });
+
+    it('rest: streams too', async () => {
+        const res = await restWorker.fetch(new Request('https://rest.pdbfe.dev/v1/net'), env, mockCtx);
+        assert.equal(res.status, 200);
+        assert.equal(res.headers.get('Content-Length'), null);
+        assert.equal(JSON.parse(await res.text()).data.length, 6000);
+    });
+
+    it('a filtered or limited list of the same table stays buffered', async () => {
+        for (const path of ['/api/net?asn__lt=70000', '/api/net?limit=5000', '/api/net?skip=10&limit=100']) {
+            const res = await apiWorker.fetch(new Request(`https://api.pdbfe.dev${path}`), env, mockCtx);
+            assert.equal(res.status, 200, path);
+            assert.ok(res.headers.get('Content-Length'), `${path} should be buffered`);
+        }
+    });
+
+    it('a list over a page but asked for with a limit above it streams', async () => {
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net?limit=5500&skip=100'), env, mockCtx);
+        assert.equal(res.headers.get('Content-Length'), null);
+        const ids = JSON.parse(await res.text()).data.map((/** @type {any} */ r) => r.id);
+        assert.deepEqual(ids, Array.from({ length: 5500 }, (_, i) => i + 101));
+    });
+
+    it('a page failing mid-stream breaks the body instead of truncating it to valid JSON', async () => {
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net'), failingEnv(2), mockCtx);
+        assert.equal(res.status, 200, 'headers were already sent');
+        await assert.rejects(res.text());
+    });
+
+    it('a failing first page is an ordinary error response', async () => {
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net'), failingEnv(1), mockCtx);
+        assert.equal(res.status, 500);
+    });
+});
+
