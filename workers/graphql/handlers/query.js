@@ -63,18 +63,16 @@ function getYoga() {
 const bodyKeyCache = new Map();
 
 /**
- * Cache headers for a query result: valid until the next sync, like every
+ * Cache-Control for a query result: valid until the next sync, like every
  * API response. Authenticated results may hold non-public contacts, so they
- * are private; anonymous ones vary on Authorization so a cached anonymous
- * result never answers an authenticated request.
+ * are private. Every result also carries Vary: Authorization, so a cached
+ * anonymous result never answers an authenticated request.
  *
  * @param {boolean} authenticated - Whether the caller is authenticated.
- * @returns {Record<string, string>}
+ * @returns {string}
  */
-function resultCacheHeaders(authenticated) {
-    return authenticated
-        ? { 'Cache-Control': syncAlignedCacheControl(Date.now(), 'private') }
-        : { 'Cache-Control': syncAlignedCacheControl(), 'Vary': 'Authorization' };
+function resultCacheControl(authenticated) {
+    return syncAlignedCacheControl(Date.now(), authenticated ? 'private' : 'public');
 }
 
 /** Maximum entries in bodyKeyCache before LRU eviction kicks in. */
@@ -154,7 +152,8 @@ export async function handleQuery(request, db, ctx, authenticated) {
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
-                ...resultCacheHeaders(authenticated),
+                'Cache-Control': resultCacheControl(authenticated),
+                'Vary': 'Authorization',
                 'X-Cache': tier,
                 'X-Cache-Hits': hits.toString()
             }
@@ -183,6 +182,7 @@ export async function handleUncached(request, db, authenticated) {
     const isQuery = url.includes('?query=') || url.includes('&query=');
     if (request.method !== 'GET' || !response.ok || !isQuery) return response;
     const headers = new Headers(response.headers);
-    for (const [k, v] of Object.entries(resultCacheHeaders(authenticated))) headers.set(k, v);
+    headers.set('Cache-Control', resultCacheControl(authenticated));
+    headers.set('Vary', 'Authorization');
     return new Response(response.body, { status: response.status, headers });
 }
