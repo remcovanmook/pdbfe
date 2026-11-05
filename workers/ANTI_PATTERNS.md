@@ -279,6 +279,9 @@ Exceptions:
   would not fit the entity's L1 budget anyway, and isolates rarely live long
   enough for L1 to matter. The edge cache still absorbs repeats. Every other
   list goes through the pipeline.
+- `api/dumps.js` → `currentDump()`: the default full-table list of a large
+  public table is served from its R2 dump when `_sync_meta.dump_key` is
+  current — no D1 query at all, so nothing to cache or coalesce.
 
 ---
 

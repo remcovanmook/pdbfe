@@ -48,3 +48,8 @@ PDBFE_VERSION = "<your-version>"
 # edge cache after deploy falls to a warm L1/L2, not D1.
 [cache]
 enabled = true
+
+# Full-table list dumps (api/dumps.js): written by pdbfe-async, served by the API and REST workers.
+[[r2_buckets]]
+binding = "DUMPS"
+bucket_name = "pdbfe-dumps"

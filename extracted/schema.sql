@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS "_sync_meta" (
     "last_sync" INTEGER NOT NULL DEFAULT 0,
     "row_count" INTEGER NOT NULL DEFAULT 0,
     "updated_at" TEXT NOT NULL DEFAULT '',
-    "last_modified_at" INTEGER NOT NULL DEFAULT 0
+    "last_modified_at" INTEGER NOT NULL DEFAULT 0,
+    "dump_key" TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS "_migrations" (

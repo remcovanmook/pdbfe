@@ -10,13 +10,13 @@ This repository contains **seven independent Cloudflare Workers**, each with its
 
 | Worker | Directory | Env Type | Wrangler Config | Bindings | Purpose |
 |---|---|---|---|---|---|
-| pdbfe-api | `workers/api/` | `PdbApiEnv` | `wrangler.toml` | PDB, USERDB, SESSIONS | Read-only PeeringDB API mirror |
-| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | PDB, QUEUE | Cron delta sync; publishes embed/delete/logo tasks to pdbfe-tasks |
-| pdbfe-async | `workers/async/` | `PdbAsyncEnv` | `wrangler-async.toml` | PDB, VECTORIZE, LOGOS | Queue consumer: graph embeddings, logo migration, vector deletion |
+| pdbfe-api | `workers/api/` | `PdbApiEnv` | `wrangler.toml` | PDB, USERDB, SESSIONS, DUMPS | Read-only PeeringDB API mirror |
+| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | PDB, QUEUE | Cron delta sync; publishes embed/delete/logo/dump tasks to pdbfe-tasks |
+| pdbfe-async | `workers/async/` | `PdbAsyncEnv` | `wrangler-async.toml` | PDB, VECTORIZE, LOGOS, DUMPS | Queue consumer: graph embeddings, logo migration, vector deletion, full-table dumps |
 | pdbfe-auth | `workers/auth/` | `PdbAuthEnv` | `wrangler-auth.toml` | USERDB, SESSIONS | PeeringDB OAuth login + API key management |
 | pdbfe-search | `workers/search/` | `PdbSearchEnv` | `wrangler-search.toml` | PDB, USERDB, SESSIONS, VECTORIZE | Semantic + keyword entity search |
 | pdbfe-graphql | `workers/graphql/` | `PdbGraphqlEnv` | `wrangler-graphql.toml` | PDB, USERDB, SESSIONS | GraphQL API surface |
-| pdbfe-rest | `workers/rest/` | `PdbRestEnv` | `wrangler-rest.toml` | PDB, USERDB, SESSIONS | OpenAPI-compliant versioned REST API (`/v1/`) |
+| pdbfe-rest | `workers/rest/` | `PdbRestEnv` | `wrangler-rest.toml` | PDB, USERDB, SESSIONS, DUMPS | OpenAPI-compliant versioned REST API (`/v1/`) |
 
 Shared code lives in `workers/core/` — the generic cache, HTTP, auth, and routing library with no domain knowledge. Type contracts for all env interfaces live in `workers/types.d.ts`.
 

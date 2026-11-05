@@ -15,7 +15,8 @@ import { encodeJSON } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { serveJSON } from '../../api/http.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
-import { withRestSWR } from '../cache.js';
+import { withRestSWR, getEntityVersion, getDumpKey, refreshSyncState } from '../cache.js';
+import { isDumpRequest, currentDump } from '../../api/dumps.js';
 
 /**
  * Handles a list request for entities matching the given filters.
@@ -29,6 +30,14 @@ import { withRestSWR } from '../cache.js';
  */
 export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     const { db, ctx, entityTag, authenticated, hResponse, queryString } = qc;
+    // Default full-table list: the R2 dump when current (api/dumps.js; see
+    // the API list handler).
+    if (isDumpRequest(entityTag, filters, opts)) {
+        if (getEntityVersion(entityTag) === 0) await refreshSyncState(db);
+        const version = getEntityVersion(entityTag);
+        const dump = await currentDump(qc.dumps, entityTag, getDumpKey(entityTag), version);
+        if (dump) return serveJSON(dump, { tier: 'R2', hits: 0 }, hResponse);
+    }
     if (isStreamedList(entity, filters, opts)) {
         return serveJSON(await streamJsonList(db, entity, filters, opts), { tier: 'MISS', hits: 0 }, hResponse);
     }

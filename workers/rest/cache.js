@@ -78,6 +78,8 @@ const _sync = createSyncState({
 
 export const ensureSyncFreshness = _sync.ensureSyncFreshness;
 export const getEntityVersion = _sync.getEntityVersion;
+export const getDumpKey = _sync.getDumpKey;
+export const refreshSyncState = _sync.refresh;
 
 // ── SWR wrapper ──────────────────────────────────────────────────────────────
 

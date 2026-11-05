@@ -334,7 +334,7 @@ async function handleRequest(request, env, ctx) {
     // X-Auth-Id into the initial header dict, avoiding a second Response +
     // Headers allocation; Last-Modified comes from d1.stamp (see below).
     /** @type {HandlerContext} */
-    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, userId: shared ? null : userId, paging, authMs };
+    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, userId: shared ? null : userId, paging, authMs, dumps: env.DUMPS };
     // Sync freshness poll (every 15 s per isolate): rides along the
     // request's first D1 call in the same batch — no extra round trip, and
     // no separate query racing the request's own. A request that never

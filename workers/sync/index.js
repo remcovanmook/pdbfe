@@ -27,7 +27,8 @@
 
 import { ENTITIES } from './entities.js';
 import { parseURL } from '../core/utils.js';
-import { upsertActiveRows, publishTasks, isListed } from './rows.js';
+import { upsertActiveRows, publishTasks, publishDump, isListed } from './rows.js';
+import { dumpKey } from '../api/dumps.js';
 import { runHealthCheck } from './health.js';
 import { readMembership, recordRowChanges, pruneRowChanges } from './row_changes.js';
 
@@ -109,7 +110,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
 
     try {
         const syncRow = await db.prepare(
-            'SELECT last_sync, row_count FROM "_sync_meta" WHERE entity = ?'
+            'SELECT last_sync, row_count, last_modified_at, dump_key FROM "_sync_meta" WHERE entity = ?'
         ).bind(tag).first();
 
         const lastSync = syncRow ? /** @type {number} */ (syncRow.last_sync) : 0;
@@ -171,8 +172,12 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
 
         if (activeRows.length === 0 && deletedRows.length === 0) {
             await db.prepare(
-                `INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, (SELECT COALESCE(row_count, 0) FROM "_sync_meta" WHERE entity = ?), datetime('now'), (SELECT COALESCE(NULLIF(last_modified_at, ''), 0) FROM "_sync_meta" WHERE entity = ?))`
-            ).bind(tag, now, tag, tag).run();
+                `INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at, dump_key) VALUES (?, ?, (SELECT COALESCE(row_count, 0) FROM "_sync_meta" WHERE entity = ?), datetime('now'), (SELECT COALESCE(NULLIF(last_modified_at, ''), 0) FROM "_sync_meta" WHERE entity = ?), (SELECT COALESCE(dump_key, '') FROM "_sync_meta" WHERE entity = ?))`
+            ).bind(tag, now, tag, tag, tag).run();
+            // Nothing changed, but the dump may be missing or behind (first
+            // deploy, a failed publish): ask again. The async task returns at
+            // once when the dump is current, so this heals within one run.
+            if (syncRow && syncRow.dump_key !== dumpKey(tag, Number(syncRow.last_modified_at))) await publishDump(queue, tag);
             return result;
         }
 
@@ -210,9 +215,14 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         // rows actually deleted); a full count only to establish it once.
         const rowCount = await nextRowCount(db, meta.table, prevCount, activeIds.size - existingActive - actuallyDeleted);
 
+        // INSERT OR REPLACE rewrites the row: dump_key is carried over (it no
+        // longer matches last_modified_at, so the API stops serving that dump).
         await db.prepare(
-            'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at) VALUES (?, ?, ?, datetime(\'now\'), ?)'
-        ).bind(tag, now, rowCount, now).run();
+            'INSERT OR REPLACE INTO "_sync_meta" (entity, last_sync, row_count, updated_at, last_modified_at, dump_key) VALUES (?, ?, ?, datetime(\'now\'), ?, (SELECT COALESCE(dump_key, \'\') FROM "_sync_meta" WHERE entity = ?))'
+        ).bind(tag, now, rowCount, now, tag).run();
+
+        // The new version is recorded: rebuild the table's dump (api/dumps.js).
+        await publishDump(queue, tag);
 
         return result;
     } catch (err) {

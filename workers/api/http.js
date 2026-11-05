@@ -204,9 +204,10 @@ export function withNoTransform(cacheControl, byteLength) {
 const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').CacheTier} */ ('MISS'), hits: 0 });
 
 /**
- * Serves pre-encoded JSON as an HTTP Response: a Uint8Array, or a byte
- * stream (a large list streamed page by page, json_list.js), which goes out
- * without Content-Length. The body is forwarded as is: nothing here reads it. There is no ETag:
+ * Serves pre-encoded JSON as an HTTP Response: a Uint8Array; an R2 object
+ * (a full-table dump, api/dumps.js), whose body goes out as is with its size
+ * as Content-Length; or a byte stream (a large list streamed page by page,
+ * json_list.js), which goes out without Content-Length. The body is forwarded as is: nothing here reads it. There is no ETag:
  * data only changes when the sync runs, so freshness is Cache-Control aligned
  * to the sync schedule, and revalidation is If-Modified-Since against
  * Last-Modified, answered in api/index.js before any response is built.
@@ -215,8 +216,8 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  * X-Auth-Id directly into the initial header dict, avoiding a subsequent
  * Response repack (new Headers + new Response) on the hot path.
  *
- * @param {Uint8Array|ReadableStream<Uint8Array>} buf - Pre-encoded JSON payload.
- * @param {{tier: import('./cache.js').CacheTier, hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
+ * @param {Uint8Array|R2ObjectBody|ReadableStream<Uint8Array>} buf - Pre-encoded JSON payload.
+ * @param {{tier: import('./cache.js').CacheTier | 'R2', hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
  * @param {number} [lastModifiedMs] - Entity last-modified epoch ms. When >0, sets Last-Modified.
@@ -230,10 +231,18 @@ export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastMod
     if (meta.timing) extra['Server-Timing'] = meta.timing;
     // Expires just after the next sync, not after a fixed 60s. A stream is
     // a large list, never below the no-transform threshold.
+    /** @type {BodyInit} */
+    let body;
     if (buf instanceof Uint8Array) {
+        body = /** @type {BodyInit} */ (/** @type {unknown} */ (buf));
         extra['Cache-Control'] = withNoTransform(syncAlignedFor(baseHeaders), buf.byteLength);
         extra['Content-Length'] = buf.byteLength.toString();
+    } else if ('body' in buf) {
+        body = buf.body;
+        extra['Cache-Control'] = syncAlignedFor(baseHeaders);
+        extra['Content-Length'] = buf.size.toString();
     } else {
+        body = buf;
         extra['Cache-Control'] = syncAlignedFor(baseHeaders);
     }
     if (authId !== null) {
@@ -246,7 +255,7 @@ export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastMod
         extra['X-Auth-Id'] = `u${authId}`;
     }
 
-    return new Response(/** @type {BodyInit} */(/** @type {unknown} */(buf)), {
+    return new Response(body, {
         status: 200,
         headers: {
             ...baseHeaders,
