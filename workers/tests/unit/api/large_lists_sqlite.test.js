@@ -291,6 +291,15 @@ describe('streamed outliers: an unfiltered list of a table larger than a page', 
         assert.equal(stats.payloadQueries - before, 2, 'one query per page');
     });
 
+    it('queries the next page only once the client reads on (pull-based)', async () => {
+        const before = stats.payloadQueries;
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/net'), env, mockCtx);
+        await new Promise((r) => setTimeout(r, 20));
+        assert.equal(stats.payloadQueries - before, 1, 'only the first page before the body is read');
+        await res.text();
+        assert.equal(stats.payloadQueries - before, 2, 'the second page once it is');
+    });
+
     it('rest: streams too', async () => {
         const res = await restWorker.fetch(new Request('https://rest.pdbfe.dev/v1/net'), env, mockCtx);
         assert.equal(res.status, 200);

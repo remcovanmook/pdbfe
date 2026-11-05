@@ -8,6 +8,13 @@
  * envelope itself — `{"data":[` + page + `,` + page … + `],"meta":{}}` — so
  * no D1 output is ever unwrapped, checked or parsed.
  *
+ * The binding hands each page over as a JS string (a BLOB comes back as an
+ * Array of numbers, measured 2026-11-05, so bytes can't come through it), and
+ * a page with any non-Latin-1 character is held two bytes per character. So
+ * each page string is encoded once, on its own, as soon as it arrives, and
+ * dropped; the envelope is assembled from byte chunks — constant PREFIX,
+ * COMMA and SUFFIX bytes and the encoded pages — never by joining strings.
+ *
  * D1 refuses a single computed string much over 7.5 MB (SQLITE_TOOBIG,
  * measured on production on 2026-11-05: 7.58 MB built, ~8.85 MB failed), and
  * an aggregate that exhausts D1's memory fails with SQLITE_NOMEM — which also
@@ -19,9 +26,10 @@
  *   - queryJsonList: the envelope as one buffer, for the cache pipeline.
  *     Nearly every result is one page, so one query. Filtered lists use it.
  *   - streamJsonList: the outliers — an unfiltered list of a table larger
- *     than a page (isStreamedList). Pages go to the client as D1 returns
- *     them: the first byte after the first page, about one page in memory,
- *     and nothing cached (they would not fit L1, and isolates rarely live
+ *     than a page (isStreamedList). A pull-based stream: the next page is
+ *     queried only once the client has taken the last one, so the first
+ *     byte goes out after the first page, one page is in memory at a time,
+ *     and nothing is cached (they would not fit L1, and isolates rarely live
  *     long enough for L1 to matter). ANTI_PATTERNS.md §9 lists the exception.
  *
  * Pages follow the query's ORDER BY, which always ends in an id tiebreak, so
@@ -32,8 +40,9 @@
 import { buildJsonFragmentQuery, MAX_PAGE_LIMIT } from './query.js';
 import { encoder } from './http.js';
 
-const PREFIX = '{"data":[';
-const SUFFIX = '],"meta":{}}';
+const PREFIX = encoder.encode('{"data":[');
+const COMMA = encoder.encode(',');
+const SUFFIX = encoder.encode('],"meta":{}}');
 
 /** Smallest page a TOOBIG / NOMEM retry halves down to. */
 const PAGE_MIN = 250;
@@ -176,73 +185,96 @@ export async function queryJsonList(db, entity, filters, opts) {
     const window = windowOf(opts);
     const baseSkip = Math.max(opts.skip, 0);
     let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
-    let body = PREFIX;
+    /** @type {Uint8Array[]} */
+    const pages = [];
+    let bytes = 0;
     let rows = 0;
     let offset = 0;
 
     while (offset < window) {
-        const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset));
+        const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset)); // NOSONAR: pages are sequential by design
         if (page.want < size && page.want < window - offset) size = page.want; // halved
         if (page.n > 0) {
-            body += rows > 0 ? ',' + page.frag : page.frag;
+            const b = encoder.encode(/** @type {string} */ (page.frag));
+            pages.push(b);
+            bytes += b.byteLength;
             rows += page.n;
         }
         if (page.n < page.want) break; // last page
         offset += page.want;
     }
-    return withRowCount(encoder.encode(body + SUFFIX), rows);
+
+    // PREFIX, pages separated by COMMA, SUFFIX: one allocation, one copy each.
+    const out = new Uint8Array(PREFIX.byteLength + bytes + Math.max(pages.length - 1, 0) * COMMA.byteLength + SUFFIX.byteLength);
+    let pos = 0;
+    out.set(PREFIX, pos); pos += PREFIX.byteLength;
+    for (let i = 0; i < pages.length; i++) {
+        if (i > 0) { out.set(COMMA, pos); pos += COMMA.byteLength; }
+        out.set(pages[i], pos); pos += pages[i].byteLength;
+    }
+    out.set(SUFFIX, pos);
+    return withRowCount(out, rows);
 }
 
 /**
- * Streams a depth=0 list page by page (see isStreamedList). Resolves once
- * the first page is in, so a failure before any byte is an ordinary error
- * response; after that, a failing page errors the stream and the client sees
- * a broken response — never a body that ends in valid JSON, since the closing
- * `]}` is written only when every page is in. Each page waits for the client
- * to take the previous one, so memory holds about one page.
+ * Streams a depth=0 list page by page (see isStreamedList) as a pull-based
+ * byte stream: each pull queries the next page, encodes it and enqueues it,
+ * so a page is fetched only once the client has taken the previous one and
+ * one page is in memory at a time. Resolves once the first page is in, so a
+ * failure before any byte is an ordinary error response; after that, a
+ * failing page errors the stream and the client sees a broken response —
+ * never a body that ends in valid JSON, since SUFFIX is enqueued only once
+ * every page is in. Constant chunks are enqueued as copies: a consumer may
+ * take ownership of a chunk's buffer.
  *
  * @param {D1Session} db - D1 session.
  * @param {EntityMeta} entity - Entity metadata.
  * @param {ParsedFilter[]} filters - Parsed filters (empty for streamed lists).
  * @param {QueryOpts} opts - Query options (depth must be 0).
- * @param {ExecutionContext} ctx - Keeps the remaining pages running after the response starts.
  * @returns {Promise<ReadableStream<Uint8Array>>} The envelope as a byte stream.
  */
-export async function streamJsonList(db, entity, filters, opts, ctx) {
+export async function streamJsonList(db, entity, filters, opts) {
     const window = windowOf(opts);
     const baseSkip = Math.max(opts.skip, 0);
     let size = /** @type {number} */ (PAGE_ROWS[entity.tag]);
     const first = await fetchPage(db, entity, filters, opts, baseSkip, Math.min(size, window));
     if (first.want < size) size = first.want;
 
-    const { readable, writable } = new TextEncoderStream();
-    const writer = writable.getWriter();
+    let rows = first.n;
+    let offset = first.want;
+    let more = first.n >= first.want && offset < window;
+    /** @type {Uint8Array|null} */
+    let firstBytes = first.n > 0 ? encoder.encode(/** @type {string} */ (first.frag)) : null;
 
-    const pump = async () => {
-        let rows = first.n;
-        let offset = first.want;
-        let last = first;
-        try {
-            await writer.write(rows > 0 ? PREFIX + first.frag : PREFIX);
-            // One page at a time, on purpose: concurrent pages all arrive at
-            // the end (measured), and waiting on the client keeps one in memory.
-            while (last.n >= last.want && offset < window) {
-                const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset)); // NOSONAR
+    return new ReadableStream({
+        start(controller) {
+            controller.enqueue(PREFIX.slice());
+            if (firstBytes) controller.enqueue(firstBytes);
+            firstBytes = null;
+            if (!more) {
+                controller.enqueue(SUFFIX.slice());
+                controller.close();
+            }
+        },
+        async pull(controller) {
+            try {
+                const page = await fetchPage(db, entity, filters, opts, baseSkip + offset, Math.min(size, window - offset));
                 if (page.want < size && page.want < window - offset) size = page.want; // halved
                 if (page.n > 0) {
-                    await writer.write(rows > 0 ? ',' + page.frag : /** @type {string} */ (page.frag)); // NOSONAR
+                    if (rows > 0) controller.enqueue(COMMA.slice());
+                    controller.enqueue(encoder.encode(/** @type {string} */ (page.frag)));
                     rows += page.n;
                 }
                 offset += page.want;
-                last = page;
+                more = page.n >= page.want && offset < window;
+                if (!more) {
+                    controller.enqueue(SUFFIX.slice());
+                    controller.close();
+                }
+            } catch (err) {
+                console.error(`[list] stream of ${entity.tag} failed after ${rows} rows:`, err);
+                controller.error(err);
             }
-            await writer.write(SUFFIX);
-            await writer.close();
-        } catch (err) {
-            console.error(`[list] stream of ${entity.tag} failed after ${rows} rows:`, err);
-            await writer.abort(err).catch(() => {});
-        }
-    };
-    ctx.waitUntil(pump());
-    return readable;
+        },
+    }, { highWaterMark: 0 });
 }
