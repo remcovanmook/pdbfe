@@ -14,6 +14,7 @@
  *   ensureSyncFreshness(db, ctx, now) — O(1) hot-path hook
  *   handleStatus(request, db, ctx)    — pre-encoded /status handler
  *   getEntityVersion(tag)             — returns last_modified_at (per-entity If-Modified-Since)
+ *   getDumpKey(tag)                   — returns dump_key (full-table R2 dump, api/dumps.js)
  */
 
 import { createSyncState } from '../core/sync_state.js';
@@ -38,3 +39,5 @@ export const claimSyncPoll = _sync.claimPoll;
 export const runSyncPoll = _sync.runPoll;
 export const handleStatus = _sync.handleStatus;
 export const getEntityVersion = _sync.getEntityVersion;
+export const getDumpKey = _sync.getDumpKey;
+export const refreshSyncState = _sync.refresh;

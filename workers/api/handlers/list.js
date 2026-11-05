@@ -17,6 +17,8 @@ import { getEntityCache, LIST_TTL, cachedQuery, withEdgeSWR } from '../cache.js'
 import { normaliseCacheKey } from '../../core/cache.js';
 import { EMPTY_ENVELOPE } from '../../core/pipeline/index.js';
 import { encodeJSON, serveJSON, serverTiming, jsonError } from '../http.js';
+import { isDumpRequest, currentDump } from '../dumps.js';
+import { getEntityVersion, getDumpKey, refreshSyncState } from '../sync_state.js';
 
 /**
  * Handles a list request for an entity type (GET /api/{entity}).
@@ -35,6 +37,17 @@ export async function handleList(hc) {
     // paginates the full set.
     if (hc.paging) {
         return handlePaged(hc, entity, hc.paging);
+    }
+
+    // A default full-table list of a dumped table is its R2 dump when one is
+    // current (api/dumps.js): the object's bytes as the body, no D1 query. A
+    // cold isolate has not polled _sync_meta yet, so it does that first (one
+    // 13-row query) rather than fall through to streaming the table from D1.
+    if (isDumpRequest(entityTag, filters, opts)) {
+        if (getEntityVersion(entityTag) === 0) await refreshSyncState(db);
+        const version = getEntityVersion(entityTag);
+        const dump = await currentDump(hc.dumps, entityTag, getDumpKey(entityTag), version);
+        if (dump) return serveJSON(dump, { tier: 'R2', hits: 0 }, hc.hApi, version * 1000, hc.userId);
     }
 
     // The outliers — an unfiltered list of a table larger than a page —

@@ -46,6 +46,9 @@ wrangler queues create pdbfe-tasks
 
 # R2 — logo mirror bucket
 wrangler r2 bucket create pdbfe-logos
+
+# R2 — full-table list dumps (written by pdbfe-async, served by pdbfe-api / pdbfe-rest)
+wrangler r2 bucket create pdbfe-dumps
 ```
 
 ---

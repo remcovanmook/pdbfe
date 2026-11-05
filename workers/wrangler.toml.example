@@ -54,3 +54,8 @@ binding = "CF_VERSION_METADATA"
 [[analytics_engine_datasets]]
 binding = "METRICS"
 dataset = "pdbfe_api_cache"
+
+# Full-table list dumps (api/dumps.js): written by pdbfe-async, served by the API and REST workers.
+[[r2_buckets]]
+binding = "DUMPS"
+bucket_name = "pdbfe-dumps"

@@ -4,6 +4,7 @@
  */
 
 import { VECTOR_ENTITY_TAGS } from './entities.js';
+import { DUMP_TAGS } from '../api/dumps.js';
 
 /**
  * Statuses upstream's default listing returns, so the mirror keeps them.
@@ -194,3 +195,24 @@ export async function publishTasks(queue, tag, activeRows, deletedIds) {
         await queue.sendBatch(messages.slice(i, i + QUEUE_BATCH)); // NOSONAR
     }
 }
+
+/**
+ * Asks the async worker to rebuild a table's full-table dump (api/dumps.js).
+ * Sent AFTER _sync_meta.last_modified_at has advanced, so the dump is built
+ * and keyed against the new version; until it is up the API streams from D1.
+ * Best effort: a failed publish leaves the table on the D1 path until its
+ * next change, so it is logged, not thrown, and never fails the sync.
+ *
+ * @param {Queue<AsyncTaskMessage>|undefined} queue - Queue producer (optional).
+ * @param {string} tag - Entity tag.
+ * @returns {Promise<void>}
+ */
+export async function publishDump(queue, tag) {
+    if (!queue || !DUMP_TAGS.has(tag)) return;
+    try {
+        await queue.send({ action: 'dump', tag, id: 0 });
+    } catch (err) {
+        console.error(`[sync] ${tag}: dump task not published:`, err);
+    }
+}
+

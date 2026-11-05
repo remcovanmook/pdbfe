@@ -29,3 +29,8 @@ max_retries       = 3
 
 [vars]
 PDBFE_VERSION = "<your-version>"
+
+# Full-table list dumps (api/dumps.js): written by pdbfe-async, served by the API and REST workers.
+[[r2_buckets]]
+binding = "DUMPS"
+bucket_name = "pdbfe-dumps"

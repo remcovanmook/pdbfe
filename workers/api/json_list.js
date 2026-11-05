@@ -278,3 +278,36 @@ export async function streamJsonList(db, entity, filters, opts) {
         },
     }, { highWaterMark: 0 });
 }
+
+/**
+ * Writes a depth=0 list as byte chunks to `emit`, page by page — the same
+ * bytes queryJsonList returns and streamJsonList streams. Used by the async
+ * worker to build a table's R2 dump (api/dumps.js) without holding the
+ * table in memory: each chunk is handed over before the next page is read.
+ *
+ * @param {D1Session|D1Database} db - D1 binding.
+ * @param {EntityMeta} entity - Entity metadata.
+ * @param {QueryOpts} opts - Query options (depth must be 0).
+ * @param {(chunk: Uint8Array) => Promise<void>} emit - Takes each chunk in order.
+ * @returns {Promise<number>} Rows written.
+ */
+export async function writeJsonList(db, entity, opts, emit) {
+    const window = windowOf(opts);
+    let size = PAGE_ROWS[entity.tag] ?? DEFAULT_PAGE_ROWS;
+    let rows = 0;
+    let offset = 0;
+    await emit(PREFIX.slice());
+    while (offset < window) {
+        const page = await fetchPage(/** @type {D1Session} */ (db), entity, [], opts, offset, Math.min(size, window - offset)); // NOSONAR: pages are sequential by design
+        if (page.want < size && page.want < window - offset) size = page.want; // halved
+        if (page.n > 0) {
+            if (rows > 0) await emit(COMMA.slice()); // NOSONAR
+            await emit(encoder.encode(/** @type {string} */ (page.frag))); // NOSONAR
+            rows += page.n;
+        }
+        if (page.n < page.want) break; // last page
+        offset += page.want;
+    }
+    await emit(SUFFIX.slice());
+    return rows;
+}

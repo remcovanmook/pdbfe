@@ -22,6 +22,7 @@
  *   runPoll(db, poll)                 — run a claimed poll on its own
  *   handleStatus(request, db, ctx)    — pre-encoded /status handler (needs statusHeaders)
  *   getEntityVersion(tag)             — returns last_modified_at (If-Modified-Since)
+ *   getDumpKey(tag)                   — returns dump_key from the same poll (api/dumps.js)
  *   refresh(db)                       — force a synchronous poll (cold boot / tests)
  */
 
@@ -51,6 +52,7 @@ import { encoder, jsonError } from './http.js';
  *   runPoll: (db: D1Session, poll: { sql: string, apply: (results: Record<string, any>[]) => void }) => Promise<void>,
  *   handleStatus: (request: Request, db: D1Session, ctx: ExecutionContext) => Promise<Response>,
  *   getEntityVersion: (tag: string) => number,
+ *   getDumpKey: (tag: string) => string,
  * }}
  */
 export function createSyncState({ entityTags, onEntityChange, statusHeaders, statusCacheControl, statusColdTimeoutMs = 2_000, checkIntervalMs = 15_000 }) {
@@ -64,6 +66,16 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
         knownModifiedAt.set(tag, 0);
     }
 
+    /**
+     * Per-entity _sync_meta.dump_key snapshot ('' when none), read with
+     * last_modified_at so the two describe the same poll.
+     * @type {Map<string, string>}
+     */
+    const knownDumpKey = new Map();
+    for (const tag of entityTags) {
+        knownDumpKey.set(tag, '');
+    }
+
     /** Timestamp of the last background D1 poll. @type {number} */
     let lastCheck = 0;
 
@@ -71,7 +83,7 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
     let statusPayload = null;
 
     /** The poll statement (tiny: one row per entity). */
-    const POLL_SQL = 'SELECT entity, last_sync, row_count, updated_at, last_modified_at FROM "_sync_meta" ORDER BY entity';
+    const POLL_SQL = 'SELECT entity, last_sync, row_count, updated_at, last_modified_at, dump_key FROM "_sync_meta" ORDER BY entity';
 
     /**
      * Background task: queries _sync_meta via D1 read-replication and
@@ -106,7 +118,7 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
         try {
             // Build a lookup from the D1 results for fast access.
             // Use a Map to avoid dynamic-key objects.
-            /** @type {Map<string, {last_sync: number, row_count: number, updated_at: string, last_modified_at: number}>} */
+            /** @type {Map<string, {last_sync: number, row_count: number, updated_at: string, last_modified_at: number, dump_key: string}>} */
             const dbState = new Map();
             for (const row of results) {
                 dbState.set(
@@ -116,6 +128,7 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
                         row_count: /** @type {number} */ (row.row_count),
                         updated_at: /** @type {string} */ (row.updated_at),
                         last_modified_at: Math.trunc(/** @type {number} */ (row.last_modified_at) || 0),
+                        dump_key: typeof row.dump_key === 'string' ? row.dump_key : '',
                     }
                 );
             }
@@ -131,6 +144,7 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
                     onEntityChange(tag);
                 }
                 knownModifiedAt.set(tag, entry.last_modified_at);
+                knownDumpKey.set(tag, entry.dump_key);
             }
 
             // Rebuild pre-encoded /status payload only when the worker serves it.
@@ -279,5 +293,16 @@ export function createSyncState({ entityTags, onEntityChange, statusHeaders, sta
         return knownModifiedAt.get(tag) || 0;
     }
 
-    return { refresh, ensureSyncFreshness, claimPoll, runPoll, handleStatus, getEntityVersion };
+    /**
+     * Returns the entity's _sync_meta.dump_key from the same poll as
+     * getEntityVersion ('' when none or not yet polled). Zero allocations.
+     *
+     * @param {string} tag - Entity tag (e.g. "net").
+     * @returns {string}
+     */
+    function getDumpKey(tag) {
+        return knownDumpKey.get(tag) || '';
+    }
+
+    return { refresh, ensureSyncFreshness, claimPoll, runPoll, handleStatus, getEntityVersion, getDumpKey };
 }

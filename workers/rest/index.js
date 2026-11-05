@@ -110,7 +110,7 @@ async function handleRequest(request, env, ctx) {
     // already returned above). O(1) unless the 15s interval has elapsed.
     ensureSyncFreshness(db, ctx, now);
 
-    return routeApiRequest(request, { db, ctx, rawPath, queryString, authenticated });
+    return routeApiRequest(request, { db, ctx, rawPath, queryString, authenticated, dumps: env.DUMPS });
 }
 
 /**
@@ -118,11 +118,11 @@ async function handleRequest(request, env, ctx) {
  * Extracted from handleRequest to reduce cognitive complexity.
  *
  * @param {Request} request - Inbound request.
- * @param {{db: D1Session, ctx: ExecutionContext, rawPath: string, queryString: string, authenticated: boolean}} rc - Request context.
+ * @param {{db: D1Session, ctx: ExecutionContext, rawPath: string, queryString: string, authenticated: boolean, dumps?: R2Bucket}} rc - Request context.
  * @returns {Promise<Response>}
  */
 async function routeApiRequest(request, rc) {
-    const { db, ctx, rawPath, queryString, authenticated } = rc;
+    const { db, ctx, rawPath, queryString, authenticated, dumps } = rc;
 
     const apiPath = rawPath.slice(3); // strip "v1/"
     const { p0: entityTag, p1: idStr, p2: relation } = tokenizeString(apiPath, '/', 3);
@@ -168,8 +168,8 @@ async function routeApiRequest(request, rc) {
     if (queryError) return jsonError(400, queryError);
 
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
-    /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string}} */
-    const qc = { db, ctx, entityTag, authenticated, hResponse, cachePrefix, queryString };
+    /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string, dumps?: R2Bucket}} */
+    const qc = { db, ctx, entityTag, authenticated, hResponse, cachePrefix, queryString, dumps };
 
     if (idStr !== undefined) {
         const id = Number.parseInt(idStr, 10);

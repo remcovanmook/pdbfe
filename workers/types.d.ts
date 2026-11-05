@@ -122,6 +122,7 @@ interface R2ObjectBody {
     text(): Promise<string>;
     json<T = unknown>(): Promise<T>;
     blob(): Promise<Blob>;
+    readonly body: ReadableStream<Uint8Array>;
 }
 
 interface R2Object {
@@ -129,8 +130,22 @@ interface R2Object {
     readonly size: number;
     readonly etag: string;
     readonly httpEtag: string;
+    readonly uploaded: Date;
     readonly httpMetadata?: R2HTTPMetadata;
     readonly customMetadata?: Record<string, string>;
+}
+
+interface R2UploadedPart {
+    partNumber: number;
+    etag: string;
+}
+
+interface R2MultipartUpload {
+    readonly key: string;
+    readonly uploadId: string;
+    uploadPart(partNumber: number, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob): Promise<R2UploadedPart>;
+    abort(): Promise<void>;
+    complete(uploadedParts: R2UploadedPart[]): Promise<R2Object>;
 }
 
 interface R2Bucket {
@@ -138,6 +153,7 @@ interface R2Bucket {
     get(key: string): Promise<R2ObjectBody | null>;
     put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob, options?: R2PutOptions): Promise<R2Object>;
     delete(key: string | string[]): Promise<void>;
+    createMultipartUpload(key: string, options?: R2PutOptions): Promise<R2MultipartUpload>;
     list(options?: { prefix?: string; limit?: number; cursor?: string; delimiter?: string }): Promise<{
         objects: R2Object[];
         truncated: boolean;
@@ -287,6 +303,8 @@ interface PdbApiEnv {
     METRICS?: AnalyticsEngineDataset;
     /** This worker version's metadata ([version_metadata] binding); timestamp is its deploy time. Absent in tests/dev. */
     CF_VERSION_METADATA?: { id: string, tag: string, timestamp: string };
+    /** R2 bucket pdbfe-dumps: full-table list dumps (api/dumps.js). Optional: absent, lists stream from D1. */
+    DUMPS?: R2Bucket;
 }
 
 /** Minimal Workers Analytics Engine binding surface used by the API worker. */
@@ -349,6 +367,8 @@ interface PdbAsyncEnv {
     VECTORIZE: VectorizeIndex;
     /** R2 bucket for logo storage. */
     LOGOS: R2Bucket;
+    /** R2 bucket pdbfe-dumps: full-table list dumps (api/dumps.js). */
+    DUMPS: R2Bucket;
     /** Release version string injected at deploy time from the VERSION file. */
     PDBFE_VERSION?: string;
 }
@@ -363,8 +383,9 @@ interface AsyncTaskMessage {
      * - embed:  compute a neighbor-averaged graph embedding for a new/updated entity.
      * - delete: remove a deleted entity's vector from the Vectorize index.
      * - logo:   fetch an entity's logo from S3 and store it in R2.
+     * - dump:   rebuild the entity's full-table list dump in R2 (id unused, 0).
      */
-    action: 'embed' | 'delete' | 'logo';
+    action: 'embed' | 'delete' | 'logo' | 'dump';
     /** Entity type tag (e.g. 'net', 'ix', 'fac'). */
     tag: string;
     /** Numeric entity ID. */
@@ -696,4 +717,6 @@ interface HandlerContext {
     d1?: { calls: number, sqlMs: number, rowsRead: number, stamp: number };
     /** Pipeline result of the request (set by list/detail handlers) for tier metrics. */
     pipeline?: { tier: string, dbMs?: number };
+    /** R2 bucket pdbfe-dumps (api/dumps.js); absent in dev/tests. */
+    dumps?: R2Bucket;
 }

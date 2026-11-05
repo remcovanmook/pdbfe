@@ -1,7 +1,7 @@
 /**
  * @fileoverview Async task worker (pdbfe-async).
  *
- * Consumes the pdbfe-tasks Cloudflare Queue. Handles three action types:
+ * Consumes the pdbfe-tasks Cloudflare Queue. Handles four action types:
  *
  *   embed  — Places a new or updated entity in the Vectorize graph embedding
  *             space using neighbor averaging over existing graph vectors.
@@ -13,6 +13,9 @@
  *   logo   — Fetches an entity logo from S3 and stores it in the R2 bucket.
  *             Requires the entity to exist in D1 with __logo_migrated = 0.
  *
+ *   dump   — Rebuilds a table's full-table list dump in R2 (async/dump.js,
+ *             api/dumps.js). Skipped when _sync_meta.dump_key is current.
+ *
  * All three handlers perform a D1 pre-check before touching Vectorize or R2.
  * This ensures idempotency: duplicate messages are safely discarded.
  *
@@ -23,9 +26,11 @@
  *   PDB       - D1 database (read/write)
  *   VECTORIZE - Vectorize index (pdbfe-vectors)
  *   LOGOS     - R2 bucket (pdbfe-logos)
+ *   DUMPS     - R2 bucket (pdbfe-dumps)
  */
 
 import { ENTITIES, VECTOR_ENTITY_TAGS } from './entities.js';
+import { handleDump } from './dump.js';
 
 /** S3 prefix stripped when deriving R2 keys from logo URLs. */
 const S3_MEDIA_PREFIX = 'https://peeringdb-media-prod.s3.amazonaws.com/media/';
@@ -312,6 +317,8 @@ export default {
                     await handleDelete(env.PDB, env.VECTORIZE, tag, id);
                 } else if (action === 'logo') {
                     await handleLogo(env.PDB, env.LOGOS, tag, id);
+                } else if (action === 'dump') {
+                    console.log(`[async] dump/${tag}: ${await handleDump(env.PDB, env.DUMPS, tag)}`);
                 } else {
                     console.warn(`[async] unknown action: ${action} for ${tag}:${id}`);
                 }
