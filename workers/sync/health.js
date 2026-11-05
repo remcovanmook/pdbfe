@@ -178,7 +178,7 @@ async function checkTable(env, tag, meta, upstream) {
         t.rowCount = cnt ? /** @type {number} */ (cnt.cnt) : 0;
         await db.prepare('UPDATE "_sync_meta" SET row_count = ?, last_modified_at = max(last_modified_at, ?) WHERE entity = ?')
             .bind(t.rowCount, changed.length > 0 ? ts : 0, tag).run();
-        if (changed.length > 0) await publishDump(env.QUEUE, tag);
+        if (changed.length > 0) await publishDump(env.DUMP_QUEUE, tag);
 
         if (t.deleted.length || t.inserted.length || t.refreshed.length) t.action = 'repaired';
     } catch (err) {

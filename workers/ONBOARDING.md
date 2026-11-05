@@ -11,7 +11,7 @@ This repository contains **seven independent Cloudflare Workers**, each with its
 | Worker | Directory | Env Type | Wrangler Config | Bindings | Purpose |
 |---|---|---|---|---|---|
 | pdbfe-api | `workers/api/` | `PdbApiEnv` | `wrangler.toml` | PDB, USERDB, SESSIONS, DUMPS | Read-only PeeringDB API mirror |
-| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | PDB, QUEUE | Cron delta sync; publishes embed/delete/logo/dump tasks to pdbfe-tasks |
+| pdbfe-sync | `workers/sync/` | `PdbSyncEnv` | `wrangler-sync.toml` | PDB, QUEUE, DUMP_QUEUE | Cron delta sync; publishes embed/delete/logo tasks to pdbfe-tasks and dump tasks to pdbfe-dumps |
 | pdbfe-async | `workers/async/` | `PdbAsyncEnv` | `wrangler-async.toml` | PDB, VECTORIZE, LOGOS, DUMPS | Queue consumer: graph embeddings, logo migration, vector deletion, full-table dumps |
 | pdbfe-auth | `workers/auth/` | `PdbAuthEnv` | `wrangler-auth.toml` | USERDB, SESSIONS | PeeringDB OAuth login + API key management |
 | pdbfe-search | `workers/search/` | `PdbSearchEnv` | `wrangler-search.toml` | PDB, USERDB, SESSIONS, VECTORIZE | Semantic + keyword entity search |

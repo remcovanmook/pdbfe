@@ -21,6 +21,12 @@ database_id = "<your-d1-database-id>"
 queue   = "pdbfe-tasks"
 binding = "QUEUE"
 
+# Full-table dump tasks (api/dumps.js), on their own queue so each dump runs
+# in its own consumer invocation. Create with: wrangler queues create pdbfe-dumps
+[[queues.producers]]
+queue   = "pdbfe-dumps"
+binding = "DUMP_QUEUE"
+
 # Production: set via `wrangler secret put PEERINGDB_API_KEY --config wrangler-sync.toml`
 # Local dev: add to [vars] temporarily, never commit.
 [vars]

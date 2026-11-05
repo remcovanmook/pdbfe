@@ -44,6 +44,9 @@ wrangler vectorize create-metadata-index pdbfe-vectors \
 # Queue — async task bus between sync and async workers
 wrangler queues create pdbfe-tasks
 
+# Queue — full-table dump tasks (one per consumer invocation)
+wrangler queues create pdbfe-dumps
+
 # R2 — logo mirror bucket
 wrangler r2 bucket create pdbfe-logos
 

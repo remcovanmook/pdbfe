@@ -103,9 +103,10 @@ async function nextRowCount(db, table, prevCount, delta) {
  * @param {Pick<EntityMeta, 'table' | 'fields'>} meta - Entity metadata.
  * @param {string} apiKey - PeeringDB API key.
  * @param {Queue<AsyncTaskMessage>} [queue] - pdbfe-tasks Queue producer. Optional.
+ * @param {Queue<AsyncTaskMessage>} [dumpQueue] - pdbfe-dumps Queue producer (api/dumps.js). Optional.
  * @returns {Promise<{ tag: string, updated: number, deleted: number, deletedIds: number[], error: string }>}
  */
-export async function syncEntity(db, tag, meta, apiKey, queue) {
+export async function syncEntity(db, tag, meta, apiKey, queue, dumpQueue) {
     const result = { tag, updated: 0, deleted: 0, deletedIds: /** @type {number[]} */ ([]), error: '' };
 
     try {
@@ -177,7 +178,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
             // Nothing changed, but the dump may be missing or behind (first
             // deploy, a failed publish): ask again. The async task returns at
             // once when the dump is current, so this heals within one run.
-            if (syncRow && syncRow.dump_key !== dumpKey(tag, Number(syncRow.last_modified_at))) await publishDump(queue, tag);
+            if (syncRow && syncRow.dump_key !== dumpKey(tag, Number(syncRow.last_modified_at))) await publishDump(dumpQueue, tag);
             return result;
         }
 
@@ -222,7 +223,7 @@ export async function syncEntity(db, tag, meta, apiKey, queue) {
         ).bind(tag, now, rowCount, now, tag).run();
 
         // The new version is recorded: rebuild the table's dump (api/dumps.js).
-        await publishDump(queue, tag);
+        await publishDump(dumpQueue, tag);
 
         return result;
     } catch (err) {
@@ -317,7 +318,7 @@ export default {
         // Registry order, always: the API worker sends the last entity's
         // last_sync as Last-Modified (the run is complete once it moves).
         for (const [tag, meta] of Object.entries(ENTITIES)) {
-            const syncResult = await syncEntity(env.PDB, tag, meta, apiKey, queue);
+            const syncResult = await syncEntity(env.PDB, tag, meta, apiKey, queue, env.DUMP_QUEUE);
             results.push(syncResult);
             // Brief pause between entities to be a courteous API consumer.
             await new Promise(r => setTimeout(r, 200));
