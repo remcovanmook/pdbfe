@@ -70,6 +70,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# The wrangler pinned in workers/package-lock.json (npm ci), never one npx
+# would fetch on demand.
+WRANGLER="$REPO_ROOT/workers/node_modules/.bin/wrangler"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -301,7 +305,7 @@ if [[ -n "$APPLY_MIGRATIONS" ]]; then
     else
         # Ensure _migrations table exists and list what is applied, in one call
         # rather than one round trip per migration file.
-        APPLIED_LIST=$(npx wrangler d1 execute peeringdb \
+        APPLIED_LIST=$("$WRANGLER" d1 execute peeringdb \
             --config "$WRANGLER_CONFIG" $D1_REMOTE --json \
             --command 'CREATE TABLE IF NOT EXISTS "_migrations" ("name" TEXT NOT NULL PRIMARY KEY, "applied_at" TEXT NOT NULL DEFAULT (datetime('"'"'now'"'"'))); SELECT name FROM "_migrations";' \
             2>/dev/null | node -e '
@@ -319,13 +323,13 @@ if [[ -n "$APPLY_MIGRATIONS" ]]; then
             fi
 
             echo "  Applying: $MIGRATION_NAME"
-            npx wrangler d1 execute peeringdb \
+            "$WRANGLER" d1 execute peeringdb \
                 --config "$WRANGLER_CONFIG" $D1_REMOTE \
                 --file "$MIGRATION_FILE" \
                 2>&1 || fail "Migration failed: $MIGRATION_NAME"
 
             # Record as applied
-            npx wrangler d1 execute peeringdb \
+            "$WRANGLER" d1 execute peeringdb \
                 --config "$WRANGLER_CONFIG" $D1_REMOTE \
                 --command "INSERT INTO \"_migrations\" (name) VALUES ('${MIGRATION_NAME}');" \
                 2>&1 || true
@@ -345,7 +349,7 @@ section "Workers"
 # the env (CI secret) or, locally, from wrangler's login.
 CF_API="https://api.cloudflare.com/client/v4/accounts"
 if [[ -n "$REMOTE" ]] && [[ -z "$FORCE" ]] && [[ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-    CLOUDFLARE_ACCOUNT_ID=$(cd "$REPO_ROOT/workers" && npx wrangler whoami 2>/dev/null | grep -oE '[0-9a-f]{32}' | head -1 || true)
+    CLOUDFLARE_ACCOUNT_ID=$("$WRANGLER" whoami 2>/dev/null | grep -oE '[0-9a-f]{32}' | head -1 || true)
 fi
 
 # GET a Cloudflare API path and print the value at a key path in its `result`
@@ -367,16 +371,17 @@ cf_get() {
 
 # Build hash recorded on a worker's live version (its --tag), or empty.
 deployed_worker_tag() {
-    local version
-    version=$(cf_get "workers/scripts/$1/deployments" deployments 0 versions 0 version_id)
+    local script="$1" version
+    version=$(cf_get "workers/scripts/$script/deployments" deployments 0 versions 0 version_id)
     [[ -n "$version" ]] || return 0
-    cf_get "workers/scripts/$1/versions/$version" annotations workers/tag
+    cf_get "workers/scripts/$script/versions/$version" annotations workers/tag
 }
 
 # sha256 of every file under a directory, except wrangler's README (build
 # timestamp) and source maps (absolute sourceRoot), in path order.
 hash_build() {
-    (cd "$1" && find . -type f ! -name README.md ! -name '*.map' | LC_ALL=C sort | xargs shasum -a 256) |
+    local dir="$1"
+    (cd "$dir" && find . -type f ! -name README.md ! -name '*.map' | LC_ALL=C sort | xargs shasum -a 256) |
         shasum -a 256 | awk '{print $1}'
 }
 
@@ -412,7 +417,7 @@ for WORKER_DEF in "${WORKERS[@]}"; do
     # PDBFE_VERSION line, which changes every release.
     OUT="$BUILD_ROOT/$LABEL"
     rm -rf "${BUILD_ROOT:?}/${LABEL:?}"
-    (cd "$REPO_ROOT/workers" && npx wrangler deploy --config "$CONFIG_PATH" --dry-run --outdir "$OUT" > /dev/null 2>&1) || \
+    (cd "$REPO_ROOT/workers" && "$WRANGLER" deploy --config "$CONFIG_PATH" --dry-run --outdir "$OUT" > /dev/null 2>&1) || \
         fail "Failed to build pdbfe-$LABEL"
     grep -v '^PDBFE_VERSION' "$CONFIG_PATH" > "$OUT/config.toml"
     BUILD_HASH="$(hash_build "$OUT" | cut -c1-16)"
@@ -423,7 +428,7 @@ for WORKER_DEF in "${WORKERS[@]}"; do
     fi
 
     echo "  Deploying pdbfe-$LABEL ($BUILD_HASH)..."
-    (cd "$REPO_ROOT/workers" && npx wrangler deploy --config "$CONFIG_PATH" --tag "$BUILD_HASH" 2>&1) || \
+    (cd "$REPO_ROOT/workers" && "$WRANGLER" deploy --config "$CONFIG_PATH" --tag "$BUILD_HASH" 2>&1) || \
         fail "Failed to deploy pdbfe-$LABEL"
 
     pass "Deployed pdbfe-$LABEL"
@@ -454,7 +459,7 @@ if [[ -n "$REMOTE" ]]; then
             fail "Frontend versioning failed"
 
         echo "  Deploying frontend to Cloudflare Pages ($BUILD_HASH)..."
-        (cd "$REPO_ROOT/workers" && npx wrangler pages deploy "$FRONTEND_DIST/" --project-name=pdbfe-frontend \
+        (cd "$REPO_ROOT/workers" && "$WRANGLER" pages deploy "$FRONTEND_DIST/" --project-name=pdbfe-frontend \
             --commit-message "build:$BUILD_HASH v$PDBFE_VERSION $(git -C "$REPO_ROOT" log -1 --format=%s)" 2>&1) || \
             fail "Frontend deploy failed"
         pass "Frontend deployed"
