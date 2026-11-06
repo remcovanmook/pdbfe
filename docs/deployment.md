@@ -188,8 +188,12 @@ python3 scripts/backfill_poc.py | \
 ./scripts/deploy.sh --remote
 ```
 
-Deploys all 8 workers in dependency order (async consumer before sync producer,
-search before API). The sync worker starts publishing to the `pdbfe-tasks` queue
+Deploys the workers in dependency order (async consumer before sync producer,
+search before API), then the frontend. A component whose build is unchanged
+since its live deployment is skipped: the script hashes the bundle wrangler
+builds (plus the config, minus `PDBFE_VERSION`) and compares it with the hash
+recorded on the live version as its tag; for the frontend, with the hash in the
+Pages deployment's commit message. `--force` deploys everything. The sync worker starts publishing to the `pdbfe-tasks` queue
 on its next cron tick (every 15 min). The async worker consumes those tasks.
 
 ---

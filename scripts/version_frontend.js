@@ -312,7 +312,9 @@ export function setLinkHeader(headers, html) {
  * and code shared between them become chunks under js/chunks/, named by
  * content hash, so they need no ?v. Names are kept (--keep-names) and each
  * file gets a linked source map. The entry's map reference gets the ?v
- * token, as the entry's own name carries no hash.
+ * token, as the entry's own name carries no hash. esbuild works relative to
+ * outDir, so the output (chunk hashes included) does not depend on where the
+ * build runs: deploy.sh hashes it to skip deploying an unchanged frontend.
  *
  * esbuild comes from frontend/package.json (the deploy installs it there).
  *
@@ -328,6 +330,7 @@ export function bundleJs(srcDir, outDir, token) {
     const result = esbuild.buildSync({
         entryPoints: [path.join(jsDir, 'boot.js')],
         outdir: tmp,
+        absWorkingDir: outDir,
         bundle: true,
         splitting: true,
         format: 'esm',
@@ -353,7 +356,7 @@ export function bundleJs(srcDir, outDir, token) {
     if (!out) throw new Error('esbuild produced no entry output');
     return out[1].imports
         .filter((i) => i.kind === 'import-statement')
-        .map((i) => '/js/' + path.relative(tmp, path.resolve(i.path)).split(path.sep).join('/'));
+        .map((i) => '/js/' + path.relative(tmp, path.resolve(outDir, i.path)).split(path.sep).join('/'));
 }
 
 /**
