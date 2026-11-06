@@ -3,8 +3,11 @@
 # Merges to main do NOT deploy. Cutting a release is a deliberate act: this
 # workflow derives the next version from the latest git tag (tags are the
 # source of truth — VERSION is never edited in PRs, so concurrent PRs never
-# conflict on it), then generates configs, applies migrations, deploys all
-# workers + frontend, and tags v<next>.
+# conflict on it), then generates configs, applies migrations, deploys the
+# workers and frontend whose build changed (see deploy.sh), and tags v<next>.
+#
+# It does not re-run tests or the schema pipeline: main only takes PRs whose
+# required checks passed on a tree up to date with main.
 #
 # deploy.sh remains the single source of truth for the deploy sequence.
 #
@@ -21,6 +24,10 @@ on:
         type: choice
         options: [auto, patch, minor, major]
         default: auto
+      force:
+        description: 'Deploy every component, even those whose build is unchanged'
+        type: boolean
+        default: false
 
   # Called by upstream-sync.yml after it auto-merges a migration-free schema
   # update. workflow_call is a direct invocation rather than an event, so it
@@ -59,10 +66,6 @@ jobs:
           # Empty (the workflow_dispatch case) means the triggering SHA.
           ref: ${{ inputs.ref }}
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -71,7 +74,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --only-binary :all: 'pyyaml==6.0.2'
           npm ci --prefix workers --ignore-scripts
           # esbuild, for the frontend bundle (scripts/version_frontend.js)
           npm ci --prefix frontend --ignore-scripts
@@ -138,8 +140,11 @@ jobs:
           API_DOMAIN_ALIASES: ${{ vars.API_DOMAIN_ALIASES }}
 
       - name: Deploy
-        run: ./scripts/deploy.sh --remote --apply-migrations --force
+        # FORCE_DEPLOY via env, like BUMP above. workflow_call has no force input, so
+        # it is empty there: a sync release deploys only what changed.
+        run: ./scripts/deploy.sh --remote --apply-migrations --skip-validation ${FORCE_DEPLOY:+--force}
         env:
+          FORCE_DEPLOY: ${{ inputs.force && '1' || '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 

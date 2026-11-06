@@ -13,7 +13,8 @@
     "test:golden:update": "UPDATE_GOLDEN=1 node --test tests/unit/api/golden.test.js"
   },
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "wrangler": "4.158.0"
   },
   "dependencies": {
     "graphql": "^16.13.2",
