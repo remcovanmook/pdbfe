@@ -131,7 +131,61 @@ function detailResolver(tag) {
 }
 
 /**
- * Creates a foreign-key resolver that loads a related entity by ID.
+ * Per-request batch loader. FK and reverse-edge fields resolve once per parent
+ * row, so a list of N parents would cost N D1 queries per relation (N+1).
+ * Instead, every load() made while one execution level runs is queued and
+ * fetched with a single query. The fetch waits a macrotask (setTimeout 0):
+ * graphql-js resolves the fields of sibling rows in promise continuations, so
+ * by the time pending microtasks have drained, every sibling has queued its
+ * key. Results are memoised per key for the rest of the request.
+ *
+ * The loaders live on the per-request GraphQL context, so nothing is shared
+ * between requests (or between authenticated and anonymous callers).
+ *
+ * @param {any} ctx - GraphQL context (one per request).
+ * @param {string} name - Loader identity: what is fetched and how.
+ * @param {number} key - Key to load (an id).
+ * @param {(keys: number[]) => Promise<Map<number, any>>} fetchMany - Fetches all queued keys at once.
+ * @returns {Promise<any>} The value fetchMany mapped to key, or undefined.
+ */
+function batchLoad(ctx, name, key, fetchMany) {
+    ctx.loaders ??= new Map();
+    let loader = ctx.loaders.get(name);
+    if (!loader) {
+        loader = { memo: new Map(), queue: [] };
+        ctx.loaders.set(name, loader);
+    }
+    let pending = loader.memo.get(key);
+    if (pending) return pending;
+    pending = new Promise((resolve, reject) => {
+        loader.queue.push({ key, resolve, reject });
+        if (loader.queue.length === 1) setTimeout(() => dispatchBatch(loader, fetchMany), 0);
+    });
+    loader.memo.set(key, pending);
+    return pending;
+}
+
+/**
+ * Fetches a loader's queued keys with one fetchMany call and settles each.
+ *
+ * @param {{queue: {key: number, resolve: Function, reject: Function}[]}} loader - The loader.
+ * @param {(keys: number[]) => Promise<Map<number, any>>} fetchMany - Batch fetch.
+ */
+async function dispatchBatch(loader, fetchMany) {
+    const batch = loader.queue;
+    loader.queue = [];
+    try {
+        const byKey = await fetchMany(batch.map(b => b.key));
+        for (const b of batch) b.resolve(byKey.get(b.key));
+    } catch (err) {
+        for (const b of batch) b.reject(err);
+    }
+}
+
+/**
+ * Creates a foreign-key resolver that loads a related entity by ID. All rows
+ * of one level that point at the same target table share one
+ * `id IN (...)` query (see batchLoad).
  *
  * @param {string} fkField - The FK field name on the parent (e.g. "org_id").
  * @param {string} targetTag - Target entity tag (e.g. "org").
@@ -141,17 +195,24 @@ function fkResolver(fkField, targetTag) {
     return async (parent, _args, ctx) => {
         const id = parent[fkField];
         if (!id) return null;
-        const entity = ENTITIES[targetTag];
-        const filters = [{ field: 'id', op: 'eq', value: String(id) }];
-        const opts = { depth: 0, limit: 1, skip: 0, since: 0, sort: '', authenticated: ctx.authenticated };
-        const { sql, params } = buildRowQuery(entity, filters, opts);
-        const result = await ctx.db.prepare(sql).bind(...params).all();
-        return (result.results || [])[0] || null;
+        const row = await batchLoad(ctx, `fk:${targetTag}`, Number(id), async (ids) => {
+            const entity = ENTITIES[targetTag];
+            const filters = [{ field: 'id', op: 'in', value: ids.join(',') }];
+            const opts = { depth: 0, limit: 0, skip: 0, since: 0, sort: '', authenticated: ctx.authenticated };
+            const { sql, params } = buildRowQuery(entity, filters, opts);
+            const result = await ctx.db.prepare(sql).bind(...params).all();
+            return new Map((result.results || []).map(r => [Number(r.id), r]));
+        });
+        return row || null;
     };
 }
 
 /**
  * Creates a reverse-edge resolver that loads child entities by parent ID.
+ * The children of all parents of one level come from one `fk IN (...)`
+ * query (see batchLoad); `ROW_NUMBER() OVER (PARTITION BY fk)` applies the
+ * per-parent skip/limit, in the same id order the per-parent query used.
+ * Only rows whose fk is a requested parent are returned to a parent.
  *
  * For restricted entities (e.g. poc), the WHERE builder limits anonymous
  * callers to the entity's _anonFilter (visible=Public), matching the
@@ -163,19 +224,27 @@ function fkResolver(fkField, targetTag) {
  */
 function reverseEdgeResolver(fkField, childTag) {
     return async (parent, args, ctx) => {
-        const entity = ENTITIES[childTag];
-        const filters = [{ field: fkField, op: 'eq', value: String(parent.id) }];
-        const opts = {
-            depth: 0,
-            limit: Math.min(args.limit ?? 250, 250),
-            skip: args.skip ?? 0,
-            since: 0,
-            sort: '',
-            authenticated: ctx.authenticated,
-        };
-        const { sql, params } = buildRowQuery(entity, filters, opts);
-        const result = await ctx.db.prepare(sql).bind(...params).all();
-        return result.results || [];
+        const limit = Math.min(args.limit ?? 250, 250);
+        const skip = Math.max(args.skip ?? 0, 0);
+        const rows = await batchLoad(ctx, `rev:${childTag}:${fkField}:${limit}:${skip}`, Number(parent.id), async (ids) => {
+            const entity = ENTITIES[childTag];
+            const filters = [{ field: fkField, op: 'in', value: ids.join(',') }];
+            const opts = { depth: 0, limit: 0, skip: 0, since: 0, sort: '', authenticated: ctx.authenticated };
+            const { sql, params } = buildRowQuery(entity, filters, opts);
+            // limit <= 0 has always meant no limit here (buildRowQuery's clamp).
+            const upper = limit > 0 ? ' AND "_rn" <= ?' : '';
+            const windowed = `SELECT * FROM (SELECT q.*, ROW_NUMBER() OVER (PARTITION BY q."${fkField}" ORDER BY q."id") AS "_rn" FROM (${sql}) AS q) WHERE "_rn" > ?${upper} ORDER BY "${fkField}", "_rn"`;
+            const bounds = limit > 0 ? [skip, skip + limit] : [skip];
+            const result = await ctx.db.prepare(windowed).bind(...params, ...bounds).all();
+            /** @type {Map<number, any[]>} */
+            const byParent = new Map(ids.map(id => [id, []]));
+            for (const row of result.results || []) {
+                delete row._rn;
+                byParent.get(Number(row[fkField]))?.push(row);
+            }
+            return byParent;
+        });
+        return rows || [];
     };
 }
 
