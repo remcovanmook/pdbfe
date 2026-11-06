@@ -6,6 +6,9 @@
  * to `duration`) and rows read, plus the number of calls — each prepare()
  * execution or batch() is one network round trip. Next to the wall-clock
  * `db` phase this splits D1 time into execution vs round-trip overhead.
+ * Where each call was answered (`served_by_region`, `served_by_primary`)
+ * goes into `served`, e.g. "WEUR replica" or "ENAM primary"; distinct
+ * places within one request are joined with "+".
  *
  * `.first()` returns no meta, so the wrapper serves it through `.all()`:
  * same single call, same data (D1's first() fetches the result set and
@@ -27,7 +30,7 @@
  */
 
 /**
- * @typedef {{ calls: number, sqlMs: number, rowsRead: number, stamp: number }} D1Stats
+ * @typedef {{ calls: number, sqlMs: number, rowsRead: number, stamp: number, served: string }} D1Stats
  * @typedef {{ sql: string, apply: (results: Record<string, any>[]) => void }} Rider
  */
 
@@ -37,7 +40,7 @@
  */
 export function withD1Stats(db) {
     /** @type {D1Stats} */
-    const stats = { calls: 0, sqlMs: 0, rowsRead: 0, stamp: 0 };
+    const stats = { calls: 0, sqlMs: 0, rowsRead: 0, stamp: 0, served: '' };
 
     /** @param {any} meta */
     const record = (meta) => {
@@ -45,6 +48,10 @@ export function withD1Stats(db) {
         const ms = meta.timings?.sql_duration_ms ?? meta.duration;
         if (Number.isFinite(ms)) stats.sqlMs += ms;
         if (Number.isFinite(meta.rows_read)) stats.rowsRead += meta.rows_read;
+        if (meta.served_by_region) {
+            const where = `${meta.served_by_region} ${meta.served_by_primary ? 'primary' : 'replica'}`;
+            if (!stats.served.includes(where)) stats.served = stats.served ? `${stats.served}+${where}` : where;
+        }
     };
 
     /** @type {Rider|null} */
