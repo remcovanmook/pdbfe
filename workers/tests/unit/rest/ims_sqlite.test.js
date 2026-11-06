@@ -79,8 +79,9 @@ describe('REST If-Modified-Since', () => {
     });
 
     it('Last-Modified is never older than the deploy, so an unchanged entity revalidates to a 304', async () => {
+        // The binding's timestamp has milliseconds; the HTTP date does not.
         const deployedS = V0 + 300;
-        const deployed = { ...env, CF_VERSION_METADATA: { timestamp: new Date(deployedS * 1000).toISOString() } };
+        const deployed = { ...env, CF_VERSION_METADATA: { timestamp: new Date(deployedS * 1000 + 523).toISOString() } };
         for (const path of ['net', 'net/100']) {
             const res = await get(path, {}, deployed);
             const lm = res.headers.get('last-modified');
