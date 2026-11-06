@@ -122,6 +122,29 @@ export function lastModifiedHeader(epochMs) {
     return new Date(epochMs).toUTCString();
 }
 
+/** Parsed CF_VERSION_METADATA.timestamp, cached by its string. */
+let _versionTs = /** @type {string|undefined} */ (undefined);
+let _versionMs = 0;
+
+/**
+ * When this worker version was deployed (epoch ms; 0 when unknown — tests,
+ * local dev): If-Modified-Since shortcuts only answer for copies at least
+ * this new, since a release may change the output format without any data
+ * changing.
+ *
+ * @param {{ CF_VERSION_METADATA?: { timestamp?: string } }} env
+ * @returns {number}
+ */
+export function deployedAtMs(env) {
+    const ts = env.CF_VERSION_METADATA?.timestamp;
+    if (ts !== _versionTs) {
+        _versionTs = ts;
+        const ms = Date.parse(ts ?? '');
+        _versionMs = Number.isNaN(ms) ? 0 : ms;
+    }
+    return _versionMs;
+}
+
 /**
  * Checks whether the client's If-Modified-Since header indicates
  * the response has not changed. Compares the request header timestamp

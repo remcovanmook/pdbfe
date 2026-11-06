@@ -23,12 +23,13 @@ import { ENTITIES, ENTITY_TAGS, validateQuery, validateFields, resolveImplicitFi
 import { parseQueryFilters } from '../api/utils.js';
 import { resolveAuth } from '../core/auth.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
-import { handlePreflight, jsonError } from '../core/http.js';
-import { H_API_AUTH, H_API_ANON, H_API_SHARED } from '../api/http.js';
+import { handlePreflight, jsonError, deployedAtMs, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
+import { H_API_AUTH, H_API_ANON, H_API_SHARED, syncAlignedFor } from '../api/http.js';
 import { isAuthSensitive, isRelationAuthSensitive } from '../api/auth_scope.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { createRateLimiter } from '../core/ratelimit.js';
-import { getRestCacheStats, purgeRestCache, ensureSyncFreshness } from './cache.js';
+import { getRestCacheStats, purgeRestCache, claimSyncPoll, runSyncPoll, getEntityVersion, refreshSyncState } from './cache.js';
+import { withD1Stats } from '../core/d1stats.js';
 import { serveStaticAsset } from './handlers/static.js';
 import { handleDetail } from './handlers/detail.js';
 import { handleListRequest } from './handlers/list.js';
@@ -106,11 +107,11 @@ async function handleRequest(request, env, ctx) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
 
-    // Gate the background _sync_meta poll to entity routes (admin/static
-    // already returned above). O(1) unless the 15s interval has elapsed.
-    ensureSyncFreshness(db, ctx, now);
-
-    return routeApiRequest(request, { db, ctx, rawPath, queryString, authenticated, dumps: env.DUMPS });
+    // The wrapper lets the _sync_meta poll ride along with the request's
+    // first D1 call (core/d1stats.js carry), as in the API worker: no extra
+    // round trip, and the entity version is known when the response is built.
+    const { db: rdb } = withD1Stats(db);
+    return routeApiRequest(request, { db: rdb, ctx, rawPath, queryString, authenticated, dumps: env.DUMPS, deployedAt: deployedAtMs(env), now });
 }
 
 /**
@@ -118,11 +119,11 @@ async function handleRequest(request, env, ctx) {
  * Extracted from handleRequest to reduce cognitive complexity.
  *
  * @param {Request} request - Inbound request.
- * @param {{db: D1Session, ctx: ExecutionContext, rawPath: string, queryString: string, authenticated: boolean, dumps?: R2Bucket}} rc - Request context.
+ * @param {{db: any, ctx: ExecutionContext, rawPath: string, queryString: string, authenticated: boolean, dumps?: R2Bucket, deployedAt: number, now: number}} rc - Request context; `db` is the withD1Stats session.
  * @returns {Promise<Response>}
  */
 async function routeApiRequest(request, rc) {
-    const { db, ctx, rawPath, queryString, authenticated, dumps } = rc;
+    const { db, ctx, rawPath, queryString, authenticated, dumps, deployedAt, now } = rc;
 
     const apiPath = rawPath.slice(3); // strip "v1/"
     const { p0: entityTag, p1: idStr, p2: relation } = tokenizeString(apiPath, '/', 3);
@@ -167,10 +168,50 @@ async function routeApiRequest(request, rc) {
     const queryError = validateQuery(entity, filters);
     if (queryError) return jsonError(400, queryError);
 
+    // If-Modified-Since: a list or depth=0 detail is made of the entity's
+    // rows alone, so the entity version answers (Last-Modified on those
+    // responses is that version). A cold isolate knows no versions yet; the
+    // edge revalidates after every sync and most leave the table unchanged,
+    // so a conditional request reads _sync_meta first (13 rows) for a 304
+    // instead of the full response. Copies from before this worker version
+    // was deployed get a full response (as api/index.js).
+    const versioned = relation === undefined && depth === 0;
+    const imsMs = versioned ? parseIfModifiedSince(request.headers) : -1;
+    if (imsMs >= 0 && imsMs >= deployedAt) {
+        if (getEntityVersion(entityTag) === 0) await refreshSyncState(db);
+        const versionMs = getEntityVersion(entityTag) * 1000;
+        if (versionMs > 0 && isNotModifiedSince(request.headers, versionMs)) {
+            return new Response(null, { status: 304, headers: { ...hResponse, 'Cache-Control': syncAlignedFor(hResponse) } });
+        }
+    }
+
     const opts = { depth, limit, skip, since, sort, fields, pdbfe, authenticated };
     /** @type {{db: D1Session, ctx: ExecutionContext, entityTag: string, authenticated: boolean, hResponse: Record<string, string>, cachePrefix: string, queryString: string, dumps?: R2Bucket}} */
     const qc = { db, ctx, entityTag, authenticated, hResponse, cachePrefix, queryString, dumps };
 
+    const poll = claimSyncPoll(now);
+    if (poll) db.carry(poll);
+    const response = await dispatch(rc, entity, idStr, relation, filters, opts, qc);
+    const unsent = db.takeRider();
+    if (unsent) ctx.waitUntil(runSyncPoll(db, unsent));
+    return response;
+}
+
+/**
+ * Dispatches a validated /v1/* request to the detail, sub-resource or list
+ * handler.
+ *
+ * @param {any} rc - Request context (see routeApiRequest).
+ * @param {EntityMeta} entity
+ * @param {string|undefined} idStr
+ * @param {string|undefined} relation
+ * @param {ParsedFilter[]} filters
+ * @param {QueryOpts} opts
+ * @param {any} qc - Query context (see handlers/list.js).
+ * @returns {Promise<Response>}
+ */
+async function dispatch(rc, entity, idStr, relation, filters, opts, qc) {
+    const { entityTag, hResponse } = qc;
     if (idStr !== undefined) {
         const id = Number.parseInt(idStr, 10);
         if (Number.isNaN(id) || id <= 0) {
@@ -179,13 +220,13 @@ async function routeApiRequest(request, rc) {
 
         // Sub-resource: /v1/{entity}/{id}/{relation}
         if (relation !== undefined) {
-            return handleSubResource(rc, entityTag, id, relation, queryString, authenticated, hResponse);
+            return handleSubResource(rc, entityTag, id, relation, rc.queryString, rc.authenticated, hResponse);
         }
 
         return handleDetail(entity, id, opts, qc);
     }
 
-    return handleListRequest(entity, filters, opts, rawPath, qc);
+    return handleListRequest(entity, filters, opts, rc.rawPath, qc);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-rest');

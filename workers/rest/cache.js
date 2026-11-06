@@ -76,7 +76,8 @@ const _sync = createSyncState({
     onEntityChange: () => restCache.purge(),
 });
 
-export const ensureSyncFreshness = _sync.ensureSyncFreshness;
+export const claimSyncPoll = _sync.claimPoll;
+export const runSyncPoll = _sync.runPoll;
 export const getEntityVersion = _sync.getEntityVersion;
 export const getDumpKey = _sync.getDumpKey;
 export const refreshSyncState = _sync.refresh;
@@ -96,7 +97,10 @@ export const refreshSyncState = _sync.refresh;
  * @param {ExecutionContext} ctx - Cloudflare worker execution context.
  * @param {() => Promise<Uint8Array|null>} queryFn - D1 query closure.
  *        Return Uint8Array for positive results, null for 404/empty.
- * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number}>}
+ * @returns {Promise<{buf: Uint8Array|null, tier: 'L1' | 'MISS', hits: number, stamp: number}>}
+ *        `stamp` is the entity version the entry was built at (read after
+ *        its query, which carried any due _sync_meta poll), kept with the
+ *        entry: a hit reports the version of its own data.
  */
 export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
     return withSWR({
@@ -107,5 +111,6 @@ export async function withRestSWR(entityTag, cacheKey, ctx, queryFn) {
         negativeTtlMs: REST_NEGATIVE_TTL,
         queryFn,
         tag: entityTag,
+        getStamp: () => _sync.getEntityVersion(entityTag),
     });
 }

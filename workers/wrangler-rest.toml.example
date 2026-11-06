@@ -49,6 +49,13 @@ PDBFE_VERSION = "<your-version>"
 [cache]
 enabled = true
 
+# This version's id and deploy time (env.CF_VERSION_METADATA). The
+# If-Modified-Since shortcut only answers for client copies made since this
+# version was deployed: a release may change the output format without any
+# data changing (core/http.js deployedAtMs).
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
 # Full-table list dumps (api/dumps.js): written by pdbfe-async, served by the API and REST workers.
 [[r2_buckets]]
 binding = "DUMPS"
