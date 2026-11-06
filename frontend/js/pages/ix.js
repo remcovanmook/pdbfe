@@ -29,19 +29,17 @@ export async function renderIx(params) {
     app.replaceChildren(createLoading(t('Loading exchange')));
 
     try {
-        const ix = await fetchEntity('ix', id, 2);
+        // All three keyed on the ix id, so none waits for another's round trip.
+        const [ix, peers, prefixes] = await Promise.all([
+            fetchEntity('ix', id, 2),
+            fetchIxPeers(id),
+            fetchList('ixpfx', { ixlan__ix_id: id })
+        ]);
 
         if (!ix) {
             app.replaceChildren(createError(t('Exchange {id} not found', { id })));
             return;
         }
-
-        // Fetch peers and LAN prefixes in parallel.
-        const ixlanId = ix.ixlan_set?.[0]?.id;
-        const [peers, prefixes] = await Promise.all([
-            fetchIxPeers(id),
-            ixlanId ? fetchList('ixpfx', { ixlan_id: ixlanId }) : Promise.resolve([])
-        ]);
 
         // Attach prefixes so the sidebar renderer picks them up
         ix.ixpfx_set = prefixes;
