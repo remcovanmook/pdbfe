@@ -143,7 +143,10 @@ export function deployedAtMs(env) {
     if (ts !== _versionTs) {
         _versionTs = ts;
         const ms = Date.parse(ts ?? '');
-        _versionMs = Number.isNaN(ms) ? 0 : ms;
+        // Whole seconds: the deploy time comes back from the client as an
+        // HTTP date (Last-Modified → If-Modified-Since), which has no
+        // milliseconds; 12:34:51.523 would refuse its own 12:34:51.
+        _versionMs = Number.isNaN(ms) ? 0 : Math.floor(ms / 1000) * 1000;
     }
     return _versionMs;
 }

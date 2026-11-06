@@ -107,8 +107,9 @@ describe('If-Modified-Since on details', () => {
         // net's version (V0) predates the deploy. Its Last-Modified must not:
         // the edge echoes it as If-Modified-Since, and one older than the
         // deploy would be refused by the guard on every revalidation.
+        // The binding's timestamp has milliseconds; the HTTP date does not.
         const deployedS = NOW - 30;
-        const deployed = { ...env, CF_VERSION_METADATA: { id: 'v', tag: '', timestamp: new Date(deployedS * 1000).toISOString() } };
+        const deployed = { ...env, CF_VERSION_METADATA: { id: 'v', tag: '', timestamp: new Date(deployedS * 1000 + 523).toISOString() } };
         const req = (/** @type {string} */ path, /** @type {Record<string, string>} */ h = {}) => apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`, {
             headers: { 'cf-connecting-ip': `10.2.2.${++ip}`, ...h },
         }), deployed, mockCtx);
