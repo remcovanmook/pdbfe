@@ -103,6 +103,23 @@ describe('If-Modified-Since on details', () => {
         assert.equal((await req('net/101?depth=1', NOW)).status, 304, 'since the deploy: answered');
     });
 
+    it('Last-Modified is never older than the deploy, so an unchanged entity revalidates to a 304', async () => {
+        // net's version (V0) predates the deploy. Its Last-Modified must not:
+        // the edge echoes it as If-Modified-Since, and one older than the
+        // deploy would be refused by the guard on every revalidation.
+        const deployedS = NOW - 30;
+        const deployed = { ...env, CF_VERSION_METADATA: { id: 'v', tag: '', timestamp: new Date(deployedS * 1000).toISOString() } };
+        const req = (/** @type {string} */ path, /** @type {Record<string, string>} */ h = {}) => apiWorker.fetch(new Request(`https://api.pdbfe.dev/api/${path}`, {
+            headers: { 'cf-connecting-ip': `10.2.2.${++ip}`, ...h },
+        }), deployed, mockCtx);
+        for (const path of ['net', 'net/101']) {
+            const res = await req(path);
+            const lm = res.headers.get('last-modified');
+            assert.equal(lm, new Date(deployedS * 1000).toUTCString(), `${path}: raised to the deploy time`);
+            assert.equal((await req(path, { 'If-Modified-Since': /** @type {string} */ (lm) })).status, 304, `${path}: revalidates`);
+        }
+    });
+
     it('a failing check counts as changed', async () => {
         sqlite.exec('ALTER TABLE "_row_changes" RENAME TO "_row_changes_gone"');
         try {

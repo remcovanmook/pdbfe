@@ -11,7 +11,7 @@
  */
 
 import { VERSIONS } from './entities.js';
-import { H_CORS, H_NOCACHE, SHARED_MARKER, lastModifiedHeader } from '../core/http.js';
+import { H_CORS, H_NOCACHE, SHARED_MARKER, lastModifiedHeader, lastModifiedFloorMs } from '../core/http.js';
 
 // Re-export core symbols that api/ modules also need, so they can
 // import everything from a single api/http.js entry point.
@@ -221,14 +221,16 @@ const DEFAULT_META = Object.freeze({ tier: /** @type {import('./cache.js').Cache
  * @param {{tier: import('./cache.js').CacheTier | 'R2', hits: number, timing?: string}} [meta] - Cache metadata for X-Cache headers (+ optional Server-Timing value).
  * @param {Record<string, string>} [baseHeaders] - Base header set. Defaults to H_API;
  *        pass H_API_AUTH or H_API_ANON to bake in X-Auth-Status without cloning.
- * @param {number} [lastModifiedMs] - Entity last-modified epoch ms. When >0, sets Last-Modified.
+ * @param {number} [lastModifiedMs] - Entity last-modified epoch ms. When >0, sets Last-Modified
+ *        (raised to this version's deploy time when older).
  * @param {number|null} [authId] - Authenticated user ID. When non-null, sets X-Auth-Id.
  * @returns {Response} The HTTP response ready for the client.
  */
 export function serveJSON(buf, meta = DEFAULT_META, baseHeaders = H_API, lastModifiedMs = 0, authId = null) {
     /** @type {Record<string, string>} */
     const extra = {};
-    if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(lastModifiedMs);
+    // Never older than this version's deploy (core/http.js lastModifiedFloorMs).
+    if (lastModifiedMs > 0) extra['Last-Modified'] = lastModifiedHeader(Math.max(lastModifiedMs, lastModifiedFloorMs()));
     if (meta.timing) extra['Server-Timing'] = meta.timing;
     // Expires just after the next sync, not after a fixed 60s. A stream is
     // a large list, never below the no-transform threshold.
