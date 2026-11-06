@@ -168,7 +168,8 @@ function batchLoad(ctx, name, key, fetchMany) {
 /**
  * Fetches a loader's queued keys with one fetchMany call and settles each.
  *
- * @param {{queue: {key: number, resolve: Function, reject: Function}[]}} loader - The loader.
+ * @param {Object} loader - The loader.
+ * @param {Array<{key: number, resolve: Function, reject: Function}>} loader.queue - Queued loads.
  * @param {(keys: number[]) => Promise<Map<number, any>>} fetchMany - Batch fetch.
  */
 async function dispatchBatch(loader, fetchMany) {
