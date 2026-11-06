@@ -30,7 +30,7 @@ describe('withD1Stats', () => {
         const { db, stats } = withD1Stats(fakeD1([{ id: 1 }]));
         await db.prepare('SELECT 1').bind(1).all();
         await db.batch([db.prepare('a').bind(), db.prepare('b')]);
-        assert.deepEqual(stats, { calls: 2, sqlMs: 7.5, rowsRead: 30, stamp: 0 }); // 1 + batch of 2 statements
+        assert.deepEqual(stats, { calls: 2, sqlMs: 7.5, rowsRead: 30, stamp: 0, served: '' }); // 1 + batch of 2 statements
     });
 
     it('first() goes through all(): same row, and meta is recorded', async () => {
@@ -48,12 +48,29 @@ describe('withD1Stats', () => {
         await db.prepare('q').all();
         assert.equal(stats.sqlMs, 1.25);
     });
+
+    it('records where D1 answered, each distinct place once', async () => {
+        /** @type {any} */
+        let meta = { duration: 1, rows_read: 1, served_by_region: 'WEUR', served_by_primary: false };
+        const d1 = fakeD1([]);
+        const { db, stats } = withD1Stats({ ...d1, prepare: (/** @type {string} */ sql) => ({ ...d1.prepare(sql), all: async () => ({ results: [], meta }) }) });
+        await db.prepare('a').all();
+        await db.prepare('b').all();
+        assert.equal(stats.served, 'WEUR replica');
+        meta = { ...meta, served_by_region: 'ENAM', served_by_primary: true };
+        await db.prepare('c').all();
+        assert.equal(stats.served, 'WEUR replica+ENAM primary');
+    });
 });
 
 describe('serverTiming d1 segment', () => {
     it('appended when D1 was called', () => {
         assert.equal(serverTiming(0, { tier: 'MISS', dbMs: 40 }, { calls: 2, sqlMs: 4.34, rowsRead: 250 }),
             'cache;desc="MISS", auth;dur=0, db;dur=40, d1;dur=4.3;desc="2 rt, 250 rows"');
+    });
+    it('names where D1 answered, when it said', () => {
+        assert.equal(serverTiming(0, { tier: 'MISS', dbMs: 266 }, { calls: 1, sqlMs: 24.4, rowsRead: 1298, stamp: 0, served: 'ENAM primary' }),
+            'cache;desc="MISS", auth;dur=0, db;dur=266, d1;dur=24.4;desc="1 rt, 1298 rows, ENAM primary"');
     });
     it('omitted on cache hits (no D1 call)', () => {
         assert.equal(serverTiming(0, { tier: 'L1' }, { calls: 0, sqlMs: 0, rowsRead: 0 }), 'cache;desc="L1", auth;dur=0');
@@ -95,7 +112,7 @@ describe('riders (the sync poll sent with the request’s first D1 call)', () =>
         assert.deepEqual(f.batches, [['MAIN', 'POLL']]);
         assert.deepEqual(f.direct, []);
         assert.deepEqual(polled, [{ from: 'POLL' }]);
-        assert.deepEqual(stats, { calls: 1, sqlMs: 1, rowsRead: 1, stamp: 0 }, 'rider meta not counted');
+        assert.deepEqual(stats, { calls: 1, sqlMs: 1, rowsRead: 1, stamp: 0, served: '' }, 'rider meta not counted');
         await db.prepare('NEXT').all();
         assert.deepEqual(f.direct, ['NEXT'], 'only the first call carries it');
     });

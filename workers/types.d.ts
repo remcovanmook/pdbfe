@@ -716,7 +716,7 @@ interface HandlerContext {
     /** Auth resolution time (ms), reported in Server-Timing. */
     authMs?: number;
     /** Per-request D1 counters for Server-Timing, and the sync run's as-of time read with the query (stamp; Last-Modified) — core/d1stats.js. */
-    d1?: { calls: number, sqlMs: number, rowsRead: number, stamp: number };
+    d1?: { calls: number, sqlMs: number, rowsRead: number, stamp: number, served: string };
     /** Pipeline result of the request (set by list/detail handlers) for tier metrics. */
     pipeline?: { tier: string, dbMs?: number };
     /** R2 bucket pdbfe-dumps (api/dumps.js); absent in dev/tests. */

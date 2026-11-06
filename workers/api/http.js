@@ -15,7 +15,7 @@ import { H_CORS, H_NOCACHE, SHARED_MARKER, lastModifiedHeader } from '../core/ht
 
 // Re-export core symbols that api/ modules also need, so they can
 // import everything from a single api/http.js entry point.
-export { encoder, encodeJSON, jsonError, handlePreflight, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
+export { encoder, encodeJSON, jsonError, handlePreflight, H_CORS, H_NOCACHE, lastModifiedHeader, isNotModifiedSince, parseIfModifiedSince, deployedAtMs } from '../core/http.js';
 
 /**
  * Standard cache headers for API responses.
@@ -92,7 +92,8 @@ export const H_NOCACHE_ANON = Object.freeze({ ...H_NOCACHE, "X-Auth-Status": "un
  *
  * `d1` (core/d1stats.js) adds what D1 itself reported for this request's
  * calls: `d1;dur` = SQL execution time inside D1, desc = round trips and rows
- * read. `db` minus `d1` is network/round-trip overhead plus JS work.
+ * read, plus where D1 answered (region, primary or replica) when it says.
+ * `db` minus `d1` is network/round-trip overhead plus JS work.
  *
  * @param {number|undefined} authMs - Auth resolution time.
  * @param {{tier: string, dbMs?: number}} r - Pipeline result.
@@ -103,7 +104,7 @@ export function serverTiming(authMs, r, d1) {
     let v = `cache;desc="${r.tier}"`;
     if (authMs !== undefined) v += `, auth;dur=${authMs}`;
     if (r.dbMs !== undefined) v += `, db;dur=${r.dbMs}`;
-    if (d1 && d1.calls > 0) v += `, d1;dur=${Math.round(d1.sqlMs * 10) / 10};desc="${d1.calls} rt, ${d1.rowsRead} rows"`;
+    if (d1 && d1.calls > 0) v += `, d1;dur=${Math.round(d1.sqlMs * 10) / 10};desc="${d1.calls} rt, ${d1.rowsRead} rows${d1.served ? `, ${d1.served}` : ''}"`;
     return v;
 }
 

@@ -12,6 +12,7 @@ import { encodeJSON, encoder } from '../../core/http.js';
 import { normaliseCacheKey } from '../../core/cache.js';
 import { serveJSON, jsonError } from '../../api/http.js';
 import { withRestSWR } from '../cache.js';
+import { lastModifiedOf } from './list.js';
 
 /**
  * Handles a detail request for a single entity by ID.
@@ -27,7 +28,7 @@ export async function handleDetail(entity, id, opts, qc) {
     // Partitioned by auth state where it matters (see handlers/list.js).
     const cacheKey = normaliseCacheKey(`${qc.cachePrefix}:v1/${entityTag}/${id}`, queryString);
 
-    const { buf, tier, hits } = await withRestSWR(
+    const { buf, tier, hits, stamp } = await withRestSWR(
         entityTag, cacheKey, ctx,
         async () => {
             if (opts.depth > 0) {
@@ -51,5 +52,5 @@ export async function handleDetail(entity, id, opts, qc) {
         return jsonError(404, `${entityTag} with id ${id} not found`);
     }
 
-    return serveJSON(buf, { tier, hits }, hResponse);
+    return serveJSON(buf, { tier, hits }, hResponse, lastModifiedOf(stamp, opts));
 }

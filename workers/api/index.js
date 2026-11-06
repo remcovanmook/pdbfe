@@ -7,11 +7,11 @@
 import { parseURL, tokenizeString } from '../core/utils.js';
 import { parseQueryFilters } from './utils.js';
 import { validateRequest, routeAdminPath, isAdminPath, wrapHandler } from '../core/admin.js';
-import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, syncAlignedFor } from './http.js';
+import { handlePreflight, jsonError, H_API_AUTH, H_API_ANON, H_API_SHARED, H_NOCACHE_AUTH, H_NOCACHE_ANON, isNotModifiedSince, parseIfModifiedSince, deployedAtMs, syncAlignedFor } from './http.js';
 import { isAuthSensitive } from './auth_scope.js';
 import { changedSince } from './depth.js';
 import { handleList, handleDetail, handleAsSet, handleCompare, handleNotImplemented } from './handlers/index.js';
-import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus } from './sync_state.js';
+import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus, refreshSyncState } from './sync_state.js';
 import { withD1Stats } from '../core/d1stats.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
@@ -38,28 +38,6 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * (kept 25h, sync/row_changes.js): the full response is served.
  */
 const IMS_WINDOW_MS = 24 * 3600 * 1000;
-
-/** Parsed CF_VERSION_METADATA.timestamp, cached by its string. */
-let _versionTs = /** @type {string|undefined} */ (undefined);
-let _versionMs = 0;
-
-/**
- * When this worker version was deployed (epoch ms; 0 when unknown — tests,
- * local dev): If-Modified-Since shortcuts only answer for copies at least
- * this new (see handleRequest).
- *
- * @param {PdbApiEnv} env
- * @returns {number}
- */
-function deployedAtMs(env) {
-    const ts = env.CF_VERSION_METADATA?.timestamp;
-    if (ts !== _versionTs) {
-        _versionTs = ts;
-        const ms = Date.parse(ts ?? '');
-        _versionMs = Number.isNaN(ms) ? 0 : ms;
-    }
-    return _versionMs;
-}
 
 /**
  * Last-Modified: last_sync of the entity the sync worker processes last (it
@@ -294,9 +272,17 @@ async function handleRequest(request, env, ctx) {
     // bytes. Across versions it may not — a release may change the output
     // format — so a copy older than this version's deploy gets a full
     // response. (The edge cache is per version anyway; this is for browsers.)
-    const entityVersionMs = getEntityVersion(entityTag) * 1000;
+    //
+    // Most isolates are cold, and a cold one knows no entity versions yet.
+    // The edge revalidates an expired copy with If-Modified-Since after
+    // every sync, and most syncs leave a table unchanged, so a conditional
+    // request whose answer comes from the entity version first reads
+    // _sync_meta (13 rows, one round trip): a 304 instead of re-sending
+    // the whole response, up to the full-table dumps.
     const imsMs = parseIfModifiedSince(request.headers);
     const imsUsable = imsMs >= 0 && imsMs >= deployedAtMs(env);
+    if (imsUsable && (id <= 0 || depth === 0) && getEntityVersion(entityTag) === 0) await refreshSyncState(db);
+    const entityVersionMs = getEntityVersion(entityTag) * 1000;
     let notModified = imsUsable && (id <= 0 || depth === 0) && entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);
     if (!notModified && imsUsable && id > 0 && since <= 0 && imsMs >= now - IMS_WINDOW_MS) {
         notModified = !(await changedSince(db, entity, id, depth, Math.floor(imsMs / 1000)));

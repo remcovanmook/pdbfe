@@ -36,10 +36,11 @@ export async function handleListRequest(entity, filters, opts, rawPath, qc) {
         if (getEntityVersion(entityTag) === 0) await refreshSyncState(db);
         const version = getEntityVersion(entityTag);
         const dump = await currentDump(qc.dumps, entityTag, getDumpKey(entityTag), version);
-        if (dump) return serveJSON(dump, { tier: 'R2', hits: 0 }, hResponse);
+        if (dump) return serveJSON(dump, { tier: 'R2', hits: 0 }, hResponse, version * 1000);
     }
     if (isStreamedList(entity, filters, opts)) {
-        return serveJSON(await streamJsonList(db, entity, filters, opts), { tier: 'MISS', hits: 0 }, hResponse);
+        const stream = await streamJsonList(db, entity, filters, opts);
+        return serveJSON(stream, { tier: 'MISS', hits: 0 }, hResponse, lastModifiedOf(getEntityVersion(entityTag), opts));
     }
     // Partitioned by auth state where it matters (poc lists, depth>0
     // poc_set): authenticated responses include non-public contacts and must
@@ -47,7 +48,7 @@ export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     // 'pub' partition. The router picks qc.cachePrefix (api/auth_scope.js).
     const cacheKey = normaliseCacheKey(`${qc.cachePrefix}:${rawPath}`, queryString);
 
-    const { buf, tier, hits } = await withRestSWR(
+    const { buf, tier, hits, stamp } = await withRestSWR(
         entityTag, cacheKey, ctx,
         async () => {
             if (opts.depth > 0) {
@@ -64,5 +65,20 @@ export async function handleListRequest(entity, filters, opts, rawPath, qc) {
     );
 
     const effectiveBuf = buf || EMPTY_ENVELOPE;
-    return serveJSON(effectiveBuf, { tier, hits }, hResponse);
+    return serveJSON(effectiveBuf, { tier, hits }, hResponse, lastModifiedOf(stamp, opts));
+}
+
+/**
+ * Last-Modified for a response: the entity version its data was read at
+ * (epoch ms) for depth=0, which shows the entity's rows alone (the router
+ * answers If-Modified-Since from the version); 0, no header, at depth>0 or
+ * when the version is unknown. Read after the query: on a cold isolate the
+ * _sync_meta poll rode along with it.
+ *
+ * @param {number} version - Entity version (epoch s).
+ * @param {QueryOpts} opts
+ * @returns {number}
+ */
+export function lastModifiedOf(version, opts) {
+    return opts.depth === 0 ? version * 1000 : 0;
 }
