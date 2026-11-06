@@ -279,8 +279,9 @@ async function handleRequest(request, env, ctx) {
     // request whose answer comes from the entity version first reads
     // _sync_meta (13 rows, one round trip): a 304 instead of re-sending
     // the whole response, up to the full-table dumps.
+    const deployedAt = deployedAtMs(env);   // also sets the Last-Modified floor (core/http.js)
     const imsMs = parseIfModifiedSince(request.headers);
-    const imsUsable = imsMs >= 0 && imsMs >= deployedAtMs(env);
+    const imsUsable = imsMs >= 0 && imsMs >= deployedAt;
     if (imsUsable && (id <= 0 || depth === 0) && getEntityVersion(entityTag) === 0) await refreshSyncState(db);
     const entityVersionMs = getEntityVersion(entityTag) * 1000;
     let notModified = imsUsable && (id <= 0 || depth === 0) && entityVersionMs > 0 && isNotModifiedSince(request.headers, entityVersionMs);

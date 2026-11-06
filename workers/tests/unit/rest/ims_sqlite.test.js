@@ -78,6 +78,18 @@ describe('REST If-Modified-Since', () => {
         assert.equal((await get('net', ims(V0 + 180), deployed)).status, 304);
     });
 
+    it('Last-Modified is never older than the deploy, so an unchanged entity revalidates to a 304', async () => {
+        const deployedS = V0 + 300;
+        const deployed = { ...env, CF_VERSION_METADATA: { timestamp: new Date(deployedS * 1000).toISOString() } };
+        for (const path of ['net', 'net/100']) {
+            const res = await get(path, {}, deployed);
+            const lm = res.headers.get('last-modified');
+            assert.equal(lm, http(deployedS), `${path}: raised to the deploy time`);
+            assert.equal((await get(path, { 'If-Modified-Since': /** @type {string} */ (lm) }, deployed)).status, 304, `${path}: revalidates`);
+        }
+        await get('net/100');   // back to no deploy time for the tests below
+    });
+
     it('after a sync changes the entity: 200 with the new version, then 304 against it', async () => {
         sqlite.prepare(`UPDATE "_sync_meta" SET last_modified_at = ? WHERE entity = 'net'`).run(V1);
         // The router answers from the version the isolate polled last (at

@@ -129,7 +129,7 @@ Every API request follows this hierarchy:
    - **D1:** Execute the handler's `queryFn` closure.
    - **Write-back:** Store result in L1, return.
    - If `queryFn` returns `null`, `EMPTY_ENVELOPE` is stored with `NEGATIVE_TTL`.
-8. **Last-Modified:** `last_sync` of the entity the sync worker processes last (registry order; that row moves only once the whole run is written, so it is the time the mirror is complete as of). Read by primary key in the same D1 batch as the query (`db.stamp()`, `core/d1stats.js`), so it describes that query's snapshot, and kept with the L1 entry so hits send the value they were built under.
+8. **Last-Modified:** `last_sync` of the entity the sync worker processes last (registry order; that row moves only once the whole run is written, so it is the time the mirror is complete as of). Read by primary key in the same D1 batch as the query (`db.stamp()`, `core/d1stats.js`), so it describes that query's snapshot, and kept with the L1 entry so hits send the value they were built under. Never older than this worker version's deploy time (`lastModifiedFloorMs`, `core/http.js`): the edge echoes it as If-Modified-Since, and the shortcut refuses copies older than the deploy.
 9. **Background:** If paginated, `waitUntil` to pre-fetch next page.
 
 Cache keys are **partitioned by authentication state** (`auth:` / `anon:` prefix) to prevent cache poisoning between authenticated and anonymous responses.

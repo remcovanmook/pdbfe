@@ -130,7 +130,10 @@ let _versionMs = 0;
  * When this worker version was deployed (epoch ms; 0 when unknown — tests,
  * local dev): If-Modified-Since shortcuts only answer for copies at least
  * this new, since a release may change the output format without any data
- * changing.
+ * changing. Responses carry Last-Modified no older than this
+ * (lastModifiedFloorMs), so a copy this version made passes the check and
+ * one from an earlier version does not. The routers call this on every
+ * entity request, before any response is built.
  *
  * @param {{ CF_VERSION_METADATA?: { timestamp?: string } }} env
  * @returns {number}
@@ -142,6 +145,18 @@ export function deployedAtMs(env) {
         const ms = Date.parse(ts ?? '');
         _versionMs = Number.isNaN(ms) ? 0 : ms;
     }
+    return _versionMs;
+}
+
+/**
+ * The floor for Last-Modified: this version's deploy time, as last read by
+ * deployedAtMs (constant per isolate, which runs one version). A table that
+ * has not changed since the deploy would otherwise send a Last-Modified older
+ * than the deploy, and the deploy guard would refuse every revalidation of it.
+ *
+ * @returns {number}
+ */
+export function lastModifiedFloorMs() {
     return _versionMs;
 }
 
