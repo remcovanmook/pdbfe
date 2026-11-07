@@ -140,10 +140,19 @@ export function startVerification(env, caller) {
         valid,
         userId,
         ms: Date.now() - t0,
-        rejection: valid ? null
-            : expiresAt === null ? 'Invalid API key. Create a key at /account after signing in.'
-            : `This API key expired at ${expiresAt}. Rotate or create a key at /account.`,
+        rejection: valid ? null : keyRejection(expiresAt),
     }));
+}
+
+/**
+ * The 401 message for a key that does not hold.
+ *
+ * @param {string|null} expiresAt - The key's expiry, when it has one (it lapsed); null for an unknown or revoked key.
+ * @returns {string}
+ */
+function keyRejection(expiresAt) {
+    if (expiresAt === null) return 'Invalid API key. Create a key at /account after signing in.';
+    return `This API key expired at ${expiresAt}. Rotate or create a key at /account.`;
 }
 
 /**
@@ -161,7 +170,7 @@ export function startVerification(env, caller) {
  */
 export async function settle(response, caller, verification, error) {
     let { userId, ms } = caller;
-    if (verification) {
+    if (verification !== null) {
         const key = await verification;
         if (!key.valid) return error(401, /** @type {string} */ (key.rejection));
         ({ userId, ms } = key);
