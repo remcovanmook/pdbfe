@@ -59,3 +59,18 @@ dataset = "pdbfe_api_cache"
 [[r2_buckets]]
 binding = "DUMPS"
 bucket_name = "pdbfe-dumps"
+
+# Rate limiting (core/gate.js): Workers rate-limit bindings, counted per
+# Cloudflare location across all of this worker's isolates. Approximate:
+# they stop floods, they are not accounting. RL_AUTH is keyed by the API key
+# or session, RL_ANON by the caller's IP (IPv6 /64). Namespace ids are
+# unique per account; each worker has its own budget.
+[[ratelimits]]
+name = "RL_ANON"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "RL_AUTH"
+namespace_id = "1002"
+simple = { limit = 600, period = 60 }

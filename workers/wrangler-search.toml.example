@@ -39,3 +39,18 @@ PDBFE_VERSION = "<your-version>"
 # from a cold edge cache that falls to the warm per-PoP L2.
 [cache]
 enabled = true
+
+# Rate limiting (core/gate.js): Workers rate-limit bindings, counted per
+# Cloudflare location across all of this worker's isolates. Approximate:
+# they stop floods, they are not accounting. RL_AUTH is keyed by the API key
+# or session, RL_ANON by the caller's IP (IPv6 /64). Namespace ids are
+# unique per account; each worker has its own budget.
+[[ratelimits]]
+name = "RL_ANON"
+namespace_id = "1007"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "RL_AUTH"
+namespace_id = "1008"
+simple = { limit = 100, period = 60 }

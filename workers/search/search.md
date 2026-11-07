@@ -13,7 +13,7 @@ Client → wrapHandler (core/admin.js)
        → validateRequest                — method check
        → handlePreflight / routeAdmin   — CORS / health / stats
        → resolveAuth (core/auth.js)     — API key or session
-       → isRateLimited                  — 10/100 req/min (anon/auth)
+       → identifyCaller / rateLimited    — 10/100 req/min (anon/auth), core/gate.js
        → handleSearch (handlers/query.js)
            → parseSearchParams          — tokenizeString §2: no regex
            → buildSearchKey             — SHA-256, auth-scoped
@@ -29,7 +29,7 @@ Client → wrapHandler (core/admin.js)
 
 ```
 search/
-├── index.js              Router, rate limiter init, wrapHandler default export
+├── index.js              Router, request gate (core/gate.js), wrapHandler default export
 ├── cache.js              LRU instance, TTLs, sentinel, buildSearchKey(), withSearchSWR()
 ├── entities.js           SEARCH_FIELDS map (keyword field list per entity type)
 ├── search.md             This file
@@ -130,7 +130,7 @@ This means a plain name search like "Cogent" or "AMS-IX" will always use keyword
 
 ## Rate Limiting
 
-Isolate-level, keyed by `identity` (API key / session ID) or `cf-connecting-ip`.
+Workers rate-limit bindings (`RL_AUTH` / `RL_ANON`, core/gate.js), counted per Cloudflare location across all isolates: keyed by API key or valid session, else by `cf-connecting-ip` (IPv6 /64).
 
 | Tier | Limit |
 |---|---|

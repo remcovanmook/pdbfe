@@ -388,18 +388,16 @@ describe('If-Modified-Since', () => {
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
 describe('unknown paths', () => {
-    // A TEST-NET-3 address no other test uses, so its quota can be exhausted here.
-    const ip = '198.51.100.77';
+    // The Workers rate-limit binding (core/gate.js), here always over the limit.
+    const overLimit = { limit: async () => ({ success: false }) };
     const send = (path, method = 'GET') => worker.fetch(
-        new Request(`https://api.pdbfe.dev/${path}`, { method, headers: { 'cf-connecting-ip': ip } }),
-        mockEnv(),
+        new Request(`https://api.pdbfe.dev/${path}`, { method, headers: { 'cf-connecting-ip': '198.51.100.77' } }),
+        { ...mockEnv(), RL_ANON: overLimit },
         mockCtx
     );
 
     it('answer 404, not 429, for a caller over the rate limit', async () => {
-        let last;
-        for (let i = 0; i < 61; i++) last = await send('api/net');
-        assert.equal(last.status, 429);
+        assert.equal((await send('api/net')).status, 429);
 
         for (const path of ['nope', 'wp-login.php', 'static/css/style.css', 'api/', 'api/user/ismustmobile', 'api/index/webconfig']) {
             assert.equal((await send(path)).status, 404, path);
@@ -420,21 +418,16 @@ describe('unknown paths', () => {
 });
 
 describe('rate limiting', () => {
-    it('returns 429 after exceeding anonymous limit', async () => {
-        // The limiter is isolate-level state. To trigger it without hammering
-        // the real quota, send 61 requests in a tight loop — the 61st should be 429.
-        // NOTE: This test is somewhat fragile if other tests in this suite have
-        // already consumed quota for the same IP. Using a unique IP to isolate.
-        const uniqueIP = '198.51.100.99'; // TEST-NET-3, never a real CF IP
-        const url = 'https://api.pdbfe.dev/api/net';
-        let last;
-        for (let i = 0; i < 61; i++) {
-            last = await worker.fetch(
-                new Request(url, { headers: { 'cf-connecting-ip': uniqueIP } }),
-                mockEnv(),
-                mockCtx
-            );
-        }
+    it('returns 429 when the anonymous binding says the caller is over its limit', async () => {
+        /** @type {string[]} */
+        const keys = [];
+        const RL_ANON = { limit: async (/** @type {{key: string}} */ o) => { keys.push(o.key); return { success: false }; } };
+        const last = await worker.fetch(
+            new Request('https://api.pdbfe.dev/api/net', { headers: { 'cf-connecting-ip': '198.51.100.99' } }),
+            { ...mockEnv(), RL_ANON },
+            mockCtx
+        );
+        assert.deepEqual(keys, ['198.51.100.99']);
         assert.equal(last.status, 429);
         const body = await last.json();
         assert.ok(body.error.includes('Too Many Requests'));

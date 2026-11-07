@@ -15,27 +15,13 @@
  * Route: graphql.pdbfe.dev/*
  */
 
-import { resolveAuth } from '../core/auth.js';
+import { identifyCaller, rateLimited, startVerification, settle } from '../core/gate.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from '../core/http.js';
 import { parseURL } from '../core/utils.js';
-import { createRateLimiter } from '../core/ratelimit.js';
 import { getGqlCacheStats, purgeGqlCache, ensureSyncFreshness } from './cache.js';
 import { serveStaticAsset } from './handlers/static.js';
 import { handleQuery, handleUncached } from './handlers/query.js';
-
-/**
- * Rate limiter instance for GraphQL requests.
- * Lower throughput than the API worker — GraphQL queries tend to be
- * heavier, so we allow fewer requests per window.
- */
-const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
-    slots: 2000,
-    maxBytes: 2 * 1024 * 1024,
-    windowMs: 60_000,
-    limitAnon: 30,
-    limitAuth: 300,
-});
 
 /**
  * Handles incoming requests to the GraphQL worker.
@@ -73,11 +59,8 @@ async function handleRequest(request, env, ctx) {
     const adminResponse = await routeAdminPath(rawPath, env, {
         db,
         serviceName: 'pdbfe-graphql',
-        getStats: () => ({
-            graphql: getGqlCacheStats(),
-            rateLimit: getRateLimitStats(),
-        }),
-        flush: () => { purgeGqlCache(); purgeRateLimit(); },
+        getStats: () => ({ graphql: getGqlCacheStats() }),
+        flush: () => purgeGqlCache(),
     });
     if (adminResponse) return adminResponse;
 
@@ -92,28 +75,26 @@ async function handleRequest(request, env, ctx) {
         return jsonError(404, 'Not found');
     }
 
-    // Auth resolution
-    const { authenticated, identity, rejection } = await resolveAuth(request, env);
-    if (rejection) return jsonError(403, rejection);
-
-    // Rate limiting
-    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    const callerKey = identity || clientIP;
-    const now = Date.now();
-    if (isRateLimited(callerKey, authenticated, now)) {
+    // Rate limit, then serve as authenticated when the caller has a key or a
+    // valid session; a key is verified alongside, a bad one gets a 401
+    // (core/gate.js).
+    const caller = await identifyCaller(request, env);
+    if (caller.rejection) return jsonError(403, caller.rejection);
+    if (await rateLimited(env, request, caller)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
+    const authenticated = caller.identity !== null;
+    const verification = startVerification(env, caller);
 
     // Background _sync_meta poll: purges the result cache once the data has
     // changed. O(1) unless the 15s interval has elapsed.
-    ensureSyncFreshness(db, ctx, now);
+    ensureSyncFreshness(db, ctx, Date.now());
 
-    // POST → cached query pipeline (returns null on negative cache bypass)
-    const cached = await handleQuery(request, db, ctx, authenticated);
-    if (cached) return cached;
-
-    // Fallback: uncached yoga for non-POST, HEAD, or negative-cache bypass
-    return handleUncached(request, db, authenticated);
+    // POST → cached query pipeline (returns null on negative cache bypass);
+    // fallback: uncached yoga for non-POST, HEAD, or negative-cache bypass.
+    const response = await handleQuery(request, db, ctx, authenticated)
+        ?? await handleUncached(request, db, authenticated);
+    return settle(response, caller, verification, jsonError);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-graphql');

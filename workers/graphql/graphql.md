@@ -7,7 +7,7 @@ The GraphQL worker provides a GraphQL API surfacing the PeeringDB dataset using 
 ```
 Client → wrapHandler (error trap + telemetry headers)
        → extractApiKey / extractSessionId → authenticated
-       → isRateLimited (isolate-level, per-IP or per-identity)
+       → identifyCaller / rateLimited / startVerification (core/gate.js; Workers rate-limit bindings)
        → validateRequest (method checks, URL validation)
        → env.PDB.withSession("first-unconstrained") → db (global connection)
        → Router
@@ -21,7 +21,7 @@ Client → wrapHandler (error trap + telemetry headers)
 
 ```
 graphql/
-├── index.js              Router, rate limiter init
+├── index.js              Router, request gate (core/gate.js)
 ├── cache.js              LRU cache, TTLs, withGqlSWR(), graphqlCacheKey()
 └── handlers/
     ├── query.js          handleGraphQLQuery (yoga pipeline + SWR)
