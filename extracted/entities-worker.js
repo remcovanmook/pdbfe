@@ -160,11 +160,9 @@ const _entity_fac = {
     ],
     joinColumns: undefined,
     relationships: [
-        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_carrier", localFk: "carrier_id", columns: { "name": "carrier_name" } }] },
-        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_ix", localFk: "ix_id", columns: { "name": "ix_name" } }] },
-        { field: "netfac_set", table: "peeringdb_network_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name", "asn": "net_asn" } }] },
-        { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "net_side_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] },
-        { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "ix_side_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] }
+        { field: "carrierfac_set", table: "peeringdb_ix_carrier_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_carrier", localFk: "carrier_id", columns: { "name": "carrier_name" } }], pdbfeOnly: true },
+        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_ix", localFk: "ix_id", columns: { "name": "ix_name" } }], pdbfeOnly: true },
+        { field: "netfac_set", table: "peeringdb_network_facility", fk: "fac_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name", "asn": "net_asn" } }], pdbfeOnly: true }
     ],
     _columns: ["id", "name", "website", "social_media", "aka", "name_long", "clli", "rencode", "npanxx", "tech_email", "tech_phone", "sales_email", "sales_phone", "property", "diverse_serving_substations", "available_voltage_services", "notes", "region_continent", "status_dashboard", "org_id", "campus_id", "org_name", "net_count", "ix_count", "carrier_count", "logo", "address1", "address2", "city", "country", "state", "zipcode", "floor", "suite", "latitude", "longitude", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
     _jsonColumns: new Set(["available_voltage_services", "social_media"]),
@@ -298,7 +296,7 @@ const _entity_ix = {
     ],
     joinColumns: [{ table: "peeringdb_organization", localFk: "org_id", columns: { "name": "org_name" } }],
     relationships: [
-        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }] },
+        { field: "ixfac_set", table: "peeringdb_ix_facility", fk: "ix_id", joinColumns: [{ table: "peeringdb_facility", localFk: "fac_id", columns: { "name": "name", "city": "city", "country": "country", "latitude": "latitude", "longitude": "longitude", "address1": "address1" } }], pdbfeOnly: true },
         { field: "ixlan_set", table: "peeringdb_ixlan", fk: "ix_id" }
     ],
     _columns: ["id", "name", "aka", "name_long", "city", "country", "notes", "region_continent", "media", "proto_unicast", "proto_multicast", "proto_ipv6", "website", "social_media", "url_stats", "tech_email", "tech_phone", "policy_email", "policy_phone", "sales_email", "sales_phone", "ixf_net_count", "ixf_last_import", "service_level", "terms", "status_dashboard", "org_id", "ixf_ixp_member_list_url", "net_count", "fac_count", "ixf_import_request", "ixf_import_request_status", "logo", "created", "updated", "status", "__logo_migrated", "__vector_embedded"],
@@ -431,7 +429,7 @@ const _entity_ixlan = {
     joinColumns: undefined,
     relationships: [
         { field: "ixpfx_set", table: "peeringdb_ixlan_prefix", fk: "ixlan_id" },
-        { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "ixlan_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }] }
+        { field: "netixlan_set", table: "peeringdb_network_ixlan", fk: "ixlan_id", joinColumns: [{ table: "peeringdb_network", localFk: "net_id", columns: { "name": "net_name" } }], pdbfeOnly: true }
     ],
     _columns: ["id", "name", "descr", "mtu", "vlan", "dot1q_support", "rs_asn", "arp_sponge", "ixf_ixp_member_list_url", "ixf_ixp_member_list_url_visible", "ix_id", "ixf_ixp_import_enabled", "created", "updated", "status"],
     _jsonColumns: new Set([]),

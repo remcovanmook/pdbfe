@@ -34,6 +34,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from collections import Counter
 from pathlib import Path
 
 try:
@@ -829,6 +830,9 @@ def merge_models_and_spec(model_entities, spec_entities):
             "address": model["address"],
             "restricted": restricted,
             "fields": fields,
+            # The _set fields upstream serves for this entity; derived
+            # relationships outside it are pdbfe extensions.
+            "upstreamSets": sorted(k for k in response if k.endswith("_set")),
         }
         if anon_filter:
             merged[tag]["anonFilter"] = anon_filter
@@ -1280,14 +1284,21 @@ def _derive_relationships(entities):
     Derive parent→child relationships from FK fields.
 
     Mirrors deriveRelationships pass 2 in entities.js. Mutates entities in-place.
+
+    A set upstream does not serve for the parent (not in its upstreamSets) is
+    marked pdbfeOnly: the API expands it only under __pdbfe=1. A child with
+    two FKs to the same parent (netixlan.net_side_id and ix_side_id, both
+    fac) would derive two sets of one name, the second overwriting the first
+    in the response; neither is derived.
     """
     for entity in entities.values():
         entity["relationships"] = []
 
     for child_tag, child_entity in entities.items():
+        fk_counts = Counter(f.get("foreignKey") for f in child_entity["fields"] if f.get("foreignKey"))
         for field in child_entity["fields"]:
             fk = field.get("foreignKey")
-            if not fk:
+            if not fk or fk_counts[fk] > 1:
                 continue
             parent = entities.get(fk)
             if not parent:
@@ -1304,6 +1315,8 @@ def _derive_relationships(entities):
             )
             if sibling_joins:
                 rel["joinColumns"] = sibling_joins
+            if rel["field"] not in parent.get("_upstreamSets", set()):
+                rel["pdbfeOnly"] = True
 
             parent["relationships"].append(rel)
 
@@ -1369,6 +1382,7 @@ def _build_worker_entities(merged_entities, overrides):
             "_anonFilter": schema.get("anonFilter"),
             "joinColumns": None,
             "relationships": [],
+            "_upstreamSets": set(schema.get("upstreamSets", [])),
         }
 
     _derive_join_columns(entities)
@@ -1423,6 +1437,8 @@ def _emit_js_relationship(rel):
     if rel.get("joinColumns"):
         joins_str = ", ".join(_emit_js_join(j) for j in rel["joinColumns"])
         parts.append(f"joinColumns: [{joins_str}]")
+    if rel.get("pdbfeOnly"):
+        parts.append("pdbfeOnly: true")
     return "{ " + ", ".join(parts) + " }"
 
 
@@ -1714,7 +1730,9 @@ def main():
             "django_peeringdb": django_peeringdb_version,
             "api_schema": used_api_version,
         },
-        "entities": merged,
+        # upstreamSets only feeds the worker's pdbfeOnly marks
+        # (_derive_relationships); the published schema leaves it out.
+        "entities": {tag: {k: v for k, v in e.items() if k != "upstreamSets"} for tag, e in merged.items()},
     }
 
     entities_path.write_text(json.dumps(output, indent=2) + "\n")
