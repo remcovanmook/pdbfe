@@ -45,6 +45,10 @@ Unlike traditional GraphQL implementations where schemas are authored by hand, t
 4. **Reverse Edge Navigation**: e.g. `Network.facilities`. Plural endpoints nested *inside* an entity definition mapped to an implicit Foreign Key filter.
 5. **Connections (Relay Pagination)**: Extends list queries to emit Relay-compliant pagination (`nodes`, `edges`, `pageInfo`, `cursor`) leveraging base 64 encoded offsets.
 
+### Batching (no N+1)
+
+Forward FKs and reverse edges resolve once per parent row, so each would cost one D1 query per row. They go through a per-request batch loader (`batchLoad` in the resolver template) instead: every load made while one execution level runs is queued, and after pending microtasks drain (`setTimeout 0`) the queue is fetched with one `id IN (...)` / `fk IN (...)` query (`json_each`, so D1's 100-variable cap does not apply). A nested query therefore costs one D1 query per relation level. Reverse edges apply the per-parent `limit`/`skip` with `ROW_NUMBER() OVER (PARTITION BY fk ORDER BY id)`. Loaders and their memoised results live on the per-request context. Visibility still comes from `buildRowQuery`, unchanged. Tests: `tests/unit/graphql/batching_sqlite.test.js`.
+
 ## PDB+ Naming Aliases
 
 The codebase aims for drop-in compatibility with older downstream client expectations like PeeringDB Plus, generating backward compatible aliases (e.g., querying `internetExchanges` which maps natively to the `ix` table). These overrides are defined via the `naming` meta block inside `ENTITY_NAMING` in `parse_django_models.py`.
