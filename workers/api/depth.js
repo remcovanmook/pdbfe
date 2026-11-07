@@ -6,6 +6,10 @@
  *   depth=1 — arrays of child IDs
  *   depth=2 — arrays of full child objects (including the FK back to the
  *             parent, which upstream keeps on some sets — a superset)
+ * Sets upstream does not serve (`pdbfeOnly`: fac's netfac/ixfac/carrierfac,
+ * ix.ixfac_set, ixlan.netixlan_set) are expanded only under __pdbfe=1, the
+ * frontend's flag: other callers get upstream's shape, and a fac list no
+ * longer reads every child row of its 250 facilities.
  *
  * Parent expansion (depth≥1): each `<tag>_id` foreign key also gets a
  * `<tag>` object, as upstream does on detail views (fac.campus,
@@ -257,7 +261,7 @@ function idSource(entity, rows) {
 function planExpansion(db, entity, src, getRows, depth, authenticated, pdbfe, detail, steps) {
     if (entity.relationships.length > 0) {
         if (depth >= 2) planDepthTwo(db, entity, src, getRows, authenticated, pdbfe, steps);
-        else planDepthOne(db, entity, src, getRows, authenticated, steps);
+        else planDepthOne(db, entity, src, getRows, authenticated, pdbfe, steps);
     }
     if (THROUGH_SETS[entity.tag]) planThroughSets(db, entity, src, getRows, depth, authenticated, pdbfe, steps);
     planParents(db, entity, src, getRows, depth, authenticated, pdbfe, detail, steps);
@@ -324,10 +328,12 @@ function planThroughSets(db, entity, src, getRows, depth, authenticated, pdbfe, 
  * @param {Source} src
  * @param {() => Record<string, any>[]} getRows
  * @param {boolean} authenticated
+ * @param {boolean} pdbfe - __pdbfe=1: include pdbfeOnly sets.
  * @param {Step[]} steps
  */
-function planDepthOne(db, entity, src, getRows, authenticated, steps) {
+function planDepthOne(db, entity, src, getRows, authenticated, pdbfe, steps) {
     for (const rel of entity.relationships) {
+        if (rel.pdbfeOnly && !pdbfe) continue;
         const childTag = TABLE_TO_TAG.get(rel.table);
         const childEntity = childTag ? ENTITIES[childTag] : null;
         const anonFilter = resolveAnonFilter(authenticated, childEntity);
@@ -374,6 +380,7 @@ function planDepthOne(db, entity, src, getRows, authenticated, steps) {
  */
 function planDepthTwo(db, entity, src, getRows, authenticated, pdbfe, steps) {
     for (const rel of entity.relationships) {
+        if (rel.pdbfeOnly && !pdbfe) continue;
         // Child columns from the entity registry; fall back to SELECT * for an
         // unregistered (unexpected) child table.
         const childTag = TABLE_TO_TAG.get(rel.table);

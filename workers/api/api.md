@@ -136,6 +136,7 @@ Traditional SELECT returning individual rows for V8-side depth expansion.
 
 - **depth=0**: No expansion (hot path, D1 returns complete JSON envelope)
 - **depth=1**: Each `_set` field contains an array of child IDs. Uses a single batched `IN` query per relationship across all parent rows (falls back to `buildRowQuery` path).
+- **Extension sets**: a `_set` that upstream's API schema does not list for the entity (`pdbfeOnly`: fac's `netfac_set` / `ixfac_set` / `carrierfac_set`, `ix.ixfac_set`, `ixlan.netixlan_set`) is expanded only with `__pdbfe=1`, which the frontend sends. Everyone else gets upstream's shape: upstream serves no sets on `fac` at all.
 
 ## CORS
 

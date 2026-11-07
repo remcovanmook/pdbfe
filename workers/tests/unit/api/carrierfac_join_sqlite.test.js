@@ -31,7 +31,8 @@ before(() => {
 
 describe('carrierfac carrier_name join', () => {
     it('fac depth=2 carrierfac_set includes carrier_name', async () => {
-        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/fac/1?depth=2'), env, mockCtx);
+        // carrierfac_set on fac is a pdbfe extension (upstream serves no fac sets)
+        const res = await apiWorker.fetch(new Request('https://api.pdbfe.dev/api/fac/1?depth=2&__pdbfe=1'), env, mockCtx);
         assert.equal(res.status, 200);
         const fac = (await res.json()).data[0];
         assert.deepEqual(
