@@ -124,10 +124,12 @@ describe('unknown query parameters are ignored', () => {
 });
 
 describe('ix.fac_set / ixlan.net_set (upstream sets through the link table)', () => {
-    it('ix depth=1: fac_set = facility ids, ixfac_set kept', async () => {
+    it('ix depth=1: fac_set = facility ids; ixfac_set only under __pdbfe', async () => {
         const ix = (await get(apiWorker, `${API}/ix/1?depth=1`)).body.data[0];
         assert.deepEqual(ix.fac_set, [10, 11]);
-        assert.deepEqual(ix.ixfac_set, [501, 502]);
+        assert.equal('ixfac_set' in ix, false, 'upstream serves no ixfac_set on ix');
+        const ext = (await get(apiWorker, `${API}/ix/1?depth=1&__pdbfe=1`)).body.data[0];
+        assert.deepEqual(ext.ixfac_set, [501, 502]);
     });
 
     it('ix depth=2: fac_set = facility objects', async () => {
@@ -136,10 +138,21 @@ describe('ix.fac_set / ixlan.net_set (upstream sets through the link table)', ()
         assert.equal('fac_id' in ix.fac_set[0], false, 'target objects, not link rows');
     });
 
-    it('ixlan depth=1: net_set = distinct network ids, netixlan_set kept', async () => {
+    it('ixlan depth=1: net_set = distinct network ids; netixlan_set only under __pdbfe', async () => {
         const lan = (await get(apiWorker, `${API}/ixlan/1?depth=1`)).body.data[0];
         assert.deepEqual(lan.net_set, [100, 101]);
-        assert.deepEqual(lan.netixlan_set, [901, 902, 903]);
+        assert.equal('netixlan_set' in lan, false, 'upstream serves no netixlan_set on ixlan');
+        const ext = (await get(apiWorker, `${API}/ixlan/1?depth=1&__pdbfe=1`)).body.data[0];
+        assert.deepEqual(ext.netixlan_set, [901, 902, 903]);
+    });
+
+    it('fac depth=1 and 2: no sets, like upstream; netfac/ixfac/carrierfac only under __pdbfe', async () => {
+        for (const path of ['fac/10?depth=1', 'fac/10?depth=2', 'fac?depth=1']) {
+            const fac = (await get(apiWorker, `${API}/${path}`)).body.data[0];
+            assert.deepEqual(Object.keys(fac).filter(k => k.endsWith('_set')), [], path);
+        }
+        const ext = (await get(apiWorker, `${API}/fac/10?depth=1&__pdbfe=1`)).body.data[0];
+        assert.deepEqual(Object.keys(ext).filter(k => k.endsWith('_set')).sort(), ['carrierfac_set', 'ixfac_set', 'netfac_set']);
     });
 
     it('ixlan depth=2: net_set = network objects, each once', async () => {
@@ -222,7 +235,7 @@ describe('detail views expand parent FKs (as upstream)', () => {
     });
 
     it('depth=2 child objects keep the FK back to the parent', async () => {
-        const ix = (await get(apiWorker, `${API}/ix/1?depth=2`)).body.data[0];
+        const ix = (await get(apiWorker, `${API}/ix/1?depth=2&__pdbfe=1`)).body.data[0];
         assert.equal(ix.ixfac_set[0].ix_id, 1);
         const campus = (await get(apiWorker, `${API}/campus/5?depth=2`)).body.data[0];
         assert.deepEqual(campus.fac_set.map((/** @type {any} */ f) => f.campus_id), [5, 5]);

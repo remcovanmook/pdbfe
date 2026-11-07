@@ -577,6 +577,8 @@ interface EntityRelationship {
     fk: string;
     /** Optional JOIN definitions for cross-entity name resolution in depth=2. */
     joinColumns?: JoinColumnDef[];
+    /** Not in upstream's API schema for the parent: expanded only under __pdbfe=1. */
+    pdbfeOnly?: boolean;
 }
 
 /**

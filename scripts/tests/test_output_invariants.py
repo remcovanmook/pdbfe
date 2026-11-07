@@ -7,6 +7,24 @@ EXTRACTED_DIR = REPO_ROOT / "extracted"
 LIB_DIR = REPO_ROOT / "scripts" / "lib"
 
 class TestOutputInvariants(unittest.TestCase):
+    def test_worker_relationships(self):
+        """Each entity emits a _set name once, and fac's sets are pdbfe extensions.
+
+        Two FKs from one child to one parent (netixlan.net_side_id and
+        ix_side_id) once derived two fac.netixlan_set entries, the second
+        overwriting the first in the response.
+        """
+        content = (EXTRACTED_DIR / "entities-worker.js").read_text(encoding="utf-8")
+        for block in content.split("relationships: [")[1:]:
+            rels = block.split("],\n")[0]
+            names = [line.split('"')[1] for line in rels.splitlines() if 'field: "' in line]
+            self.assertEqual(len(names), len(set(names)), f"duplicate set names: {names}")
+        fac = content.split('tag: "fac"')[1].split("relationships: [")[1].split("],\n")[0]
+        self.assertNotIn('field: "netixlan_set"', fac)
+        for line in fac.splitlines():
+            if 'field: "' in line:
+                self.assertIn("pdbfeOnly: true", line)
+
     def test_entities_json(self):
         """Test extracted/entities.json is valid and contains standard entries."""
         path = EXTRACTED_DIR / "entities.json"

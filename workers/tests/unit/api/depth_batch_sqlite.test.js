@@ -65,7 +65,7 @@ describe('one D1 round trip per depth>0 request', () => {
     }
 
     it('fac/10?depth=2 nests parents at depth 1 from that one batch', async () => {
-        const [fac] = await get('fac/10?depth=2');
+        const [fac] = await get('fac/10?depth=2&__pdbfe=1');
         assert.deepEqual(fac.netfac_set.map((/** @type {any} */ c) => c.id), [700, 702]);
         assert.deepEqual(fac.campus.fac_set, [10, 11]);
         assert.equal(fac.campus.org.id, 1);
@@ -82,7 +82,7 @@ describe('?fields= with depth (main query lacks id/FK columns)', () => {
     });
 
     it('detail: parents still expand', async () => {
-        const [fac] = await get('fac/10?depth=1&fields=name');
+        const [fac] = await get('fac/10?depth=1&fields=name&__pdbfe=1');
         assert.equal(fac.name, 'Fac 10');
         assert.deepEqual(fac.netfac_set, [700, 702]);
     });
