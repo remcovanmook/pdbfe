@@ -87,7 +87,7 @@ The `LRUCache` (`core/cache.js`) uses contiguous typed arrays (`Uint32Array`, `F
 | Low | poc | 256 | 1 MB |
 | Light | ixlan, ixpfx, ixfac, carrier, carrierfac, campus, as_set | 128 | 1 MB each |
 
-Total: ~59 MB. Remaining ~69 MB of the 128 MB isolate budget is for working memory, V8 heap, the D1 query pipeline, and the rate limiter's LRU (~1 MB).
+Total: ~59 MB. Remaining ~69 MB of the 128 MB isolate budget is for working memory, V8 heap, and the D1 query pipeline.
 
 **Zero-serialisation serving:** D1 results are JSON-encoded *once* into a `Uint8Array` via `encodeJSON()`, then stored in the LRU cache. On cache hits, the bytes are forwarded directly as the `Response` body — no `JSON.parse` or `JSON.stringify` round-trip.
 
@@ -115,8 +115,8 @@ We use `ctx.waitUntil()` for:
 
 Every API request follows this hierarchy:
 
-1. **Authentication:** Resolve API key or session token. Reject upstream PeeringDB keys with 403. Select pre-cooked header sets (`H_API_AUTH`/`H_API_ANON`, `H_NOCACHE_AUTH`/`H_NOCACHE_ANON`) based on result.
-2. **Rate limiting:** Check per-isolate request count for this caller. Anonymous callers are keyed by source IP (IPv6 truncated to /64); authenticated callers by API key or session ID. Returns 429 if over quota (60/min anonymous, 600/min authenticated).
+1. **Authentication** (`core/gate.js`): reject upstream PeeringDB keys with 403 without a lookup; resolve a Bearer session (KV; invalid → anonymous); take a `pdbfe.` API key as authenticated and verify it alongside the request's D1 work, answering 401 instead of the data if it does not hold. Select pre-cooked header sets (`H_API_AUTH`/`H_API_ANON`, `H_NOCACHE_AUTH`/`H_NOCACHE_ANON`) based on result.
+2. **Rate limiting:** Workers rate-limit bindings, counted per Cloudflare location across all isolates. Anonymous callers are keyed by source IP (IPv6 truncated to /64); others by API key or session ID. Returns 429 if over quota (60/min anonymous, 600/min authenticated).
 3. **Routing:** Parse entity tag and optional ID from the path. Validate method, entity, filters.
 4. **Error cache:** Check L1 for a cached 400 for this query string. If found, return it.
 5. **If-Modified-Since shortcut:** lists and depth-0 details: against `getEntityVersion()` from `sync_state.js` (no cache or D1 work; a cold isolate, which knows no versions yet, first reads `_sync_meta`: the edge revalidates with IMS after every sync, and most syncs leave a table unchanged). Depth≥1 details (IMS within 24h): one D1 statement, `changedSince()` in `depth.js`, checks every row the response shows against `_row_changes` (written by `sync/row_changes.js`). If unchanged, return 304 (no `Last-Modified`: it reads no data).
@@ -152,7 +152,7 @@ Run locally with mock D1 bindings. No real database needed.
 | `oauth.test.js` | 29 | OAuth flow: start redirect, callback token exchange, logout, error handling |
 | `cache.test.js` | 26 | LRU cache: eviction, TTL expiry, byte limits, stats, purge, shared return object |
 | `headers.test.js` | 24 | HTTP response headers: lastModifiedHeader, isNotModifiedSince, H_API static headers, pre-cooked auth header sets |
-| `ratelimit.test.js` | 22 | Rate limiter: per-IP/per-identity limits, window expiry, IPv6 /64 normalisation, stats, purge |
+| `core/gate.test.js` | 18 | Request gate: caller identification, rate-limit binding keys, API key verification and settle, IPv6 /64 normalisation |
 | `sync.test.js` (sync/) | 34 | buildUpsert, ensureColumns, syncEntity (epoch guard, pagination, HTTP errors, data flow, queue publishing) |
 | `async.test.js` | 17 | embed (D1 pre-checks, neighbor averaging), delete (re-creation guard), logo (R2 hit, S3 errors), handler edge cases |
 | `pipeline.test.js` | 16 | cachedQuery pipeline: cache miss/hit, coalescing, negative caching, error propagation |

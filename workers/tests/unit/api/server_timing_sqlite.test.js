@@ -30,10 +30,13 @@ const timing = async (url) => (await apiWorker.fetch(new Request(url), env, mock
 
 describe('Server-Timing', () => {
     for (const url of ['https://api.pdbfe.dev/api/net?asn=64500', 'https://api.pdbfe.dev/api/net/1', 'https://api.pdbfe.dev/api/net?page=1']) {
-        it(`${url.slice(26)}: miss reports auth/db, repeat reports L1 without db`, async () => {
+        it(`${url.slice(26)}: miss reports db, repeat reports L1 without db`, async () => {
             const miss = await timing(url);
             assert.match(miss, /cache;desc="MISS"/);
-            for (const phase of ['auth', 'db']) assert.match(miss, new RegExp(`${phase};dur=\\d+`), phase);
+            assert.match(miss, /db;dur=\d+/);
+            // Anonymous: nothing to verify. A credential's lookup is appended
+            // as auth;dur once it settles (tests/unit/api/gate_sqlite.test.js).
+            assert.doesNotMatch(miss, /auth;dur=/);
 
             const hit = await timing(url);
             assert.match(hit, /cache;desc="L1"/);

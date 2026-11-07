@@ -7,8 +7,8 @@ The Cloudflare Worker codebase is structured to enforce strict boundaries betwee
 ```mermaid
 graph TD
     REQ["Incoming Request"] --> WRAP["wrapHandler<br/>(core/admin.js)"]
-    WRAP --> AUTH["resolveAuth<br/>(core/auth.js)"]
-    AUTH --> RL["isRateLimited<br/>(api/ratelimit.js)"]
+    WRAP --> AUTH["identifyCaller<br/>(core/gate.js)"]
+    AUTH --> RL["rateLimited<br/>(core/gate.js, Workers binding)"]
     RL --> VALID["validateRequest<br/>(core/admin.js)"]
     VALID --> ROUTE{"Route"}
 
@@ -34,7 +34,7 @@ graph TD
 ```mermaid
 graph BT
     CORE["core/<br/>admin, auth, cache, http, utils"] 
-    API["api/<br/>handlers, pipeline, swr, cache, ratelimit"] --> CORE
+    API["api/<br/>handlers, pipeline, swr, cache"] --> CORE
     AUTH_W["auth/<br/>account, oauth"] --> CORE
     SYNC["sync/<br/>delta sync worker"] --> CORE
     SYNC --> API_ENT["api/entities.js"]
@@ -59,7 +59,7 @@ The foundation layer. Contains generic, reusable components that have zero knowl
   - `validateRequest(request, rawPath, methods)` — method, traversal, and scanner probe checks. Query strings are allowed (required for PeeringDB filters).
   - `routeAdminPath(rawPath, env, opts)` — robots.txt, health (with D1 probe), secret-gated `_cache_status`/`_cache_flush`
   - `wrapHandler(handler, serviceName)` — error trapping, X-Timer, X-Served-By, X-Isolate-ID, and default X-Auth-Status headers
-- **`cache.js`**: TypedArray LRU cache. Uses contiguous `Uint32Array`, `Float64Array`, and `Int32Array` blocks for zero-GC eviction. Instantiated 14 times by `api/cache.js` (one per entity) and once by `api/ratelimit.js`.
+- **`cache.js`**: TypedArray LRU cache. Uses contiguous `Uint32Array`, `Float64Array`, and `Int32Array` blocks for zero-GC eviction. Instantiated 14 times by `api/cache.js` (one per entity).
 - **`http.js`**: JSON response serving, precompiled frozen CORS headers, Last-Modified / If-Modified-Since helpers, and `encodeJSON()` for single-serialisation-point caching. Pre-cooked header sets (`H_API_AUTH`, `H_API_ANON`, `H_NOCACHE_AUTH`, `H_NOCACHE_ANON`) bake in `X-Auth-Status`, `Allow`, and `X-App-Version` to avoid per-request Response cloning. `serveJSON()` and `jsonError()` accept an optional base headers parameter to select the right set.
 - **`utils.js`**: Zero-allocation URL parsing (`parseURL`) and generic string tokenization (`tokenizeString`). Domain-specific utilities (query filter parsing, cache-key normalisation) live in their respective api/ modules.
 - **`auth.js`**: API key extraction from `Authorization: Api-Key` headers, SHA-256 key verification against USERDB D1 with per-isolate 5-minute cache, session ID extraction from Bearer tokens and cookies, session resolution against SESSIONS KV, and `resolveAuth()` — top-level auth pipeline returning `{authenticated, identity, rejection}`.
@@ -81,7 +81,7 @@ The primary traffic handler serving read-only PeeringDB API responses.
   - Both share `buildWherePagination()` for filter/pagination SQL construction.
 - **`depth.js`**: Depth expansion for `_set` fields. depth=0 is a no-op; depth=1 returns child IDs via batched IN queries. Also the change check for If-Modified-Since (`changeCheckSql` / `changedSince`): walks a detail response the way the expansion builds it and asks `_row_changes` whether any row it shows (`row_at`) or any set it shows (`set_at`) changed since the IMS — one statement, cached per entity and depth; `tests/unit/api/change_check_sqlite.test.js` fails on any changed response it would answer 304.
 - **`cache.js`**: Creates and configures 14 per-entity LRU cache instances across three tiers (1024/256/128 slots). Exposes `getCacheStats()`, `purgeAllCaches()`, `purgeEntityCache()`, `normaliseCacheKey()`. Defines TTL constants: `LIST_TTL` (60 min), `DETAIL_TTL` (60 min), `COUNT_TTL` (60 min), `NEGATIVE_TTL` (5 min). TTLs are upper bounds — data freshness is handled by the 15s invalidation poll in `sync_state.js`.
-- **`ratelimit.js`**: Isolate-level rate limiter using a dedicated LRU cache (4000 slots, 60s window). IPv6 addresses normalised to /64 prefixes. Anonymous callers keyed by IP (60/min), authenticated by API key or session ID (600/min). Exports `isRateLimited()`, `normaliseIP()`, `getRateLimitStats()`, `purgeRateLimit()`.
+- **`gate.js`** (core): request gate for api/rest/graphql/search. `identifyCaller()` (upstream keys 403 without a lookup; Bearer session resolved via KV, invalid → anonymous; `pdbfe.` key taken unverified), `rateLimited()` (Workers rate-limit bindings `RL_AUTH`/`RL_ANON`, per location; IPv6 /64), `startVerification()` (API key lookup alongside the request's D1 work), `settle()` (401 for a key that does not hold; X-Auth-Id on private responses).
 - **`http.js`**: API-specific HTTP response helpers. Inherits from `core/http.js` and layers API-specific frozen header sets (`H_API`, `H_API_AUTH`/`ANON`, `H_NOCACHE_AUTH`/`ANON`) with `X-Auth-Status`, `Allow`, and `X-App-Version`, plus `H_API_SHARED` for auth-independent responses (`public`, no `Vary: Authorization`, no `X-Auth-Status`/`X-Auth-Id`). **`auth_scope.js`** decides which responses are shared: everything except restricted-entity (poc) content — poc routes, depth>0 on entities with a poc child set, and cross-entity filters into poc. Exports `serveJSON()` and `withLastModified()`. Re-exports core symbols for single-import convenience.
 - **`utils.js`**: PeeringDB Django-style query filter parser (`parseQueryFilters`). Handles `__lt`, `__gt`, `__contains`, `__startswith`, `__in` suffixes, reserved parameters (depth, limit, skip, since, sort, fields), and cross-entity filters.
 - **`swr.js`**: `withEdgeSWR()` — stale-while-revalidate wrapper that encapsulates L1 cache reads, synchronous field extraction (shared `_ret` contract), SWR background refresh via `ctx.waitUntil()`, and `cachedQuery()` fallback for misses. Used by all API handlers instead of raw cache + pipeline calls.
@@ -107,7 +107,7 @@ Queue consumer worker processing side-effect tasks off the hot sync path. Bound 
 ## 4. GraphQL Domain (`workers/graphql/`)
 Provides a complete GraphQL API surfacing the PeeringDB dataset.
 
-- **`index.js`**: Entry point mounting `graphql-yoga`. Compiles schema dynamically from generated types/resolvers. Handles isolate-level rate-limiting and route configurations.
+- **`index.js`**: Entry point mounting `graphql-yoga`. Compiles schema dynamically from generated types/resolvers. Gates requests through `core/gate.js` and handles route configurations.
 - **`cache.js`**: Replaces the generic object LRU cache in `core` with a heavily scoped SHA-256 string-hash query processor.
 - **`l2.js`**: Edge-optimized PoP cache extensions explicitly caching deep GraphQL resolve results.
 
@@ -127,7 +127,7 @@ The GraphQL schemas and REST API specifications are not manually written. They a
 Unit tests are organised into subdirectories mirroring the source layout:
 
 - **`tests/unit/core/`**: `auth.test.js`, `cache.test.js`, `utils.test.js`, `branding.test.js`
-- **`tests/unit/api/`**: `query.test.js`, `depth.test.js`, `pipeline.test.js`, `swr.test.js`, `ratelimit.test.js`, `headers.test.js`, `status.test.js`, `sync_state.test.js`, `sync.test.js`, `visibility.test.js`, `compare.test.js`
+- **`tests/unit/api/`**: `query.test.js`, `depth.test.js`, `pipeline.test.js`, `swr.test.js`, `gate_sqlite.test.js`, `headers.test.js`, `status.test.js`, `sync_state.test.js`, `sync.test.js`, `visibility.test.js`, `compare.test.js`
 - **`tests/unit/sync/`**: `sync.test.js` — `buildUpsert`, `ensureColumns`, `syncEntity` (epoch guard, pagination, HTTP errors, data flow, queue publishing)
 - **`tests/unit/async/`**: `async.test.js` — `embed` (D1 pre-checks, neighbor averaging, success), `delete` (re-creation guard, success), `logo` (pre-checks, R2 hit, S3 errors, success), queue handler edge cases
 - **`tests/unit/graphql/`**: `graphql.test.js`

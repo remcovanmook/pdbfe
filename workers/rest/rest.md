@@ -7,7 +7,7 @@ The REST worker surfaces a versioned API modeled around the generated OpenAPI sp
 ```
 Client → wrapHandler (error trap + telemetry headers)
        → extractApiKey / extractSessionId → authenticated
-       → isRateLimited (isolate-level, per-IP or per-identity)
+       → identifyCaller / rateLimited / startVerification (core/gate.js; Workers rate-limit bindings)
        → validateRequest (method checks, URL validation)
        → Router
             → GET / → Scalar API Docs UI (handlers/static.js)
@@ -23,7 +23,7 @@ Client → wrapHandler (error trap + telemetry headers)
 
 ```
 rest/
-├── index.js              Router, rate limiter init
+├── index.js              Router, request gate (core/gate.js)
 ├── cache.js              LRU cache, TTLs, withRestSWR()
 ├── subresource.js        FK traversal + child relationship queries
 └── handlers/

@@ -15,21 +15,7 @@ import { claimSyncPoll, runSyncPoll, getEntityVersion, handleStatus, refreshSync
 import { withD1Stats } from '../core/d1stats.js';
 import { ENTITY_TAGS, ENTITIES, validateFields, validateQuery, resolveImplicitFilters, dropUnknownFilters } from './entities.js';
 import { getCacheStats, purgeAllCaches } from './cache.js';
-import { createRateLimiter } from '../core/ratelimit.js';
-import { resolveAuth } from '../core/auth.js';
-
-/**
- * Rate limiter for API requests.
- * 4000 IP slots, 1 MB ceiling, 60-second window.
- * Anonymous: 60 req/min; Authenticated: 600 req/min.
- */
-const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
-    slots: 4000,
-    maxBytes: 1024 * 1024,
-    windowMs: 60_000,
-    limitAnon: 60,
-    limitAuth: 600,
-});
+import { identifyCaller, rateLimited, startVerification, settle } from '../core/gate.js';
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -113,34 +99,50 @@ async function handleRequest(request, env, ctx) {
         return jsonError(404, "Not found", H_NOCACHE_ANON);
     }
 
-    const tAuth = Date.now();
-    const { authenticated, identity: authIdentity, userId, rejection } = await resolveAuth(request, env);
-    const authMs = Date.now() - tAuth;
-    if (rejection) return jsonError(403, rejection);
-
-    // Pre-select header sets based on auth state. These frozen objects
-    // are used for all Response construction — no per-request cloning.
-    const hApi = authenticated ? H_API_AUTH : H_API_ANON;
-    const hNocache = authenticated ? H_NOCACHE_AUTH : H_NOCACHE_ANON;
-
-    // In-memory rate limiting — drop abusive callers before touching D1.
-    // Authenticated users are keyed by their identity (API key or session ID)
-    // so multiple keys behind the same NAT each get independent quotas.
-    // Anonymous callers share a single bucket per source IP.
-    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    const rlKey = authIdentity || clientIP;
-    if (isRateLimited(rlKey, authenticated)) {
+    // core/gate.js: a session is resolved first (KV; an invalid one is served
+    // anonymously), then the rate limit, before touching D1. An API key is
+    // verified alongside the request's own D1 work: the data depends only on
+    // being authenticated, so the request is served as such now and settle()
+    // turns it into a 401 if the key does not hold.
+    const caller = await identifyCaller(request, env);
+    if (caller.rejection) return jsonError(403, caller.rejection);
+    const authenticated = caller.identity !== null;
+    if (await rateLimited(env, request, caller)) {
         return authenticated
-            ? jsonError(429, 'Too Many Requests', hNocache)
+            ? jsonError(429, 'Too Many Requests', H_NOCACHE_AUTH)
             : jsonError(429,
                 'Too Many Requests. Sign in or use an API key ' +
-                'for higher rate limits \u2014 see /account', hNocache);
+                'for higher rate limits \u2014 see /account', H_NOCACHE_ANON);
     }
 
     // CORS preflight — return before D1 session allocation
     if (request.method === "OPTIONS") {
         return handlePreflight();
     }
+
+    const verification = startVerification(env, caller);
+    const response = await serveRequest(request, env, ctx, rawPath, queryString, apiCall, authenticated);
+    return settle(response, caller, verification, (status, message) => jsonError(status, message, H_NOCACHE_ANON));
+}
+
+/**
+ * Serves a request that passed the gate (handleRequest), as authenticated
+ * when it carries a credential; the caller settles the verification.
+ *
+ * @param {Request} request - The inbound HTTP request.
+ * @param {PdbApiEnv} env - Cloudflare environment bindings.
+ * @param {ExecutionContext} ctx - Worker execution context for waitUntil.
+ * @param {string} rawPath - Path without leading slash.
+ * @param {string} queryString - Raw query string.
+ * @param {string|undefined} apiCall - Path segment after `api/`.
+ * @param {boolean} authenticated - The request carries a credential.
+ * @returns {Promise<Response>}
+ */
+async function serveRequest(request, env, ctx, rawPath, queryString, apiCall, authenticated) {
+    // Pre-select header sets based on auth state. These frozen objects
+    // are used for all Response construction — no per-request cloning.
+    const hApi = authenticated ? H_API_AUTH : H_API_ANON;
+    const hNocache = authenticated ? H_NOCACHE_AUTH : H_NOCACHE_ANON;
 
     // Create a D1 session for read replication. "first-unconstrained" allows
     // queries to hit any replica (including the primary). This is optimal for
@@ -157,11 +159,8 @@ async function handleRequest(request, env, ctx) {
         const adminResponse = routeAdminPath(rawPath, env, {
             db,
             serviceName: "pdbfe-api",
-            getStats: () => ({
-                ...getCacheStats(),
-                rateLimit: getRateLimitStats(),
-            }),
-            flush: () => { purgeAllCaches(); purgeRateLimit(); },
+            getStats: () => getCacheStats(),
+            flush: () => purgeAllCaches(),
         });
         if (adminResponse) return adminResponse;
 
@@ -317,11 +316,10 @@ async function handleRequest(request, env, ctx) {
     const paging = page !== null && id <= 0 ? { page, perPage } : null;
 
     // ── Handler dispatch ─────────────────────────────────────────────
-    // userId is threaded into the context so that serveJSON can bake
-    // X-Auth-Id into the initial header dict, avoiding a second Response +
-    // Headers allocation; Last-Modified comes from d1.stamp (see below).
+    // X-Auth-Id is added by settle() once the credential is verified;
+    // Last-Modified comes from d1.stamp (see below).
     /** @type {HandlerContext} */
-    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, userId: shared ? null : userId, paging, authMs, dumps: env.DUMPS };
+    const hc = { request, db, d1, ctx, entityTag, filters, opts, rawPath: cachePath, queryString, authenticated, hApi: hEntity, userId: null, paging, dumps: env.DUMPS };
     // Sync freshness poll (every 15 s per isolate): rides along the
     // request's first D1 call in the same batch — no extra round trip, and
     // no separate query racing the request's own. A request that never

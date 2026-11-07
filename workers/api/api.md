@@ -9,8 +9,9 @@ The API worker serves a read-only mirror of the PeeringDB database from Cloudfla
 ```
 Client → wrapHandler (error trap + telemetry headers)
        → validateRequest (method, traversal, scanner probes)
-       → extractApiKey / extractSessionId → authenticated
-       → isRateLimited (isolate-level, per-IP or per-identity)
+       → identifyCaller (core/gate.js): API key unverified, Bearer session via KV → authenticated
+       → rateLimited (Workers rate-limit binding RL_AUTH / RL_ANON, per location)
+       → startVerification: API key looked up in USERDB alongside the request's D1 work
        → env.PDB.withSession("first-unconstrained") → db
        → OPTIONS? → handlePreflight (precompiled CORS 204)
        → admin path? → routeAdminPath (robots.txt, health, cache status/flush)
@@ -32,7 +33,7 @@ All handler functions receive `db` (typed as `D1Session`) instead of `env`. The 
 
 ```
 api/
-├── index.js          Router, rate limiter init
+├── index.js          Router, request gate (core/gate.js)
 ├── cache.js          Per-entity LRU caches, TTLs, withEdgeSWR(), cachedQuery()
 ├── http.js           serveJSON, jsonError, header sets
 ├── entities.js       Entity registry (re-exports extracted/entities-worker.js)
@@ -105,12 +106,11 @@ Cache keys are **partitioned by authentication state** (prefixed with `auth:` or
 
 ### Rate Limiting
 
-Rate limiting is initialised inline in `index.js` using `createRateLimiter()` from `core/ratelimit.js`. It uses a dedicated LRU cache instance (4000 slots, 60s window). No KV reads, no external dependencies, sub-millisecond overhead.
+Workers rate-limit bindings (`RL_ANON` / `RL_AUTH`, `[[ratelimits]]` in wrangler.toml), checked by `core/gate.js`. Counters are shared by every isolate in a Cloudflare location and read from a locally cached count: no round trip. They are approximate (eventually consistent, per location), which is enough to stop floods.
 
-- **Anonymous callers**: Keyed by client IP (IPv6 truncated to /64 prefix), 60 req/min per isolate
-- **Authenticated callers**: Keyed by API key or session ID, 600 req/min per isolate
+- **Anonymous callers**: Keyed by client IP (IPv6 truncated to /64 prefix), 60 req/min per location
+- **API key or valid session**: Keyed by the key or session ID, 600 req/min per location. An API key counts before it is verified; an invalid one ends in a 401 either way.
 - 429 responses include guidance for anonymous callers to authenticate for higher limits
-- Stats and flush integrated into the admin `/_cache_status` and `/_cache_flush` endpoints
 
 ## Query Builder
 
@@ -156,10 +156,10 @@ Precompiled frozen headers on every response:
 ### Authentication Methods
 
 The API worker supports two authentication methods, resolved in order:
-1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — SHA-256 hashed and verified against the USERDB D1 database with a per-isolate 5-minute cache. Upstream PeeringDB API keys are rejected with a 403.
-2. **Session token** (`Authorization: Bearer <sid>` or cookie) — verified against the SESSIONS KV namespace.
+1. **API Key** (`Authorization: Api-Key pdbfe.<hex>`) — any key without the `pdbfe.` prefix (an upstream PeeringDB key) is rejected with a 403 before any lookup. A pdbfe key is served as authenticated straight away while it is SHA-256 hashed and verified against USERDB (per-isolate 5-minute cache) alongside the request's own D1 work; the response leaves only once the key holds. An unknown, revoked or expired key gets a **401**, never the data.
+2. **Session token** (`Authorization: Bearer <sid>` or cookie, the frontend's) — verified against SESSIONS KV *before* the rate limit. A session that does not hold is served anonymously (not refused), so it must not pick its own rate-limit bucket.
 
-Both authentication checks complete before rate limiting, so authenticated vs anonymous limits are applied correctly.
+Rate limits (`[[ratelimits]]` in the wrangler configs, core/gate.js): 60/min anonymous by IP (IPv6 /64), 600/min per API key or session. They are Workers rate-limit bindings: counted per Cloudflare location across all isolates, approximate.
 
 ### Restricted Entities
 

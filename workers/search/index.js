@@ -18,31 +18,13 @@
  * @see search.md for full architecture documentation.
  */
 
-import { resolveAuth } from '../core/auth.js';
+import { identifyCaller, rateLimited, startVerification, settle } from '../core/gate.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError } from './http.js';
 import { parseURL } from '../core/utils.js';
-import { createRateLimiter } from '../core/ratelimit.js';
 import { getSearchCacheStats, purgeSearchCache } from './cache.js';
 import { initGraphSearch } from './handlers/graph.js';
 import { handleSearch } from './handlers/query.js';
-
-/**
- * Rate limiter for search requests.
- *
- * Graph-structural queries require a Vectorize round-trip for similarity
- * searches, but no Workers AI embedding call — significantly cheaper than
- * the previous BGE-based approach.
- *
- * Anonymous: 10 req/min, Authenticated: 100 req/min.
- */
-const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
-    slots: 1000,
-    maxBytes: 1024 * 1024,
-    windowMs: 60_000,
-    limitAnon: 10,
-    limitAuth: 100,
-});
 
 /**
  * Handles incoming requests to the search worker.
@@ -81,24 +63,21 @@ async function handleRequest(request, env, ctx) {
     const adminResponse = await routeAdminPath(rawPath, env, {
         db,
         serviceName: 'pdbfe-search',
-        getStats: () => ({
-            search: getSearchCacheStats(),
-            rateLimit: getRateLimitStats(),
-        }),
-        flush: () => { purgeSearchCache(); purgeRateLimit(); },
+        getStats: () => ({ search: getSearchCacheStats() }),
+        flush: () => purgeSearchCache(),
     });
     if (adminResponse) return adminResponse;
 
-    const { authenticated, identity, rejection } = await resolveAuth(request, env);
-    if (rejection) return jsonError(403, rejection);
-
-    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    const callerKey = identity || clientIP;
-    if (isRateLimited(callerKey, authenticated, Date.now())) {
+    // Rate limit by key, session or IP; results do not depend on who asks,
+    // but an invalid API key still gets a 401 (core/gate.js).
+    const caller = await identifyCaller(request, env);
+    if (caller.rejection) return jsonError(403, caller.rejection);
+    if (await rateLimited(env, request, caller)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
-
-    return handleSearch(request, queryString, db, env.VECTORIZE ?? null, ctx);
+    const verification = startVerification(env, caller);
+    const response = await handleSearch(request, queryString, db, env.VECTORIZE ?? null, ctx);
+    return settle(response, caller, verification, jsonError);
 }
 
 export default wrapHandler(handleRequest, 'pdbfe-search');

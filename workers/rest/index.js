@@ -21,32 +21,18 @@
 
 import { ENTITIES, ENTITY_TAGS, validateQuery, validateFields, resolveImplicitFilters, dropUnknownFilters } from '../api/entities.js';
 import { parseQueryFilters } from '../api/utils.js';
-import { resolveAuth } from '../core/auth.js';
+import { identifyCaller, rateLimited, startVerification, settle } from '../core/gate.js';
 import { wrapHandler, validateRequest, routeAdminPath } from '../core/admin.js';
 import { handlePreflight, jsonError, deployedAtMs, isNotModifiedSince, parseIfModifiedSince } from '../core/http.js';
 import { H_API_AUTH, H_API_ANON, H_API_SHARED, syncAlignedFor } from '../api/http.js';
 import { isAuthSensitive, isRelationAuthSensitive } from '../api/auth_scope.js';
 import { parseURL, tokenizeString } from '../core/utils.js';
-import { createRateLimiter } from '../core/ratelimit.js';
 import { getRestCacheStats, purgeRestCache, claimSyncPoll, runSyncPoll, getEntityVersion, refreshSyncState } from './cache.js';
 import { withD1Stats } from '../core/d1stats.js';
 import { serveStaticAsset } from './handlers/static.js';
 import { handleDetail } from './handlers/detail.js';
 import { handleListRequest } from './handlers/list.js';
 import { handleSubResource, SUBRESOURCE_MAP } from './subresource.js';
-
-/**
- * Rate limiter for REST requests.
- * Same thresholds as the API worker — the REST API mirrors the
- * same dataset with the same query patterns.
- */
-const { isRateLimited, getStats: getRateLimitStats, purge: purgeRateLimit } = createRateLimiter({
-    slots: 4000,
-    maxBytes: 4 * 1024 * 1024,
-    windowMs: 60_000,
-    limitAnon: 60,
-    limitAuth: 600,
-});
 
 /**
  * Handles incoming requests to the REST worker.
@@ -77,11 +63,8 @@ async function handleRequest(request, env, ctx) {
     const adminResponse = await routeAdminPath(rawPath, env, {
         db,
         serviceName: 'pdbfe-rest',
-        getStats: () => ({
-            rest: getRestCacheStats(),
-            rateLimit: getRateLimitStats(),
-        }),
-        flush: () => { purgeRestCache(); purgeRateLimit(); },
+        getStats: () => ({ rest: getRestCacheStats() }),
+        flush: () => purgeRestCache(),
     });
     if (adminResponse) return adminResponse;
 
@@ -96,22 +79,24 @@ async function handleRequest(request, env, ctx) {
         return jsonError(404, 'Not found');
     }
 
-    // Auth resolution
-    const { authenticated, identity, rejection } = await resolveAuth(request, env);
-    if (rejection) return jsonError(403, rejection);
-
-    const clientIP = request.headers.get('cf-connecting-ip') || 'unknown';
-    const callerKey = identity || clientIP;
-    const now = Date.now();
-    if (isRateLimited(callerKey, authenticated, now)) {
+    // Rate limit, then serve as authenticated when the caller has a key or a
+    // valid session; a key is verified alongside, a bad one gets a 401
+    // (core/gate.js).
+    const caller = await identifyCaller(request, env);
+    if (caller.rejection) return jsonError(403, caller.rejection);
+    if (await rateLimited(env, request, caller)) {
         return jsonError(429, 'Rate limit exceeded. Try again later.');
     }
+    const authenticated = caller.identity !== null;
+    const verification = startVerification(env, caller);
+    const now = Date.now();
 
     // The wrapper lets the _sync_meta poll ride along with the request's
     // first D1 call (core/d1stats.js carry), as in the API worker: no extra
     // round trip, and the entity version is known when the response is built.
     const { db: rdb } = withD1Stats(db);
-    return routeApiRequest(request, { db: rdb, ctx, rawPath, queryString, authenticated, dumps: env.DUMPS, deployedAt: deployedAtMs(env), now });
+    const response = await routeApiRequest(request, { db: rdb, ctx, rawPath, queryString, authenticated, dumps: env.DUMPS, deployedAt: deployedAtMs(env), now });
+    return settle(response, caller, verification, jsonError);
 }
 
 /**

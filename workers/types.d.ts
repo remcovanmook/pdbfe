@@ -305,6 +305,15 @@ interface PdbApiEnv {
     CF_VERSION_METADATA?: { id: string, tag: string, timestamp: string };
     /** R2 bucket pdbfe-dumps: full-table list dumps (api/dumps.js). Optional: absent, lists stream from D1. */
     DUMPS?: R2Bucket;
+    /** Workers rate-limit binding for callers with a credential (core/gate.js). Absent in tests/dev: not limited. */
+    RL_AUTH?: RateLimit;
+    /** Workers rate-limit binding for anonymous callers, keyed by IP (core/gate.js). */
+    RL_ANON?: RateLimit;
+}
+
+/** Workers rate-limit binding ([[ratelimits]]): approximate, per Cloudflare location. */
+interface RateLimit {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 /** Minimal Workers Analytics Engine binding surface used by the API worker. */
@@ -355,6 +364,9 @@ interface PdbSearchEnv {
     PDBFE_VERSION?: string;
     /** Admin secret for /_admin/* endpoints. */
     ADMIN_SECRET?: string;
+    /** Workers rate-limit bindings (core/gate.js). Absent in tests/dev: not limited. */
+    RL_AUTH?: RateLimit;
+    RL_ANON?: RateLimit;
 }
 
 /**
