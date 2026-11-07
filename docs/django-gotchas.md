@@ -11,6 +11,9 @@ behavior on Cloudflare Workers + D1 (SQLite).
 PeeringDB actually exposes `__contains` but their MySQL collation (`utf8_general_ci`)
 makes it **case-insensitive** in practice. So `name__contains=CLOUD` and
 `name__contains=cloud` return the same results on production PeeringDB.
+The same collation applies to exact matches and `__in`:
+`fac?country__in=nl,be` returns the NL and BE facilities upstream, so pdbfe
+adds `COLLATE NOCASE` to string `=` and `IN` comparisons (`api/query.js`).
 
 **D1/SQLite**: `LIKE` is case-insensitive for **ASCII A-Z only**. Characters
 outside ASCII (ü, ö, é, ñ, ß, Ç, Ø, etc.) are matched **case-sensitively**.
