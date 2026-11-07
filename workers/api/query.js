@@ -11,7 +11,7 @@
  *   gte       → WHERE col >= ?
  *   contains  → WHERE col LIKE '%' || ? || '%' COLLATE NOCASE
  *   startswith→ WHERE col LIKE ? || '%' COLLATE NOCASE
- *   in        → WHERE col IN (?, ?, ...)
+ *   in        → WHERE col [COLLATE NOCASE] IN (SELECT value FROM json_each(?))
  */
 
 import { getColumns, getJsonColumns, getBoolColumns, getNullableColumns, getOmitEmptyColumns, getFilterType, resolveCrossEntityFilter } from './entities.js';
@@ -89,10 +89,10 @@ const OPS = {
         clause: `"${col}" LIKE ? || '%' COLLATE NOCASE`,
         params: [value]
     }),
-    in: (col, value) => {
+    in: (col, value, fieldType) => {
         const parts = value.split(","); // ap-ok: SQL IN clause construction
         return {
-            clause: `"${col}" IN (SELECT value FROM json_each(?))`,
+            clause: `"${col}"${nocase(fieldType)} IN (SELECT value FROM json_each(?))`,
             params: [JSON.stringify(parts)] // Satisfy TS typing; fully processed by buildWherePagination
         };
     },
@@ -548,7 +548,7 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             // (they operate on unaliased column names, which is what we want)
             if (f.op === 'in') {
                 const parts = f.value.split(',').map(v => coerceValue(/** @type {string} */(v), /** @type {'string'|'number'|'boolean'|'datetime'} */(ref.fieldType))); // ap-ok: SQL IN clause construction
-                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}" IN (SELECT value FROM json_each(?))${gateSql})`);
+                clauses.push(`${pfx}"${ref.fkField}" IN (SELECT "id" FROM "${ref.targetTable}" WHERE "${f.field}"${nocase(ref.fieldType)} IN (SELECT value FROM json_each(?))${gateSql})`);
                 params.push(JSON.stringify(parts)); // ap-ok: SQL bind params
             } else {
                 const inner = opFn(f.field, f.value, ref.fieldType);
@@ -578,11 +578,14 @@ function buildWherePagination(entity, filters, opts, singleId, tableAlias) {
             const parts = f.value.split(",").map(v => coerceValue(/** @type {string} */(v), fieldType)); // ap-ok: SQL IN clause construction
             const jsonStr = JSON.stringify(parts);
             
+            // String `in` is case-insensitive like upstream (and like eq);
+            // upstream ignores string `notin` on the entities we probed, so
+            // its collation is left as it was.
             if (pfx) {
-                clauses.push(`${sqlCol} ${negated ? 'NOT IN' : 'IN'} (SELECT value FROM json_each(?))`);
+                clauses.push(`${sqlCol}${negated ? '' : nocase(fieldType)} ${negated ? 'NOT IN' : 'IN'} (SELECT value FROM json_each(?))`);
                 params.push(jsonStr);
             } else {
-                const result = opFn(f.field, f.value);
+                const result = opFn(f.field, f.value, fieldType);
                 clauses.push(result.clause);
                 params.push(jsonStr);
             }
