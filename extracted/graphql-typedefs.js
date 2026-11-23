@@ -592,6 +592,7 @@ type Network {
   irr_as_set: String!
   website: String!
   social_media: JSON!
+  meta: JSON!
   looking_glass: String!
   route_server: String!
   notes: String!
@@ -1587,6 +1588,7 @@ type NetworkExchangeLan {
   notes: String!
   speed: Int!
   operational: Boolean!
+  meta: JSON!
   net_id: Int!
   net: Network
   ixlan_id: Int!
