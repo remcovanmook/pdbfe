@@ -3,7 +3,7 @@
   "info": {
     "title": "PeeringDB REST API",
     "description": "REST API for the PeeringDB dataset. Provides list and detail endpoints for all PeeringDB entity types with full filter support matching the upstream PeeringDB API conventions.",
-    "version": "3.7.0+2.84.1",
+    "version": "3.7.0+2.85.0",
     "contact": {
       "name": "PDBFE",
       "url": "https://pdbfe.dev"
@@ -10710,6 +10710,7 @@
             "type": "string"
           },
           "social_media": {},
+          "meta": {},
           "looking_glass": {
             "type": "string"
           },
@@ -10881,6 +10882,7 @@
           "irr_as_set",
           "website",
           "social_media",
+          "meta",
           "looking_glass",
           "route_server",
           "notes",
@@ -11811,6 +11813,7 @@
           "operational": {
             "type": "boolean"
           },
+          "meta": {},
           "net_id": {
             "type": "integer"
           },
@@ -11869,6 +11872,7 @@
           "notes",
           "speed",
           "operational",
+          "meta",
           "net_id",
           "ixlan_id",
           "ix_id",

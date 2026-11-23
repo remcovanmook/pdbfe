@@ -10,6 +10,7 @@
       "notes": "",
       "speed": 0,
       "operational": false,
+      "meta": "[]",
       "net_id": 0,
       "ixlan_id": 0,
       "net_side_id": null,
